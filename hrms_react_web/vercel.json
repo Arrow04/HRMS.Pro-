@@ -5,15 +5,15 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://REPLACE_WITH_YOUR_RENDER_URL.onrender.com/api/$1"
+      "destination": "https://hrms-api-8yv3.onrender.com/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "https://REPLACE_WITH_YOUR_RENDER_URL.onrender.com/uploads/$1"
+      "destination": "https://hrms-api-8yv3.onrender.com/uploads/$1"
     },
     {
       "source": "/static/(.*)",
-      "destination": "https://REPLACE_WITH_YOUR_RENDER_URL.onrender.com/static/$1"
+      "destination": "https://hrms-api-8yv3.onrender.com/static/$1"
     },
     {
       "source": "/(.*)",
