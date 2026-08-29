@@ -13,7 +13,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.1.6:8000/api"
+        "EXPO_PUBLIC_API_URL": "https://hrms-api-8yv3.onrender.com"
       }
     },
     "production": {

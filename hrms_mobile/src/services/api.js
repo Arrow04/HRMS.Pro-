@@ -5,7 +5,7 @@ import Constants from 'expo-constants';
 import { DeviceEventEmitter } from 'react-native';
 
 export const API_URL_STORAGE_KEY = 'hrms_api_base_url';
-export const DEFAULT_API_BASE_URL = 'http://192.168.1.6:8000/api';
+export const DEFAULT_API_BASE_URL = 'https://hrms-api-8yv3.onrender.com/api';
 
 function readEmbeddedApiUrl() {
   const candidates = [

@@ -71,7 +71,7 @@
       "eas": {
         "projectId": "80b61e2d-3d74-46ff-846e-4281884f237b"
       },
-      "apiBaseUrl": "http://192.168.1.6:8000/api"
+      "apiBaseUrl": "https://hrms-api-8yv3.onrender.com/api"
     }
   }
 }
