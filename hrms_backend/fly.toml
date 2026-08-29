@@ -1,0 +1,24 @@
+app = "hrms-api"
+primary_region = "sin"
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health/ready"
+
+[env]
+  APP_ENV = "production"
+  PORT = "8000"
+  PYTHON_VERSION = "3.11"
