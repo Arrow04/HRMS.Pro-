@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -152,19 +152,21 @@ def init_db():
 
     if RUN_SCHEMA_SYNC:
         if APP_ENV == "production":
-            print("RUN_SCHEMA_SYNC is enabled but APP_ENV=production. Skipping runtime migrations. Use Alembic.")
+            print("RUN_SCHEMA_SYNC: applying schema in production.")
         else:
-            Base.metadata.create_all(bind=engine)
+            print("RUN_SCHEMA_SYNC: applying schema in development.")
 
-            # Create enterprise composite indexes (idempotent) for tenant-scoped
-            # and time-series queries at 10M-employee scale.
-            try:
-                from core.index_sync import sync_enterprise_indexes
-                sync_enterprise_indexes(engine)
-            except Exception as e:
-                print(f"Enterprise index sync warning: {e}")
+        Base.metadata.create_all(bind=engine)
 
-            from sqlalchemy import text, inspect
+        # Create enterprise composite indexes (idempotent) for tenant-scoped
+        # and time-series queries at 10M-employee scale.
+        try:
+            from core.index_sync import sync_enterprise_indexes
+            sync_enterprise_indexes(engine)
+        except Exception as e:
+            print(f"Enterprise index sync warning: {e}")
+
+        if APP_ENV != "production":
             inspector = inspect(engine)
 
             users_columns = [col['name'] for col in inspector.get_columns('users')]
