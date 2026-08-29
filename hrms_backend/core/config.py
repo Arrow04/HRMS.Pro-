@@ -89,8 +89,27 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
     
     # CORS
-    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "*").split(",")
+    CORS_ORIGINS: List[str] = ["*"]
     CORS_ALLOW_CREDENTIALS: bool = True
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _validate_cors_origins(cls, v: object) -> List[str]:
+        import json as _json
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if v == "*":
+                return ["*"]
+            try:
+                parsed = _json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return ["*"]
 
     @field_validator("CORS_ALLOW_CREDENTIALS", mode="before")
     @classmethod
