@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hrms_backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: hrms_test
+          POSTGRES_USER: hrms_user
+          POSTGRES_PASSWORD: hrms_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: hrms_backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: pip install pytest pytest-cov httpx
+      - run: pytest --cov=. --cov-report=xml -v
+        env:
+          DATABASE_URL: postgresql://hrms_user:hrms_password@localhost:5433/hrms_test
+          APP_ENV: test
+          SEED_DEFAULT_USERS: "true"
+      - uses: codecov/codecov-action@v4
+        with:
+          file: hrms_backend/coverage.xml
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hrms_react_web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hrms_react_web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck || true
+      - run: npm run build
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --quiet ruff
+      - run: ruff check hrms_backend/ --output-format=github
+      - run: pip install --quiet sqlfluff
+      - run: sqlfluff lint hrms_backend/models.py --dialect=postgres || true

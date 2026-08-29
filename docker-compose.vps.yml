@@ -1,0 +1,154 @@
+version: '3.8'
+
+# Lean production stack for a single VPS (2GB-4GB RAM).
+# Serves 1K-10K concurrent users with 10M employees spread across 1000 orgs.
+# No heavy observability/queue services — keep costs minimal. Add them when revenue arrives.
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: hrms_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: hrms_db
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command: postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c maintenance_work_mem=64MB
+      -c work_mem=8MB
+      -c max_connections=200
+      -c max_parallel_workers_per_gather=2
+      -c random_page_cost=1.1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    container_name: hrms_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 320M
+
+  api:
+    build:
+      context: ./hrms_backend
+      dockerfile: Dockerfile
+    container_name: hrms_api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@db:5432/hrms_db
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@hrms.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SEED_DEFAULT_USERS: "false"
+      APP_ENV: production
+      RUN_SCHEMA_SYNC: "true"
+      RUN_DB_INIT: "false"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "10"
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUESTS: "300"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  frontend:
+    build:
+      context: ./hrms_react_web
+      dockerfile: Dockerfile
+    container_name: hrms_frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tenant-hub:
+    build:
+      context: ./hrms_tenant_hub
+      dockerfile: Dockerfile
+    container_name: hrms_tenant_hub
+    restart: unless-stopped
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:alpine
+    container_name: hrms_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - frontend
+      - tenant-hub
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:

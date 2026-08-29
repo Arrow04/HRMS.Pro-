@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: hrms-api
+    runtime: python
+    plan: free
+    rootDir: hrms_backend
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_ENV
+        value: production
+      - key: ALLOW_SQLITE_FALLBACK
+        value: "false"
+      - key: SEED_DEFAULT_USERS
+        value: "true"
+      - key: RUN_SCHEMA_SYNC
+        value: "true"
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: ADMIN_EMAIL
+        value: admin@hrms.com
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SEED_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false

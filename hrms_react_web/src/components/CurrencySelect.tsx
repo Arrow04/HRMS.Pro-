@@ -1,0 +1,156 @@
+﻿import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDown, Search, Check, Coins } from 'lucide-react';
+import { CURRENCY_SYMBOLS } from '../services/currencyService';
+
+interface CurrencyOption {
+  code: string;
+  name: string;
+}
+
+interface CurrencySelectProps {
+  value: string;
+  onChange: (code: string) => void;
+  options: CurrencyOption[];
+}
+
+// Parse "USD ($) - US Dollar" into { code: "USD", symbol: "$", label: "US Dollar" }
+const parseOption = (opt: CurrencyOption) => {
+  const match = opt.name.match(/^([A-Z]{3})\s*(?:\(([^)]*)\))?\s*-\s*(.+)$/);
+  if (match) {
+    return { code: match[1], symbol: match[2]?.trim() || CURRENCY_SYMBOLS[match[1]] || '', label: match[3].trim() };
+  }
+  return { code: opt.code || opt.name.slice(0, 3).toUpperCase(), symbol: CURRENCY_SYMBOLS[opt.code] || '', label: opt.name };
+};
+
+const CurrencySelect = ({ value, onChange, options }: CurrencySelectProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node) && menuRef.current && !menuRef.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) setTimeout(() => inputRef.current?.focus(), 10);
+  }, [isOpen]);
+
+  const computePos = useCallback(() => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const top = rect.bottom + 6;
+    const menuH = Math.min(320, 280);
+    const bottom = top + menuH;
+    const finalTop = bottom > window.innerHeight ? Math.max(8, rect.top - menuH - 6) : top;
+    return { top: finalTop, left: rect.left, width: rect.width };
+  }, []);
+
+  // Re-position the menu if the page scrolls or resizes while open
+  useEffect(() => {
+    if (!isOpen) return;
+    const onScroll = () => {
+      const pos = computePos();
+      if (pos) setMenuPos(pos);
+    };
+    const onResize = () => {
+      const pos = computePos();
+      if (pos) setMenuPos(pos);
+    };
+    document.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [isOpen, computePos]);
+
+  const parsed = options.map(parseOption);
+  const current = parsed.find((p) => p.code === value) || parsed[0] || { code: value, symbol: '', label: value };
+
+  const filtered = parsed.filter((p) =>
+    !search || p.code.toLowerCase().includes(search.toLowerCase()) || p.label.toLowerCase().includes(search.toLowerCase()) || p.symbol.includes(search)
+  );
+
+  const toggleOpen = useCallback(() => {
+    setIsOpen((prev) => {
+      if (!prev) setMenuPos(computePos());
+      return !prev;
+    });
+  }, [computePos]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={toggleOpen}
+        className="w-full flex items-center gap-3 px-3.5 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#0F172A] hover:border-[#1C64F2] transition-colors"
+      >
+        <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EFF6FF] to-[#DBEAFE] flex items-center justify-center text-[#1C64F2] font-bold shrink-0">
+          {current.symbol || <Coins className="w-4 h-4" />}
+        </span>
+        <span className="flex-1 text-left min-w-0">
+          <span className="block font-semibold text-[#0F172A]">{current.code}</span>
+          <span className="block text-xs text-[#94A3B8] truncate">{current.label}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 text-[#94A3B8] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width, zIndex: 9999 }}
+          className="bg-white border border-[#E2E8F0] rounded-xl shadow-xl overflow-hidden"
+        >
+          <div className="p-2 border-b border-[#F1F5F9] bg-white">
+            <div className="flex items-center gap-2 px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg">
+              <Search className="w-3.5 h-3.5 text-[#94A3B8]" />
+              <input
+                ref={inputRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search currency..."
+                className="flex-1 bg-transparent border-none outline-none text-sm text-[#0F172A] placeholder-[#94A3B8]"
+              />
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-[#94A3B8]">No currencies found</div>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.code}
+                  type="button"
+                  onClick={() => { onChange(p.code); setIsOpen(false); setSearch(''); }}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors ${
+                    p.code === current.code ? 'bg-[#EFF6FF]' : 'hover:bg-[#F8FAFC]'
+                  }`}
+                >
+                  <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#EFF6FF] to-[#DBEAFE] flex items-center justify-center text-[#1C64F2] font-bold text-xs shrink-0">
+                    {p.symbol || p.code.slice(0, 2)}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-[#0F172A]">{p.code}</span>
+                    <span className="block text-xs text-[#94A3B8] truncate">{p.label}</span>
+                  </span>
+                  {p.code === current.code && <Check className="w-4 h-4 text-[#1C64F2] shrink-0" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
+export default CurrencySelect;

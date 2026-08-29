@@ -1,0 +1,19 @@
+﻿  // Fetch branches for dropdown
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches-dropdown'],
+    queryFn: async () => {
+      const response = await api.get('/branches');
+      return response.data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch departments for dropdown
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments-dropdown'],
+    queryFn: async () => {
+      const response = await api.get('/departments');
+      return response.data || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });

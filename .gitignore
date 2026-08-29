@@ -1,0 +1,58 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Databases
+*.db
+*.sqlite3
+chroma_db/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# One-off scripts (moved to archive/)
+scripts/
+
+# Docker
+docker-data/
+
+# Logs
+*.log
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+
+# Mobile / Expo
+.expo/
+.expo-shared/
+android/
+ios/
+*.jks
+*.keystore
+
+# Local SQLite (use Supabase in cloud)
+hrms_backend/hrms*.db
+
+# Cursor
+.cursor/

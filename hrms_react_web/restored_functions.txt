@@ -1,0 +1,383 @@
+﻿  // Fetch employees for department head dropdown - only when needed
+  const { data: employees = [] } = useQuery({
+    queryKey: ['employees'],
+    queryFn: async () => {
+      const response = await api.get('/employees');
+      const data = response.data?.items || response.data || [];
+      return data.filter((item: any) => item.status !== 'inactive' && item.is_active !== false);
+    },
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    enabled: activeTab === 'departments' || showModal // Only fetch when on departments tab or modal is open
+  });
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item: any) => {
+      const matchSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchCompany = companyFilter === 'all' || item.companyId?.toString() === companyFilter.toString();
+      const matchBranch = branchFilter === 'all' || item.branchId?.toString() === branchFilter.toString();
+      const matchDepartment = departmentFilter === 'all' || item.departmentId?.toString() === departmentFilter.toString();
+      const matchStatus = statusFilter === 'all' || item.status === statusFilter;
+      return matchSearch && matchCompany && matchBranch && matchDepartment && matchStatus;
+    });
+  }, [items, searchTerm, companyFilter, branchFilter, departmentFilter, statusFilter]);
+
+  const pagination = usePagination({ totalItems: filteredItems.length, itemsPerPage: 10 });
+  const paginatedItems = useMemo(() => filteredItems.slice(pagination.startIndex, pagination.endIndex), [filteredItems, pagination.startIndex, pagination.endIndex]);
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    setFormData(item);
+    setFormTab('basic');
+    setShowModal(true);
+    setIsClosing(false);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setShowModal(false);
+      setEditingItem(null);
+      setFormData(INITIAL_FORM_DATA);
+      setFormTab('basic');
+    }, 300);
+  };
+
+  // Handle employee search with debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    if (employeeSearch.length >= 2) {
+      setIsSearchingEmployees(true);
+      searchTimeoutRef.current = setTimeout(() => {
+        const filtered = employees.filter((employee: any) => {
+          const matchesSearch = `${employee.firstName} ${employee.lastName} ${employee.employeeCode || ''}`.toLowerCase().includes(employeeSearch.toLowerCase());
+          return matchesSearch;
+        }).slice(0, 20);
+        setEmployeeSearchResults(filtered);
+        setIsSearchingEmployees(false);
+        setShowEmployeeDropdown(true);
+      }, 300);
+    } else {
+      setEmployeeSearchResults([]);
+      setShowEmployeeDropdown(false);
+    }
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [employeeSearch, employees]);
+
+  // Handle employee selection
+  const handleEmployeeSelect = (employee: any) => {
+    setFormData({ ...formData, managerId: employee.id });
+    setEmployeeSearch(`${employee.firstName} ${employee.lastName} (${employee.employeeCode || ''})`);
+    setShowEmployeeDropdown(false);
+    setEmployeeSearchResults([]);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (employeeSearchRef.current && !employeeSearchRef.current.contains(event.target as Node)) {
+        setShowEmployeeDropdown(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Master data for dropdowns
+  const { data: companyStatusOptions = [] } = useMasterData('COMPANY_STATUS');
+  const { data: branchStatusOptions = [] } = useMasterData('BRANCH_STATUS');
+  const { data: departmentStatusOptions = [] } = useMasterData('DEPARTMENT_STATUS');
+  const { data: designationStatusOptions = [] } = useMasterData('DESIGNATION_STATUS');
+  const { data: designationGradeOptions = [] } = useMasterData('DESIGNATION_GRADE');
+  const { data: industryOptions = [] } = useMasterData('INDUSTRY');
+  const { data: companySizeOptions = [] } = useMasterData('COMPANY_SIZE');
+
+  const industryArray = Array.isArray(industryOptions) ? industryOptions : [];
+  const companySizeArray = Array.isArray(companySizeOptions) ? companySizeOptions : [];
+  const gradeValues = Array.isArray(designationGradeOptions) ? designationGradeOptions : [];
+
+  const getStatusArray = () => {
+    switch (activeTab) {
+      case 'companies': return Array.isArray(companyStatusOptions) ? companyStatusOptions : [];
+      case 'branches': return Array.isArray(branchStatusOptions) ? branchStatusOptions : [];
+      case 'departments': return Array.isArray(departmentStatusOptions) ? departmentStatusOptions : [];
+      case 'designations': return Array.isArray(designationStatusOptions) ? designationStatusOptions : [];
+      default: return [];
+    }
+  };
+  const statusArray = getStatusArray();
+
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return api.post(`/${activeTab}`, data);
+    },
+    onSuccess: () => {
+      toast.success(`${getSingularName(activeTab)} created successfully`);
+      queryClient.invalidateQueries({ queryKey: [activeTab] });
+      queryClient.invalidateQueries({ queryKey: ['companyStats'] });
+      setShowModal(false);
+      setFormData(INITIAL_FORM_DATA);
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to create ${getSingularName(activeTab)}: ${error.response?.data?.message || error.message}`);
+    }
+  });
+
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return api.put(`/${activeTab}/${id}`, data);
+    },
+    onSuccess: () => {
+      toast.success(`${getSingularName(activeTab)} updated successfully`);
+      queryClient.invalidateQueries({ queryKey: [activeTab] });
+      setShowModal(false);
+      setEditingItem(null);
+      setFormData(INITIAL_FORM_DATA);
+      setSearchTerm('');
+      setCompanyFilter('all');
+    },
+    onError: () => {
+      toast.error(`Failed to update ${getSingularName(activeTab)}`);
+    }
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.delete(`/${activeTab}/${id}`);
+    },
+    onSuccess: () => {
+      toast.success(`${getSingularName(activeTab)} deleted successfully`);
+      queryClient.invalidateQueries({ queryKey: [activeTab] });
+      queryClient.invalidateQueries({ queryKey: ['companyStats'] });
+    },
+    onError: () => {
+      toast.error(`Failed to delete ${getSingularName(activeTab)}`);
+    }
+  });
+
+  // Bulk upload mutation
+  const bulkUploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return api.post(`/${activeTab}/bulk-upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    },
+    onSuccess: (data: any) => {
+      const created = data.data?.created || 0;
+      const updated = data.data?.updated || 0;
+      toast.success(`Bulk upload completed: ${created} created, ${updated} updated`);
+      queryClient.invalidateQueries({ queryKey: [activeTab] });
+      queryClient.invalidateQueries({ queryKey: ['companyStats'] });
+      setShowBulkUpload(false);
+      setUploadFile(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Bulk upload failed');
+    }
+  });
+
+  const downloadTemplate = async () => {
+    try {
+      const response = await api.get(`/${activeTab}/template`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${getSingularName(activeTab)}_bulk_upload_template.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Template downloaded successfully');
+    } catch (error) {
+      toast.error('Failed to download template');
+    }
+  };
+
+  const exportData = async () => {
+    try {
+      const response = await api.get(`/${activeTab}/export`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${activeTab}_export.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Data exported successfully');
+    } catch (error) {
+      toast.error('Failed to export data');
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    let dataToSubmit: any = { code: formData.code, description: formData.description, status: formData.status };
+    if (activeTab !== 'designations') dataToSubmit.name = formData.name;
+    
+    if (activeTab === 'companies') {
+      dataToSubmit = { ...dataToSubmit, registrationNumber: formData.registrationNumber, taxId: formData.taxId, industry: formData.industry, companySize: formData.companySize, address: formData.address };
+    } else if (activeTab === 'branches') {
+      dataToSubmit = { ...dataToSubmit, location: formData.location, latitude: formData.latitude, longitude: formData.longitude, geofenceRadius: formData.geofenceRadius, companyId: formData.companyId };
+    } else if (activeTab === 'departments') {
+      dataToSubmit = { ...dataToSubmit, companyId: formData.companyId, managerId: formData.managerId };
+    } else if (activeTab === 'designations') {
+      dataToSubmit = { ...dataToSubmit, companyId: formData.companyId, title: formData.title, grade: formData.grade };
+    }
+    
+    if (editingItem) updateMutation.mutate({ id: editingItem.id, data: dataToSubmit });
+    else createMutation.mutate(dataToSubmit);
+  };
+
+  const handleToggleStatus = async (item: any) => {
+    try {
+      const newStatus = item.status === 'active' ? 'inactive' : 'active';
+      await updateMutation.mutateAsync({ id: item.id, data: { ...item, status: newStatus } });
+      toast.success(`Status updated successfully`);
+    } catch (error) {
+      toast.error('Failed to update status');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] p-6">
+      <div className="max-w-[1920px] mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-[#0F172A]">Company Structure</h1>
+            <p className="text-sm text-[#64748B] mt-1">Manage companies, branches, departments and designations</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={exportData} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-[#E2E8F0] text-[#0F172A] text-sm font-medium rounded-xl hover:bg-[#F8FAFC] transition-colors">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+            <button onClick={() => setShowBulkUpload(true)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-[#E2E8F0] text-[#0F172A] text-sm font-medium rounded-xl hover:bg-[#F8FAFC] transition-colors">
+              <Upload className="w-4 h-4" />
+              <span className="hidden sm:inline">Bulk Upload</span>
+            </button>
+            <button onClick={() => {
+              setEditingItem(null);
+              setFormData(INITIAL_FORM_DATA);
+              setShowModal(true);
+            }} className="flex items-center gap-2 px-4 py-2.5 bg-[#1C64F2] text-white text-sm font-medium rounded-xl hover:bg-[#1E40AF] transition-all duration-200 shadow-sm shadow-[#1C64F2]/20">
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add New</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TABS - Pill Style */}
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-4 mb-6">
+          <div className="flex flex-wrap items-center gap-2">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+                  activeTab === tab.id ? 'bg-[#1C64F2] text-white shadow-md shadow-[#1C64F2]/20' : 'text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC]'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6">
+          {/* Filter Row */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="relative flex-1 w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#64748B]" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-11 pr-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2] transition-shadow"
+                />
+              </div>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <DateRangePicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  onDateChange={(start, end) => {
+                    setStartDate(start);
+                    setEndDate(end);
+                  }}
+                  placeholder="Filter by Date"
+                />
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setCompanyFilter('all');
+                    setBranchFilter('all');
+                    setDepartmentFilter('all');
+                    setStatusFilter('all');
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${ searchTerm !== '' || companyFilter !== 'all' || branchFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || startDate !== '' ? 'bg-[#C81E1E] text-white hover:bg-[#A01515]' : 'bg-[#64748B] text-white hover:bg-[#475569]' }`}
+                >
+                  <X className="w-4 h-4" />
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <SearchableSelect
+                options={[
+                  { id: 'all', name: 'All Companies' },
+                  ...(companies?.map((c: any) => ({ id: c.id, name: c.name })) || [])
+                ]}
+                value={companyFilter}
+                onChange={(val) => setCompanyFilter(val.toString())}
+                placeholder="Company"
+              />
+              <SearchableSelect
+                options={[
+                  { id: 'all', name: 'All Branches' },
+                  ...(branches?.map((b: any) => ({ id: b.id, name: b.name })) || [])
+                ]}
+                value={branchFilter}
+                onChange={(val) => setBranchFilter(val.toString())}
+                placeholder="Branch"
+              />
+              <SearchableSelect
+                options={[
+                  { id: 'all', name: 'All Departments' },
+                  ...(departments?.map((d: any) => ({ id: d.id, name: d.name })) || [])
+                ]}
+                value={departmentFilter}
+                onChange={(val) => setDepartmentFilter(val.toString())}
+                placeholder="Department"
+              />
+              <SearchableSelect
+                options={[
+                  { id: 'all', name: 'All Statuses' },
+                  { id: 'active', name: 'Active' },
+                  { id: 'inactive', name: 'Inactive' }
+                ]}
+                value={statusFilter}
+                onChange={(val) => setStatusFilter(val.toString())}
+                placeholder="Status"
+              />
+            </div>
+          </div>

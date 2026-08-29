@@ -1,0 +1,19 @@
+{
+  "name": "HRMS.Pro! - Employee Self Service",
+  "short_name": "HRMS.Pro!",
+  "description": "Employee self-service: check in/out, apply leave, submit expenses, download payslips and more.",
+  "start_url": "/me",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F1F5F9",
+  "theme_color": "#1C64F2",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "categories": ["business", "productivity", "human resources"],
+  "lang": "en-IN",
+  "dir": "ltr"
+}

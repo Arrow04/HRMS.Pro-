@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Keep browser-autofilled inputs on the glass background with white text,
+   matching the control hub login's frosted-glass fields instead of Chrome's white fill. */
+.login-form input:-webkit-autofill,
+.login-form input:-webkit-autofill:hover,
+.login-form input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.1) inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: #ffffff;
+}
+
+/* Rotate one way, hold, then smoothly reverse — 12s cycle */
+.animate-logo-spin {
+  animation: logoSpin 12s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(28, 100, 242, 0.35));
+}
+
+@keyframes logoSpin {
+  0% { transform: rotate(0deg); }
+  45% { transform: rotate(360deg); }
+  50% { transform: rotate(360deg); }
+  95% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* Animated gradient text for the HRMS.Pro! brand name */
+.animate-brand-text {
+  background: linear-gradient(90deg, #0f172a 0%, #1c64f2 30%, #0f172a 60%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: brandShimmer 4s linear infinite;
+}
+
+@keyframes brandShimmer {
+  to { background-position: 200% center; }
+}
+
+/* Premium neon glow + breathing for login brand text */
+.animate-brand-text-login {
+  background: linear-gradient(90deg, #ffffff, #7dd3fc, #60a5fa, #a5b4fc, #ffffff);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: brandFlow 12s linear infinite, brandBreath 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.4));
+}
+
+@keyframes brandFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+@keyframes brandBreath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+/* The forgot-password modal is a white card — autofilled text must stay dark. */
+.fp-modal input:-webkit-autofill,
+.fp-modal input:-webkit-autofill:hover,
+.fp-modal input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: #0f172a;
+}
