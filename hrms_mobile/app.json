@@ -1,0 +1,77 @@
+{
+  "expo": {
+    "name": "HRMS.Pro!",
+    "slug": "hrms-mobile",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+      "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFBFE"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hrms.selfservice"
+    },
+    "android": {
+      "package": "com.hrms.selfservice",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "meta": {
+        "description": "HRMS.Pro! - Attendance, Leave, Expenses, Payslips & Chat"
+      },
+      "build": {
+        "pwa": {
+          "shortName": "HRMS.Pro!",
+          "display": "standalone",
+          "themeColor": "#1C64F2",
+          "backgroundColor": "#f8fafc",
+          "orientation": "portrait",
+          "scope": "/",
+          "lang": "en",
+          "description": "HRMS.Pro! for attendance, leave requests, expenses, payslips and HR chat",
+          "iconSizes": [192, 512],
+          "iconPath": "./assets/icon.png",
+          "splashScreen": {
+            "backgroundColor": "#1C64F2",
+            "resizeMode": "contain"
+          }
+        }
+      }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-location",
+      "expo-camera",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "80b61e2d-3d74-46ff-846e-4281884f237b"
+      },
+      "apiBaseUrl": "http://192.168.1.6:8000/api"
+    }
+  }
+}
