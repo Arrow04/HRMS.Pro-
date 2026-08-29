@@ -293,7 +293,11 @@ app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 # CORS
 # ---------------------------------------------------------------------------
 
-cors_origins = settings.CORS_ORIGINS if settings.APP_ENV == "production" else ["*"]
+cors_raw = settings.CORS_ORIGINS if settings.APP_ENV == "production" else "*"
+if isinstance(cors_raw, str):
+    cors_origins = [o.strip() for o in cors_raw.split(",") if o.strip()] if cors_raw != "*" else ["*"]
+else:
+    cors_origins = cors_raw
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
