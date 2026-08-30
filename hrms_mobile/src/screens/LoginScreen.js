@@ -4,7 +4,7 @@ import { useThemedStyles } from '../hooks/useThemedStyles';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-  Animated, Dimensions,
+  Animated, Dimensions, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { getApiBaseUrl, setApiBaseUrl, testApiConnection, DEFAULT_API_BASE_URL } from '../services/api';
 import { radii, spacing, shadows } from '../theme';
+import hrmsLogo from '../../assets/hrms_logo1.png';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -73,6 +74,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandText: { fontSize: 34, fontWeight: '800', color: '#FFF', letterSpacing: -0.6 },
@@ -484,7 +486,7 @@ const LoginScreen = () => {
           <Animated.View style={[styles.hero, { opacity: fadeAnim, transform: [{ translateY: logoFloat }] }]}>
             <LinearGradient colors={['#60A5FA', '#4F46E5', '#14B8A6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.logoRing}>
               <View style={styles.logoInner}>
-                <Ionicons name="sparkles" size={38} color="#FFF" />
+                <Image source={hrmsLogo} style={{ width: 70, height: 70, borderRadius: 20 }} resizeMode="contain" />
               </View>
             </LinearGradient>
             <View style={styles.brandRow}>
