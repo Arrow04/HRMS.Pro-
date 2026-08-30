@@ -171,7 +171,7 @@ def get_attendance(
             "designation": emp_info.get("designation"),
             "organization_id": r.organization_id, "company_id": r.company_id,
             "department_id": r.department_id, "shift_id": r.shift_id,
-            "date": _ist_iso(r.date) if hasattr(r.date, 'isoformat') else str(r.date)[:10] if r.date else None,
+            "date": str(r.date)[:10] if r.date else None,
             "check_in": _ist_iso(r.check_in),
             "check_out": _ist_iso(r.check_out),
             "status": r.status, "work_hours": r.work_hours,
@@ -645,7 +645,7 @@ def check_in(
     return {
         "id": att.id,
         "employee_id": att.employee_id,
-        "date": _ist_iso(att.date),
+        "date": str(att.date)[:10] if att.date else None,
         "check_in": _ist_iso(att.check_in),
         "check_out": _ist_iso(att.check_out),
         "status": att.status,
@@ -741,7 +741,7 @@ def check_out(
     return {
         "id": att.id,
         "employee_id": att.employee_id,
-        "date": _ist_iso(att.date),
+        "date": str(att.date)[:10] if att.date else None,
         "check_in": _ist_iso(att.check_in),
         "check_out": _ist_iso(att.check_out),
         "status": att.status,

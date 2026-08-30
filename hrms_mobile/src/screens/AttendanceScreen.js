@@ -1065,9 +1065,9 @@ const AttendanceScreen = ({ navigation }) => {
                     return (
                       <View key={item.id || item.date} style={[styles.recordRow, isLast && styles.recordRowLast]}>
                         <View style={styles.recordDateCompact}>
-                          <Text style={styles.recordDayNum}>{item.date ? new Date(item.date).getDate() : '—'}</Text>
+                          <Text style={styles.recordDayNum}>{item.date ? parseInt(String(item.date).slice(8, 10), 10) || '—' : '—'}</Text>
                           <Text style={styles.recordDayLbl}>
-                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: getTimezone() }) : ''}
+                            {item.date ? new Date(String(item.date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', timeZone: getTimezone() }) : ''}
                           </Text>
                         </View>
                         <View style={styles.recordMid}>
