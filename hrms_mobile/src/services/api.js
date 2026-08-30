@@ -36,7 +36,12 @@ export async function getApiBaseUrl() {
   try {
     const saved = await AsyncStorage.getItem(API_URL_STORAGE_KEY);
     if (saved?.trim()) {
-      return saved.trim().replace(/\/$/, '');
+      const url = saved.trim().replace(/\/$/, '');
+      if (url.includes('localhost') || url.includes('192.168.') || url.includes('10.0.') || url.includes('127.0.')) {
+        await AsyncStorage.removeItem(API_URL_STORAGE_KEY);
+        return DEFAULT_API_BASE_URL;
+      }
+      return url;
     }
   } catch {
     // ignore storage errors
