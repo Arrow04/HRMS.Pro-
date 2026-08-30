@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { getTimezone, fmtTime, todayISO, daysAgoISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Avatar } from '../components/UI';
@@ -61,6 +62,7 @@ const createStyles = (colors) => ({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
+    overflow: 'visible',
     ...shadows.sm },
   bentoTall: { minHeight: 200 },
   bentoGradient: { overflow: 'hidden' },
@@ -120,12 +122,12 @@ const createStyles = (colors) => ({
     ...shadows.sm,
   },
   quickCard: {
-    width: 76,
+    width: 80,
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...shadows.sm },
@@ -279,16 +281,22 @@ const ADMIN_QUICK_ACTIONS = [
   { icon: 'receipt', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
   { icon: 'briefcase', label: 'Hiring', screen: 'Recruitment', color: '#7C3AED' },
   { icon: 'bar-chart', label: 'Reports', screen: 'Reports', color: '#0D9488' },
-  { icon: 'chatbubbles', label: 'AI Chat', screen: 'Chat', color: '#14B8A6' },
+  { icon: 'documents-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
 ];
 
 const EMPLOYEE_QUICK_ACTIONS = [
+  { icon: 'finger-print', label: 'Clock In', screen: 'Attendance', color: '#059669' },
+  { icon: 'calendar', label: 'Leaves', screen: 'Leaves', color: '#4F46E5' },
   { icon: 'receipt', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
   { icon: 'card', label: 'Payslips', screen: 'Payslips', color: '#059669' },
   { icon: 'time', label: 'History', screen: 'AttendanceHistory', color: '#3B82F6' },
-  { icon: 'calendar', label: 'Leaves', screen: 'Leaves', color: '#4F46E5' },
+  { icon: 'calendar-clear', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
+  { icon: 'star', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
+  { icon: 'laptop', label: 'Assets', screen: 'Assets', color: '#0D9488' },
+  { icon: 'document-text', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
+  { icon: 'settings', label: 'Settings', screen: 'Settings', color: '#6366F1' },
+  { icon: 'documents-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
   { icon: 'person', label: 'Profile', screen: 'Profile', color: '#8B5CF6' },
-  { icon: 'chatbubbles', label: 'AI Chat', screen: 'Chat', color: '#14B8A6' },
 ];
 
 
@@ -530,7 +538,7 @@ const QuickActionsScroller = ({ actions, onNavigate }) => {
             <LinearGradient colors={[a.color, a.color + 'CC']} style={styles.quickIcon}>
               <Ionicons name={a.icon} size={22} color="#FFF" />
             </LinearGradient>
-            <Text style={styles.quickLabel}>{a.label}</Text>
+            <Text style={styles.quickLabel} numberOfLines={1}>{a.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -915,8 +923,87 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
   );
 };
 
-const EmployeeDashboard = ({ navigation, present, late, absent, onLeave }) => {
+const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attendance, leaves, expenses, performance, payroll, holidays, leaveBalances, onChatPress }) => {
   const styles = useThemedStyles(createStyles);
+  const { colors } = useTheme();
+
+  const todayRecord = attendance.find((r) => {
+    const d = String(r.date || r.attendance_date || '').slice(0, 10);
+    return d === todayISO();
+  });
+  const todayCheckIn = todayRecord?.check_in || todayRecord?.checkIn;
+  const todayCheckOut = todayRecord?.check_out || todayRecord?.checkOut;
+  let todayWorkHours = todayRecord?.work_hours || todayRecord?.workHours;
+  if ((!todayWorkHours || todayWorkHours === 0) && todayCheckIn) {
+    const end = todayCheckOut ? new Date(todayCheckOut) : new Date();
+    const ms = end.getTime() - new Date(todayCheckIn).getTime();
+    if (ms > 0) todayWorkHours = (ms / 3600000);
+  }
+
+  const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
+  const pendingExpenses = expenses.filter((e) => e.status === 'pending').length;
+  const approvedLeaves = leaves.filter((l) => l.status === 'approved').length;
+
+  const latestPayroll = Array.isArray(payroll) && payroll.length > 0 ? payroll[0] : null;
+  const latestPerf = Array.isArray(performance) && performance.length > 0 ? performance[0] : null;
+
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const attendanceByMonth = React.useMemo(() => {
+    const counts = {};
+    attendance.forEach((r) => {
+      const d = new Date(r.date || r.attendance_date);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!counts[key]) counts[key] = { present: 0, total: 0 };
+      counts[key].total += 1;
+      if (r.status === 'present' || r.status === 'late') counts[key].present += 1;
+    });
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      result.push({ label: monthNames[d.getMonth()], value: counts[key]?.present || 0 });
+    }
+    return result;
+  }, [attendance]);
+
+  const expensesByMonth = React.useMemo(() => {
+    const totals = {};
+    expenses.forEach((e) => {
+      const d = new Date(e.date || e.expense_date || e.created_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      totals[key] = (totals[key] || 0) + (parseFloat(e.amount) || 0);
+    });
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      result.push({ label: monthNames[d.getMonth()], value: Math.round(totals[key] || 0) });
+    }
+    return result;
+  }, [expenses]);
+
+  const salaryByMonth = React.useMemo(() => {
+    const salaries = {};
+    const payrollArr = Array.isArray(payroll) ? payroll : [];
+    payrollArr.forEach((p) => {
+      const m = (p.month || p.payroll_month || 0) - 1;
+      const y = p.year || p.payroll_year || new Date().getFullYear();
+      const key = `${y}-${m}`;
+      salaries[key] = parseFloat(p.net_salary || p.netSalary || 0);
+    });
+    const result = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      result.push({ label: monthNames[d.getMonth()], value: Math.round(salaries[key] || 0) });
+    }
+    return result;
+  }, [payroll]);
+
   return (
   <>
     <View style={styles.sectionHead}>
@@ -926,29 +1013,217 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave }) => {
     <QuickActionsScroller actions={EMPLOYEE_QUICK_ACTIONS} onNavigate={(screen) => navigation.navigate(screen)} />
 
     <View style={styles.bentoRow}>
-      <BentoCard gradient={['#059669', '#10B981']} style={{ width: HALF }} onPress={() => navigation.navigate('Attendance')}>
-        <Ionicons name="checkmark-circle" size={24} color="rgba(255,255,255,0.9)" />
-        <Text style={styles.kpiValue}>{present}</Text>
-        <Text style={styles.kpiLabel}>Present</Text>
+      <BentoCard gradient={['#7C3AED', '#A78BFA']} style={{ width: HALF }} onPress={() => navigation.navigate('Leaves')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="time-outline" size={18} color="rgba(255,255,255,0.9)" />
+          <Text style={styles.kpiLabel}>Pending</Text>
+        </View>
+        <Text style={styles.kpiValue}>{pendingLeaves}</Text>
+        <Text style={styles.kpiLabel}>Leave Requests</Text>
       </BentoCard>
-      <BentoCard gradient={['#D97706', '#F59E0B']} style={{ width: HALF }} onPress={() => navigation.navigate('AttendanceHistory')}>
-        <Ionicons name="time" size={24} color="rgba(255,255,255,0.9)" />
-        <Text style={styles.kpiValue}>{late}</Text>
-        <Text style={styles.kpiLabel}>Late</Text>
-      </BentoCard>
-    </View>
-    <View style={styles.bentoRow}>
-      <BentoCard gradient={['#DC2626', '#F87171']} style={{ width: HALF }} onPress={() => navigation.navigate('AttendanceHistory')}>
-        <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.9)" />
-        <Text style={styles.kpiValue}>{absent}</Text>
-        <Text style={styles.kpiLabel}>Absent</Text>
-      </BentoCard>
-      <BentoCard gradient={['#4F46E5', '#818CF8']} style={{ width: HALF }} onPress={() => navigation.navigate('Leaves')}>
-        <Ionicons name="sunny" size={24} color="rgba(255,255,255,0.9)" />
-        <Text style={styles.kpiValue}>{onLeave}</Text>
-        <Text style={styles.kpiLabel}>On Leave</Text>
+      <BentoCard gradient={['#F59E0B', '#FBBF24']} style={{ width: HALF }} onPress={() => navigation.navigate('Expenses')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Ionicons name="receipt-outline" size={18} color="rgba(255,255,255,0.9)" />
+          <Text style={styles.kpiLabel}>Pending</Text>
+        </View>
+        <Text style={styles.kpiValue}>{pendingExpenses}</Text>
+        <Text style={styles.kpiLabel}>Expense Claims</Text>
       </BentoCard>
     </View>
+
+    <BentoCard onPress={() => navigation.navigate('Attendance')}>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.cardTitle}>Today's Attendance</Text>
+          <Text style={styles.cardSub}>{todayRecord?.status === 'present' ? 'Present' : todayRecord?.status === 'late' ? 'Late' : todayRecord?.status || 'No record yet'}</Text>
+        </View>
+      </View>
+      <View style={styles.splitList}>
+        <View style={styles.splitRow}>
+          <View style={[styles.splitDot, { backgroundColor: todayCheckIn ? '#10B981' : '#9CA3AF' }]} />
+          <Text style={styles.splitLabel}>Check In</Text>
+          <Text style={styles.splitVal}>{fmtTime(todayCheckIn)}</Text>
+        </View>
+        <View style={styles.splitRow}>
+          <View style={[styles.splitDot, { backgroundColor: todayCheckOut ? '#3B82F6' : '#9CA3AF' }]} />
+          <Text style={styles.splitLabel}>Check Out</Text>
+          <Text style={styles.splitVal}>{todayCheckOut ? fmtTime(todayCheckOut) : '—'}</Text>
+        </View>
+        <View style={styles.splitRow}>
+          <View style={[styles.splitDot, { backgroundColor: '#8B5CF6' }]} />
+          <Text style={styles.splitLabel}>Work Hours</Text>
+          <Text style={styles.splitVal}>{todayWorkHours ? `${Math.floor(todayWorkHours)}h ${Math.floor((todayWorkHours - Math.floor(todayWorkHours)) * 60)}m` : '—'}</Text>
+        </View>
+      </View>
+    </BentoCard>
+
+    {latestPayroll && (
+      <BentoCard onPress={() => navigation.navigate('Payslips')}>
+        <View style={styles.chartHead}>
+          <View>
+            <Text style={styles.cardTitle}>Latest Payslip</Text>
+            <Text style={styles.cardSub}>{latestPayroll.month}/{latestPayroll.year} · {latestPayroll.status}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </View>
+        <View style={styles.splitList}>
+          <View style={styles.splitRow}>
+            <View style={[styles.splitDot, { backgroundColor: '#10B981' }]} />
+            <Text style={styles.splitLabel}>Net Salary</Text>
+            <Text style={styles.splitVal}>₹{Number(latestPayroll.net_salary || latestPayroll.netSalary || 0).toLocaleString()}</Text>
+          </View>
+          <View style={styles.splitRow}>
+            <View style={[styles.splitDot, { backgroundColor: '#3B82F6' }]} />
+            <Text style={styles.splitLabel}>Earned</Text>
+            <Text style={styles.splitVal}>₹{Number(latestPayroll.earned || latestPayroll.gross_salary || latestPayroll.grossSalary || 0).toLocaleString()}</Text>
+          </View>
+        </View>
+      </BentoCard>
+    )}
+
+    {latestPerf && (
+      <BentoCard onPress={() => navigation.navigate('MyPerformance')}>
+        <View style={styles.chartHead}>
+          <View>
+            <Text style={styles.cardTitle}>Performance</Text>
+            <Text style={styles.cardSub}>{latestPerf.review_period || latestPerf.reviewPeriod || 'Latest Review'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+        </View>
+        <View style={styles.splitList}>
+          <View style={styles.splitRow}>
+            <View style={[styles.splitDot, { backgroundColor: '#F59E0B' }]} />
+            <Text style={styles.splitLabel}>Rating</Text>
+            <Text style={styles.splitVal}>{latestPerf.rating || latestPerf.overall_rating || '—'}</Text>
+          </View>
+          {latestPerf.goal_completion !== undefined && (
+            <View style={styles.splitRow}>
+              <View style={[styles.splitDot, { backgroundColor: '#10B981' }]} />
+              <Text style={styles.splitLabel}>Goal Completion</Text>
+              <Text style={styles.splitVal}>{latestPerf.goal_completion}%</Text>
+            </View>
+          )}
+        </View>
+      </BentoCard>
+    )}
+
+    <View style={styles.sectionHead}>
+      <Text style={styles.sectionTitle}>Your Trends</Text>
+      <Text style={styles.sectionSub}>Last 6 months overview</Text>
+    </View>
+
+    <BentoCard onPress={() => navigation.navigate('AttendanceHistory')}>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.cardTitle}>Attendance</Text>
+          <Text style={styles.cardSub}>Days present per month</Text>
+        </View>
+      </View>
+      <TrendLine
+        data={attendanceByMonth.map((d) => d.value)}
+        labels={attendanceByMonth.map((d) => d.label)}
+        color="#10B981"
+        height={180}
+        bare
+        showXLabels
+      />
+    </BentoCard>
+
+    <BentoCard onPress={() => navigation.navigate('Expenses')}>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.cardTitle}>Expenses</Text>
+          <Text style={styles.cardSub}>Amount submitted per month</Text>
+        </View>
+      </View>
+      <TrendLine
+        data={expensesByMonth.map((d) => d.value)}
+        labels={expensesByMonth.map((d) => d.label)}
+        color="#F59E0B"
+        height={180}
+        bare
+        showXLabels
+      />
+    </BentoCard>
+
+    <BentoCard onPress={() => navigation.navigate('Payslips')}>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.cardTitle}>Salary</Text>
+          <Text style={styles.cardSub}>Net salary received per month</Text>
+        </View>
+      </View>
+      <TrendLine
+        data={salaryByMonth.map((d) => d.value)}
+        labels={salaryByMonth.map((d) => d.label)}
+        color="#4F46E5"
+        height={180}
+        bare
+        showXLabels
+      />
+    </BentoCard>
+
+    <BentoCard onPress={() => navigation.navigate('Leaves', { initialTab: 'balance' })}>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.cardTitle}>Leave Balance</Text>
+          <Text style={styles.cardSub}>{leaveBalances.length > 0 ? 'Available leaves' : 'No records'}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+      </View>
+      <View style={styles.splitList}>
+        {(leaveBalances.length > 0 ? leaveBalances.slice(0, 4) : []).length === 0 ? (
+          <View style={[styles.splitRow, { paddingVertical: 4 }]}>
+            <View style={[styles.splitDot, { backgroundColor: '#9CA3AF' }]} />
+            <Text style={styles.splitLabel}>No leave types</Text>
+            <Text style={styles.splitVal}>0 / 0</Text>
+          </View>
+        ) : (
+          leaveBalances.slice(0, 4).map((lb, i) => (
+            <View key={lb.id || i} style={[styles.splitRow, i < Math.min(leaveBalances.length, 4) - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderLight, paddingBottom: 8, marginBottom: 4 }]}>
+              <View style={[styles.splitDot, { backgroundColor: (lb.remainingDays ?? 0) > 0 ? '#10B981' : '#9CA3AF' }]} />
+              <Text style={styles.splitLabel} numberOfLines={1}>{lb.leaveTypeName || 'Leave'}</Text>
+              <Text style={styles.splitVal}>{lb.remainingDays ?? 0} / {lb.totalDays ?? 0}</Text>
+            </View>
+          ))
+        )}
+      </View>
+    </BentoCard>
+
+    {(() => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const upcoming = (Array.isArray(holidays) ? holidays : [])
+        .filter((h) => new Date(h.date) >= today)
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 3);
+      return (
+        <BentoCard onPress={() => navigation.navigate('Holidays')}>
+          <View style={styles.chartHead}>
+            <View>
+              <Text style={styles.cardTitle}>Upcoming Holidays</Text>
+              <Text style={styles.cardSub}>{upcoming.length > 0 ? `Next ${upcoming.length} holiday${upcoming.length > 1 ? 's' : ''}` : 'No upcoming holidays'}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+          </View>
+          {upcoming.length > 0 ? upcoming.map((h, i) => {
+            const hd = new Date(h.date);
+            return (
+              <View key={h.id || i} style={[styles.splitRow, i < upcoming.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderLight, paddingBottom: 8, marginBottom: 4 }]}>
+                <View style={[styles.splitDot, { backgroundColor: '#4F46E5' }]} />
+                <Text style={styles.splitLabel} numberOfLines={1}>{h.name || h.title}</Text>
+                <Text style={styles.splitVal}>{hd.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: getTimezone() })}</Text>
+              </View>
+            );
+          }) : (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <Ionicons name="calendar-outline" size={28} color={colors.textTertiary} />
+              <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 4 }}>No holidays scheduled yet</Text>
+            </View>
+          )}
+        </BentoCard>
+      );
+    })()}
   </>
   );
 };
@@ -964,6 +1239,11 @@ const DashboardScreen = ({ navigation }) => {
   const [recentAnomalies, setRecentAnomalies] = useState([]);
   const [attendance, setAttendance] = useState([]);
   const [leaves, setLeaves] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [performance, setPerformance] = useState([]);
+  const [payroll, setPayroll] = useState([]);
+  const [holidays, setHolidays] = useState([]);
+  const [leaveBalances, setLeaveBalances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
@@ -975,7 +1255,7 @@ const DashboardScreen = ({ navigation }) => {
     try {
       const now = new Date();
       const startStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-      const endStr = now.toISOString().split('T')[0];
+      const endStr = todayISO();
 
       if (isAdmin) {
         const [summaryRes, pipelineRes, interviewsRes, anomalyStatsRes, anomaliesRes] = await Promise.allSettled([
@@ -997,12 +1277,23 @@ const DashboardScreen = ({ navigation }) => {
           setRecentAnomalies(Array.isArray(raw) ? raw : []);
         }
       } else {
-        const [attRes, leaveRes] = await Promise.allSettled([
-          api.get('/attendance', { params: { employeeId: user?.employeeId ?? user?.employee_id, startDate: startStr, endDate: endStr } }),
+        const empId = user?.employeeId ?? user?.employee_id;
+        const [attRes, leaveRes, expRes, perfRes, payrollRes, holidayRes, balanceRes] = await Promise.allSettled([
+          api.get('/attendance', { params: { employeeId: empId, startDate: daysAgoISO(180), endDate: endStr } }),
           api.get('/leaves', { params: { status: 'all' } }),
+          api.get('/expenses', { params: { employeeId: empId } }),
+          empId ? api.get(`/employees/${empId}/performance-history`) : Promise.resolve(null),
+          empId ? api.get(`/payroll/employee/${empId}`) : Promise.resolve(null),
+          api.get('/holidays', { params: { year: now.getFullYear() } }),
+          api.get('/leave-balances', { params: { employeeId: empId, year: now.getFullYear() } }),
         ]);
         if (attRes.status === 'fulfilled') setAttendance(attRes.value.data?.data || attRes.value.data || []);
         if (leaveRes.status === 'fulfilled') setLeaves(leaveRes.value.data?.data || leaveRes.value.data || []);
+        if (expRes.status === 'fulfilled') setExpenses(expRes.value.data?.data || expRes.value.data || []);
+        if (perfRes.status === 'fulfilled' && perfRes.value) setPerformance(perfRes.value.data?.data || perfRes.value.data || []);
+        if (payrollRes.status === 'fulfilled' && payrollRes.value) setPayroll(payrollRes.value.data?.data || payrollRes.value.data || []);
+        if (holidayRes.status === 'fulfilled') setHolidays(holidayRes.value.data?.data || holidayRes.value.data || []);
+        if (balanceRes.status === 'fulfilled') setLeaveBalances(balanceRes.value.data?.data || balanceRes.value.data || []);
       }
     } catch (e) {
       console.error(e);
@@ -1019,6 +1310,26 @@ const DashboardScreen = ({ navigation }) => {
   const late = attendance.filter((r) => r.status === 'late').length;
   const absent = attendance.filter((r) => r.status === 'absent').length;
   const onLeave = leaves.filter((l) => l.status === 'approved').length;
+
+  const now = new Date();
+  const totalWorkHours = attendance.reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
+
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const weeklyHours = attendance
+    .filter((r) => new Date(r.date || r.attendance_date) >= weekStart)
+    .reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthlyHours = attendance
+    .filter((r) => new Date(r.date || r.attendance_date) >= monthStart)
+    .reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
+
+  const days30Ago = new Date(now);
+  days30Ago.setDate(now.getDate() - 30);
+  const last30 = attendance.filter((r) => new Date(r.date || r.attendance_date) >= days30Ago);
+  const avgDailyHours = last30.length > 0 ? totalWorkHours / last30.length : 0;
 
   const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -1050,7 +1361,7 @@ const DashboardScreen = ({ navigation }) => {
                   <Text style={styles.rolePillText}>{(user?.role || 'employee').replace(/_/g, ' ')}</Text>
                 </View>
                 <Text style={styles.heroDate}>
-                  {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: getTimezone() })}
                 </Text>
               </View>
             </View>
@@ -1082,6 +1393,24 @@ const DashboardScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           )}
+          {!isAdmin && (
+            <View style={styles.heroStats}>
+              <TouchableOpacity style={styles.heroStat} onPress={() => navigation.navigate('Attendance')} activeOpacity={0.8}>
+                <Text style={styles.heroStatVal}>{weeklyHours.toFixed(1)}h</Text>
+                <Text style={styles.heroStatLbl}>This Week</Text>
+              </TouchableOpacity>
+              <View style={styles.heroStatDiv} />
+              <TouchableOpacity style={styles.heroStat} onPress={() => navigation.navigate('Attendance')} activeOpacity={0.8}>
+                <Text style={styles.heroStatVal}>{monthlyHours.toFixed(1)}h</Text>
+                <Text style={styles.heroStatLbl}>This Month</Text>
+              </TouchableOpacity>
+              <View style={styles.heroStatDiv} />
+              <TouchableOpacity style={styles.heroStat} onPress={() => navigation.navigate('Attendance')} activeOpacity={0.8}>
+                <Text style={styles.heroStatVal}>{avgDailyHours.toFixed(1)}h</Text>
+                <Text style={styles.heroStatLbl}>Avg Daily</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </LinearGradient>
 
@@ -1097,16 +1426,16 @@ const DashboardScreen = ({ navigation }) => {
             loading={loading}
           />
         ) : (
-          <EmployeeDashboard navigation={navigation} present={present} late={late} absent={absent} onLeave={onLeave} />
+          <EmployeeDashboard navigation={navigation} present={present} late={late} absent={absent} onLeave={onLeave} attendance={attendance} leaves={leaves} expenses={expenses} performance={performance} payroll={payroll} holidays={holidays} leaveBalances={leaveBalances} onChatPress={handleChatPress} />
         )}
       </View>
     </ScrollView>
 
     <Animated.View style={[styles.fab, { bottom: TAB_BAR_CLEARANCE + 8, transform: [{ scale: scaleAnim }] }]}>
       <TouchableOpacity style={styles.fabBtn} onPress={handleChatPress} activeOpacity={0.85}>
-        <Ionicons name="chatbubble-ellipses" size={26} color="#FFF" />
+        <Ionicons name="sparkles" size={26} color="#FFF" />
       </TouchableOpacity>
-      <Text style={styles.fabLabel}>Chat</Text>
+      <Text style={styles.fabLabel}>HR Assistant!</Text>
     </Animated.View>
     </View>
   );
