@@ -1,7 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { DeviceEventEmitter } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as Application from 'expo-application';
 import api, { getApiBaseUrl } from '../services/api';
 
 const AuthContext = createContext();
@@ -57,7 +58,20 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const baseUrl = await getApiBaseUrl();
+      api.defaults.baseURL = baseUrl;
+      const deviceId = await Application.getAndroidId();
+      const response = await api.post('/auth/login', {
+        email,
+        password,
+        deviceId: deviceId || 'android-device',
+        deviceFingerprint: deviceId || 'android-device',
+        deviceInfo: {
+          platform: Platform.OS,
+          systemVersion: Platform.Version,
+          deviceName: deviceId || 'Android Device',
+        },
+      });
       const { token: newToken, user: userData } = response.data;
 
       await SecureStore.setItemAsync('auth_token', newToken);

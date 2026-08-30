@@ -36,8 +36,20 @@ export async function getApiBaseUrl() {
   try {
     const saved = await AsyncStorage.getItem(API_URL_STORAGE_KEY);
     if (saved?.trim()) {
-      const url = saved.trim().replace(/\/$/, '');
-      if (url.includes('localhost') || url.includes('192.168.') || url.includes('10.0.') || url.includes('127.0.')) {
+      const url = saved.trim().replace(/\/+$/, '');
+      if (
+        url.includes('localhost') ||
+        url.includes('192.168.') ||
+        url.includes('10.0.') ||
+        url.includes('127.0.') ||
+        url.includes('100.') ||
+        url.includes('vercel.app') ||
+        url.includes('netlify.app')
+      ) {
+        await AsyncStorage.removeItem(API_URL_STORAGE_KEY);
+        return DEFAULT_API_BASE_URL;
+      }
+      if (!url.startsWith('https://')) {
         await AsyncStorage.removeItem(API_URL_STORAGE_KEY);
         return DEFAULT_API_BASE_URL;
       }
@@ -50,20 +62,26 @@ export async function getApiBaseUrl() {
 }
 
 export async function setApiBaseUrl(url) {
-  const normalized = url.trim().replace(/\/$/, '');
+  const normalized = url.trim().replace(/\/+$/, '');
   await AsyncStorage.setItem(API_URL_STORAGE_KEY, normalized);
   api.defaults.baseURL = normalized;
+  _currentBaseUrl = normalized;
   return normalized;
 }
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 20000,
+  timeout: 60000,
 });
+
+let _currentBaseUrl = API_BASE_URL;
 
 api.interceptors.request.use(
   async (config) => {
-    config.baseURL = await getApiBaseUrl();
+    if (!_currentBaseUrl || _currentBaseUrl === API_BASE_URL) {
+      _currentBaseUrl = await getApiBaseUrl();
+    }
+    config.baseURL = _currentBaseUrl;
     const token = await SecureStore.getItemAsync('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
