@@ -17,7 +17,7 @@ import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 import { AdminMonthRow, scrollViewTopBarProps, bannerShellStyle } from '../components/AdminScreenKit';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
 import { useTimezone } from '../context/TimezoneContext';
-import { fmtTimeSec, fmtTime, fmtWeekday, fmtDateCompact, todayZone, nowZone, getTimezone, todayISO, daysAgoISO, monthStartISO, monthEndISO, currentMonthISO, dateToMonthISO } from '../utils/timezone';
+import { fmtTimeSec, fmtTime, fmtWeekday, fmtDateCompact, fmtDateShort, todayZone, nowZone, getTimezone, todayISO, daysAgoISO, monthStartISO, monthEndISO, currentMonthISO, dateToMonthISO } from '../utils/timezone';
 
 const PAD = 20;
 const RECENT_RECORDS_LIMIT = 5;
@@ -825,7 +825,7 @@ const AttendanceScreen = ({ navigation }) => {
   const sortedMonthRecords = [...monthRecords].sort((a, b) => new Date(b.date) - new Date(a.date));
   const rateMonthLabel = isCurrentMonth
     ? 'This month'
-    : new Date(`${selectedMonth}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    : new Date(`${selectedMonth}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: getTimezone() });
 
   return (
     <View style={styles.container}>
@@ -909,7 +909,7 @@ const AttendanceScreen = ({ navigation }) => {
                     <View style={[styles.openSessionBanner, { marginBottom: 14 }]}>
                       <Ionicons name="alert-circle" size={18} color="#B45309" />
                       <Text style={styles.openSessionText}>
-                        Open session from {new Date(openSession.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — clock out to close it.
+                        Open session from {new Date(openSession.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: getTimezone() })} — clock out to close it.
                       </Text>
                     </View>
                   )}
@@ -1067,7 +1067,7 @@ const AttendanceScreen = ({ navigation }) => {
                         <View style={styles.recordDateCompact}>
                           <Text style={styles.recordDayNum}>{item.date ? parseInt(String(item.date).slice(8, 10), 10) || '—' : '—'}</Text>
                           <Text style={styles.recordDayLbl}>
-                            {item.date ? new Date(String(item.date).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', timeZone: getTimezone() }) : ''}
+                            {item.date ? fmtDateShort(item.date) : ''}
                           </Text>
                         </View>
                         <View style={styles.recordMid}>

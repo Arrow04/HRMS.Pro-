@@ -9,7 +9,7 @@ import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Avatar, Badge, Divider, EmptyState, GradientButton } from '../components/UI';
 import { AdminModalShell, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
-import { todayISO, dateToISO } from '../utils/timezone';
+import { todayISO, dateToISO, getTimezone } from '../utils/timezone';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -245,7 +245,7 @@ const AdminLeavesScreen = ({ navigation }) => {
       <View style={styles.body}>
         <TouchableOpacity style={styles.datePickerRow} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
           <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-          <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+          <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() })}</Text>
           <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
         </TouchableOpacity>
         {showDatePicker && (
@@ -335,7 +335,7 @@ const AdminLeavesScreen = ({ navigation }) => {
                   { label: 'Type', value: getLeaveType(detailItem) },
                   { label: 'Duration', value: `${detailItem.start_date} → ${detailItem.end_date} (${getDays(detailItem.start_date, detailItem.end_date)}d)` },
                   { label: 'Reason', value: detailItem.reason || '—' },
-                  { label: 'Applied On', value: detailItem.created_at ? new Date(detailItem.created_at).toLocaleDateString() : '—' },
+                  { label: 'Applied On', value: detailItem.created_at ? new Date(detailItem.created_at).toLocaleDateString('en-US', { timeZone: getTimezone() }) : '—' },
                   { label: 'Approved By', value: detailItem.approved_by || '—' },
                 ].map((row, i) => (
                   <View key={i} style={styles.detailField}>

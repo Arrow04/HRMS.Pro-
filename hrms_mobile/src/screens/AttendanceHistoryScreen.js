@@ -308,7 +308,7 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                 <TouchableOpacity onPress={() => setSelectedDate(null)} style={{ alignSelf: 'center', marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#FEE2E2' }}>
                   <Ionicons name="filter" size={12} color="#DC2626" />
                   <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>
-                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: getTimezone() })}
                   </Text>
                   <Ionicons name="close-circle" size={14} color="#DC2626" />
                 </TouchableOpacity>
@@ -344,7 +344,7 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                           {d ? d.getDate() : '—'}
                         </Text>
                         <Text style={{ fontSize: 9, fontWeight: '700', color: colors.primary, textTransform: 'uppercase' }}>
-                          {d ? d.toLocaleDateString('en-US', { month: 'short' }) : ''}
+                          {d ? d.toLocaleDateString('en-US', { month: 'short', timeZone: getTimezone() }) : ''}
                         </Text>
                       </View>
                       <View style={{ flex: 1, marginLeft: 12 }}>

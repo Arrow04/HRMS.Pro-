@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { getTimezone, fmtTime, todayISO, daysAgoISO } from '../utils/timezone';
+import { getTimezone, fmtTime, todayISO, daysAgoISO, monthStartISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Avatar } from '../components/UI';
@@ -416,7 +416,7 @@ const AttendanceList = ({ stats, onPress }) => {
 const RecruitmentList = ({ pipeline, interviews, onPress }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayISO();
   const todayInterviews = (interviews || []).filter((iv) => {
     const d = (iv.date || iv.scheduled_at || iv.scheduledAt || '').slice(0, 10);
     return d === today;
@@ -1254,7 +1254,7 @@ const DashboardScreen = ({ navigation }) => {
   const fetchData = useCallback(async () => {
     try {
       const now = new Date();
-      const startStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const startStr = monthStartISO(now.getFullYear(), now.getMonth() + 1);
       const endStr = todayISO();
 
       if (isAdmin) {

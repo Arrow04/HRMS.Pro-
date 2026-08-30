@@ -10,6 +10,7 @@ import { radii, spacing, shadows } from '../theme';
 import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { getTimezone } from '../utils/timezone';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -101,7 +102,7 @@ const DocumentsScreen = ({ navigation }) => {
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() });
   };
 
   const filteredDocuments = activeCategory === 'all'
