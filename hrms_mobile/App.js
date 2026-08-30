@@ -35,12 +35,15 @@ import AssetScreen from './src/screens/AssetScreen';
 import ExitScreen from './src/screens/ExitScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import PoliciesScreen from './src/screens/PoliciesScreen';
+import DocumentsScreen from './src/screens/DocumentsScreen';
 import AdminAttendanceScreen from './src/screens/AdminAttendanceScreen';
 import AdminLeavesScreen from './src/screens/AdminLeavesScreen';
 import AdminAnomalyScreen from './src/screens/AdminAnomalyScreen';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { TimezoneProvider } from './src/context/TimezoneContext';
 import { ScrollTopBarHostProvider, useScrollTopBarHost } from './src/context/ScrollTopBarHost';
 import GlobalScreenTopBar from './src/components/GlobalScreenTopBar';
 import { colors as staticColors } from './src/theme';
@@ -149,6 +152,8 @@ const AppNavigator = () => {
             <Stack.Screen name="ExitMgmt" component={ExitScreen} />
             <Stack.Screen name="Reports" component={ReportsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Policies" component={PoliciesScreen} />
+            <Stack.Screen name="Documents" component={DocumentsScreen} />
             <Stack.Screen name="AdminAttendance" component={AdminAttendanceScreen} />
             <Stack.Screen name="AdminLeaves" component={AdminLeavesScreen} />
             <Stack.Screen name="AdminAnomalies" component={AdminAnomalyScreen} />
@@ -164,11 +169,13 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AuthProvider>
+          <TimezoneProvider>
+            <AuthProvider>
             <ScrollTopBarHostProvider>
               <AppNavigator />
             </ScrollTopBarHostProvider>
           </AuthProvider>
+          </TimezoneProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </ErrorBoundary>

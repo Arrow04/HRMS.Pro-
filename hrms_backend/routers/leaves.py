@@ -30,6 +30,7 @@ from core.schemas import (LeaveCreate, LeaveTypeCreate, UserBase, PermissionBase
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
 from database import Base, SessionLocal, engine, get_db, get_read_db
+from core.datetime_utils import ist_now_naive, ist_today, ist_year
 from core.scale import MAX_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -40,6 +41,7 @@ router = APIRouter(tags=["Leaves"])
 
 
 
+@cached(ttl=120)
 @router.get("/api/leave-types", tags=["Leave Types"])
 def get_leave_types(
     organizationId: Optional[int] = None,
@@ -118,6 +120,7 @@ def delete_leave_type(
     return {"message": "Leave type deactivated"}
 
 
+@cached(ttl=60)
 @router.get("/api/leave-balances", tags=["Leave Balances"])
 def get_leave_balances(
     employeeId: Optional[int] = None,
@@ -233,6 +236,7 @@ def get_leave_approval_history(
     return result
 
 
+@cached(ttl=60)
 @router.get("/api/leaves", tags=["Leaves"])
 def get_leaves(
     employeeId: Optional[int] = None,
@@ -343,12 +347,13 @@ def get_leaves(
     return result
 
 
+@cached(ttl=60)
 @router.get("/api/leaves/stats", tags=["Leaves"])
 def get_leave_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    today = datetime.utcnow().date()
+    today = ist_today()
     start_of_month = today.replace(day=1)
     query = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None))
     if current_user.role != "superadmin" and current_user.organization_id:
@@ -399,7 +404,7 @@ def _deduct_leave_balance(db: Session, lv: LeaveApplication) -> None:
     if lv.balance_deducted:
         return
     try:
-        year = lv.start_date.year if hasattr(lv.start_date, "year") else datetime.utcnow().year
+        year = lv.start_date.year if hasattr(lv.start_date, "year") else ist_year()
         bal = (
             db.query(LeaveBalance)
             .filter(
@@ -505,6 +510,7 @@ def create_leave(
         db.commit()
     except Exception:
         db.rollback()
+    invalidate_cache("hrms:tenant:*")
     return lv
 
 
@@ -546,20 +552,20 @@ def approve_leave(
     if approval_data.action == "approve":
         if approval_data.level >= (lv.total_approval_levels or 1):
             lv.status = "approved"
-            lv.approved_at = datetime.utcnow()
+            lv.approved_at = ist_now_naive()
             # Auto-create/update attendance records for each day of the approved leave
             _sync_attendance_for_leave(db, lv)
             _deduct_leave_balance(db, lv)
         else:
             lv.current_approval_level = (lv.current_approval_level or 1) + 1
         if approval_data.level == 1:
-            lv.level1_approved_at = datetime.utcnow()
+            lv.level1_approved_at = ist_now_naive()
             lv.level1_approver_id = current_user.id
         elif approval_data.level == 2:
-            lv.level2_approved_at = datetime.utcnow()
+            lv.level2_approved_at = ist_now_naive()
             lv.level2_approver_id = current_user.id
         elif approval_data.level == 3:
-            lv.level3_approved_at = datetime.utcnow()
+            lv.level3_approved_at = ist_now_naive()
             lv.level3_approver_id = current_user.id
     else:
         lv.status = "rejected"
@@ -586,7 +592,7 @@ def _apply_leave_decision(db: Session, lv, action: str, current_user: User, comm
     from datetime import timedelta
     if action == "approve":
         lv.status = "approved"
-        lv.approved_at = datetime.utcnow()
+        lv.approved_at = ist_now_naive()
         # Auto-create/update attendance records for each day of the approved leave
         _sync_attendance_for_leave(db, lv)
         _deduct_leave_balance(db, lv)
@@ -616,6 +622,7 @@ def _apply_leave_decision(db: Session, lv, action: str, current_user: User, comm
         db.commit()
     except Exception:
         db.rollback()
+    invalidate_cache("hrms:tenant:*")
     return lv
 
 
@@ -660,7 +667,7 @@ def delete_leave(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
-    lv.deleted_at = datetime.utcnow()
+    lv.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Leave application deleted"}
 

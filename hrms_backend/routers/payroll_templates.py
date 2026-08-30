@@ -524,8 +524,8 @@ def delete_template(
 ):
     org = _resolve_org(db, current_user)
     tpl = _load_template(db, org, template_id)
-    from datetime import datetime
-    tpl.deleted_at = datetime.utcnow()
+    from core.datetime_utils import ist_now_naive
+    tpl.deleted_at = ist_now_naive()
     # Detach employees so they fall back to their own policy ids / org defaults.
     db.query(Employee).filter(Employee.payroll_template_id == tpl.id).update(
         {"payroll_template_id": None}

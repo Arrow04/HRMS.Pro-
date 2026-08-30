@@ -32,6 +32,7 @@ from core.tenant import org_owned, get_employee_in_org, validate_company_in_org,
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
+from core.datetime_utils import ist_year
 from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Holidays"])
@@ -39,6 +40,7 @@ router = APIRouter(tags=["Holidays"])
 
 
 
+@cached(ttl=300)
 @router.get("/api/holidays", tags=["Holidays"])
 def get_holidays(
     organizationId: Optional[int] = None,
@@ -64,7 +66,7 @@ def get_holidays(
     else:
         # Default to the current year — holidays are viewed per-year and this
         # keeps the response small even with millions of historical records.
-        query = query.filter(Holiday.year == datetime.utcnow().year)
+        query = query.filter(Holiday.year == ist_year())
     return query.order_by(Holiday.date).limit(500).all()
 
 
@@ -82,6 +84,7 @@ def create_holiday(
     db.add(h)
     db.commit()
     db.refresh(h)
+    invalidate_cache("hrms:tenant:*")
     return h
 
 
@@ -120,6 +123,7 @@ def update_holiday(
         setattr(h, key, val)
     db.commit()
     db.refresh(h)
+    invalidate_cache("hrms:tenant:*")
     return h
 
 
@@ -140,6 +144,7 @@ def delete_holiday(
     remove_holiday_attendance(db, h)
     db.delete(h)
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Holiday deleted"}
 
 

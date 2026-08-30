@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, Dimensions } from 'react-native';
+import Svg, { Path, Circle, Line as SvgLine, Text as SvgText } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { radii, spacing, shadows } from '../theme';
@@ -18,10 +19,10 @@ const createStyles = (colors) => ({
   subtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   actionText: { fontSize: 13, fontWeight: '600', color: colors.primary },
   chart: { borderRadius: radii.md, marginLeft: -spacing.lg },
-  chartBare: { borderRadius: radii.md, marginLeft: -6 },
-  bareWrap: { width: '100%', overflow: 'visible', paddingBottom: 2 },
-  monthRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4, paddingHorizontal: 4 },
-  monthLabel: { flex: 1, fontSize: 11, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
+  chartBare: { borderRadius: radii.md, marginLeft: 0 },
+  bareWrap: { width: '100%', overflow: 'visible', paddingBottom: 24 },
+  monthRow: { flexDirection: 'row', marginTop: 2 },
+  monthLabel: { flex: 1, fontSize: 10, fontWeight: '600', color: colors.textSecondary, textAlign: 'center', overflow: 'hidden' },
   totalBadge: {
     backgroundColor: colors.primarySurface, borderRadius: radii.sm,
     paddingHorizontal: 10, paddingVertical: 4,
@@ -75,42 +76,71 @@ function useCharts() {
 }
 
 export function TrendLine({ data, labels, title, subtitle, color, height = 180, width, bare, showXLabels = true }) {
-  const { colors, styles, chartConfig } = useCharts();
-  const chartData = {
-    labels: showXLabels ? (labels || []) : (labels || []).map(() => ''),
-    datasets: [{ data: data?.length ? data : [0], color: () => color || colors.primary, strokeWidth: 2.5 }],
-  };
+  const { colors, styles } = useCharts();
   const chartWidth = width || SCREEN_W - spacing.lg * 2;
+  const c = color || colors.primary;
+  const PAD_LEFT = 40;
+  const PAD_RIGHT = 12;
+  const PAD_TOP = 12;
+  const PAD_BOTTOM = 24;
+  const plotW = chartWidth - PAD_LEFT - PAD_RIGHT;
+  const plotH = height - PAD_TOP - PAD_BOTTOM;
 
-  const chart = (
-    <LineChart
-      data={chartData}
-      width={chartWidth}
-      height={height}
-      chartConfig={{
-        ...chartConfig,
-        color: () => color || colors.primary,
-        labelColor: () => colors.textSecondary,
-        propsForLabels: { fontSize: 11, fontWeight: '600' },
-      }}
-      bezier
-      style={bare ? styles.chartBare : styles.chart}
-      withInnerLines={false}
-      withOuterLines={!bare}
-      withVerticalLines={false}
-      withHorizontalLabels={showXLabels}
-      fromZero
-    />
-  );
+  const safeData = data?.length ? data : [0];
+  const maxVal = Math.max(...safeData, 1);
+  const niceMax = Math.ceil(maxVal / 1000) * 1000 || maxVal;
+
+  const points = useMemo(() => safeData.map((v, i) => ({
+    x: PAD_LEFT + (safeData.length === 1 ? plotW / 2 : (i / (safeData.length - 1)) * plotW),
+    y: PAD_TOP + plotH - (v / niceMax) * plotH,
+  })), [safeData, niceMax, plotW, plotH]);
+
+  const pathD = useMemo(() => {
+    if (points.length < 2) return '';
+    let d = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const cpx1 = prev.x + (curr.x - prev.x) * 0.4;
+      const cpx2 = curr.x - (curr.x - prev.x) * 0.4;
+      d += ` C ${cpx1} ${prev.y} ${cpx2} ${curr.y} ${curr.x} ${curr.y}`;
+    }
+    return d;
+  }, [points]);
+
+  const yTicks = useMemo(() => {
+    const ticks = [];
+    const step = niceMax / 4;
+    for (let i = 0; i <= 4; i++) {
+      const v = step * i;
+      ticks.push({
+        value: v,
+        label: v >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : String(v),
+        y: PAD_TOP + plotH - (v / niceMax) * plotH,
+      });
+    }
+    return ticks;
+  }, [niceMax, plotH]);
+
+  const formatCurrency = (v) => `₹${Number(v).toLocaleString('en-IN')}`;
 
   if (bare) {
     return (
-      <View style={styles.bareWrap}>
-        {chart}
-        {!showXLabels && labels?.length > 0 && (
-          <View style={[styles.monthRow, { width: chartWidth }]}>
+      <View>
+        <Svg width={chartWidth} height={height}>
+          {yTicks.map((t, i) => (
+            <React.Fragment key={i}>
+              <SvgLine x1={PAD_LEFT} y1={t.y} x2={chartWidth - PAD_RIGHT} y2={t.y} stroke={colors.borderLight} strokeWidth={0.5} strokeDasharray="4 4" />
+              <SvgText x={PAD_LEFT - 6} y={t.y + 4} textAnchor="end" fontSize={9} fontWeight="600" fill={colors.textTertiary}>{t.label}</SvgText>
+            </React.Fragment>
+          ))}
+          {pathD ? <Path d={pathD} fill="none" stroke={c} strokeWidth={2.5} /> : null}
+          {points.map((p, i) => <Circle key={i} cx={p.x} cy={p.y} r={3} fill={c} />)}
+        </Svg>
+        {showXLabels && labels?.length > 0 && (
+          <View style={{ flexDirection: 'row', paddingLeft: PAD_LEFT, paddingRight: PAD_RIGHT }}>
             {labels.map((lbl, i) => (
-              <Text key={`${lbl}-${i}`} style={styles.monthLabel} numberOfLines={1}>{lbl}</Text>
+              <Text key={`${lbl}-${i}`} style={{ flex: 1, fontSize: 10, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' }} numberOfLines={1}>{lbl}</Text>
             ))}
           </View>
         )}
@@ -128,7 +158,23 @@ export function TrendLine({ data, labels, title, subtitle, color, height = 180, 
           </View>
         </View>
       )}
-      {chart}
+      <Svg width={chartWidth} height={height}>
+        {yTicks.map((t, i) => (
+          <React.Fragment key={i}>
+            <SvgLine x1={PAD_LEFT} y1={t.y} x2={chartWidth - PAD_RIGHT} y2={t.y} stroke={colors.borderLight} strokeWidth={0.5} strokeDasharray="4 4" />
+            <SvgText x={PAD_LEFT - 6} y={t.y + 4} textAnchor="end" fontSize={9} fontWeight="600" fill={colors.textSecondary}>{t.label}</SvgText>
+          </React.Fragment>
+        ))}
+        {pathD ? <Path d={pathD} fill="none" stroke={c} strokeWidth={2.5} /> : null}
+        {points.map((p, i) => <Circle key={i} cx={p.x} cy={p.y} r={3} fill={c} />)}
+      </Svg>
+      {showXLabels && labels?.length > 0 && (
+        <View style={{ flexDirection: 'row', paddingLeft: PAD_LEFT, paddingRight: PAD_RIGHT }}>
+          {labels.map((lbl, i) => (
+            <Text key={`${lbl}-${i}`} style={{ flex: 1, fontSize: 10, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' }} numberOfLines={1}>{lbl}</Text>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -169,9 +215,9 @@ export function AreaBar({ data, labels, title, subtitle, height = 200, width, ba
       <View style={styles.bareWrap}>
         {chart}
         {!showXLabels && labels?.length > 0 && (
-          <View style={[styles.monthRow, { width: chartWidth }]}>
+          <View style={[styles.monthRow, { width: chartWidth, paddingLeft: 15, paddingRight: 5 }]}>
             {labels.map((lbl, i) => (
-              <Text key={`${lbl}-${i}`} style={styles.monthLabel} numberOfLines={1}>{lbl}</Text>
+              <Text key={`${lbl}-${i}`} style={[styles.monthLabel, { flex: 1 }]} numberOfLines={1}>{lbl}</Text>
             ))}
           </View>
         )}

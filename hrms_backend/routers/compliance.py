@@ -5,6 +5,7 @@ from typing import Optional
 from database import get_db
 from core.auth import get_current_user, check_role
 from core.tenant import get_employee_in_org
+from core.datetime_utils import ist_now_naive
 from models import User, Employee, Organization
 
 router = APIRouter(tags=["Compliance"])
@@ -185,7 +186,6 @@ def update_onboarding_task(
     current_user: User = Depends(get_current_user),
 ):
     from models import OnboardingTask
-    from datetime import datetime
     task = db.query(OnboardingTask).filter(OnboardingTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -197,7 +197,7 @@ def update_onboarding_task(
     if new_status:
         task.status = new_status
         if new_status == "completed":
-            task.completed_at = datetime.utcnow()
+            task.completed_at = ist_now_naive()
     db.commit()
     return {"message": "Task updated", "task": task}
 
@@ -234,7 +234,7 @@ def initiate_exit(
     from models import Employee, ExitRecord
     from services.exit_management_service import send_exit_confirmation
     exit_type = payload.get("exit_type") or payload.get("exitType") or "resigned"
-    exit_date = payload.get("exit_date") or payload.get("exitDate") or _dt.utcnow().strftime("%Y-%m-%d")
+    exit_date = payload.get("exit_date") or payload.get("exitDate") or ist_now_naive().strftime("%Y-%m-%d")
     last_wd = payload.get("last_working_day") or payload.get("lastWorkingDay") or exit_date
     reason = payload.get("reason") or ""
     notice_served = payload.get("notice_period_served") or payload.get("noticePeriodServed") or "no"

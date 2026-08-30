@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timedelta
+from core.datetime_utils import ist_now_naive
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import or_
@@ -110,7 +111,7 @@ def get_document_retention_policy() -> Dict[str, Any]:
 
 
 def _employee_exit_cutoff(years: int) -> datetime:
-    return datetime.utcnow() - timedelta(days=years * 365)
+    return ist_now_naive() - timedelta(days=years * 365)
 
 
 def purge_exited_employee_documents(

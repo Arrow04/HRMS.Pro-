@@ -8,6 +8,7 @@ from sqlalchemy import and_, or_
 from fastapi import HTTPException, Depends
 from datetime import datetime
 
+from core.datetime_utils import ist_now_naive
 from database import get_db
 from models import (
     User, SystemRole, PermissionModule, PermissionAction,
@@ -351,7 +352,7 @@ class PermissionChecker:
             UserRoleAssignment.is_active == True,
             or_(
                 UserRoleAssignment.valid_until == None,
-                UserRoleAssignment.valid_until > datetime.utcnow()
+                UserRoleAssignment.valid_until > ist_now_naive()
             )
         ).options(joinedload(UserRoleAssignment.role)).all()
         
@@ -411,7 +412,7 @@ class PermissionChecker:
             UserPermissionOverride.is_active == True,
             or_(
                 UserPermissionOverride.expires_at == None,
-                UserPermissionOverride.expires_at > datetime.utcnow()
+                UserPermissionOverride.expires_at > ist_now_naive()
             )
         ).options(
             joinedload(UserPermissionOverride.module),

@@ -27,6 +27,7 @@ from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_cri
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
+from core.datetime_utils import ist_now_naive, ist_today_str
 from core.tenant import get_employee_in_org, org_owned
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
@@ -118,7 +119,7 @@ def get_employee_attendance_summary(
     side (fast, memory-safe) instead of shipping every row to the client.
     """
     from sqlalchemy import extract, case as sql_case, func
-    today = datetime.utcnow()
+    today = ist_now_naive()
     year = today.year
     month = today.month
 
@@ -267,7 +268,7 @@ def get_employee_full_statement(
     """Complete payroll & FnF statement: ties attendance + leave + expenses +
     loans + latest payroll + FnF projection into one aggregated view."""
     from datetime import date as _d
-    now = datetime.utcnow()
+    now = ist_now_naive()
     month = month or now.month
     year = year or now.year
     if current_user.role != "superadmin":
@@ -768,7 +769,7 @@ def export_employee_history(
 
     buf.seek(0)
     safe_name = re.sub(r"[^\w\- ]", "", name).replace(" ", "_")
-    filename = f"{safe_name}_history_{datetime.utcnow().strftime('%Y%m%d')}.csv"
+    filename = f"{safe_name}_history_{ist_now_naive().strftime('%Y%m%d')}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -1090,13 +1091,13 @@ def save_onboarding_data(
             EmployeeBranchAssignment.employee_id == emp.id,
             EmployeeBranchAssignment.status == "active",
             EmployeeBranchAssignment.deleted_at.is_(None),
-        ).update({"deleted_at": datetime.utcnow(), "status": "inactive"})
+        ).update({"deleted_at": ist_now_naive(), "status": "inactive"})
         for idx, bid in enumerate(branch_ids):
             db.add(EmployeeBranchAssignment(
                 employee_id=emp.id,
                 branch_id=bid,
                 is_primary=(idx == 0),
-                start_date=datetime.utcnow(),
+                start_date=ist_now_naive(),
                 status="active",
             ))
         emp.branches = branches
@@ -1240,7 +1241,7 @@ def activate_onboarding(
 
     emp.onboarding_step = "completed"
     emp.status = "active"
-    emp.join_date = emp.join_date or datetime.utcnow()
+    emp.join_date = emp.join_date or ist_now_naive()
 
     # Enforce plan employee limit when activating a new joiner.
     try:
@@ -1257,7 +1258,7 @@ def activate_onboarding(
     event = EmployeeLifecycleEvent(
         employee_id=emp.id,
         event_type="joined",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description="Onboarding completed, employee activated",
         recorded_by=current_user.id,
     )
@@ -1291,7 +1292,7 @@ def initiate_exit(
             raise HTTPException(status_code=404, detail="Employee not found")
 
     exit_type = payload.exitType or "resigned"
-    exit_date = payload.exitDate or datetime.utcnow().strftime("%Y-%m-%d")
+    exit_date = payload.exitDate or ist_today_str()
     reason = payload.reason or ""
     last_working_day = payload.lastWorkingDay or exit_date
 
@@ -1322,7 +1323,7 @@ def initiate_exit(
     event = EmployeeLifecycleEvent(
         employee_id=emp.id,
         event_type="termination" if exit_type == "terminated" else "resignation",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Employee {exit_type} — exit initiated",
         recorded_by=current_user.id,
         to_value=exit_type,
@@ -1428,7 +1429,7 @@ def create_exit_record(
     event = EmployeeLifecycleEvent(
         employee_id=emp.id,
         event_type="termination" if exit_type == "terminated" else "resignation",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Employee {exit_type} — exit initiated",
         recorded_by=current_user.id,
         to_value=exit_type,
@@ -1593,7 +1594,7 @@ def calculate_fnf(
             _get_payroll_policy,
             _compute_attendance_payout,
         )
-        lwd = exit_record.last_working_day or datetime.utcnow()
+        lwd = exit_record.last_working_day or ist_now_naive()
         att_policy = _get_attendance_policy(db, emp)
         pay_policy = _get_payroll_policy(db, emp)
         payout = _compute_attendance_payout(db, emp, lwd.month, lwd.year, att_policy, pay_policy)
@@ -1890,7 +1891,7 @@ def complete_fnf(
     emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == exit_record.employee_id).first()
 
     exit_record.fnf_status = "completed"
-    exit_record.fnf_completed_at = datetime.utcnow()
+    exit_record.fnf_completed_at = ist_now_naive()
 
     # Post the F&F settlement journal (double-entry GL).
     try:
@@ -1933,7 +1934,7 @@ def mark_clearance_complete(
     if current_user.role != "superadmin":
         org_owned(exit_record, current_user.organization_id)
     exit_record.clearance_status = "completed"
-    exit_record.clearance_completed_at = datetime.utcnow()
+    exit_record.clearance_completed_at = ist_now_naive()
     db.commit()
     return {
         "status": "success",
@@ -2187,13 +2188,13 @@ def archive_exit_record(
         bank_name=emp.bank_name,
         bank_account_number=emp.bank_account_number,
         ifsc_code=emp.ifsc_code,
-        archive_date=datetime.utcnow(),
+        archive_date=ist_now_naive(),
         archived_by=current_user.id,
         archive_reason=exit_record.reason,
         fnf_settled_date=exit_record.fnf_completed_at,
     )
     db.add(archived)
-    exit_record.archived_at = datetime.utcnow()
+    exit_record.archived_at = ist_now_naive()
     db.commit()
 
     return {
@@ -2244,7 +2245,7 @@ def restore_archived_employee(
     event = EmployeeLifecycleEvent(
         employee_id=emp.id,
         event_type="restore",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Employee restored from archive",
         recorded_by=current_user.id,
         from_value="archived",
@@ -2299,7 +2300,7 @@ def restore_employee_by_id(
     event = EmployeeLifecycleEvent(
         employee_id=emp.id,
         event_type="restore",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Employee restored from archive",
         recorded_by=current_user.id,
         from_value="archived",

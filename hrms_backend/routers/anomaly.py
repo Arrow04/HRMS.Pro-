@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
+from core.datetime_utils import ist_now_naive
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -144,7 +145,7 @@ def dismiss_anomaly(
 
     alert.status = "dismissed"
     alert.dismissed_by = current_user.id
-    alert.dismissed_at = datetime.utcnow()
+    alert.dismissed_at = ist_now_naive()
     alert.dismissed_reason = req.reason
     db.commit()
     db.refresh(alert)
@@ -166,7 +167,7 @@ def resolve_anomaly(
         raise HTTPException(status_code=404, detail="Alert not found")
 
     alert.status = "resolved"
-    alert.resolved_at = datetime.utcnow()
+    alert.resolved_at = ist_now_naive()
     db.commit()
     db.refresh(alert)
     return alert

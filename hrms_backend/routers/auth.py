@@ -27,6 +27,7 @@ from services.otp_service import OTPService
 from services.sms_service import NotificationService
 from services.email_service import EmailService
 from services.notification_templates import tenant_welcome_email, new_tenant_signup_notification
+from core.datetime_utils import ist_now_naive
 
 logger = logging.getLogger(__name__)
 APP_ENV = os.getenv("APP_ENV", "development")
@@ -257,10 +258,10 @@ def register_tenant(data: TenantRegistration, db: Session = Depends(get_db)):
         if data.phone and db.query(User).filter(User.phone == data.phone).first():
             raise HTTPException(status_code=409, detail="Phone number already registered")
 
-        org_code = data.company_name[:3].upper() + str(int(datetime.utcnow().timestamp()))[-6:]
+        org_code = data.company_name[:3].upper() + str(int(ist_now_naive().timestamp()))[-6:]
         existing = db.query(Organization).filter(Organization.code == org_code).first()
         while existing:
-            org_code = data.company_name[:3].upper() + str(int(datetime.utcnow().timestamp()))[-6:]
+            org_code = data.company_name[:3].upper() + str(int(ist_now_naive().timestamp()))[-6:]
             existing = db.query(Organization).filter(Organization.code == org_code).first()
 
         org = Organization(
@@ -303,7 +304,7 @@ def register_tenant(data: TenantRegistration, db: Session = Depends(get_db)):
             organization_id=org.id,
             plan_id=plan.id,
             status="trial",
-            trial_ends_at=datetime.utcnow() + timedelta(days=14),
+            trial_ends_at=ist_now_naive() + timedelta(days=14),
         )
         db.add(subscription)
 
@@ -409,7 +410,7 @@ def login(login_data: LoginRequest, request: Request, db: Session = Depends(get_
         employee = db.query(Employee).filter(Employee.user_id == user.id).first()
 
         try:
-            user.last_login = datetime.utcnow()
+            user.last_login = ist_now_naive()
             db.commit()
         except Exception:
             db.rollback()
@@ -520,7 +521,7 @@ def login_passkey(login_data: PasskeyLoginRequest, request: Request, db: Session
         _reset_attempts(client_ip, identifier)
 
         try:
-            user.last_login = datetime.utcnow()
+            user.last_login = ist_now_naive()
             db.commit()
         except Exception:
             db.rollback()
@@ -665,7 +666,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
 
     code = OTPService().generate_otp()
     user.reset_token = code
-    user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
+    user.reset_token_expiry = ist_now_naive() + timedelta(minutes=15)
     db.commit()
 
     # Attempt delivery via the self-hosted sender (direct-to-MX, no third party).
@@ -725,7 +726,7 @@ def verify_reset_code(req: VerifyResetCodeRequest, request: Request, db: Session
 
     if not user.reset_token or not user.reset_token_expiry:
         raise HTTPException(status_code=400, detail="No reset code was requested")
-    if datetime.utcnow() > user.reset_token_expiry:
+    if ist_now_naive() > user.reset_token_expiry:
         user.reset_token = None
         user.reset_token_expiry = None
         db.commit()
@@ -748,7 +749,7 @@ def reset_password(req: ResetPasswordRequest, request: Request, db: Session = De
 
     if not user.reset_token or not user.reset_token_expiry:
         raise HTTPException(status_code=400, detail="No reset code was requested")
-    if datetime.utcnow() > user.reset_token_expiry:
+    if ist_now_naive() > user.reset_token_expiry:
         user.reset_token = None
         user.reset_token_expiry = None
         db.commit()
@@ -829,7 +830,7 @@ def forgot_password_verify(req: ForgotPasswordVerifyRequest, request: Request, d
 
     otp = OTPService().generate_otp()
     user.reset_token = otp
-    user.reset_token_expiry = datetime.utcnow() + timedelta(minutes=10)
+    user.reset_token_expiry = ist_now_naive() + timedelta(minutes=10)
     db.commit()
     _failed_attempts.pop(key, None)
 
@@ -883,7 +884,7 @@ def reset_password_basic(req: ResetPasswordBasicRequest, request: Request, db: S
     supplied_otp = (req.reset_token or "").strip()
     if not user.reset_token or not user.reset_token_expiry:
         raise HTTPException(status_code=400, detail="Password reset was not started. Verify your identity first.")
-    if datetime.utcnow() > user.reset_token_expiry:
+    if ist_now_naive() > user.reset_token_expiry:
         user.reset_token = None
         user.reset_token_expiry = None
         db.commit()
@@ -1008,7 +1009,7 @@ def send_otp(req: SendOTPRequest, request: Request, db: Session = Depends(get_db
     otp_service = OTPService()
     otp = otp_service.generate_otp()
     user.otp = otp
-    user.otp_expiry = datetime.utcnow() + timedelta(minutes=5)
+    user.otp_expiry = ist_now_naive() + timedelta(minutes=5)
     db.commit()
     NotificationService.send_sms(req.phone, f"Your HRMS OTP is: {otp}")
     return {"message": "OTP sent successfully"}
@@ -1027,7 +1028,7 @@ def verify_otp(req: VerifyOTPRequest, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="User not found")
     if not user.otp or not user.otp_expiry:
         raise HTTPException(status_code=400, detail="No OTP requested")
-    if datetime.utcnow() > user.otp_expiry:
+    if ist_now_naive() > user.otp_expiry:
         user.otp = None
         user.otp_expiry = None
         db.commit()
@@ -1064,7 +1065,7 @@ def send_email_verification(req: ResendEmailVerificationRequest, db: Session = D
         raise HTTPException(status_code=404, detail="User not found")
     token = uuid.uuid4().hex
     user.email_verification_token = token
-    user.email_verification_expiry = datetime.utcnow() + timedelta(hours=24)
+    user.email_verification_expiry = ist_now_naive() + timedelta(hours=24)
     db.commit()
     email_service = EmailService()
     email_service.send_verification_email(user.email, token)
@@ -1076,7 +1077,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email_verification_token == token).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid verification token")
-    if user.email_verification_expiry and datetime.utcnow() > user.email_verification_expiry:
+    if user.email_verification_expiry and ist_now_naive() > user.email_verification_expiry:
         raise HTTPException(status_code=400, detail="Verification token has expired")
     user.email_verified = True
     user.email_verification_token = None

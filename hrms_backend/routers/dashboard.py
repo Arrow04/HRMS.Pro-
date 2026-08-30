@@ -32,6 +32,7 @@ from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calc
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
+from core.datetime_utils import ist_now_naive, ist_today_str, ist_month_start_str, ist_month_end_str
 from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Dashboard"])
@@ -69,7 +70,7 @@ def get_dashboard_summary(
             q = q.filter(Employee.company_id == companyId)
         return q
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     today_str = now.strftime("%Y-%m-%d")
     month_start = now.replace(day=1).strftime("%Y-%m-%d")
     last_day = calendar.monthrange(now.year, now.month)[1]
@@ -522,6 +523,7 @@ def get_dashboard_summary(
     }
 
 
+@cached(ttl=60)
 @router.get("/api/dashboard/stats", tags=["Dashboard"])
 def get_dashboard_stats(
     db: Session = Depends(get_db),
@@ -536,7 +538,7 @@ def get_dashboard_stats(
     total_employees = emp_query.count()
     active_employees = emp_query.filter(Employee.status == "active").count()
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = ist_today_str()
     present_q = db.query(Attendance).filter(
         Attendance.deleted_at.is_(None),
         func.date(Attendance.check_in) == today,

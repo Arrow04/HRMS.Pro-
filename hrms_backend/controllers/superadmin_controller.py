@@ -15,6 +15,7 @@ from database import get_db
 from models import User, Organization, Company, ModulePermission, AuditLog, Employee
 from core.auth import get_current_user
 from core.config import settings
+from core.datetime_utils import ist_now_naive
 
 router = APIRouter(tags=["superadmin"])
 
@@ -233,7 +234,7 @@ async def delete_tenant(
     
     # Soft delete - mark as inactive and add deleted timestamp
     org.status = "deleted"
-    org.name = f"{org.name} [DELETED {datetime.utcnow().isoformat()}]"
+    org.name = f"{org.name} [DELETED {ist_now_naive().isoformat()}]"
     db.commit()
     
     return {"message": "Tenant deleted", "tenant_id": tenant_id}
@@ -260,7 +261,7 @@ async def impersonate_tenant(
         "role": admin.role,
         "organization_id": tenant_id,
         "impersonated_by": current_user.id,
-        "exp": datetime.utcnow() + timedelta(hours=1)
+        "exp": ist_now_naive() + timedelta(hours=1)
     }
     
     token = jwt.encode(token_data, settings.SECRET_KEY, algorithm="HS256")
@@ -471,7 +472,7 @@ async def system_health(
 ):
     """Get system health status"""
     health = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": ist_now_naive().isoformat(),
         "database": {"status": "unknown", "message": ""},
         "redis": {"status": "unknown", "message": "Redis not configured"},
         "stats": {}
@@ -492,7 +493,7 @@ async def system_health(
         active_users = db.query(User).filter(User.is_active == True).count()
         
         # Get today's API calls (from audit log)
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = ist_now_naive().replace(hour=0, minute=0, second=0, microsecond=0)
         api_calls_today = db.query(AuditLog).filter(AuditLog.created_at >= today_start).count()
         
         health["stats"] = {

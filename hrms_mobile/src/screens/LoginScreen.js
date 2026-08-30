@@ -11,7 +11,6 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { getApiBaseUrl, setApiBaseUrl, testApiConnection, DEFAULT_API_BASE_URL } from '../services/api';
 import { radii, spacing, shadows } from '../theme';
 import hrmsLogo from '../../assets/hrms_logo1.png';
 
@@ -69,9 +68,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -247,43 +246,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   trustItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   trustText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.55)' },
   versionText: { fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: '500' },
-  serverSection: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  serverLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  serverInput: {
-    backgroundColor: isDark ? colors.surfaceSecondary : colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 10,
-  },
-  serverActions: { flexDirection: 'row', gap: 10 },
-  serverTestBtn: {
-    flex: 1,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  serverTestText: { color: colors.primary, fontWeight: '800', fontSize: 13 },
-  serverHint: { fontSize: 11, color: colors.textTertiary, marginTop: 8, lineHeight: 16 },
 });
 
 const PremiumInput = React.memo(({
@@ -367,17 +329,11 @@ const LoginScreen = () => {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [serverUrl, setServerUrl] = useState(DEFAULT_API_BASE_URL);
-  const [testingServer, setTestingServer] = useState(false);
   const { login, sendOTP, verifyOTP } = useAuth();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    getApiBaseUrl().then(setServerUrl).catch(() => {});
-  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -402,24 +358,10 @@ const LoginScreen = () => {
       Alert.alert('Missing fields', 'Please enter both email and password.');
       return;
     }
-    await setApiBaseUrl(serverUrl);
     setLoading(true);
     const result = await login(email.trim(), password);
     setLoading(false);
     if (!result.success) Alert.alert('Login Failed', result.error);
-  };
-
-  const handleTestServer = async () => {
-    setTestingServer(true);
-    try {
-      const saved = await setApiBaseUrl(serverUrl);
-      const { data } = await testApiConnection();
-      Alert.alert('Server OK', `${saved}\n\n${data?.message || 'Connected successfully'}`);
-    } catch {
-      Alert.alert('Connection Failed', `Could not reach:\n${serverUrl.trim()}\n\nPlease check your internet connection and try again.`);
-    } finally {
-      setTestingServer(false);
-    }
   };
 
   const handleSendOTP = async () => {
@@ -564,29 +506,6 @@ const LoginScreen = () => {
                     <Text style={styles.forgotText}>Forgot password?</Text>
                   </TouchableOpacity>
                   {renderPrimaryButton('Sign In', handleEmailLogin, 'log-in-outline')}
-                  <View style={styles.serverSection}>
-                    <Text style={styles.serverLabel}>Server URL</Text>
-                    <TextInput
-                      style={styles.serverInput}
-                      value={serverUrl}
-                      onChangeText={setServerUrl}
-                      placeholder={DEFAULT_API_BASE_URL}
-                      placeholderTextColor={colors.textTertiary}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
-                    <View style={styles.serverActions}>
-                      <TouchableOpacity style={styles.serverTestBtn} onPress={handleTestServer} disabled={testingServer}>
-                        {testingServer ? (
-                          <ActivityIndicator color={colors.primary} />
-                        ) : (
-                          <Text style={styles.serverTestText}>Test Connection</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                    <Text style={styles.serverHint}>API server for cloud sync. Tap Test Connection before Sign In.</Text>
-                  </View>
                 </>
               ) : !otpSent ? (
                 <>

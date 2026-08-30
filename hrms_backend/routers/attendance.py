@@ -37,6 +37,7 @@ from core.attendance_pulse import (
     store_idempotent_checkin,
     try_acquire_open_session,
 )
+from core.datetime_utils import ist_now_naive, ist_today_str
 from core.scale import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -368,7 +369,7 @@ def delete_attendance(
         reason="Manual deletion",
     )
     db.add(log)
-    att.deleted_at = datetime.utcnow()
+    att.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Attendance record deleted"}
 
@@ -765,7 +766,7 @@ def create_manual_attendance(
     import traceback
     _log(f"MANUAL_ATTENDANCE payload: emp={data.employeeId} date={data.date} status={data.status} ci={data.checkIn} co={data.checkOut}")
     try:
-        date_str = data.date or datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = data.date or ist_today_str()
         parsed_date = dateparser.parse(date_str)
         _log(f"  date_str={date_str} parsed_date={parsed_date}")
 
@@ -954,7 +955,7 @@ def bulk_mark_attendance(
                 end_date=datetime.combine(rec_date, datetime.min.time()),
                 total_days=1,
                 status="approved",
-                approved_at=datetime.utcnow(),
+                approved_at=ist_now_naive(),
                 approver_id=current_user.id,
                 reason="Marked from attendance quick action",
                 is_paid=True,
@@ -1052,7 +1053,7 @@ def bulk_delete_attendance(
             reason="Bulk delete",
         )
         db.add(log)
-        att.deleted_at = datetime.utcnow()
+        att.deleted_at = ist_now_naive()
         deleted += 1
     db.commit()
     return {"message": f"{deleted} attendance records deleted", "deleted": deleted}

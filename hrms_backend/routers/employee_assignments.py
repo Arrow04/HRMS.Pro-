@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+from core.datetime_utils import ist_now_naive
 from pydantic import BaseModel
 from database import get_db
 from models import (
@@ -104,7 +105,7 @@ def create_branch_assignment(
         employee_id=assignment.employee_id,
         branch_id=assignment.branch_id,
         is_primary=assignment.is_primary,
-        start_date=datetime.fromisoformat(assignment.start_date) if assignment.start_date else datetime.utcnow(),
+        start_date=datetime.fromisoformat(assignment.start_date) if assignment.start_date else ist_now_naive(),
         status=assignment.status
     )
     
@@ -116,7 +117,7 @@ def create_branch_assignment(
     lifecycle_event = EmployeeLifecycleEvent(
         employee_id=assignment.employee_id,
         event_type='transfer' if assignment.is_primary else 'assignment',
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Assigned to branch: {branch.name}" + (" (Primary)" if assignment.is_primary else ""),
         to_value=branch.name,
         recorded_by=current_user.id
@@ -261,7 +262,7 @@ def create_department_assignment(
         employee_id=assignment.employee_id,
         department_id=assignment.department_id,
         is_primary=assignment.is_primary,
-        start_date=datetime.fromisoformat(assignment.start_date) if assignment.start_date else datetime.utcnow(),
+        start_date=datetime.fromisoformat(assignment.start_date) if assignment.start_date else ist_now_naive(),
         status=assignment.status
     )
     
@@ -273,7 +274,7 @@ def create_department_assignment(
     lifecycle_event = EmployeeLifecycleEvent(
         employee_id=assignment.employee_id,
         event_type='assignment',
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Assigned to department: {department.name}" + (" (Primary)" if assignment.is_primary else ""),
         to_value=department.name,
         recorded_by=current_user.id

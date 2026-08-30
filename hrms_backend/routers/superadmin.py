@@ -29,6 +29,7 @@ from schemas.superadmin import (
     ImpersonateRequest, ImpersonateResponse,
     SuperAdminDashboardStats
 )
+from core.datetime_utils import ist_now_naive
 from core.auth import get_password_hash, verify_password, create_access_token, get_current_user
 from services.email_service import EmailService
 from services.notification_templates import tenant_approved_email, tenant_rejected_email
@@ -139,7 +140,7 @@ def create_tenant(
         organization_id=org.id,
         plan_id=plan.id,
         status="trial",
-        trial_ends_at=datetime.utcnow() + timedelta(days=14)
+        trial_ends_at=ist_now_naive() + timedelta(days=14)
     )
     db.add(subscription)
     
@@ -791,7 +792,7 @@ def update_subscription(
             plan_id=plan_id,
             status="active",
             billing_cycle="monthly",
-            next_billing_date=datetime.utcnow() + timedelta(days=30),
+            next_billing_date=ist_now_naive() + timedelta(days=30),
         )
         db.add(sub)
         db.flush()
@@ -799,7 +800,7 @@ def update_subscription(
     else:
         old_plan_id = sub.plan_id
         sub.plan_id = plan_id
-        sub.updated_at = datetime.utcnow()
+        sub.updated_at = ist_now_naive()
 
     log = AuditLog(
         user_id=current_user.id,
@@ -929,11 +930,11 @@ def system_health(
     """Get system health status"""
     
     # Check database
-    db_start = datetime.utcnow()
+    db_start = ist_now_naive()
     try:
         from sqlalchemy import text
         db.execute(text("SELECT 1"))
-        db_latency = (datetime.utcnow() - db_start).total_seconds() * 1000
+        db_latency = (ist_now_naive() - db_start).total_seconds() * 1000
         db_status = {"status": "healthy", "latency_ms": int(db_latency)}
     except Exception as e:
         db_status = {"status": "down", "latency_ms": None, "error": str(e)}
@@ -941,17 +942,17 @@ def system_health(
     # Check Redis
     redis_status = None
     if redis_client:
-        redis_start = datetime.utcnow()
+        redis_start = ist_now_naive()
         try:
             redis_client.ping()
-            redis_latency = (datetime.utcnow() - redis_start).total_seconds() * 1000
+            redis_latency = (ist_now_naive() - redis_start).total_seconds() * 1000
             redis_status = {"status": "healthy", "latency_ms": int(redis_latency)}
         except Exception as exc:
             redis_status = {"status": "down", "latency_ms": None}
     
     # Get metrics
     active_users = db.query(func.count(User.id)).filter(
-        User.last_login >= datetime.utcnow() - timedelta(hours=24)
+        User.last_login >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
     
     total_tenants = db.query(func.count(Organization.id)).filter(
@@ -960,7 +961,7 @@ def system_health(
     
     # API calls today (from audit logs)
     api_calls = db.query(func.count(AuditLog.id)).filter(
-        AuditLog.created_at >= datetime.utcnow() - timedelta(hours=24)
+        AuditLog.created_at >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
     
     return {
@@ -969,7 +970,7 @@ def system_health(
         "active_users": active_users or 0,
         "total_tenants": total_tenants or 0,
         "api_calls_today": api_calls or 0,
-        "timestamp": datetime.utcnow()
+        "timestamp": ist_now_naive()
     }
 
 
@@ -1048,11 +1049,11 @@ def get_dashboard_stats(
     
     total_users = db.query(func.count(User.id)).scalar()
     active_users_today = db.query(func.count(User.id)).filter(
-        User.last_login >= datetime.utcnow() - timedelta(hours=24)
+        User.last_login >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
     
     api_calls_24h = db.query(func.count(AuditLog.id)).filter(
-        AuditLog.created_at >= datetime.utcnow() - timedelta(hours=24)
+        AuditLog.created_at >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
     
     # Revenue calculation
@@ -1371,7 +1372,7 @@ def get_api_usage(
     current_user: User = Depends(require_superadmin)
 ):
     """Get API usage per tenant (last 24 hours)"""
-    time_threshold = datetime.utcnow() - timedelta(hours=24)
+    time_threshold = ist_now_naive() - timedelta(hours=24)
     usage = db.query(
         AuditLog.organization_id,
         Organization.name,
@@ -1412,7 +1413,7 @@ def get_invoices(
             "tenant": org.name,
             "plan": plan.display_name,
             "amount": plan.price_monthly,
-            "date": datetime.utcnow().strftime("%d/%m/%Y"),
+            "date": ist_now_naive().strftime("%d/%m/%Y"),
             "status": status_choice
         }
         invoices.append(inv)

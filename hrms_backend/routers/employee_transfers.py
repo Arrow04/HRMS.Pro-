@@ -7,6 +7,7 @@ from database import get_db
 from models import EmployeeTransfer, Employee, Branch, Department, Designation, User, EmployeeLifecycleEvent, Company
 from routers.auth import get_current_user
 from core.audit import log_activity
+from core.datetime_utils import ist_now_naive
 from core.tenant import get_employee_in_org, org_owned, validate_company_in_org
 
 router = APIRouter(tags=["employee-transfers"])
@@ -173,7 +174,7 @@ def create_transfer(
     lifecycle_event = EmployeeLifecycleEvent(
         employee_id=transfer.employee_id,
         event_type='transfer',
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Transfer requested from {from_branch.name} to {target_names}",
         from_value=from_branch.name,
         to_value=target_names,
@@ -317,7 +318,7 @@ def update_transfer(
         # If approved, update employee's branch/department
         if update.status == 'approved':
             transfer.approved_by = current_user.id
-            transfer.approved_at = datetime.utcnow()
+            transfer.approved_at = ist_now_naive()
     
     if update.notes:
         transfer.notes = update.notes
@@ -331,7 +332,7 @@ def update_transfer(
         lifecycle_event = EmployeeLifecycleEvent(
             employee_id=transfer.employee_id,
             event_type='transfer',
-            event_date=datetime.utcnow(),
+            event_date=ist_now_naive(),
             description=event_desc,
             from_value=transfer.from_branch.name if update.status == 'rejected' else None,
             to_value=transfer.to_branch.name if update.status == 'approved' else None,
@@ -370,11 +371,11 @@ def approve_transfer(
         raise HTTPException(status_code=400, detail="Only pending transfers can be approved")
     transfer.status = "approved"
     transfer.approved_by = current_user.id
-    transfer.approved_at = datetime.utcnow()
+    transfer.approved_at = ist_now_naive()
     event = EmployeeLifecycleEvent(
         employee_id=transfer.employee_id,
         event_type="transfer",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description="Transfer approved",
         recorded_by=current_user.id,
     )
@@ -431,7 +432,7 @@ def complete_transfer(
                 ).first()
                 if from_assn:
                     from_assn.status = "inactive"
-                    from_assn.end_date = datetime.utcnow()
+                    from_assn.end_date = ist_now_naive()
                 from_branch = db.query(Branch).filter(Branch.id == transfer.from_branch_id).first()
                 if from_branch and from_branch in employee.branches:
                     employee.branches.remove(from_branch)
@@ -449,7 +450,7 @@ def complete_transfer(
                     employee_id=employee.id,
                     branch_id=bid,
                     is_primary=False,
-                    start_date=datetime.utcnow(),
+                    start_date=ist_now_naive(),
                     status="active",
                 ))
             to_branch = db.query(Branch).filter(Branch.id == bid).first()
@@ -466,7 +467,7 @@ def complete_transfer(
     event = EmployeeLifecycleEvent(
         employee_id=transfer.employee_id,
         event_type="transfer",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description="Transfer completed",
         recorded_by=current_user.id,
     )
@@ -516,7 +517,7 @@ def revert_transfer(
             ).first()
             if to_assn:
                 to_assn.status = "inactive"
-                to_assn.end_date = datetime.utcnow()
+                to_assn.end_date = ist_now_naive()
             to_branch = db.query(Branch).filter(Branch.id == bid).first()
             if to_branch and to_branch in employee.branches:
                 employee.branches.remove(to_branch)
@@ -536,7 +537,7 @@ def revert_transfer(
                     employee_id=employee.id,
                     branch_id=fid,
                     is_primary=False,
-                    start_date=datetime.utcnow(),
+                    start_date=ist_now_naive(),
                     status="active",
                 ))
             from_branch = db.query(Branch).filter(Branch.id == fid).first()
@@ -560,7 +561,7 @@ def revert_transfer(
     event = EmployeeLifecycleEvent(
         employee_id=transfer.employee_id,
         event_type="transfer",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description="Transfer reverted",
         recorded_by=current_user.id,
     )
@@ -601,7 +602,7 @@ def reject_transfer(
     event = EmployeeLifecycleEvent(
         employee_id=transfer.employee_id,
         event_type="transfer",
-        event_date=datetime.utcnow(),
+        event_date=ist_now_naive(),
         description=f"Transfer rejected: {reason or ''}",
         recorded_by=current_user.id,
     )

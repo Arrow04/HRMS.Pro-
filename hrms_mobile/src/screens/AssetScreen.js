@@ -10,6 +10,7 @@ import { Badge, EmptyState } from '../components/UI';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
   AdminListCard, AdminFieldLabel, AdminInput, AdminDateRow, AdminCrudSheet, AdminDetailRows, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
+import { dateToISO } from '../utils/timezone';
 
 const createLocalStyles = (colors) => ({
   assignBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
@@ -78,7 +79,7 @@ const AssetScreen = ({ navigation }) => {
       assetType: a.assetType || '',
       serialNumber: a.serialNumber || '',
       value: String(a.value || ''),
-      purchaseDate: a.purchaseDate || (a.purchase_date ? new Date(a.purchase_date).toISOString().split('T')[0] : ''),
+      purchaseDate: a.purchaseDate || (a.purchase_date ? dateToISO(a.purchase_date) : ''),
       employeeId: String(a.employeeId || a.employee_id || '') });
     setIsEditing(false);
     setIsCreating(false);

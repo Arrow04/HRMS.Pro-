@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
+import { getTimezone } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -94,7 +95,7 @@ const formatDate = (value) => {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() });
 };
 
 const avgFromRatings = (item) => {

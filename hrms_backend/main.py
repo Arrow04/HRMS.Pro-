@@ -46,6 +46,7 @@ from controllers.employee_controller import router as employee_controller_router
 from controllers.permissions_controller import router as permissions_controller_router
 from controllers.superadmin_controller import router as superadmin_controller_router
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.datetime_utils import ist_now_naive
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache, ping_redis
 from core.config import settings
 from core.shared import logger
@@ -397,7 +398,7 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "service": "hrms-api"}
+    return {"status": "healthy", "timestamp": ist_now_naive().isoformat(), "service": "hrms-api"}
 
 
 @app.get("/health/db")
@@ -425,7 +426,7 @@ async def readiness_check(db: Session = Depends(get_db)):
         content={
             "status": "healthy" if healthy else "degraded",
             "checks": checks,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": ist_now_naive().isoformat(),
         },
     )
 

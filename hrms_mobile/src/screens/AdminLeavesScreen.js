@@ -9,6 +9,7 @@ import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Avatar, Badge, Divider, EmptyState, GradientButton } from '../components/UI';
 import { AdminModalShell, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
+import { todayISO, dateToISO } from '../utils/timezone';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -103,7 +104,7 @@ const AdminLeavesScreen = ({ navigation }) => {
   const [empSearch, setEmpSearch] = useState('');
   const [historyModal, setHistoryModal] = useState(null);
   const [historyData, setHistoryData] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -152,7 +153,7 @@ const AdminLeavesScreen = ({ navigation }) => {
   };
 
   const openCreateForm = () => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayISO();
     setForm({ employeeId: null, leaveType: 'Casual Leave', startDate: today, endDate: today, reason: '' });
     setEditMode(false);
     setEmpSearch('');
@@ -248,7 +249,7 @@ const AdminLeavesScreen = ({ navigation }) => {
           <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
         </TouchableOpacity>
         {showDatePicker && (
-          <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(date.toISOString().split('T')[0]); }} />
+          <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(dateToISO(date)); }} />
         )}
 
         <View style={styles.statRow}>

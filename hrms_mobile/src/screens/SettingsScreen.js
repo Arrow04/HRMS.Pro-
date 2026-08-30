@@ -2,16 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { getTimezone } from '../utils/timezone';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Card, Badge, EmptyState, GradientButton, Avatar, Divider } from '../components/UI';
 import { StatBox, TabPill } from '../components/Charts';
+import { Ionicons } from '@expo/vector-icons';
+import { scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
+import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
-  hero: { backgroundColor: colors.dark, paddingTop: 56, paddingBottom: spacing.xxl, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden' },
+  hero: { backgroundColor: colors.dark, paddingTop: spacing.xl, paddingBottom: spacing.xxl, borderRadius: 32, overflow: 'hidden' },
   heroOrb1: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.05)', top: -40, right: -40 },
   heroOrb2: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.08)', bottom: -10, left: 30 },
   heroContent: { paddingHorizontal: spacing.xl },
@@ -36,10 +40,12 @@ const TABS = [
 ];
 
 
-const SettingsScreen = () => {
+const SettingsScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
+  const scrollTopBar = useScrollTopBar();
+  const isAdmin = ['admin', 'superadmin', 'hr_admin', 'hr_manager'].includes(user?.role);
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +58,7 @@ const SettingsScreen = () => {
   const [notifEmail, setNotifEmail] = useState(true);
   const [notifSms, setNotifSms] = useState(false);
   const [notifPush, setNotifPush] = useState(true);
+  const [notifAttendance, setNotifAttendance] = useState(true);
 
   const fetchData = useCallback(async () => {
     try {
@@ -116,15 +123,22 @@ const SettingsScreen = () => {
     ]);
   };
 
-  const filteredUsers = users.filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()));
+  const filteredUsers = users.filter(u => u.id === user?.id || u.email === user?.email);
 
   return (
-    <ScrollView style={styles.container} refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={onRefresh} />} showsVerticalScrollIndicator={false}>
-      <View style={styles.hero}>
+    <ScrollView {...scrollViewTopBarProps(scrollTopBar, { paddingBottom: TAB_BAR_CLEARANCE + 16 })} style={styles.container} refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={onRefresh} />} showsVerticalScrollIndicator={false}>
+      <View style={[styles.hero, bannerShellStyle(scrollTopBar)]}>
         <View style={styles.heroOrb1} /><View style={styles.heroOrb2} />
-        <View style={styles.heroContent}>
-          <Text style={styles.heroTitle}>Settings</Text>
-          <Text style={styles.heroSub}>Manage users and configuration</Text>
+        <View style={[styles.heroContent, { flexDirection: 'row', alignItems: 'center' }]}>
+          {navigation?.canGoBack?.() && (
+            <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+              <Ionicons name="chevron-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+          )}
+          <View>
+            <Text style={styles.heroTitle}>Settings</Text>
+            <Text style={styles.heroSub}>Manage users and configuration</Text>
+          </View>
         </View>
       </View>
       <View style={styles.body}>
@@ -132,8 +146,9 @@ const SettingsScreen = () => {
 
         {tab === 'users' && (
           <>
-            <View style={styles.searchRow}>
-              <TextInput style={styles.searchInput} value={search} onChangeText={setSearch} placeholder="🔍  Search users..." placeholderTextColor={colors.textTertiary} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: 12, padding: 12, marginTop: 2, marginBottom: 14 }}>
+              <Ionicons name="lock-closed-outline" size={16} color={colors.textTertiary} />
+              <Text style={{ fontSize: 12, color: colors.textTertiary, flex: 1 }}>Only administrators can manage users.</Text>
             </View>
             {loading ? <SkeletonBlock /> : filteredUsers.length === 0 ? (
               <EmptyState icon="👥" title="No users" message="No users found." />
@@ -147,16 +162,8 @@ const SettingsScreen = () => {
                       <Text style={styles.itemSub}>{u.email} • {u.role || 'user'}</Text>
                       <View style={styles.badgeRow}>
                         <Badge status={u.status === 'active' ? 'active' : 'inactive'} label={u.status || 'active'} size="sm" />
-                        {u.last_login && <Text style={{ fontSize: 10, color: colors.textTertiary, marginLeft: 4 }}>Last: {new Date(u.last_login).toLocaleDateString()}</Text>}
+                        {u.last_login && <Text style={{ fontSize: 10, color: colors.textTertiary, marginLeft: 4 }}>Last: {new Date(u.last_login).toLocaleDateString('en-US', { timeZone: getTimezone() })}</Text>}
                       </View>
-                    </View>
-                    <View style={{ gap: spacing.xs }}>
-                      <TouchableOpacity onPress={() => handleUpdateRole(u, u.role === 'admin' ? 'user' : 'admin')}>
-                        <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600' }}>{u.role === 'admin' ? 'Demote' : 'Promote'}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleToggleStatus(u)}>
-                        <Text style={{ fontSize: 11, color: u.status === 'active' ? colors.danger : colors.success, fontWeight: '600' }}>{u.status === 'active' ? 'Deactivate' : 'Activate'}</Text>
-                      </TouchableOpacity>
                     </View>
                   </View>
                 </Card>
@@ -167,40 +174,52 @@ const SettingsScreen = () => {
 
         {tab === 'settings' && (
           <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: 12, padding: 12, marginTop: 2, marginBottom: 14 }}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.textTertiary} />
+                <Text style={{ fontSize: 12, color: colors.textTertiary, flex: 1 }}>Only administrators can manage company settings.</Text>
+            </View>
             <Card>
               <Text style={styles.sectionTitle}>Company Information</Text>
               <Divider style={{ marginBottom: spacing.md }} />
               <Text style={styles.inputLabel}>Company Name</Text>
-              <TextInput style={styles.input} value={companyName} onChangeText={setCompanyName} placeholder="Company name" placeholderTextColor={colors.textTertiary} />
+              <TextInput style={styles.input} value={companyName} onChangeText={setCompanyName} editable={isAdmin} placeholder="Company name" placeholderTextColor={colors.textTertiary} />
               <Text style={styles.inputLabel}>Email</Text>
-              <TextInput style={styles.input} value={companyEmail} onChangeText={setCompanyEmail} placeholder="Company email" placeholderTextColor={colors.textTertiary} keyboardType="email-address" />
+              <TextInput style={styles.input} value={companyEmail} onChangeText={setCompanyEmail} editable={isAdmin} placeholder="Company email" placeholderTextColor={colors.textTertiary} keyboardType="email-address" />
               <Text style={styles.inputLabel}>Phone</Text>
-              <TextInput style={styles.input} value={companyPhone} onChangeText={setCompanyPhone} placeholder="Phone" placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" />
+              <TextInput style={styles.input} value={companyPhone} onChangeText={setCompanyPhone} editable={isAdmin} placeholder="Phone" placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" />
               <Text style={styles.inputLabel}>Address</Text>
-              <TextInput style={[styles.input, { height: 60, textAlignVertical: 'top' }]} value={companyAddress} onChangeText={setCompanyAddress} placeholder="Address" placeholderTextColor={colors.textTertiary} multiline />
-              <GradientButton title="Save Settings" onPress={handleSaveGeneral} />
+              <TextInput style={[styles.input, { height: 60, textAlignVertical: 'top' }]} value={companyAddress} onChangeText={setCompanyAddress} editable={isAdmin} placeholder="Address" placeholderTextColor={colors.textTertiary} multiline />
+              {isAdmin && <GradientButton title="Save Settings" onPress={handleSaveGeneral} />}
             </Card>
           </>
         )}
 
         {tab === 'notifications' && (
           <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: 12, padding: 12, marginTop: 2, marginBottom: 14 }}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.textTertiary} />
+                <Text style={{ fontSize: 12, color: colors.textTertiary, flex: 1 }}>Only administrators can manage notification preferences.</Text>
+            </View>
             <Card>
               <Text style={styles.sectionTitle}>Notification Preferences</Text>
               <Divider style={{ marginBottom: spacing.md }} />
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>Email Notifications</Text>
-                <Switch value={notifEmail} onValueChange={setNotifEmail} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifEmail ? '#FFF' : '#F5F5F5'} />
+                <Switch value={notifEmail} disabled={!isAdmin} onValueChange={setNotifEmail} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifEmail ? '#FFF' : '#F5F5F5'} />
               </View>
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>SMS Notifications</Text>
-                <Switch value={notifSms} onValueChange={setNotifSms} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifSms ? '#FFF' : '#F5F5F5'} />
+                <Switch value={notifSms} disabled={!isAdmin} onValueChange={setNotifSms} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifSms ? '#FFF' : '#F5F5F5'} />
               </View>
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>Push Notifications</Text>
-                <Switch value={notifPush} onValueChange={setNotifPush} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifPush ? '#FFF' : '#F5F5F5'} />
+                <Switch value={notifPush} disabled={!isAdmin} onValueChange={setNotifPush} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifPush ? '#FFF' : '#F5F5F5'} />
               </View>
-              <GradientButton title="Save Preferences" onPress={handleSaveNotifs} style={{ marginTop: spacing.md }} />
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Attendance Reminder</Text>
+                <Switch value={notifAttendance} disabled={!isAdmin} onValueChange={setNotifAttendance} trackColor={{ false: colors.border, true: colors.primaryLight }} thumbColor={notifAttendance ? '#FFF' : '#F5F5F5'} />
+              </View>
+              {isAdmin && <GradientButton title="Save Preferences" onPress={handleSaveNotifs} style={{ marginTop: spacing.md }} />}
             </Card>
           </>
         )}

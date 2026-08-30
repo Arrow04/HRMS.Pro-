@@ -5,6 +5,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 from functools import lru_cache
+
+from core.datetime_utils import ist_now_naive
 import json
 
 from database import get_db
@@ -1626,7 +1628,7 @@ def update_value(value_id: int, value: LookupValueUpdate, db: Session = Depends(
     # Set audit fields
     db_value.updated_by = value.updated_by or (current_user.full_name if hasattr(current_user, 'full_name') else None)
     db_value.updated_by_email = value.updated_by_email or (current_user.email if hasattr(current_user, 'email') else None)
-    db_value.updated_at = datetime.utcnow()
+    db_value.updated_at = ist_now_naive()
     
     db.commit()
     db.refresh(db_value)
@@ -1702,7 +1704,7 @@ def reorder_values(request: ReorderValuesRequest, db: Session = Depends(get_db),
             value.sort_order = index
             value.updated_by = request.updated_by or (current_user.full_name if hasattr(current_user, 'full_name') else None)
             value.updated_by_email = current_user.email if hasattr(current_user, 'email') else None
-            value.updated_at = datetime.utcnow()
+            value.updated_at = ist_now_naive()
     
     db.commit()
     

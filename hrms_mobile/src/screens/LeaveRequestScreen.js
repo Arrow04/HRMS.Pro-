@@ -3,9 +3,12 @@ import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
+import { getTimezone, todayISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { Badge, EmptyState } from '../components/UI';
+import { Badge, EmptyState, Card } from '../components/UI';
+import { TabPill } from '../components/Charts';
+import { spacing } from '../theme';
 import {
   useAdminStyles,
   AdminHeader,
@@ -31,15 +34,15 @@ const STATUS_TABS = [
 
 const emptyForm = {
   leaveTypeId: null,
-  startDate: new Date().toISOString().split('T')[0],
-  endDate: new Date().toISOString().split('T')[0],
+  startDate: todayISO(),
+  endDate: todayISO(),
   reason: '' };
 
 const formatDate = (value) => {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() });
 };
 
 const statusColor = (status) => {
@@ -48,7 +51,7 @@ const statusColor = (status) => {
   return '#F59E0B';
 };
 
-const LeaveRequestScreen = ({ navigation }) => {
+const LeaveRequestScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
   const adminStyles = useAdminStyles();
   const scrollTopBar = useScrollTopBar();
@@ -58,10 +61,12 @@ const LeaveRequestScreen = ({ navigation }) => {
 
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [leaves, setLeaves] = useState([]);
+  const [leaveBalances, setLeaveBalances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusTab, setStatusTab] = useState('all');
+  const [viewTab, setViewTab] = useState(route?.params?.initialTab || 'history');
   const [search, setSearch] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -72,9 +77,10 @@ const LeaveRequestScreen = ({ navigation }) => {
   const fetchData = useCallback(async () => {
     try {
       const params = employeeId ? { employeeId } : {};
-      const [typesRes, leavesRes] = await Promise.allSettled([
+      const [typesRes, leavesRes, balanceRes] = await Promise.allSettled([
         api.get('/leave-types'),
         api.get('/leaves', { params }),
+        api.get('/leave-balances', { params: { employeeId, year: new Date().getFullYear() } }),
       ]);
       if (typesRes.status === 'fulfilled') {
         const d = typesRes.value.data;
@@ -83,6 +89,10 @@ const LeaveRequestScreen = ({ navigation }) => {
       if (leavesRes.status === 'fulfilled') {
         const d = leavesRes.value.data;
         setLeaves(d?.data || d?.items || (Array.isArray(d) ? d : []));
+      }
+      if (balanceRes.status === 'fulfilled') {
+        const d = balanceRes.value.data;
+        setLeaveBalances(d?.data || d?.items || (Array.isArray(d) ? d : []));
       }
     } catch (e) {
       console.error(e);
@@ -173,83 +183,107 @@ const LeaveRequestScreen = ({ navigation }) => {
           navigation={navigation}
           title="Leave"
           subtitle="Apply and track your time off"
-          onAdd={openCreate}
+          onAdd={viewTab === 'history' ? openCreate : undefined}
           showBack={navigation?.canGoBack?.() ?? false}
         />
 
         <View style={adminStyles.body}>
-          {leaveTypes.length > 0 && (
+          <TabPill
+            tabs={[{ key: 'history', label: 'History' }, { key: 'balance', label: 'Leave Balance' }]}
+            active={viewTab}
+            onChange={setViewTab}
+          />
+
+          {viewTab === 'balance' && (
             <>
-              <Text style={adminStyles.sectionLabel}>Leave balance</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 10, paddingBottom: 4, marginBottom: 12 }}
-              >
-                {leaveTypes.map((lt) => (
-                  <View
-                    key={lt.id}
-                    style={{
-                      minWidth: 108,
-                      backgroundColor: colors.surface,
-                      borderRadius: 14,
-                      padding: 14,
-                      borderWidth: 1,
-                      borderColor: colors.borderLight,
-                      alignItems: 'center' }}
-                  >
-                    <Text style={{ fontSize: 22, fontWeight: '800', color: colors.primary }}>
-                      {lt.balance ?? lt.totalDays ?? 0}
-                    </Text>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginTop: 4, textAlign: 'center' }} numberOfLines={2}>
-                      {lt.name || lt.code}
-                    </Text>
+              {(leaveBalances.length > 0 ? leaveBalances : leaveTypes.length > 0 ? leaveTypes.map((lt) => ({
+                id: lt.id,
+                leaveTypeName: lt.name || lt.code,
+                totalDays: lt.totalDays ?? lt.total_days ?? 0,
+                remainingDays: lt.remainingDays ?? lt.remaining_days ?? lt.totalDays ?? lt.total_days ?? 0,
+              })) : []).length === 0 ? (
+                <AdminListCard>
+                  <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="calendar-outline" size={20} color="#10B981" />
                   </View>
-                ))}
-              </ScrollView>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={adminStyles.listTitle}>No leave types</Text>
+                    <Text style={adminStyles.listSub}>0 of 0 days remaining</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ fontSize: 18, fontWeight: '800', color: '#10B981' }}>0</Text>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>remaining</Text>
+                  </View>
+                </AdminListCard>
+              ) : (
+                (leaveBalances.length > 0 ? leaveBalances : leaveTypes.map((lt) => ({
+                  id: lt.id,
+                  leaveTypeName: lt.name || lt.code,
+                  totalDays: lt.totalDays ?? lt.total_days ?? 0,
+                  remainingDays: lt.remainingDays ?? lt.remaining_days ?? lt.totalDays ?? lt.total_days ?? 0,
+                }))).map((lb) => (
+                  <AdminListCard key={lb.id}>
+                    <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="calendar-outline" size={20} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={adminStyles.listTitle}>{lb.leaveTypeName || 'Leave'}</Text>
+                      <Text style={adminStyles.listSub}>{lb.remainingDays ?? 0} of {lb.totalDays ?? 0} days remaining</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 18, fontWeight: '800', color: '#10B981' }}>{lb.remainingDays ?? 0}</Text>
+                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>remaining</Text>
+                    </View>
+                  </AdminListCard>
+                ))
+              )}
             </>
           )}
 
-          <AdminStatRow
-            stats={[
-              { val: leaves.length, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
-              { val: pendingCount, label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
-              { val: approvedCount, label: 'Approved', color: '#10B981', bg: '#DCFCE7' },
-              { val: rejectedCount, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
-            ]}
-          />
+          {viewTab === 'history' && (
+            <>
+              <AdminStatRow
+                stats={[
+                  { val: leaves.length, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
+                  { val: pendingCount, label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
+                  { val: approvedCount, label: 'Approved', color: '#10B981', bg: '#DCFCE7' },
+                  { val: rejectedCount, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
+                ]}
+              />
 
-          <AdminTabPills tabs={STATUS_TABS} active={statusTab} onChange={setStatusTab} />
-          <AdminSearchBar value={search} onChangeText={setSearch} placeholder="Search leave requests..." />
+              <AdminTabPills tabs={STATUS_TABS} active={statusTab} onChange={setStatusTab} />
+              <AdminSearchBar value={search} onChangeText={setSearch} placeholder="Search leave requests..." />
 
-          {loading ? (
-            <View>{[1, 2, 3].map((i) => <View key={i} style={adminStyles.skeleton} />)}</View>
-          ) : filteredLeaves.length === 0 ? (
-            <EmptyState icon="📅" title="No leave requests" message="Tap + to apply for leave." />
-          ) : (
-            filteredLeaves.map((leave) => (
-              <AdminListCard key={leave.id} onPress={() => openDetail(leave)}>
-                <View
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 14,
-                    backgroundColor: colors.primarySurface,
-                    alignItems: 'center',
-                    justifyContent: 'center' }}
-                >
-                  <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={adminStyles.listTitle}>{leaveTitle(leave)}</Text>
-                  <Text style={adminStyles.listSub}>{dateRange(leave)}</Text>
-                  {leave.reason ? (
-                    <Text style={adminStyles.listSub} numberOfLines={1}>{leave.reason}</Text>
-                  ) : null}
-                </View>
-                <Badge status={leave.status} size="sm" />
-              </AdminListCard>
-            ))
+              {loading ? (
+                <View>{[1, 2, 3].map((i) => <View key={i} style={adminStyles.skeleton} />)}</View>
+              ) : filteredLeaves.length === 0 ? (
+                <EmptyState icon="📅" title="No leave requests" message="Tap + to apply for leave." />
+              ) : (
+                filteredLeaves.map((leave) => (
+                  <AdminListCard key={leave.id} onPress={() => openDetail(leave)}>
+                    <View
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 14,
+                        backgroundColor: colors.primarySurface,
+                        alignItems: 'center',
+                        justifyContent: 'center' }}
+                    >
+                      <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={adminStyles.listTitle}>{leaveTitle(leave)}</Text>
+                      <Text style={adminStyles.listSub}>{dateRange(leave)}</Text>
+                      {leave.reason ? (
+                        <Text style={adminStyles.listSub} numberOfLines={1}>{leave.reason}</Text>
+                      ) : null}
+                    </View>
+                    <Badge status={leave.status} size="sm" />
+                  </AdminListCard>
+                ))
+              )}
+            </>
           )}
           <View style={{ height: 32 }} />
         </View>

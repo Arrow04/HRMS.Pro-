@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getTimezone, todayISO, dateToISO } from '../utils/timezone';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -109,7 +110,7 @@ const AdminAnomalyScreen = ({ navigation }) => {
   const [dismissModal, setDismissModal] = useState(null);
   const [dismissReason, setDismissReason] = useState('');
   const [evidenceModal, setEvidenceModal] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -177,11 +178,11 @@ const AdminAnomalyScreen = ({ navigation }) => {
       <View style={styles.body}>
         <TouchableOpacity style={styles.datePickerRow} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
           <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-          <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+          <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() })}</Text>
           <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
         </TouchableOpacity>
         {showDatePicker && (
-          <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(date.toISOString().split('T')[0]); }} />
+          <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(dateToISO(date)); }} />
         )}
 
         {/* Stats */}
@@ -302,7 +303,7 @@ const AdminAnomalyScreen = ({ navigation }) => {
                         <Text style={styles.detailDesc}>{detailItem.description || 'No description provided.'}</Text>
                       </View>
                       <View style={styles.detailMeta}>
-                        <Text style={styles.detailMetaText}>Created: {detailItem.created_at ? new Date(detailItem.created_at).toLocaleDateString() : 'N/A'}</Text>
+                        <Text style={styles.detailMetaText}>Created: {detailItem.created_at ? new Date(detailItem.created_at).toLocaleDateString('en-US', { timeZone: getTimezone() }) : 'N/A'}</Text>
                         <Text style={styles.detailMetaText}>Status: {(detailItem.status || 'open').charAt(0).toUpperCase() + (detailItem.status || 'open').slice(1)}</Text>
                       </View>
                       {detailItem.status === 'open' && (

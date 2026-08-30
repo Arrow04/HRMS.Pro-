@@ -7,6 +7,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Badge, EmptyState, Avatar, Divider } from '../components/UI';
 import { useApiData, normalizeResponse } from '../hooks/useApiData';
+import { currentMonthISO, dateToMonthISO } from '../utils/timezone';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
   AdminListCard, AdminMonthRow, AdminCrudSheet, AdminDetailRows, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
@@ -44,7 +45,7 @@ const PayrollScreen = ({ navigation }) => {
   const scrollTopBar = useScrollTopBar();
   const [tab, setTab] = useState('run');
   const [search, setSearch] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthISO());
   const [submitting, setSubmitting] = useState(false);
   const [reviewFilter, setReviewFilter] = useState('all');
   const [selectedItem, setSelectedItem] = useState(null);

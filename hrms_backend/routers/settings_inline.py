@@ -12,6 +12,7 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
+from core.datetime_utils import ist_now_naive
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Union
 
@@ -38,6 +39,7 @@ router = APIRouter(tags=["Settings"])
 
 
 
+@cached(ttl=120)
 @router.get("/api/settings/theme", tags=["Settings"])
 def get_theme(
     db: Session = Depends(get_db),
@@ -60,9 +62,11 @@ def update_theme(
 ):
     current_user.theme_settings = theme.model_dump()
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Theme updated successfully"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/general", tags=["Settings"])
 def get_general_settings(
     db: Session = Depends(get_db),
@@ -101,7 +105,26 @@ def update_general_settings(
     if current_user.organization_id:
         org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == current_user.organization_id).first()
         if org:
-            for key, val in payload.model_dump(exclude_unset=True).items():
+            COUNTRY_TIMEZONE_MAP = {
+                "India": "Asia/Kolkata",
+                "United States": "America/New_York",
+                "United Kingdom": "Europe/London",
+                "Australia": "Australia/Sydney",
+                "United Arab Emirates": "Asia/Dubai",
+                "Singapore": "Asia/Singapore",
+                "Germany": "Europe/Berlin",
+                "Canada": "America/Toronto",
+                "Japan": "Asia/Tokyo",
+                "France": "Europe/Paris",
+                "China": "Asia/Shanghai",
+                "Brazil": "America/Sao_Paulo",
+            }
+            payload_dict = payload.model_dump(exclude_unset=True)
+            if "country" in payload_dict:
+                new_country = payload_dict["country"]
+                if new_country in COUNTRY_TIMEZONE_MAP:
+                    payload_dict["timezone"] = COUNTRY_TIMEZONE_MAP[new_country]
+            for key, val in payload_dict.items():
                 snake_key = next(iter(convert_camel_to_snake({key: val})), key)
                 if snake_key == "currency":
                     snake_key = "default_currency"
@@ -119,9 +142,11 @@ def update_general_settings(
                     settings["general"] = {**(settings.get("general") or {}), **{key: val}}
                     org.settings = settings
             db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "General settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/company", tags=["Settings"])
 def get_company_settings(
     db: Session = Depends(get_db),
@@ -153,6 +178,7 @@ def update_company_settings(
     return {"message": "Company settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/attendance", tags=["Settings"])
 def get_attendance_settings(
     db: Session = Depends(get_db),
@@ -226,9 +252,11 @@ def update_attendance_settings(
 
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Attendance settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/leave-policy", tags=["Settings"])
 def get_leave_policy(
     db: Session = Depends(get_db),
@@ -267,9 +295,11 @@ def update_leave_policy(
     data["leave"] = {**(data.get("leave") or {}), **payload}
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Leave policy updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/payroll", tags=["Settings"])
 def get_payroll_settings(
     db: Session = Depends(get_db),
@@ -309,9 +339,11 @@ def update_payroll_settings(
     data["payroll"] = {**(data.get("payroll") or {}), **payload}
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Payroll settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/performance", tags=["Settings"])
 def get_performance_settings(
     db: Session = Depends(get_db),
@@ -346,6 +378,7 @@ def update_performance_settings(
     db.commit()
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Performance settings updated"}
 
 
@@ -359,6 +392,7 @@ DEFAULT_NOTIFICATION_SETTINGS = [
 ]
 
 
+@cached(ttl=120)
 @router.get("/api/settings/notifications", tags=["Settings"])
 def get_notifications_settings(
     db: Session = Depends(get_db),
@@ -388,9 +422,11 @@ def update_notifications_settings(
         data["notifications"] = payload
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Notification settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/security", tags=["Settings"])
 def get_security_settings(
     db: Session = Depends(get_db),
@@ -425,9 +461,11 @@ def update_security_settings(
     data["security"] = {**(data.get("security") or {}), **payload}
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Security settings updated"}
 
 
+@cached(ttl=120)
 @router.get("/api/settings/integrations", tags=["Settings"])
 def get_integrations_settings(
     db: Session = Depends(get_db),
@@ -461,6 +499,7 @@ def update_integrations_settings(
     data["integrations"] = {**(data.get("integrations") or {}), **payload}
     org.settings = data
     db.commit()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Integration settings updated"}
 
 
@@ -819,7 +858,7 @@ def delete_user(
     if current_user.role != "superadmin" and user.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = False
-    user.deleted_at = datetime.utcnow()
+    user.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "User deactivated"}
 

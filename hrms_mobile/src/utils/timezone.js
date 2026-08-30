@@ -113,3 +113,37 @@ export const monthEndISO = (year, month) => {
   parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
   return `${map.year}-${map.month}-${map.day}`;
 };
+
+export const currentMonthISO = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: _timezone }).formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return `${map.year}-${map.month}`;
+};
+
+export const dateToISO = (dateInput) => {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: _timezone }).formatToParts(d);
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return `${map.year}-${map.month}-${map.day}`;
+};
+
+export const dateToMonthISO = (dateInput) => {
+  if (!dateInput) return '';
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(d.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: _timezone }).formatToParts(d);
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return `${map.year}-${map.month}`;
+};
+
+export const istYear = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: _timezone }).formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => { if (p.type !== 'literal') map[p.type] = p.value; });
+  return parseInt(map.year, 10);
+};

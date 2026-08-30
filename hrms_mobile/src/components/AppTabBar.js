@@ -9,9 +9,9 @@ import { useTheme } from '../context/ThemeContext';
 import { layout } from '../theme';
 
 const TABS = [
-  { name: 'Dashboard', label: 'Dashboard', icon: 'grid-outline', iconActive: 'grid' },
+  { name: 'Dashboard', label: 'Dashboard', icon: 'stats-chart-outline', iconActive: 'stats-chart' },
   { name: 'Attendance', label: 'Attendance', icon: 'finger-print-outline', iconActive: 'finger-print' },
-  { name: 'Menu', label: 'Menu', icon: 'menu-outline', iconActive: 'menu' },
+  { name: 'Menu', label: 'Menu', icon: 'grid-outline', iconActive: 'grid' },
 ];
 
 export const TAB_BAR_CLEARANCE = layout.tabBarClearance;

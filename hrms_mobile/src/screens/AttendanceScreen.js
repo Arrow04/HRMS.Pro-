@@ -17,7 +17,7 @@ import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 import { AdminMonthRow, scrollViewTopBarProps, bannerShellStyle } from '../components/AdminScreenKit';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
 import { useTimezone } from '../context/TimezoneContext';
-import { fmtTimeSec, fmtTime, fmtWeekday, fmtDateCompact, todayZone, nowZone, getTimezone, todayISO, daysAgoISO, monthStartISO, monthEndISO } from '../utils/timezone';
+import { fmtTimeSec, fmtTime, fmtWeekday, fmtDateCompact, todayZone, nowZone, getTimezone, todayISO, daysAgoISO, monthStartISO, monthEndISO, currentMonthISO, dateToMonthISO } from '../utils/timezone';
 
 const PAD = 20;
 const RECENT_RECORDS_LIMIT = 5;
@@ -559,7 +559,7 @@ const AttendanceScreen = ({ navigation }) => {
   const [checking, setChecking] = useState(false);
   const [location, setLocation] = useState(null);
   const [locationErr, setLocationErr] = useState(null);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthISO());
   const [showCamera, setShowCamera] = useState(false);
   const [pendingPunchType, setPendingPunchType] = useState(null);
   const cameraRef = useRef(null);
@@ -573,7 +573,7 @@ const AttendanceScreen = ({ navigation }) => {
   const scrollTopBar = useScrollTopBar();
 
   const myEmployeeId = getMyEmployeeId(user);
-  const isCurrentMonth = selectedMonth === new Date().toISOString().slice(0, 7);
+  const isCurrentMonth = selectedMonth === currentMonthISO();
 
   const fetchData = useCallback(async () => {
     if (!myEmployeeId) {

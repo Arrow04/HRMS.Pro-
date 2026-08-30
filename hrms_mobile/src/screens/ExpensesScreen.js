@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { getTimezone, todayISO, dateToISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Avatar, Badge, EmptyState, Divider } from '../components/UI';
@@ -38,14 +39,14 @@ const STATUS_TABS = [
 ];
 
 const catLabel = (key) => CATEGORIES.find((c) => c.value === key)?.label || key || 'General';
-const emptyForm = { amount: '', category: '', description: '', date: new Date().toISOString().split('T')[0] };
+const emptyForm = { amount: '', category: '', description: '', date: todayISO() };
 
 const ExpensesScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const localStyles = useThemedStyles(createLocalStyles);
   const adminStyles = useAdminStyles();
   const scrollTopBar = useScrollTopBar();
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterDate, setFilterDate] = useState(todayISO());
   const [selectedItem, setSelectedItem] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -85,7 +86,7 @@ const ExpensesScreen = ({ navigation }) => {
       amount: String(exp.amount || ''),
       category: exp.category || '',
       description: exp.description || '',
-      date: exp.date ? new Date(exp.date).toISOString().split('T')[0] : filterDate });
+      date: exp.date ? dateToISO(exp.date) : filterDate });
     setIsEditing(false);
     setIsCreating(false);
   };
@@ -180,7 +181,7 @@ const ExpensesScreen = ({ navigation }) => {
                   <Text style={adminStyles.listTitle}>{empName(exp)}</Text>
                   <Text style={adminStyles.listSub}>{catLabel(exp.category)}</Text>
                   <Text style={adminStyles.listSub}>
-                    {exp.date ? new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                    {exp.date ? new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: getTimezone() }) : ''}
                   </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
@@ -231,7 +232,7 @@ const ExpensesScreen = ({ navigation }) => {
             <Divider style={{ marginVertical: 12 }} />
             <AdminDetailRows rows={[
               { label: 'Amount', value: `₹${Number(selectedItem.amount).toLocaleString()}`, valueStyle: { textTransform: 'none' } },
-              { label: 'Date', value: selectedItem.date ? new Date(selectedItem.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '—', valueStyle: { textTransform: 'none' } },
+              { label: 'Date', value: selectedItem.date ? new Date(selectedItem.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
               { label: 'Category', value: catLabel(selectedItem.category), valueStyle: { textTransform: 'none' } },
               { label: 'Status', value: selectedItem.status, valueStyle: { color: statusColor(selectedItem.status) } },
               { label: 'Description', value: selectedItem.description || '—', valueStyle: { textTransform: 'none' }, numberOfLines: 4 },

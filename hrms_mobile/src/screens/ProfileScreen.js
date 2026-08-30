@@ -126,9 +126,11 @@ const ProfileScreen = () => {
               </View>
               <Text style={styles.sectionTitle}>Profile Information</Text>
             </View>
-            <TouchableOpacity onPress={() => setEditMode(!editMode)}>
-              <Text style={styles.editBtn}>{editMode ? 'Cancel' : 'Edit'}</Text>
-            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity onPress={() => setEditMode(!editMode)}>
+                <Text style={styles.editBtn}>{editMode ? 'Cancel' : 'Edit'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
           {editMode ? (
             <>
@@ -151,16 +153,16 @@ const ProfileScreen = () => {
         </View>
 
         <View style={styles.card}>
-          <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowPassword(!showPassword)}>
+          <TouchableOpacity style={styles.sectionHeader} onPress={() => isAdmin && setShowPassword(!showPassword)} disabled={!isAdmin}>
             <View style={styles.sectionTitleRow}>
               <View style={[styles.sectionIcon, { backgroundColor: colors.warningSurface }]}>
                 <Ionicons name="lock-closed-outline" size={18} color={colors.warning} />
               </View>
               <Text style={styles.sectionTitle}>Change Password</Text>
             </View>
-            <Ionicons name={showPassword ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textTertiary} />
+            {!isAdmin ? <Text style={{ fontSize: 11, color: colors.textTertiary }}>Admin only</Text> : <Ionicons name={showPassword ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textTertiary} />}
           </TouchableOpacity>
-          {showPassword && (
+          {showPassword && isAdmin && (
             <>
               <Text style={styles.inputLabel}>Current Password</Text>
               <TextInput style={styles.input} value={currentPass} onChangeText={setCurrentPass} secureTextEntry placeholderTextColor={colors.textTertiary} />

@@ -24,6 +24,7 @@ from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.datetime_utils import ist_now_naive
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (ExpenseCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
@@ -39,6 +40,7 @@ router = APIRouter(tags=["Expenses"])
 
 
 
+@cached(ttl=60)
 @router.get("/api/expenses", tags=["Expenses"])
 def get_expenses(
     employeeId: Optional[int] = None,
@@ -218,9 +220,11 @@ def create_expense(
         db.commit()
     except Exception:
         db.rollback()
+    invalidate_cache("hrms:tenant:*")
     return _serialize_expense(exp)
 
 
+@cached(ttl=60)
 @router.get("/api/expenses/stats", tags=["Expenses"])
 def get_expenses_stats(
     includeInactive: bool = False,
@@ -237,7 +241,7 @@ def get_expenses_stats(
     if current_user.organization_id:
         query = query.filter(Expense.organization_id == current_user.organization_id)
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
 
     pending = query.filter(Expense.status == "pending").count()
     approved_count = query.filter(Expense.status == "approved").count()
@@ -305,7 +309,7 @@ def approve_expense(
         raise HTTPException(status_code=400, detail=f"Invalid transition: {exp.status} -> {action}")
     exp.status = action
     exp.approver_id = current_user.id
-    exp.approved_at = datetime.utcnow()
+    exp.approved_at = ist_now_naive()
     db.commit()
     db.refresh(exp)
     from services.notifier import notify_expense_decided
@@ -315,6 +319,7 @@ def approve_expense(
         db.commit()
     except Exception:
         db.rollback()
+    invalidate_cache("hrms:tenant:*")
     return _serialize_expense(exp)
 
 
@@ -336,7 +341,7 @@ def approve_expense_put(
         raise HTTPException(status_code=400, detail=f"Invalid transition: {exp.status} -> approved")
     exp.status = "approved"
     exp.approver_id = current_user.id
-    exp.approved_at = datetime.utcnow()
+    exp.approved_at = ist_now_naive()
     db.commit()
     db.refresh(exp)
     from services.notifier import notify_expense_decided
@@ -406,6 +411,7 @@ def update_expense(
     return exp
 
 
+@cached(ttl=60)
 @router.get("/api/expenses/summary", tags=["Expenses"])
 def get_expense_summary(
     month: Optional[int] = None,
@@ -418,7 +424,7 @@ def get_expense_summary(
     if current_user.organization_id:
         query = query.filter(Expense.organization_id == current_user.organization_id)
 
-    this_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month = ist_now_naive().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_start = datetime(year or this_month.year, month or this_month.month, 1) if (month or year) else this_month
 
     def _sum(status_: Optional[str] = None):

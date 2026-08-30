@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
 from core.auth import get_current_user
+from core.datetime_utils import ist_now_naive
 from models import User
 
 router = APIRouter(tags=["Reports"])
@@ -63,7 +64,6 @@ def create_scheduled_report(
     current_user: User = Depends(get_current_user),
 ):
     from models import ScheduledReport
-    from datetime import datetime
     org_id = current_user.organization_id
     report = ScheduledReport(
         organization_id=org_id,
@@ -74,8 +74,8 @@ def create_scheduled_report(
         format=payload.get("format") or "csv",
         params=payload.get("params") or {},
         is_active=payload.get("is_active", True),
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=ist_now_naive(),
+        updated_at=ist_now_naive(),
     )
     db.add(report)
     db.commit()

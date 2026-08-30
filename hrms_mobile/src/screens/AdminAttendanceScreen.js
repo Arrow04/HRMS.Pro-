@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getTimezone, todayISO, dateToISO } from '../utils/timezone';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -74,6 +75,7 @@ const STATUS_TABS = [
   { key: 'absent', label: 'Absent' },
   { key: 'late', label: 'Late' },
   { key: 'leave', label: 'On Leave' },
+  { key: 'no_checkout', label: 'No Checkout' },
 ];
 
 const STATUS_OPTIONS = [
@@ -107,7 +109,7 @@ const AdminAttendanceScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [statusTab, setStatusTab] = useState('all');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
 
   const [selectedItem, setSelectedItem] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -164,6 +166,7 @@ const AdminAttendanceScreen = ({ navigation }) => {
     if (statusTab === 'absent') return matchSearch && !(e.attendance?.check_in || e.attendance?.checkIn);
     if (statusTab === 'late') return matchSearch && e.attendance?.status === 'late';
     if (statusTab === 'leave') return matchSearch && (e.attendance?.status === 'on_leave' || e.attendance?.status === 'leave');
+    if (statusTab === 'no_checkout') return matchSearch && !!(e.attendance?.check_in || e.attendance?.checkIn) && !(e.attendance?.check_out || e.attendance?.checkOut);
     return matchSearch;
   });
 
@@ -171,6 +174,7 @@ const AdminAttendanceScreen = ({ navigation }) => {
   const absentCount = enriched.filter(e => !(e.attendance?.check_in || e.attendance?.checkIn)).length;
   const lateCount = enriched.filter(e => e.attendance?.status === 'late').length;
   const leaveCount = enriched.filter(e => e.attendance?.status === 'on_leave' || e.attendance?.status === 'leave').length;
+  const noCheckoutCount = enriched.filter(e => !!(e.attendance?.check_in || e.attendance?.checkIn) && !(e.attendance?.check_out || e.attendance?.checkOut)).length;
 
   const openDetail = (emp) => {
     const att = emp.attendance || {};
@@ -304,11 +308,11 @@ const AdminAttendanceScreen = ({ navigation }) => {
         <View style={styles.body}>
           <TouchableOpacity style={styles.datePickerRow} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
             <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-            <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+            <Text style={styles.dateText}>{new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() })}</Text>
             <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
           </TouchableOpacity>
           {showDatePicker && (
-            <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(date.toISOString().split('T')[0]); }} />
+            <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(dateToISO(date)); }} />
           )}
 
           <View style={styles.statRow}>
@@ -359,7 +363,7 @@ const AdminAttendanceScreen = ({ navigation }) => {
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                     <Text style={[styles.statusText, { color: statusColor }]}>{status}</Text>
-                    {ci && <Text style={styles.timeText}>{new Date(ci).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</Text>}
+                    {ci && <Text style={styles.timeText}>{new Date(ci).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() })}</Text>}
                   </View>
                 </TouchableOpacity>
               );
@@ -405,8 +409,8 @@ const AdminAttendanceScreen = ({ navigation }) => {
                   {[
                     { label: 'Date', value: selectedDate },
                     { label: 'Status', value: selectedItem.resolvedStatus },
-                    { label: 'Check In', value: (selectedItem.attendance?.check_in || selectedItem.attendance?.checkIn) ? new Date(selectedItem.attendance.check_in || selectedItem.attendance.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—' },
-                    { label: 'Check Out', value: (selectedItem.attendance?.check_out || selectedItem.attendance?.checkOut) ? new Date(selectedItem.attendance.check_out || selectedItem.attendance.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—' },
+                    { label: 'Check In', value: (selectedItem.attendance?.check_in || selectedItem.attendance?.checkIn) ? new Date(selectedItem.attendance.check_in || selectedItem.attendance.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() }) : '—' },
+                    { label: 'Check Out', value: (selectedItem.attendance?.check_out || selectedItem.attendance?.checkOut) ? new Date(selectedItem.attendance.check_out || selectedItem.attendance.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() }) : '—' },
                     { label: 'Work Hours', value: (selectedItem.attendance?.work_hours || selectedItem.attendance?.workHours) ? `${(selectedItem.attendance.work_hours || selectedItem.attendance.workHours).toFixed(1)}h` : '—' },
                     { label: 'Notes', value: selectedItem.attendance?.notes || '—' },
                   ].map((row, i) => (

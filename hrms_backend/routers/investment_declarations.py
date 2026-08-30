@@ -12,6 +12,7 @@ import logging
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+from core.datetime_utils import ist_now_naive
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -205,7 +206,7 @@ def submit_declaration(
     if _employee_id_for_user(db, user) and _employee_id_for_user(db, user) != decl.employee_id:
         raise HTTPException(status_code=403, detail="Not allowed to submit this declaration")
     decl.status = "submitted"
-    decl.submitted_at = datetime.utcnow()
+    decl.submitted_at = ist_now_naive()
     decl.declaration_date = decl.declaration_date or date.today()
     db.commit()
     db.refresh(decl)
@@ -222,7 +223,7 @@ def approve_declaration(
     decl = _get_decl(db, decl_id, user)
     decl.status = "approved"
     decl.approved_by = user.id
-    decl.approved_at = datetime.utcnow()
+    decl.approved_at = ist_now_naive()
     decl.notes = payload.notes or decl.notes
     db.commit()
     db.refresh(decl)
@@ -255,6 +256,6 @@ def delete_declaration(
         raise HTTPException(status_code=403, detail="Not allowed to delete this declaration")
     if decl.status == "approved":
         raise HTTPException(status_code=409, detail="Approved declarations cannot be deleted")
-    decl.deleted_at = datetime.utcnow()
+    decl.deleted_at = ist_now_naive()
     db.commit()
     return {"status": "success", "message": "Declaration deleted"}

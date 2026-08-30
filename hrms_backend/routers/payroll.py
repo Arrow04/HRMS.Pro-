@@ -24,6 +24,7 @@ from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.datetime_utils import ist_now_naive, ist_today, ist_year
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (PayrollCreate, SalaryTemplateCreate, SalaryTemplateUpdate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
@@ -41,6 +42,7 @@ router = APIRouter(tags=["Payroll"])
 
 
 
+@cached(ttl=120)
 @router.get("/api/salary-templates", tags=["Salary Templates"])
 def get_salary_templates(
     organizationId: Optional[int] = None,
@@ -258,7 +260,7 @@ def finalize_attendance(
     if lock:
         lock.status = "finalized"
         lock.finalized_by = current_user.id
-        lock.finalized_at = datetime.utcnow()
+        lock.finalized_at = ist_now_naive()
         lock.reopened_by = None
         lock.reopened_at = None
     else:
@@ -270,7 +272,7 @@ def finalize_attendance(
             year=year,
             status="finalized",
             finalized_by=current_user.id,
-            finalized_at=datetime.utcnow(),
+            finalized_at=ist_now_naive(),
         )
         db.add(lock)
     db.commit()
@@ -302,7 +304,7 @@ def reopen_attendance(
     if lock:
         lock.status = "reopened"
         lock.reopened_by = current_user.id
-        lock.reopened_at = datetime.utcnow()
+        lock.reopened_at = ist_now_naive()
         db.commit()
     return {"message": "Payroll period reopened", "finalized": False}
 
@@ -580,6 +582,7 @@ def get_payroll(
     return {"data": result, "pagination": pagination}
 
 
+@cached(ttl=60)
 @router.get("/api/payroll/stats", tags=["Payroll"])
 def get_payroll_stats(
     db: Session = Depends(get_db),
@@ -599,7 +602,7 @@ def get_payroll_stats(
         total_count = total_count.filter(Payroll.organization_id == current_user.organization_id)
 
     # Current month scope for the "paid this period" KPI
-    now = datetime.utcnow()
+    now = ist_now_naive()
     cur_q = db.query(Payroll).filter(Payroll.deleted_at.is_(None), Payroll.month == now.month, Payroll.year == now.year)
     if current_user.organization_id:
         cur_q = cur_q.filter(Payroll.organization_id == current_user.organization_id)
@@ -644,6 +647,7 @@ def create_payroll(
     db.add(pr)
     db.commit()
     db.refresh(pr)
+    invalidate_cache("hrms:tenant:*")
     return pr
 
 
@@ -752,6 +756,7 @@ def generate_payroll_endpoint(
         else:
             _email_payslip_async(payroll.id, current_user.id)
             email_sent = True
+    invalidate_cache("hrms:tenant:*")
     return {
         "message": "Payroll generated",
         "payrollId": payroll.id,
@@ -831,7 +836,7 @@ def _run_payroll_job(run_id: int):
         org_id, company_id, branch_id, email = run.organization_id, run.company_id, run.branch_id, run.email
         department_id = getattr(run, "department_id", None)
         run.status = "running"
-        run.started_at = datetime.utcnow()
+        run.started_at = ist_now_naive()
         db.commit()
 
         query = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.status == "active")
@@ -945,7 +950,7 @@ def _run_payroll_job(run_id: int):
             f = fin.query(PayrollRun).filter(PayrollRun.id == run_id).first()
             if f:
                 f.status = "completed"
-                f.finished_at = datetime.utcnow()
+                f.finished_at = ist_now_naive()
                 f.processed = processed
                 f.generated = len(generated)
                 f.skipped = len(skipped)
@@ -964,7 +969,7 @@ def _run_payroll_job(run_id: int):
             if f:
                 f.status = "failed"
                 f.error = str(e)
-                f.finished_at = datetime.utcnow()
+                f.finished_at = ist_now_naive()
                 fdb.commit()
             fdb.close()
         except Exception:
@@ -1162,7 +1167,7 @@ def process_payroll(
     if not records:
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     transitions = {"approve": "approved", "process": "processed", "mark_paid": "paid"}
     target = transitions.get(action)
     if not target:
@@ -1254,7 +1259,7 @@ def process_company_payroll(
         ))
 
     records = query.all()
-    now = datetime.utcnow()
+    now = ist_now_naive()
     for pr in records:
         # Strict workflow: draft -> pending_approval -> approved (never straight to processed/paid)
         pr.status = "approved"
@@ -1318,7 +1323,7 @@ def reset_payroll_period(
     if not records:
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     count = len(records)
     # Hard-delete the selected period's payroll so the database stays clean.
     for pr in records:
@@ -1399,7 +1404,7 @@ def void_payroll_period(
     if not records:
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     count = len(records)
     for pr in records:
         db.delete(pr)
@@ -1446,7 +1451,7 @@ def _record_run_action(db: Session, org_id: Optional[int], month: int, year: int
     ).order_by(PayrollRun.id.desc()).first()
     if not run:
         return
-    now = datetime.utcnow()
+    now = ist_now_naive()
     if action == "submit":
         run.submitted_by = user.id
         run.submitted_at = now
@@ -1481,7 +1486,7 @@ def bulk_update_payroll_status(
     if current_user.organization_id:
         records = records.filter(Payroll.organization_id == current_user.organization_id)
     records = records.all()
-    now = datetime.utcnow()
+    now = ist_now_naive()
 
     # Strict forward-only workflow
     allowed_from = {
@@ -1678,9 +1683,9 @@ def update_payroll_status(
     pr.status = payload.status
     if payload.status in ("paid", "processed"):
         pr.processed_by = current_user.id
-        pr.processed_at = datetime.utcnow()
+        pr.processed_at = ist_now_naive()
     if payload.status == "paid":
-        pr.paid_at = pr.paid_at or datetime.utcnow()
+        pr.paid_at = pr.paid_at or ist_now_naive()
         pr.payment_method = pr.payment_method or "bank_transfer"
         try:
             post_payroll_journal(db, pr, current_user)
@@ -1689,17 +1694,17 @@ def update_payroll_status(
             raise HTTPException(status_code=500, detail=f"Payroll marked paid but journal posting failed: {e}")
     if payload.status == "approved":
         pr.approved_by = current_user.id
-        pr.approved_at = datetime.utcnow()
+        pr.approved_at = ist_now_naive()
     if payload.status == "locked":
         pr.locked_by = current_user.id
-        pr.locked_at = datetime.utcnow()
+        pr.locked_at = ist_now_naive()
     if payload.status == "reopened":
         if pr.locked_by and pr.locked_by == current_user.id:
             raise HTTPException(status_code=403, detail="Maker-checker: the user who locked this payroll cannot reopen it. A different user must approve the reopen.")
         pr.reopened_by = current_user.id
-        pr.reopened_at = datetime.utcnow()
+        pr.reopened_at = ist_now_naive()
         pr.status = "paid"
-        pr.remarks = f"{pr.remarks}\n[reopened {datetime.utcnow().isoformat()} by user {current_user.id}]" if pr.remarks else f"[reopened {datetime.utcnow().isoformat()} by user {current_user.id}]"
+        pr.remarks = f"{pr.remarks}\n[reopened {ist_now_naive().isoformat()} by user {current_user.id}]" if pr.remarks else f"[reopened {ist_now_naive().isoformat()} by user {current_user.id}]"
     if payload.status == "cancelled" and was_paid:
         pr.paid_at = None
         _restore_loan_for_reversal(db, pr, current_user)
@@ -1745,12 +1750,13 @@ def update_payroll_record(
 
     for k, v in updates.items():
         setattr(pr, k, v)
-    pr.updated_at = datetime.utcnow()
+    pr.updated_at = ist_now_naive()
     db.commit()
     db.refresh(pr)
     return pr
 
 
+@cached(ttl=60)
 @router.get("/api/payroll/summary", tags=["Payroll"])
 def get_payroll_summary(
     month: Optional[int] = None,
@@ -2247,11 +2253,11 @@ def bulk_upload_payroll(
         try:
             month = int(month)
         except (TypeError, ValueError):
-            month = datetime.utcnow().month
+            month = ist_now_naive().month
         try:
             year = int(year)
         except (TypeError, ValueError):
-            year = datetime.utcnow().year
+            year = ist_now_naive().year
 
         existing = db.query(Payroll).filter(
             Payroll.deleted_at.is_(None),
@@ -2366,7 +2372,7 @@ def create_salary_revision(
     db.add(rev)
     # Keep the employee's canonical CTC/components in sync so payroll always uses
     # the latest effective rate even outside the revision window.
-    if eff >= datetime.utcnow().date() or eff > (emp.join_date or datetime.utcnow()).date():
+    if eff >= ist_now_naive().date() or eff > (emp.join_date or ist_now_naive()).date():
         emp.base_salary = float(base_salary or 0)
         if new_components:
             emp.salary_components = new_components
@@ -2448,7 +2454,7 @@ def bulk_create_salary_revision(
                 reason=reason or "Bulk revision",
             )
             db.add(rev)
-            if eff >= datetime.utcnow().date() or eff > (emp.join_date or datetime.utcnow()).date():
+            if eff >= ist_now_naive().date() or eff > (emp.join_date or ist_now_naive()).date():
                 emp.base_salary = new_base
                 if new_components:
                     emp.salary_components = new_components

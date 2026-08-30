@@ -27,6 +27,12 @@ JOBS = {
         "default_schedule": "daily",
         "default_time": "00:30",
     },
+    "attendance_auto_close": {
+        "name": "Attendance Auto-Close",
+        "description": "Flags open sessions (check-in without check-out) as clock-out violations",
+        "default_schedule": "daily",
+        "default_time": "22:30",
+    },
     "payroll_reminder": {
         "name": "Payroll Reminder",
         "description": "Sends reminders to HR if payroll hasn't been run for the current month",
@@ -61,6 +67,11 @@ def run_job(db: Session, job_id: str, org_id: Optional[int] = None) -> dict:
         result = create_backup()
         retention = run_retention_policy()
         return {"job": job_id, "status": result["status"], "backup": result, "retention": retention, "duration_ms": _elapsed(start)}
+
+    elif job_id == "attendance_auto_close":
+        from routers.maintenance import _auto_close_attendance
+        result = _auto_close_attendance(db)
+        return {"job": job_id, "status": "success", **result, "duration_ms": _elapsed(start)}
 
     elif job_id == "holiday_sync":
         if not org_id:

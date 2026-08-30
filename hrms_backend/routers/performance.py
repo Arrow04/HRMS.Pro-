@@ -27,6 +27,7 @@ from core.auth import check_role, get_current_user, get_password_hash, oauth2_sc
 from core.tenant import get_employee_in_org, org_owned, get_header_company_id
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
+from core.datetime_utils import ist_now_naive
 from core.schemas import (FeedbackCreate, GoalCreate, PerformanceReviewCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from database import Base, SessionLocal, engine, get_db
@@ -39,6 +40,7 @@ router = APIRouter(tags=["Performance"])
 
 
 
+@cached(ttl=60)
 @router.get("/api/performance/reviews", tags=["Performance"])
 def get_performance_reviews(
     employeeId: Optional[int] = None,
@@ -263,6 +265,7 @@ def create_performance_review(
     db.add(pr)
     db.commit()
     db.refresh(pr)
+    invalidate_cache("hrms:tenant:*")
     return pr
 
 
@@ -306,7 +309,7 @@ def update_performance_review(
     for key, val in data.items():
         if hasattr(pr, key) and val is not None:
             setattr(pr, key, val)
-    pr.updated_at = datetime.utcnow()
+    pr.updated_at = ist_now_naive()
     db.commit()
     db.refresh(pr)
     return pr
@@ -388,7 +391,7 @@ def create_goal(
             data.pop("end_date", None)
     if data.get("target_date") is None:
         from datetime import timedelta
-        data["target_date"] = datetime.utcnow() + timedelta(days=90)
+        data["target_date"] = ist_now_naive() + timedelta(days=90)
     if "start_date" in data and data["start_date"]:
         try:
             data["start_date"] = dateparser.parse(str(data["start_date"]))
@@ -436,7 +439,7 @@ def update_goal(
     for k, v in data.items():
         if hasattr(Goal, k) and v is not None:
             setattr(goal, k, v)
-    goal.updated_at = datetime.utcnow()
+    goal.updated_at = ist_now_naive()
     db.commit()
     return {"message": "Goal updated", "goalId": goal.id}
 
@@ -523,7 +526,7 @@ def create_feedback(
     data = convert_camel_to_snake(feedback_data.model_dump())
     emp = _load_performance_employee(db, current_user, data.get("employee_id"))
     data["reviewer_id"] = data.get("reviewer_id") or current_user.id
-    data["feedback_year"] = data.get("feedback_year") or datetime.utcnow().year
+    data["feedback_year"] = data.get("feedback_year") or ist_now_naive().year
     _apply_employee_org_fields(data, emp)
     data = {k: v for k, v in data.items() if hasattr(Feedback, k) and v is not None}
     fb = Feedback(**data)
@@ -549,11 +552,12 @@ def update_feedback(
     for k, v in data.items():
         if hasattr(Feedback, k) and v is not None:
             setattr(fb, k, v)
-    fb.updated_at = datetime.utcnow()
+    fb.updated_at = ist_now_naive()
     db.commit()
     return {"message": "Feedback updated", "feedbackId": fb.id}
 
 
+@cached(ttl=60)
 @router.get("/api/performance/stats", tags=["Performance"])
 def get_performance_stats(
     organizationId: Optional[int] = None,
@@ -718,9 +722,9 @@ def bulk_upload_performance(
         review_period = (row.get("reviewPeriod") or row.get("review_period") or "").strip() or "Annual"
         review_year = None
         try:
-            review_year = int(row.get("reviewYear") or row.get("review_year") or datetime.utcnow().year)
+            review_year = int(row.get("reviewYear") or row.get("review_year") or ist_now_naive().year)
         except (TypeError, ValueError):
-            review_year = datetime.utcnow().year
+            review_year = ist_now_naive().year
 
         existing = db.query(PerformanceReview).filter(
             PerformanceReview.employee_id == emp_id,
@@ -768,7 +772,7 @@ def delete_performance_review(
         raise HTTPException(status_code=404, detail="Performance review not found")
     if current_user.role != "superadmin":
         org_owned(pr, current_user.organization_id)
-    pr.deleted_at = datetime.utcnow()
+    pr.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Performance review deleted"}
 
@@ -784,7 +788,7 @@ def delete_goal(
         raise HTTPException(status_code=404, detail="Goal not found")
     if current_user.role != "superadmin":
         org_owned(goal, current_user.organization_id)
-    goal.deleted_at = datetime.utcnow()
+    goal.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Goal deleted"}
 
@@ -800,7 +804,7 @@ def delete_feedback(
         raise HTTPException(status_code=404, detail="Feedback not found")
     if current_user.role != "superadmin":
         org_owned(fb, current_user.organization_id)
-    fb.deleted_at = datetime.utcnow()
+    fb.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Feedback deleted"}
 

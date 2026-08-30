@@ -13,6 +13,8 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+from core.datetime_utils import ist_now_naive
 from typing import Any, Dict, List, Optional, Union
 
 import redis
@@ -81,7 +83,7 @@ async def get_branch_context(
     branch = db.query(Branch).filter(Branch.deleted_at.is_(None), Branch.id == branch_id).first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
-    now = datetime.utcnow()
+    now = ist_now_naive()
     return {
         "branch": {"id": branch.id, "name": branch.name, "location": branch.location},
         "currentTime": now.isoformat(),

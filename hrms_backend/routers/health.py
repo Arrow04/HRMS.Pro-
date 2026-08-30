@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import redis
 import os
 import time
-from datetime import datetime
+from core.datetime_utils import ist_now_naive
 
 router = APIRouter(tags=["health"])
 
@@ -23,7 +23,7 @@ async def health_check():
     """Basic health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": ist_now_naive().isoformat(),
         "service": "hrms-api"
     }
 
@@ -33,7 +33,7 @@ async def readiness_check(db: Session = Depends(get_db)):
     checks = {
         "database": False,
         "redis": False,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": ist_now_naive().isoformat()
     }
     
     # Check database
@@ -60,7 +60,7 @@ async def liveness_check():
     """Liveness check - indicates if the service is running"""
     return {
         "status": "alive",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": ist_now_naive().isoformat()
     }
 
 @router.get("/health/detailed")
@@ -104,7 +104,7 @@ async def detailed_health_check(db: Session = Depends(get_db)):
     
     return {
         "status": "healthy" if db_health["status"] == "healthy" and redis_health["status"] == "healthy" else "degraded",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": ist_now_naive().isoformat(),
         "checks": {
             "database": db_health,
             "redis": redis_health

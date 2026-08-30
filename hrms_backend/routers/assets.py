@@ -16,6 +16,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Union
 
 import redis
+
+from core.datetime_utils import ist_now_naive
 import structlog
 from dateutil import parser as dateparser
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -180,7 +182,7 @@ def delete_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
     if current_user.role != "superadmin":
         org_owned(att, current_user.organization_id)
-    att.deleted_at = datetime.utcnow()
+    att.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Asset deleted"}
 

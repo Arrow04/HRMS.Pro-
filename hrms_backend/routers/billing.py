@@ -7,6 +7,7 @@ available plans, payment history, and record a payment.
 from typing import List, Optional
 from datetime import datetime, timedelta
 
+from core.datetime_utils import ist_now_naive
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -41,7 +42,7 @@ def _get_org(db: Session, current_user: User) -> Organization:
 
 def _sub_payload(db: Session, sub: Subscription):
     plan = sub.plan
-    now = datetime.utcnow()
+    now = ist_now_naive()
     expiry = sub.next_billing_date or sub.trial_ends_at
     days_left = None
     if expiry:
@@ -113,7 +114,7 @@ def get_my_subscription(
             organization_id=org.id,
             plan_id=plan.id,
             status="trial",
-            trial_ends_at=datetime.utcnow() + timedelta(days=trial_days),
+            trial_ends_at=ist_now_naive() + timedelta(days=trial_days),
         )
         db.add(sub)
         db.commit()
@@ -175,7 +176,7 @@ def create_payment(
 
     # Extend next billing date
     cycle_days = 365 if (data.billing_cycle or sub.billing_cycle) == "yearly" else 30
-    now = datetime.utcnow()
+    now = ist_now_naive()
     base = sub.next_billing_date or now
     sub.next_billing_date = base + timedelta(days=cycle_days)
     sub.trial_ends_at = None

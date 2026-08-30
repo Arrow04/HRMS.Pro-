@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { getTimezone, dateToISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii } from '../theme';
 import { Badge, EmptyState } from '../components/UI';
+import { useAuth } from '../context/AuthContext';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
   AdminListCard, AdminFieldLabel, AdminInput, AdminPillGrid, AdminCrudSheet, AdminDetailRows, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
@@ -38,9 +40,11 @@ const emptyForm = { name: '', date: '', type: 'public', description: '' };
 
 const HolidayScreen = ({ navigation }) => {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const styles = useThemedStyles(createStyles);
   const adminStyles = useAdminStyles();
   const scrollTopBar = useScrollTopBar();
+  const isEmployee = !['admin', 'superadmin', 'hr_admin', 'hr_manager'].includes(user?.role);
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +77,7 @@ const HolidayScreen = ({ navigation }) => {
     setForm(emptyForm);
   };
 
-  const openCreate = () => {
+  const openCreate = isEmployee ? null : () => {
     setSelectedItem(null);
     setForm(emptyForm);
     setIsCreating(true);
@@ -84,7 +88,7 @@ const HolidayScreen = ({ navigation }) => {
     setSelectedItem(h);
     setForm({
       name: h.name || '',
-      date: h.date ? new Date(h.date).toISOString().split('T')[0] : '',
+      date: h.date ? dateToISO(h.date) : '',
       type: h.type || 'public',
       description: h.description || '' });
     setIsEditing(false);
@@ -143,7 +147,7 @@ const HolidayScreen = ({ navigation }) => {
         refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <AdminHeader navigation={navigation} title="Holidays" subtitle="Manage organization holidays" onAdd={openCreate} />
+        <AdminHeader navigation={navigation} title="Holidays" subtitle={isEmployee ? 'View organization holidays' : 'Manage organization holidays'} onAdd={isEmployee ? null : openCreate} />
         <View style={adminStyles.body}>
           <AdminStatRow stats={[
             { val: holidays.length, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
@@ -170,7 +174,7 @@ const HolidayScreen = ({ navigation }) => {
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={adminStyles.listTitle}>{h.name}</Text>
                     <Text style={adminStyles.listSub}>
-                      {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                      {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() })}
                     </Text>
                     {h.description ? <Text style={styles.desc} numberOfLines={1}>{h.description}</Text> : null}
                   </View>
@@ -190,30 +194,32 @@ const HolidayScreen = ({ navigation }) => {
         editTitle="Edit Holiday"
         onClose={closeModal}
         onCancelEdit={() => setIsEditing(false)}
-        isEditing={isEditing}
-        isCreating={isCreating}
-        onStartEdit={() => setIsEditing(true)}
+        isEditing={isEmployee ? false : isEditing}
+        isCreating={false}
+        onStartEdit={isEmployee ? undefined : () => setIsEditing(true)}
         onSave={handleSave}
-        onDelete={handleDelete}
+        onDelete={isEmployee ? undefined : handleDelete}
         saving={saving}
         saveLabel={isCreating ? 'Create Holiday' : 'Update Holiday'}
         viewContent={selectedItem && (
           <AdminDetailRows rows={[
             { label: 'Name', value: selectedItem.name, valueStyle: { textTransform: 'none' } },
-            { label: 'Date', value: selectedItem.date ? new Date(selectedItem.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '—', valueStyle: { textTransform: 'none' } },
+            { label: 'Date', value: selectedItem.date ? new Date(selectedItem.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
             { label: 'Type', value: selectedItem.type },
             { label: 'Description', value: selectedItem.description || '—', valueStyle: { textTransform: 'none' }, numberOfLines: 4 },
           ]} />
         )}
       >
-        <AdminFieldLabel>Name *</AdminFieldLabel>
-        <AdminInput value={form.name} onChangeText={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="Holiday name" />
-        <AdminFieldLabel>Date * (YYYY-MM-DD)</AdminFieldLabel>
-        <AdminInput value={form.date} onChangeText={(v) => setForm((f) => ({ ...f, date: v }))} placeholder="2026-01-26" />
-        <AdminFieldLabel>Type</AdminFieldLabel>
-        <AdminPillGrid options={TYPE_OPTIONS} value={form.type} onChange={(v) => setForm((f) => ({ ...f, type: v }))} />
-        <AdminFieldLabel>Description</AdminFieldLabel>
-        <AdminInput value={form.description} onChangeText={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="Optional description" multiline style={{ height: 80, textAlignVertical: 'top' }} />
+        {!isEmployee && (<>
+          <AdminFieldLabel>Name *</AdminFieldLabel>
+          <AdminInput value={form.name} onChangeText={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="Holiday name" />
+          <AdminFieldLabel>Date * (YYYY-MM-DD)</AdminFieldLabel>
+          <AdminInput value={form.date} onChangeText={(v) => setForm((f) => ({ ...f, date: v }))} placeholder="2026-01-26" />
+          <AdminFieldLabel>Type</AdminFieldLabel>
+          <AdminPillGrid options={TYPE_OPTIONS} value={form.type} onChange={(v) => setForm((f) => ({ ...f, type: v }))} />
+          <AdminFieldLabel>Description</AdminFieldLabel>
+          <AdminInput value={form.description} onChangeText={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="Optional description" multiline style={{ height: 80, textAlignVertical: 'top' }} />
+        </>)}
       </AdminCrudSheet>
     </View>
   );

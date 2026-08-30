@@ -14,6 +14,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timedelta
+from core.datetime_utils import ist_now_naive
 from typing import Any, Dict, Optional
 
 from sqlalchemy import or_
@@ -82,7 +83,7 @@ def _relative_key(
     selfie_type: str,
     when: Optional[datetime] = None,
 ) -> tuple[str, str]:
-    when = when or datetime.utcnow()
+    when = when or ist_now_naive()
     org_part = str(organization_id or "0")
     date_path = when.strftime("%Y/%m/%d")
     filename = f"{employee_id}_{selfie_type}_{uuid.uuid4().hex[:10]}.jpg"
@@ -164,7 +165,7 @@ def purge_expired_selfies(retention_days: Optional[int] = None) -> int:
     retention_days = retention_days if retention_days is not None else SELFIE_RETENTION_DAYS
     if retention_days <= 0:
         return 0
-    cutoff = datetime.utcnow().date() - timedelta(days=retention_days)
+    cutoff = ist_now_naive().date() - timedelta(days=retention_days)
     root = os.path.join(_uploads_root(), "selfies")
     if not os.path.isdir(root):
         return 0
@@ -247,7 +248,7 @@ def clear_expired_selfie_urls(db: Session, retention_days: Optional[int] = None)
     retention_days = retention_days if retention_days is not None else SELFIE_RETENTION_DAYS
     if retention_days <= 0:
         return 0
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = ist_now_naive() - timedelta(days=retention_days)
     updated = (
         db.query(Attendance)
         .filter(

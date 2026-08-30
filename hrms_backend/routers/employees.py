@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import asc, func
 
 from core.auth import check_role, get_current_user, get_password_hash
+from core.datetime_utils import ist_now_naive
 from core.document_retention import EMPLOYEE_DOC_MAX_UPLOAD_BYTES
 from core.tenant import get_header_company_id
 
@@ -1187,13 +1188,13 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
             EmployeeBranchAssignment.employee_id == employee.id,
             EmployeeBranchAssignment.status == "active",
             EmployeeBranchAssignment.deleted_at.is_(None),
-        ).update({"deleted_at": datetime.utcnow(), "status": "inactive"})
+        ).update({"deleted_at": ist_now_naive(), "status": "inactive"})
         for idx, bid in enumerate(branch_ids):
             db.add(EmployeeBranchAssignment(
                 employee_id=employee.id,
                 branch_id=bid,
                 is_primary=(idx == 0),
-                start_date=datetime.utcnow(),
+                start_date=ist_now_naive(),
                 status="active",
             ))
         if branches:
@@ -1472,7 +1473,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
             if user:
                 user.password_hash = get_password_hash(snake_case_data["password"])
 
-    employee.updated_at = datetime.utcnow()
+    employee.updated_at = ist_now_naive()
     db.commit()
     _bust_employee_cache(current_user)
 
@@ -1487,7 +1488,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
                 ExitRecord.archived_at.is_(None),
             ).first()
             if not existing:
-                today = datetime.utcnow()
+                today = ist_now_naive()
                 er = ExitRecord(
                     employee_id=employee.id,
                     organization_id=employee.organization_id,
@@ -1533,7 +1534,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
                     skills_required=employee.skills,
                     vacancy_count=1,
                     status="open",
-                    published_date=datetime.utcnow(),
+                    published_date=ist_now_naive(),
                 )
                 db.add(jo)
                 db.commit()
@@ -1664,7 +1665,7 @@ def delete_employee(employee_id: int, db: Session = Depends(get_db), current_use
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     employee.status = "terminated"
-    employee.termination_date = datetime.utcnow()
+    employee.termination_date = ist_now_naive()
     db.commit()
     db.refresh(employee)
     _bust_employee_cache(current_user)
@@ -1988,7 +1989,7 @@ def bulk_upload_employees(
                         existing.branches.append(branch)
                 if department_id:
                     existing.department_id = department_id
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = ist_now_naive()
                 updated += 1
             else:
                 join_date = None
@@ -1996,9 +1997,9 @@ def bulk_upload_employees(
                     try:
                         join_date = pd.to_datetime(row['join_date']).to_pydatetime()
                     except Exception as exc:
-                        join_date = datetime.utcnow()
+                        join_date = ist_now_naive()
                 else:
-                    join_date = datetime.utcnow()
+                    join_date = ist_now_naive()
 
                 date_of_birth = None
                 if 'date_of_birth' in row and pd.notna(row['date_of_birth']):
@@ -2057,7 +2058,7 @@ def get_employee_performance(
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     target_month = month or now.month
     target_year = year or now.year
     start_date = datetime(target_year, target_month, 1)

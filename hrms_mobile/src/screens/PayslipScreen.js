@@ -48,6 +48,7 @@ const PayslipScreen = ({ navigation }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [downloadingId, setDownloadingId] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [detailTab, setDetailTab] = useState('earnings');
 
   const fetchData = useCallback(async () => {
     if (!employeeId) {
@@ -94,12 +95,12 @@ const PayslipScreen = ({ navigation }) => {
 
   const monthlyData = useMemo(() => MONTHS.map((m, i) => {
     const recs = payslips.filter((p) => payslipMonthIndex(p) === i);
-    return { month: m, net: recs.reduce((s, p) => s + (p.netSalary || p.net || 0), 0) };
+    return { month: m, net: recs.reduce((s, p) => s + (p.netSalary || 0), 0) };
   }), [payslips]);
 
-  const totalGross = payslips.reduce((s, p) => s + (p.grossSalary || p.gross || 0), 0);
-  const totalDeductions = payslips.reduce((s, p) => s + (p.totalDeductions || p.deductions || 0), 0);
-  const totalNet = payslips.reduce((s, p) => s + (p.netSalary || p.net || 0), 0);
+  const totalGross = payslips.reduce((s, p) => s + (p.grossSalary || 0), 0);
+  const totalDeductions = payslips.reduce((s, p) => s + (p.totalDeductions || 0), 0);
+  const totalNet = payslips.reduce((s, p) => s + (p.netSalary || 0), 0);
   const avgNet = payslips.length ? Math.round(totalNet / payslips.length) : 0;
 
   const sortedPayslips = [...payslips].sort(
@@ -126,7 +127,7 @@ const PayslipScreen = ({ navigation }) => {
         />
 
         <View style={adminStyles.body}>
-          <View style={adminStyles.datePickerRow}>
+          <View style={[adminStyles.datePickerRow, { gap: 24 }]}>
             <TouchableOpacity onPress={() => setSelectedYear((y) => y - 1)} style={adminStyles.iconBtn}>
               <Ionicons name="chevron-back" size={20} color={colors.text} />
             </TouchableOpacity>
@@ -144,8 +145,6 @@ const PayslipScreen = ({ navigation }) => {
             <EmptyState icon="👤" title="No employee profile" message="Your account is not linked to an employee record." />
           ) : loading ? (
             <View>{[1, 2, 3].map((i) => <View key={i} style={adminStyles.skeleton} />)}</View>
-          ) : payslips.length === 0 ? (
-            <EmptyState icon="💳" title="No payslips" message={`No salary statements for ${selectedYear}.`} />
           ) : (
             <>
               <LinearGradient
@@ -183,37 +182,42 @@ const PayslipScreen = ({ navigation }) => {
                 style={{
                   backgroundColor: colors.surface,
                   borderRadius: radii.lg,
-                  padding: 16,
+                  paddingTop: 16,
+                  paddingLeft: 16,
+                  paddingRight: 16,
+                  paddingBottom: 4,
                   marginBottom: 16,
                   borderWidth: 1,
-                  borderColor: colors.borderLight }}
+                  borderColor: colors.borderLight,
+                  overflow: 'visible' }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <View>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Net Pay Trend</Text>
-                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{selectedYear} monthly breakdown</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <View>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Net Pay Trend</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{selectedYear} monthly breakdown</Text>
+                      </View>
+                      <Ionicons name="trending-up" size={20} color={colors.success} />
+                    </View>
+                    <TrendLine
+                      data={monthlyData.map((m) => m.net)}
+                      labels={monthlyData.map((m) => m.month)}
+                      height={180}
+                      color="#10B981"
+                      bare
+                    />
                   </View>
-                  <Ionicons name="trending-up" size={20} color={colors.success} />
-                </View>
-                <TrendLine
-                  data={monthlyData.map((m) => m.net)}
-                  labels={monthlyData.map((m) => m.month)}
-                  height={150}
-                  color="#10B981"
-                  bare
-                  showXLabels={false}
-                />
-              </View>
 
               <Text style={adminStyles.sectionLabel}>Statements</Text>
-              {sortedPayslips.map((item) => {
-                const monthIdx = payslipMonthIndex(item);
-                const net = item.netSalary || item.net || 0;
+              {MONTHS_FULL.map((month, i) => {
+                const rec = sortedPayslips.find((p) => payslipMonthIndex(p) === i);
+                const hasData = !!rec;
+                const net = hasData ? (rec.netSalary || 0) : 0;
+                const gross = hasData ? (rec.grossSalary || 0) : 0;
                 return (
                   <TouchableOpacity
-                    key={item.id}
-                    activeOpacity={0.88}
-                    onPress={() => setSelectedItem(item)}
+                    key={month}
+                    activeOpacity={hasData ? 0.88 : 1}
+                    onPress={() => hasData && setSelectedItem(rec)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -222,28 +226,48 @@ const PayslipScreen = ({ navigation }) => {
                       padding: 14,
                       marginBottom: 8,
                       borderWidth: 1,
-                      borderColor: colors.borderLight }}
+                      borderColor: colors.borderLight,
+                      opacity: hasData ? 1 : 0.5 }}
                   >
                     <LinearGradient
-                      colors={['#059669', '#10B981']}
+                      colors={hasData ? ['#059669', '#10B981'] : ['#9CA3AF', '#D1D5DB']}
                       style={{
-                        width: 48,
-                        height: 48,
+                        width: 60,
+                        height: 56,
                         borderRadius: 14,
                         alignItems: 'center',
                         justifyContent: 'center' }}
                     >
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFF' }}>{MONTHS[monthIdx]}</Text>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#FFF', textTransform: 'uppercase', textAlign: 'center' }}>{MONTHS_FULL[i]}</Text>
                     </LinearGradient>
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={adminStyles.listTitle}>{periodLabel(item)}</Text>
+                      <Text style={adminStyles.listTitle}>{month} {selectedYear}</Text>
                       <Text style={adminStyles.listSub}>Net {formatCurrency(net)}</Text>
-                      <Text style={adminStyles.listSub}>
-                        Gross {formatCurrency(item.grossSalary || item.gross || 0)}
-                      </Text>
+                      <Text style={adminStyles.listSub}>Gross {formatCurrency(gross)}</Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Badge status={item.status || 'paid'} size="sm" />
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      {hasData ? (
+                        <>
+                          <Badge status={rec.status || 'paid'} size="sm" />
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => downloadPayslip(rec)}
+                            disabled={downloadingId === rec.id}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primarySurface, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}
+                          >
+                            {downloadingId === rec.id ? (
+                              <ActivityIndicator size={10} color={colors.primary} />
+                            ) : (
+                              <Ionicons name="download-outline" size={12} color={colors.primary} />
+                            )}
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary }}>
+                              {downloadingId === rec.id ? '...' : 'PDF'}
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <Text style={{ fontSize: 11, color: colors.textTertiary }}>₹0</Text>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -257,7 +281,7 @@ const PayslipScreen = ({ navigation }) => {
       <AdminDetailSheet
         visible={!!selectedItem}
         title={selectedItem ? periodLabel(selectedItem) : 'Payslip'}
-        onClose={() => setSelectedItem(null)}
+        onClose={() => { setSelectedItem(null); setDetailTab('earnings'); }}
       >
         {selectedItem && (
           <>
@@ -265,30 +289,116 @@ const PayslipScreen = ({ navigation }) => {
               colors={['#059669', '#10B981']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={{ borderRadius: radii.lg, padding: 16, marginBottom: 16 }}
+              style={{ borderRadius: radii.lg, padding: 16, marginBottom: 12 }}
             >
               <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)' }}>NET PAY</Text>
               <Text style={{ fontSize: 28, fontWeight: '800', color: '#FFF', marginTop: 4 }}>
-                {formatCurrency(selectedItem.netSalary || selectedItem.net || 0)}
+                {formatCurrency(selectedItem.netSalary || 0)}
               </Text>
             </LinearGradient>
 
-            <AdminDetailRows
-              rows={[
-                { label: 'Status', value: selectedItem.status || 'paid', valueStyle: { color: '#059669' } },
-                { label: 'Basic salary', value: formatCurrency(selectedItem.basicSalary || selectedItem.basic || 0), valueStyle: { textTransform: 'none' } },
-                { label: 'HRA', value: formatCurrency(selectedItem.hra || 0), valueStyle: { textTransform: 'none' } },
-                { label: 'Gross pay', value: formatCurrency(selectedItem.grossSalary || selectedItem.gross || 0), valueStyle: { textTransform: 'none' } },
-                {
-                  label: 'Deductions',
-                  value: formatCurrency(selectedItem.totalDeductions || selectedItem.deductions || 0),
-                  valueStyle: { color: '#DC2626', textTransform: 'none' } },
-                { label: 'Net pay', value: formatCurrency(selectedItem.netSalary || selectedItem.net || 0), valueStyle: { color: '#059669', textTransform: 'none' } },
-              ]}
-            />
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+              {[
+                { key: 'earnings', label: 'Earnings', color: '#059669' },
+                { key: 'deductions', label: 'Deductions', color: '#DC2626' },
+                { key: 'takehome', label: 'Take Home', color: '#2563EB' },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.key}
+                  onPress={() => setDetailTab(t.key)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: detailTab === t.key ? t.color : colors.surfaceSecondary,
+                    borderWidth: 1,
+                    borderColor: detailTab === t.key ? t.color : colors.borderLight,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: detailTab === t.key ? '#FFF' : colors.textTertiary }}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {detailTab === 'earnings' && (
+              <View style={{ gap: 10 }}>
+                {[
+                  { label: 'Basic salary', val: selectedItem.basicSalary || selectedItem.basic },
+                  { label: 'HRA', val: selectedItem.hra },
+                  { label: 'Conveyance', val: selectedItem.conveyance || selectedItem.conveyanceAllowance },
+                  { label: 'Medical', val: selectedItem.medical || selectedItem.medicalAllowance },
+                  { label: 'Special allowance', val: selectedItem.specialAllowance || selectedItem.special },
+                  { label: 'Other allowances', val: selectedItem.otherAllowances || selectedItem.allowances },
+                  { label: 'Overtime', val: selectedItem.overtime || selectedItem.overtimePay },
+                ].map((row) => (
+                  <View key={row.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>{row.label}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: (row.val ?? 0) > 0 ? colors.text : colors.textTertiary }}>
+                      {(row.val ?? 0) > 0 ? formatCurrency(row.val) : '—'}
+                    </Text>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#059669' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>Total Earnings</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#059669' }}>
+                    {formatCurrency((selectedItem.basicSalary || 0) + (selectedItem.hra || 0) + (selectedItem.conveyance || 0) + (selectedItem.medical || 0) + (selectedItem.specialAllowance || 0) + (selectedItem.otherAllowances || 0) + (selectedItem.overtime || 0) || selectedItem.grossSalary || 0)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {detailTab === 'deductions' && (
+              <View style={{ gap: 10 }}>
+                {[
+                  { label: 'PF', val: selectedItem.pf || selectedItem.providentFund },
+                  { label: 'ESI', val: selectedItem.esi },
+                  { label: 'Professional tax', val: selectedItem.professionalTax || selectedItem.pt },
+                  { label: 'Income tax (TDS)', val: selectedItem.tds || selectedItem.incomeTax },
+                  { label: 'Loan deduction', val: selectedItem.loanDeduction || selectedItem.loan },
+                  { label: 'Other deductions', val: selectedItem.otherDeductions || selectedItem.deductionsOther },
+                ].map((row) => (
+                  <View key={row.label} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>{row.label}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: (row.val ?? 0) > 0 ? '#FFF' : colors.textTertiary }}>
+                      {(row.val ?? 0) > 0 ? formatCurrency(row.val) : '—'}
+                    </Text>
+                  </View>
+                ))}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#DC2626' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>Total Deductions</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#DC2626' }}>
+                    {formatCurrency((selectedItem.pf || 0) + (selectedItem.esi || 0) + (selectedItem.professionalTax || 0) + (selectedItem.tds || 0) + (selectedItem.loanDeduction || 0) + (selectedItem.otherDeductions || 0) || selectedItem.totalDeductions || 0)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {detailTab === 'takehome' && (
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                  <Text style={{ fontSize: 13, color: '#059669' }}>Total earnings</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: (selectedItem.grossSalary || 0) > 0 ? '#059669' : colors.textTertiary }}>
+                    {(selectedItem.grossSalary || 0) > 0 ? formatCurrency(selectedItem.grossSalary || 0) : '—'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                  <Text style={{ fontSize: 13, color: '#DC2626' }}>Total deductions</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: (selectedItem.totalDeductions || 0) > 0 ? '#DC2626' : colors.textTertiary }}>
+                    {(selectedItem.totalDeductions || 0) > 0 ? formatCurrency(selectedItem.totalDeductions || 0) : '—'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 2, borderTopColor: '#2563EB' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>Take Home</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#2563EB' }}>
+                    {formatCurrency(selectedItem.netSalary || 0)}
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity
-              style={[adminStyles.saveBtn, downloadingId === selectedItem.id && { opacity: 0.6 }]}
+              style={[adminStyles.saveBtn, { marginTop: 16 }, downloadingId === selectedItem.id && { opacity: 0.6 }]}
               onPress={() => downloadPayslip(selectedItem)}
               disabled={downloadingId === selectedItem.id}
             >

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { getTimezone } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Avatar, EmptyState } from '../components/UI';
@@ -179,7 +180,7 @@ const PerformanceScreen = ({ navigation }) => {
         { label: 'From', value: selectedItem.reviewer_name || 'N/A', valueStyle: { textTransform: 'none' } },
         { label: 'To', value: selectedItem.employee_name || 'N/A', valueStyle: { textTransform: 'none' } },
         { label: 'Feedback', value: selectedItem.content || selectedItem.text, valueStyle: { textTransform: 'none' }, numberOfLines: 6 },
-        { label: 'Date', value: selectedItem.created_at ? new Date(selectedItem.created_at).toLocaleDateString() : '—', valueStyle: { textTransform: 'none' } },
+        { label: 'Date', value: selectedItem.created_at ? new Date(selectedItem.created_at).toLocaleDateString('en-US', { timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
       ]} />
     );
   };

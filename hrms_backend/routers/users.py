@@ -1,5 +1,6 @@
 from typing import List, Optional
 from datetime import datetime, date, time
+from core.datetime_utils import ist_now_naive
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -416,6 +417,6 @@ def delete_user(
         )
 
     # Soft delete - set deleted_at timestamp
-    user.deleted_at = datetime.utcnow()
+    user.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "User deleted successfully", "userId": user.id}

@@ -1,5 +1,6 @@
-from datetime import datetime
 from typing import Optional, Union
+
+from core.datetime_utils import ist_now_naive
 import csv
 import io
 import os
@@ -231,7 +232,7 @@ def update_department(
     if "status" in snake_case_data:
         department.status = snake_case_data["status"]
     
-    department.updated_at = datetime.utcnow()
+    department.updated_at = ist_now_naive()
     db.commit()
     db.refresh(department)
 
@@ -307,7 +308,7 @@ def toggle_department_status(
     old_status = department.status
     new_status = status_data.get("status", old_status)
     department.status = new_status
-    department.updated_at = datetime.utcnow()
+    department.updated_at = ist_now_naive()
     db.commit()
     db.refresh(department)
 
@@ -528,7 +529,7 @@ def update_company(
         company.gst_no = snake_case_data["gst_no"]
     if "logo" in company_data:
         company.logo = _save_company_logo(company_data["logo"], comp_id)
-    company.updated_at = datetime.utcnow()
+    company.updated_at = ist_now_naive()
     
     db.commit()
     db.refresh(company)
@@ -605,7 +606,7 @@ def toggle_company_status(
     old_status = company.status
     new_status = status_data.get("status", old_status)
     company.status = new_status
-    company.updated_at = datetime.utcnow()
+    company.updated_at = ist_now_naive()
     db.commit()
     db.refresh(company)
 
@@ -871,7 +872,7 @@ def update_branch(
     if "status" in snake_case_data:
         branch.status = snake_case_data["status"]
     
-    branch.updated_at = datetime.utcnow()
+    branch.updated_at = ist_now_naive()
     db.commit()
     db.refresh(branch)
 
@@ -947,7 +948,7 @@ def toggle_branch_status(
     old_status = branch.status
     new_status = status_data.get("status", old_status)
     branch.status = new_status
-    branch.updated_at = datetime.utcnow()
+    branch.updated_at = ist_now_naive()
     db.commit()
     db.refresh(branch)
 
@@ -1118,7 +1119,7 @@ def update_designation(
     if "organization_id" in snake_case_data:
         designation.organization_id = (current_user.organization_id if current_user.role != "superadmin" else snake_case_data["organization_id"])
     
-    designation.updated_at = datetime.utcnow()
+    designation.updated_at = ist_now_naive()
     db.commit()
     db.refresh(designation)
 
@@ -1194,7 +1195,7 @@ def toggle_designation_status(
     old_status = designation.status
     new_status = status_data.get("status", old_status)
     designation.status = new_status
-    designation.updated_at = datetime.utcnow()
+    designation.updated_at = ist_now_naive()
     db.commit()
     db.refresh(designation)
 
@@ -1335,7 +1336,7 @@ def update_organization(
                 else:
                     current[k] = v
             org.settings = current
-    org.updated_at = datetime.utcnow()
+    org.updated_at = ist_now_naive()
     
     db.commit()
     db.refresh(org)
@@ -1497,7 +1498,7 @@ def bulk_upload_departments(
                 existing.company_id = int(row["company_id"]) if pd.notna(row.get("company_id")) else existing.company_id
                 existing.manager_id = int(row["manager_id"]) if pd.notna(row.get("manager_id")) else existing.manager_id
                 existing.status = str(row.get("status", "active")) if pd.notna(row.get("status")) else existing.status
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = ist_now_naive()
                 updated += 1
             else:
                 dept = Department(
@@ -1626,7 +1627,7 @@ def bulk_upload_companies(
                 existing.logo = str(row.get("logo", "")) if pd.notna(row.get("logo")) else existing.logo
                 existing.organization_id = effective_org
                 existing.status = str(row.get("status", "active")) if pd.notna(row.get("status")) else existing.status
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = ist_now_naive()
                 updated += 1
             else:
                 company = Company(
@@ -1714,7 +1715,7 @@ def bulk_upload_branches(
                 existing.company_id = int(row["company_id"]) if pd.notna(row.get("company_id")) else existing.company_id
                 existing.organization_id = effective_org
                 existing.status = str(row.get("status", "active")) if pd.notna(row.get("status")) else existing.status
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = ist_now_naive()
                 updated += 1
             else:
                 branch = Branch(
@@ -1845,7 +1846,7 @@ def bulk_upload_designations(
                 existing.company_id = int(row["company_id"]) if pd.notna(row.get("company_id")) else existing.company_id
                 existing.organization_id = effective_org
                 existing.status = str(row.get("status", "active")) if pd.notna(row.get("status")) else existing.status
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = ist_now_naive()
                 updated += 1
             else:
                 designation = Designation(

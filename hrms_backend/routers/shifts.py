@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime, timedelta
+from core.datetime_utils import ist_now_naive
 from pydantic import BaseModel
 
 from database import get_db
@@ -156,7 +157,7 @@ def update_shift(
             continue
         setattr(db_shift, key, value)
     
-    db_shift.updated_at = datetime.utcnow()
+    db_shift.updated_at = ist_now_naive()
     db.commit()
     db.refresh(db_shift)
     return db_shift
@@ -175,7 +176,7 @@ def delete_shift(
     if current_user.role != "superadmin":
         org_owned(db_shift, current_user.organization_id)
     db_shift.status = "inactive"
-    db_shift.updated_at = datetime.utcnow()
+    db_shift.updated_at = ist_now_naive()
     db.commit()
     return {"message": "Shift deactivated successfully"}
 
@@ -259,7 +260,7 @@ def assign_shift(
         existing.specific_date = specific_date
         existing.notes = assignment.notes
         existing.status = "scheduled"
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = ist_now_naive()
     else:
         # Create new
         new_roster = DutyRoster(

@@ -17,11 +17,14 @@ const GRID_ITEM = (W - 40 - 16 * 2) / 3;
 
 const MY_HR_ITEMS = [
   { icon: 'calendar-outline', label: 'Leave', screen: 'Leaves', color: '#4F46E5' },
-  { icon: 'time-outline', label: 'History', screen: 'AttendanceHistory', color: '#3B82F6' },
-  { icon: 'card-outline', label: 'Payslips', screen: 'Payslips', color: '#059669' },
-  { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
+  { icon: 'time-outline', label: 'Attendance', screen: 'AttendanceHistory', color: '#3B82F6' },
   { icon: 'calendar-clear-outline', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
+  { icon: 'card-outline', label: 'Payroll', screen: 'Payslips', color: '#059669' },
   { icon: 'star-outline', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
+  { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
+  { icon: 'document-text-outline', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
+  { icon: 'copy-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
+  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1' },
 ];
 
 const ADMIN_ITEMS = [
@@ -39,7 +42,7 @@ const ADMIN_ITEMS = [
   { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
   { icon: 'exit-outline', label: 'Exit Mgmt', screen: 'ExitMgmt', color: '#DC2626' },
   { icon: 'bar-chart-outline', label: 'Reports', screen: 'Reports', color: '#4F46E5' },
-  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#334155' },
+  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1' },
 ];
 
 function MenuGrid({ items, navigation, colors, isDark }) {
@@ -157,7 +160,7 @@ const MoreScreen = ({ navigation }) => {
 
         <View style={themed.body}>
           <View style={themed.section}>
-            <Text style={[themed.sectionTitle, { color: colors.textTertiary }]}>My HR</Text>
+            <Text style={[themed.sectionTitle, { color: colors.textTertiary }]}>Core HR</Text>
             <MenuGrid items={MY_HR_ITEMS} navigation={navigation} colors={colors} isDark={isDark} />
           </View>
 
@@ -174,9 +177,9 @@ const MoreScreen = ({ navigation }) => {
 
       <Animated.View style={[themed.fab, { bottom: TAB_BAR_CLEARANCE + 8, transform: [{ scale: scaleAnim }] }]}>
         <TouchableOpacity style={themed.fabBtn} onPress={handleChatPress} activeOpacity={0.85}>
-          <Ionicons name="chatbubble-ellipses" size={26} color="#FFF" />
+          <Ionicons name="sparkles" size={26} color="#FFF" />
         </TouchableOpacity>
-        <Text style={themed.fabLabel}>Chat</Text>
+        <Text style={themed.fabLabel}>HR Assistant!</Text>
       </Animated.View>
     </View>
   );

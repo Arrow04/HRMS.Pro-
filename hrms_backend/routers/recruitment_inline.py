@@ -13,6 +13,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
+from core.datetime_utils import ist_now_naive
 from typing import Any, Dict, List, Optional, Union
 
 import redis
@@ -690,7 +691,7 @@ def update_candidate_status(
     reason = status_data.get("reason") or status_data.get("rejectionReason") or status_data.get("comments") or ""
     # Track rejection records so rejected candidates are stored for later review
     if cand.candidate_status == "rejected" and old_status != "rejected":
-        cand.rejected_at = datetime.utcnow()
+        cand.rejected_at = ist_now_naive()
         cand.rejection_reason = reason
     elif cand.candidate_status != "rejected":
         cand.rejected_at = None
@@ -739,7 +740,7 @@ def bulk_update_candidate_status(
         raise HTTPException(status_code=400, detail="status is required")
     reason = (payload.get("reason") or "").strip()
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     updated = 0
     for candidate_id in ids:
         cand = db.query(Candidate).filter(Candidate.id == candidate_id).first()
@@ -885,7 +886,7 @@ def update_interview_status(
         if interview.status == "completed":
             if decision == "reject":
                 cand.candidate_status = "rejected"
-                cand.rejected_at = datetime.utcnow()
+                cand.rejected_at = ist_now_naive()
                 cand.rejection_reason = status_data.get("reason") or "Rejected after interview"
             elif decision == "select":
                 # Is there another round pending for this candidate?
@@ -910,7 +911,7 @@ def update_interview_status(
             cand.candidate_status = "offered"
         elif decision == "reject":
             cand.candidate_status = "rejected"
-            cand.rejected_at = datetime.utcnow()
+            cand.rejected_at = ist_now_naive()
             cand.rejection_reason = status_data.get("reason") or "Rejected after interview"
         db.commit()
 
@@ -976,7 +977,7 @@ def bulk_update_interview_status(
             cand.candidate_status = "offered"
         db.commit()
     elif decision == "reject" and updated:
-        now = datetime.utcnow()
+        now = ist_now_naive()
         for interview_id in ids:
             interview = db.query(Interview).filter(Interview.id == interview_id).first()
             if not interview or not interview.candidate_id:
@@ -1225,14 +1226,14 @@ def schedule_interview(
         sa_val = data.pop("scheduled_at")
         # Guard against malformed/empty date strings (e.g. "T") from the UI.
         if isinstance(sa_val, str) and sa_val.strip() in ("", "T"):
-            data["date"] = datetime.utcnow()
+            data["date"] = ist_now_naive()
         else:
             data["date"] = sa_val
     elif "scheduled_at" in data:
         data.pop("scheduled_at", None)
     data = {k: v for k, v in data.items() if hasattr(Interview, k)}
     if "date" not in data or data.get("date") in (None, ""):
-        data["date"] = datetime.utcnow()
+        data["date"] = ist_now_naive()
     if current_user.role != "superadmin":
         _load_candidate_in_org(db, data.get("candidate_id"), current_user)
     interview = Interview(**data)
@@ -1261,7 +1262,7 @@ def onboard_candidate(
     if cand.employee_id:
         raise HTTPException(status_code=400, detail="Candidate already onboarded")
 
-    join_date = cand.hired_date or datetime.utcnow()
+    join_date = cand.hired_date or ist_now_naive()
     if payload.get("joinDate"):
         try:
             join_date = dateparser.parse(str(payload["joinDate"]))

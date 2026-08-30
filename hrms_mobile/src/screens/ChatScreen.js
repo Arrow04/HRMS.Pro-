@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import api from '../services/api';
+import { getTimezone } from '../utils/timezone';
 import { useAuth } from '../context/AuthContext';
 import { radii, spacing, shadows } from '../theme';
 import { bannerShellStyle } from '../components/AdminScreenKit';
@@ -249,7 +250,7 @@ const TypingIndicator = ({ styles }) => {
 
 const formatTime = (id) => {
   const d = new Date(id);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() });
 };
 
 const ChatScreen = () => {

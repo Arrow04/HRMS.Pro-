@@ -27,6 +27,7 @@ from core.auth import check_role, get_current_user, get_password_hash, oauth2_sc
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
+from core.datetime_utils import ist_now_naive
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from database import Base, SessionLocal, engine, get_db
 from models import (ActivityLog, Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, ReportSchedule, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
@@ -55,7 +56,7 @@ def get_reports_overview(
     total_employees = emp_query.filter(Employee.deleted_at.is_(None)).count()
     active_employees = emp_query.filter(Employee.status == "active").count()
 
-    now = datetime.utcnow()
+    now = ist_now_naive()
     month_start = now.replace(day=1).strftime("%Y-%m-%d")
     next_month = now.month % 12 + 1
     month_end = now.replace(month=next_month, day=1) - timedelta(days=1)
@@ -91,7 +92,7 @@ def get_reports_live(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = ist_now_naive().strftime("%Y-%m-%d")
     active_q = db.query(User).filter(User.is_active == True)
     checked_in_q = db.query(Attendance).filter(
         Attendance.deleted_at.is_(None),
@@ -107,7 +108,7 @@ def get_reports_live(
     return {
         "activeUsers": active_users,
         "currentlyCheckedIn": checked_in,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": ist_now_naive().isoformat(),
     }
 
 
@@ -387,7 +388,7 @@ def create_report_schedule(
         format=schedule_data.get("format") or "PDF",
         email_subject=schedule_data.get("subject"),
         include_body=schedule_data.get("includeBody", False),
-        next_run=datetime.utcnow() + timedelta(days=1),
+        next_run=ist_now_naive() + timedelta(days=1),
         enabled=True,
         created_by=current_user.id,
     )
@@ -538,13 +539,13 @@ def run_report_schedule(
         report_name=schedule.report_name,
         status="in_progress",
         format=schedule.format,
-        execution_time=datetime.utcnow(),
+        execution_time=ist_now_naive(),
         created_by=current_user.id,
     )
     db.add(log)
     # compute next run
     try:
-        schedule.next_run = datetime.utcnow() + timedelta(days=1)
+        schedule.next_run = ist_now_naive() + timedelta(days=1)
     except Exception:
         pass
     db.commit()
@@ -576,7 +577,7 @@ def get_dashboard_timeseries(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    now = datetime.utcnow()
+    now = ist_now_naive()
     months = []
     for i in range(6):
         m = now.month - i
