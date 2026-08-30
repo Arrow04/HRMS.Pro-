@@ -295,9 +295,9 @@ app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 cors_raw = settings.CORS_ORIGINS if settings.APP_ENV == "production" else "*"
 if isinstance(cors_raw, str):
-    cors_origins = [o.strip() for o in cors_raw.split(",") if o.strip()] if cors_raw != "*" else ["*"]
+    cors_origins = [o.strip().rstrip("/") for o in cors_raw.split(",") if o.strip()] if cors_raw != "*" else ["*"]
 else:
-    cors_origins = cors_raw
+    cors_origins = [o.rstrip("/") for o in cors_raw] if isinstance(cors_raw, list) else cors_raw
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
