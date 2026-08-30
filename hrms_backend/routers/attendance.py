@@ -121,8 +121,10 @@ def get_attendance(
         if emp:
             query = query.filter(Attendance.employee_id == emp.id)
 
-    # Default to today if no dates provided
-    now = datetime.utcnow()
+    # Default to today (IST) if no dates provided
+    from datetime import timezone as _tz_def
+    IST_DEF = _tz_def(timedelta(hours=5, minutes=30))
+    now = datetime.now(IST_DEF)
     if not startDate:
         startDate = now.strftime("%Y-%m-%d")
     if not endDate:
@@ -608,7 +610,7 @@ def check_in(
 
     from datetime import timezone as _tz
     IST = _tz(timedelta(hours=5, minutes=30))
-    now = datetime.now(IST)
+    now = datetime.now(IST).replace(tzinfo=None)
     att = Attendance(
         employee_id=emp.id,
         organization_id=current_user.organization_id,
@@ -716,7 +718,7 @@ def check_out(
 
     from datetime import timezone as _tz2
     IST2 = _tz2(timedelta(hours=5, minutes=30))
-    now = datetime.now(IST2)
+    now = datetime.now(IST2).replace(tzinfo=None)
     att.check_out = now
     att.check_out_latitude = request_data.latitude
     att.check_out_longitude = request_data.longitude
