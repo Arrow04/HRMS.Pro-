@@ -44,6 +44,16 @@ from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Attendance"])
 
+IST_SUFFIX = "+05:30"
+
+def _ist_iso(dt):
+    if dt is None:
+        return None
+    s = dt.isoformat()
+    if "+" in s or "Z" in s:
+        return s
+    return s + IST_SUFFIX
+
 
 def _resolve_punch_employee(db: Session, current_user: User) -> Optional[Employee]:
     """Single round-trip employee lookup for check-in/out (branches eager-loaded)."""
@@ -68,6 +78,7 @@ def _allows_multiple_punches(user: User) -> bool:
     return user.role in _ADMIN_MULTI_PUNCH_ROLES
 
 
+@cached(ttl=60)
 @router.get("/api/attendance", tags=["Attendance"])
 def get_attendance(
     employeeId: Optional[int] = None,
@@ -160,10 +171,11 @@ def get_attendance(
             "designation": emp_info.get("designation"),
             "organization_id": r.organization_id, "company_id": r.company_id,
             "department_id": r.department_id, "shift_id": r.shift_id,
-            "date": r.date.isoformat() if hasattr(r.date, 'isoformat') else str(r.date)[:10],
-            "check_in": r.check_in.isoformat() if r.check_in else None,
-            "check_out": r.check_out.isoformat() if r.check_out else None,
+            "date": _ist_iso(r.date) if hasattr(r.date, 'isoformat') else str(r.date)[:10] if r.date else None,
+            "check_in": _ist_iso(r.check_in),
+            "check_out": _ist_iso(r.check_out),
             "status": r.status, "work_hours": r.work_hours,
+            "clock_out_violation": bool(r.check_in and not r.check_out),
             "scheduled_hours": r.scheduled_hours, "overtime_hours": r.overtime_hours,
             "break_hours": r.break_hours, "is_late": r.is_late,
             "late_minutes": r.late_minutes, "is_early_departure": r.is_early_departure,
@@ -180,22 +192,22 @@ def get_attendance(
             "user_agent": r.user_agent, "is_work_from_home": r.is_work_from_home,
             "wfh_approval_id": r.wfh_approval_id, "wfh_location": r.wfh_location,
             "is_manual_entry": r.is_manual_entry, "approved_by": r.approved_by,
-            "approved_at": r.approved_at.isoformat() if r.approved_at else None,
+            "approved_at": _ist_iso(r.approved_at),
             "approval_comments": r.approval_comments,
             "leave_application_id": r.leave_application_id, "is_on_leave": r.is_on_leave,
             "is_holiday": r.is_holiday, "holiday_id": r.holiday_id,
             "sync_status": r.sync_status, "sync_attempt_count": r.sync_attempt_count,
-            "last_sync_attempt": r.last_sync_attempt.isoformat() if r.last_sync_attempt else None,
+            "last_sync_attempt": _ist_iso(r.last_sync_attempt),
             "sync_error_message": r.sync_error_message,
-            "offline_created_at": r.offline_created_at.isoformat() if r.offline_created_at else None,
+            "offline_created_at": _ist_iso(r.offline_created_at),
             "offline_device_id": r.offline_device_id,
             "conflict_resolution_status": r.conflict_resolution_status,
             "conflict_resolved_by": r.conflict_resolved_by,
-            "conflict_resolved_at": r.conflict_resolved_at.isoformat() if r.conflict_resolved_at else None,
+            "conflict_resolved_at": _ist_iso(r.conflict_resolved_at),
             "conflict_reason": r.conflict_reason,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-            "deleted_at": r.deleted_at.isoformat() if r.deleted_at else None,
+            "created_at": _ist_iso(r.created_at),
+            "updated_at": _ist_iso(r.updated_at),
+            "deleted_at": _ist_iso(r.deleted_at),
         })
 
     # Merge approved leaves as synthetic on_leave records
@@ -594,7 +606,9 @@ def check_in(
             request_data.selfieData, emp.id, "checkin", organization_id=current_user.organization_id
         )
 
-    now = datetime.now()
+    from datetime import timezone as _tz
+    IST = _tz(timedelta(hours=5, minutes=30))
+    now = datetime.now(IST)
     att = Attendance(
         employee_id=emp.id,
         organization_id=current_user.organization_id,
@@ -627,7 +641,22 @@ def check_in(
     if request_data.clientRequestId:
         store_idempotent_checkin(emp.id, request_data.clientRequestId, {"id": att.id})
 
-    return att
+    invalidate_cache("hrms:tenant:*")
+    return {
+        "id": att.id,
+        "employee_id": att.employee_id,
+        "date": _ist_iso(att.date),
+        "check_in": _ist_iso(att.check_in),
+        "check_out": _ist_iso(att.check_out),
+        "status": att.status,
+        "work_hours": att.work_hours,
+        "is_within_geofence": att.is_within_geofence,
+        "check_in_latitude": att.check_in_latitude,
+        "check_in_longitude": att.check_in_longitude,
+        "check_in_location_name": att.check_in_location_name,
+        "device_id": att.device_id,
+        "device_type": att.device_type,
+    }
 
 
 @router.post("/api/attendance/checkout", tags=["Attendance"])
@@ -685,7 +714,9 @@ def check_out(
             request_data.selfieData, emp.id, "checkout", organization_id=current_user.organization_id
         )
 
-    now = datetime.now()
+    from datetime import timezone as _tz2
+    IST2 = _tz2(timedelta(hours=5, minutes=30))
+    now = datetime.now(IST2)
     att.check_out = now
     att.check_out_latitude = request_data.latitude
     att.check_out_longitude = request_data.longitude
@@ -694,17 +725,32 @@ def check_out(
 
     if att.check_in:
         try:
-            ci = dateparser.parse(att.check_in)
-            co = now
-            work_hours = (co - ci).total_seconds() / 3600
-            att.work_hours = round(work_hours, 2)
-        except Exception:
-            pass
+            ci = att.check_in if isinstance(att.check_in, datetime) else dateparser.parse(str(att.check_in))
+            co = now if isinstance(now, datetime) else dateparser.parse(str(now))
+            ci_naive = ci.replace(tzinfo=None) if ci.tzinfo else ci
+            co_naive = co.replace(tzinfo=None) if co.tzinfo else co
+            work_hours = (co_naive - ci_naive).total_seconds() / 3600
+            att.work_hours = round(max(work_hours, 0), 2)
+        except Exception as e:
+            _log(f"WORK_HOURS_CALC_ERROR: {e}")
 
     db.commit()
     db.refresh(att)
     release_open_session(emp.id)
-    return att
+    invalidate_cache("hrms:tenant:*")
+    return {
+        "id": att.id,
+        "employee_id": att.employee_id,
+        "date": _ist_iso(att.date),
+        "check_in": _ist_iso(att.check_in),
+        "check_out": _ist_iso(att.check_out),
+        "status": att.status,
+        "work_hours": att.work_hours,
+        "is_within_geofence": att.is_within_geofence,
+        "check_out_latitude": att.check_out_latitude,
+        "check_out_longitude": att.check_out_longitude,
+        "check_out_location_name": att.check_out_location_name,
+    }
 
 
 @router.post("/api/attendance/manual", tags=["Attendance"])
@@ -1066,7 +1112,7 @@ def get_attendance_audit_logs(
             "actionBy": log.action_by,
             "actorName": f"{actor.full_name} ({actor.email})" if actor else "System",
             "reason": log.reason,
-            "createdAt": log.created_at.isoformat() if log.created_at else None,
+            "createdAt": _ist_iso(log.created_at),
         })
     return result
 

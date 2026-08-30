@@ -144,7 +144,6 @@ const createAdminStyles = (colors) => StyleSheet.create({
     padding: 24,
     height: '70%',
     maxHeight: '70%',
-    overflow: 'hidden',
     ...shadows.lg,
   },
   modalHeader: {
@@ -167,7 +166,7 @@ const createAdminStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,
@@ -363,33 +362,38 @@ export function AdminFormSheet({
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
   return (
-    <AdminModalShell visible={visible} onClose={onClose}>
-      <View style={adminStyles.modalHeader}>
-        <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={adminStyles.modalTitle}>{title}</Text>
-        {headerRight || <View style={{ width: 36 }} />}
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={adminStyles.modalOverlay}>
+        <Pressable onPress={onClose} style={{ flex: 1 }} />
+        <View style={adminStyles.modalContent}>
+          <View style={adminStyles.modalHeader}>
+            <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={adminStyles.modalTitle}>{title}</Text>
+            {headerRight || <View style={{ width: 36 }} />}
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {children}
+            {onSave ? (
+              <TouchableOpacity
+                style={[adminStyles.saveBtn, saving && { opacity: 0.6 }]}
+                onPress={onSave}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Ionicons name="checkmark-circle" size={20} color="#FFF" />
+                )}
+                <Text style={adminStyles.saveBtnText}>{saving ? 'Saving...' : saveLabel}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </View>
       </View>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {children}
-        {onSave ? (
-          <TouchableOpacity
-            style={[adminStyles.saveBtn, saving && { opacity: 0.6 }]}
-            onPress={onSave}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-            )}
-            <Text style={adminStyles.saveBtnText}>{saving ? 'Saving...' : saveLabel}</Text>
-          </TouchableOpacity>
-        ) : null}
-        <View style={{ height: 24 }} />
-      </ScrollView>
-    </AdminModalShell>
+    </Modal>
   );
 }
 
@@ -398,10 +402,10 @@ export function AdminFieldLabel({ children }) {
   return <Text style={adminStyles.fieldLabel}>{children}</Text>;
 }
 
-export function AdminInput(props) {
+export function AdminInput({ style, ...props }) {
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
-  return <TextInput style={adminStyles.input} placeholderTextColor={colors.textTertiary} {...props} />;
+  return <TextInput style={[adminStyles.input, style]} placeholderTextColor={colors.textTertiary} {...props} />;
 }
 
 export function AdminPillGrid({ options = [], value, onChange }) {
@@ -454,15 +458,20 @@ export function AdminDateRow({ value, onChange, label }) {
   );
 }
 
-export function AdminMonthRow({ value, onChange }) {
+export function AdminMonthRow({ value, onChange, maxMonth }) {
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
   const [y, m] = value.split('-').map(Number);
+  const now = new Date();
+  const currentKey = maxMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const [maxY, maxM] = currentKey.split('-').map(Number);
+  const atMax = y > maxY || (y === maxY && m >= maxM);
   const shift = (delta) => {
     let month = m + delta;
     let year = y;
     while (month < 1) { month += 12; year -= 1; }
     while (month > 12) { month -= 12; year += 1; }
+    if (year > maxY || (year === maxY && month > maxM)) return;
     onChange(`${year}-${String(month).padStart(2, '0')}`);
   };
 
@@ -474,7 +483,7 @@ export function AdminMonthRow({ value, onChange }) {
       <Text style={[adminStyles.dateText, { flex: 1, textAlign: 'center' }]}>
         {new Date(`${value}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
       </Text>
-      <TouchableOpacity onPress={() => shift(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <TouchableOpacity onPress={() => shift(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} disabled={atMax} style={{ opacity: atMax ? 0.3 : 1 }}>
         <Ionicons name="chevron-forward" size={18} color={colors.primary} />
       </TouchableOpacity>
     </TouchableOpacity>
@@ -485,18 +494,23 @@ export function AdminDetailSheet({ visible, title, onClose, children }) {
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
   return (
-    <AdminModalShell visible={visible} onClose={onClose}>
-      <View style={adminStyles.modalHeader}>
-        <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={adminStyles.modalTitle}>{title}</Text>
-        <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
-          <Ionicons name="close" size={22} color={colors.text} />
-        </TouchableOpacity>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={adminStyles.modalOverlay}>
+        <Pressable onPress={onClose} style={{ flex: 1 }} />
+        <View style={adminStyles.modalContent}>
+          <View style={adminStyles.modalHeader}>
+            <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={adminStyles.modalTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} style={adminStyles.iconBtn}>
+              <Ionicons name="close" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+        </View>
       </View>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>{children}</ScrollView>
-    </AdminModalShell>
+    </Modal>
   );
 }
 
@@ -549,25 +563,28 @@ export function AdminCrudSheet({
   const inFormMode = isEditing || isCreating;
 
   return (
-    <AdminModalShell visible={visible} onClose={handleBack} onRequestClose={handleBack}>
-      <View style={adminStyles.modalHeader}>
-        <TouchableOpacity onPress={handleBack} style={adminStyles.iconBtn}>
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[adminStyles.modalTitle, { marginLeft: 8 }]} numberOfLines={1}>{title}</Text>
-        {!inFormMode && showEdit && onStartEdit ? (
-          <TouchableOpacity onPress={onStartEdit} style={adminStyles.iconBtn}>
-            <Ionicons name="create-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
-        ) : inFormMode && !isCreating ? (
-          <TouchableOpacity onPress={onCancelEdit || onClose} style={adminStyles.iconBtn}>
-            <Ionicons name="close" size={22} color={colors.text} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 36 }} />
-        )}
-      </View>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleBack}>
+      <View style={adminStyles.modalOverlay}>
+        <Pressable onPress={handleBack} style={{ flex: 1 }} />
+        <View style={adminStyles.modalContent}>
+          <View style={adminStyles.modalHeader}>
+            <TouchableOpacity onPress={handleBack} style={adminStyles.iconBtn}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={[adminStyles.modalTitle, { marginLeft: 8 }]} numberOfLines={1}>{title}</Text>
+            {!inFormMode && showEdit && onStartEdit ? (
+              <TouchableOpacity onPress={onStartEdit} style={adminStyles.iconBtn}>
+                <Ionicons name="create-outline" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            ) : inFormMode && !isCreating ? (
+              <TouchableOpacity onPress={onCancelEdit || onClose} style={adminStyles.iconBtn}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 36 }} />
+            )}
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {!inFormMode && viewContent}
         {!inFormMode && footerContent}
         {!inFormMode && showDelete && onDelete ? (
@@ -593,7 +610,9 @@ export function AdminCrudSheet({
         ) : null}
         <View style={{ height: 24 }} />
       </ScrollView>
-    </AdminModalShell>
+        </View>
+      </View>
+    </Modal>
   );
 }
 

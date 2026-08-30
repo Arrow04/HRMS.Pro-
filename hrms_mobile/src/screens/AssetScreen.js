@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Pressable } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
+import { useIsAdmin } from '../hooks/useIsAdmin';
+import { useAuth } from '../context/AuthContext';
 import { Badge, EmptyState } from '../components/UI';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
@@ -19,12 +21,14 @@ const TABS = [
   { key: 'maintenance', label: 'Maintenance' },
 ];
 
-const emptyForm = { name: '', type: '', tag: '', value: '', purchaseDate: '', empId: '' };
+const emptyForm = { assetName: '', assetType: '', serialNumber: '', value: '', purchaseDate: '', employeeId: '' };
 
 const AssetScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const localStyles = useThemedStyles(createLocalStyles);
   const adminStyles = useAdminStyles();
+  const isAdmin = useIsAdmin();
+  const { user } = useAuth();
   const scrollTopBar = useScrollTopBar();
   const [statusFilter, setStatusFilter] = useState('all');
   const [assets, setAssets] = useState([]);
@@ -36,6 +40,8 @@ const AssetScreen = ({ navigation }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [reasonModal, setReasonModal] = useState(null);
+  const [reasonText, setReasonText] = useState('');
 
   const isModalOpen = !!selectedItem || isCreating;
 
@@ -68,25 +74,27 @@ const AssetScreen = ({ navigation }) => {
   const openDetail = (a) => {
     setSelectedItem(a);
     setForm({
-      name: a.name || '',
-      type: a.type || '',
-      tag: a.tag || '',
+      assetName: a.assetName || '',
+      assetType: a.assetType || '',
+      serialNumber: a.serialNumber || '',
       value: String(a.value || ''),
-      purchaseDate: a.purchase_date ? new Date(a.purchase_date).toISOString().split('T')[0] : '',
-      empId: String(a.assigned_to || '') });
+      purchaseDate: a.purchaseDate || (a.purchase_date ? new Date(a.purchase_date).toISOString().split('T')[0] : ''),
+      employeeId: String(a.employeeId || a.employee_id || '') });
     setIsEditing(false);
     setIsCreating(false);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) { Alert.alert('Error', 'Name required.'); return; }
+    if (!form.assetName.trim()) { Alert.alert('Error', 'Name required.'); return; }
     setSaving(true);
     try {
       const payload = {
-        name: form.name.trim(), type: form.type.trim(), tag: form.tag.trim(),
+        assetName: form.assetName.trim(),
+        assetType: form.assetType.trim() || 'laptop',
+        serialNumber: form.serialNumber.trim() || `ASSET-${Date.now()}`,
         value: parseFloat(form.value) || 0,
-        purchase_date: form.purchaseDate || undefined,
-        assigned_to: parseInt(form.empId) || undefined };
+        purchaseDate: form.purchaseDate || undefined,
+        employeeId: parseInt(form.employeeId) || undefined };
       if (isCreating) await api.post('/assets', payload);
       else await api.put(`/assets/${selectedItem.id}`, payload);
       Alert.alert('Success', isCreating ? 'Asset added.' : 'Asset updated.');
@@ -98,7 +106,7 @@ const AssetScreen = ({ navigation }) => {
 
   const handleDelete = () => {
     if (!selectedItem) return;
-    Alert.alert('Delete', `Delete "${selectedItem.name}"?`, [
+    Alert.alert('Delete', `Delete "${selectedItem.assetName}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try { await api.delete(`/assets/${selectedItem.id}`); closeModal(); fetchData(); }
@@ -107,10 +115,37 @@ const AssetScreen = ({ navigation }) => {
     ]);
   };
 
+  const handleMaintenance = () => {
+    if (!selectedItem) return;
+    setReasonText('');
+    setReasonModal('maintenance');
+  };
+
+  const handleReturn = () => {
+    if (!selectedItem) return;
+    setReasonText('');
+    setReasonModal('return');
+  };
+
+  const submitReason = async () => {
+    if (!reasonText.trim()) { Alert.alert('Required', 'Please enter a reason.'); return; }
+    const action = reasonModal;
+    setReasonModal(null);
+    try {
+      if (action === 'maintenance') {
+        await api.put(`/assets/${selectedItem.id}`, { status: 'maintenance', notes: reasonText.trim() });
+      } else if (action === 'return') {
+        await api.put(`/assets/${selectedItem.id}`, { employeeId: null, status: 'available', notes: reasonText.trim() });
+      }
+      closeModal();
+      fetchData();
+    } catch { Alert.alert('Error', 'Failed.'); }
+  };
+
   const handleAssign = () => {
     if (!selectedItem) return;
     if (selectedItem.assigned_to) {
-      Alert.alert('Unassign', `Unassign "${selectedItem.name}"?`, [
+      Alert.alert('Unassign', `Unassign "${selectedItem.assetName}"?`, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Unassign', style: 'destructive', onPress: async () => {
           try { await api.put(`/assets/${selectedItem.id}`, { assigned_to: null, status: 'available' }); closeModal(); fetchData(); }
@@ -122,9 +157,14 @@ const AssetScreen = ({ navigation }) => {
     }
   };
 
-  const filtered = assets.filter((a) => {
+  const visibleAssets = isAdmin ? assets : assets.filter((a) => {
+    const empId = user?.employeeId || user?.employee_id;
+    return a.employee_id === empId || a.employeeId === empId;
+  });
+
+  const filtered = visibleAssets.filter((a) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || (a.name || '').toLowerCase().includes(q) || (a.tag || '').toLowerCase().includes(q) || (a.type || '').toLowerCase().includes(q);
+    const matchSearch = !q || (a.assetName || '').toLowerCase().includes(q) || (a.serialNumber || '').toLowerCase().includes(q) || (a.assetType || '').toLowerCase().includes(q);
     const matchStatus = statusFilter === 'all' || (a.status || 'available') === statusFilter || (statusFilter === 'assigned' && a.assigned_to);
     return matchSearch && matchStatus;
   });
@@ -136,15 +176,15 @@ const AssetScreen = ({ navigation }) => {
         refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <AdminHeader navigation={navigation} title="Assets" subtitle="Track and manage assets" onAdd={openCreate} />
+        <AdminHeader navigation={navigation} title="Assets" subtitle="Track and manage assets" onAdd={isAdmin ? openCreate : undefined} />
         <View style={adminStyles.body}>
           <AdminStatRow stats={[
-            { val: assets.length, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
-            { val: assets.filter((a) => (a.status || 'available') === 'available').length, label: 'Available', color: '#10B981', bg: '#DCFCE7' },
-            { val: assets.filter((a) => a.assigned_to).length, label: 'Assigned', color: '#D97706', bg: '#FEF3C7' },
-            { val: assets.filter((a) => (a.status || '') === 'maintenance').length, label: 'Maintenance', color: '#DC2626', bg: '#FEE2E2' },
+            { val: visibleAssets.length, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
+            { val: visibleAssets.filter((a) => (a.status || 'available') === 'available').length, label: 'Available', color: '#10B981', bg: '#DCFCE7' },
+            { val: visibleAssets.filter((a) => a.assigned_to || a.employeeId || a.employee_id).length, label: 'Assigned', color: '#D97706', bg: '#FEF3C7' },
+            { val: visibleAssets.filter((a) => (a.status || '') === 'maintenance').length, label: 'Maintenance', color: '#DC2626', bg: '#FEE2E2' },
           ]} />
-          <AdminTabPills tabs={TABS} active={statusFilter} onChange={setStatusFilter} />
+          {isAdmin && <AdminTabPills tabs={TABS} active={statusFilter} onChange={setStatusFilter} />}
           <AdminSearchBar value={search} onChangeText={setSearch} placeholder="Search assets..." />
           {loading ? (
             <View>{[1, 2, 3].map((i) => <View key={i} style={adminStyles.skeleton} />)}</View>
@@ -153,12 +193,20 @@ const AssetScreen = ({ navigation }) => {
           ) : (
             filtered.map((a) => (
               <AdminListCard key={a.id} onPress={() => openDetail(a)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={adminStyles.listTitle}>{a.name}</Text>
-                  <Text style={adminStyles.listSub}>{a.type || 'N/A'} • Tag: {a.tag || 'N/A'}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                    <Badge status={a.assigned_to ? 'pending' : 'active'} label={a.assigned_to ? 'Assigned' : a.status || 'available'} size="sm" />
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={adminStyles.listTitle}>{a.assetName}</Text>
+                    <Text style={adminStyles.listSub}>{a.assetType || 'N/A'} • S/N: {a.serialNumber || 'N/A'}</Text>
+                    <Text style={adminStyles.listSub}>Assigned to: {a.employeeName || 'Unassigned'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                      <Badge status={a.employeeId || a.assigned_to ? 'pending' : 'active'} label={a.employeeId || a.assigned_to ? 'Assigned' : a.status || 'available'} size="sm" />
+                    </View>
                   </View>
+                  {a.value ? (
+                    <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>₹{parseFloat(a.value).toLocaleString()}</Text>
+                    </View>
+                  ) : null}
                 </View>
               </AdminListCard>
             ))
@@ -176,21 +224,35 @@ const AssetScreen = ({ navigation }) => {
         onCancelEdit={() => setIsEditing(false)}
         isEditing={isEditing}
         isCreating={isCreating}
-        onStartEdit={() => setIsEditing(true)}
-        onSave={handleSave}
-        onDelete={handleDelete}
+        onStartEdit={isAdmin ? () => setIsEditing(true) : undefined}
+        onSave={isAdmin ? handleSave : undefined}
+        onDelete={isAdmin ? handleDelete : undefined}
         saving={saving}
         saveLabel={isCreating ? 'Add Asset' : 'Update Asset'}
         footerContent={selectedItem && !isEditing && !isCreating ? (
-          <TouchableOpacity style={localStyles.assignBtn} onPress={handleAssign}>
-            <Text style={localStyles.assignBtnText}>{selectedItem.assigned_to ? 'Unassign Asset' : 'Assign Asset'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {(selectedItem.employeeId || selectedItem.assigned_to) ? (
+              <TouchableOpacity style={[localStyles.assignBtn, { flex: 1 }]} onPress={handleReturn}>
+                <Text style={localStyles.assignBtnText}>Return</Text>
+              </TouchableOpacity>
+            ) : null}
+            {selectedItem.status !== 'maintenance' ? (
+              <TouchableOpacity style={[localStyles.assignBtn, { flex: 1, backgroundColor: '#F59E0B' }]} onPress={handleMaintenance}>
+                <Text style={localStyles.assignBtnText}>Maintenance</Text>
+              </TouchableOpacity>
+            ) : null}
+            {isAdmin ? (
+              <TouchableOpacity style={[localStyles.assignBtn, { flex: 1 }]} onPress={handleAssign}>
+                <Text style={localStyles.assignBtnText}>{(selectedItem.employeeId || selectedItem.assigned_to) ? 'Unassign' : 'Assign'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         ) : null}
         viewContent={selectedItem && (
           <AdminDetailRows rows={[
-            { label: 'Name', value: selectedItem.name, valueStyle: { textTransform: 'none' } },
-            { label: 'Type', value: selectedItem.type || 'N/A', valueStyle: { textTransform: 'none' } },
-            { label: 'Tag', value: selectedItem.tag || 'N/A', valueStyle: { textTransform: 'none' } },
+            { label: 'Name', value: selectedItem.assetName || selectedItem.name, valueStyle: { textTransform: 'none' } },
+            { label: 'Type', value: selectedItem.assetType || selectedItem.type || 'N/A', valueStyle: { textTransform: 'none' } },
+            { label: 'Serial #', value: selectedItem.serialNumber || selectedItem.tag || 'N/A', valueStyle: { textTransform: 'none' } },
             { label: 'Value', value: selectedItem.value ? parseFloat(selectedItem.value).toLocaleString() : '—', valueStyle: { textTransform: 'none' } },
             { label: 'Status', value: selectedItem.assigned_to ? 'Assigned' : selectedItem.status || 'available' },
             { label: 'Assignee', value: selectedItem.assigned_to_name || (selectedItem.assigned_to ? `#${selectedItem.assigned_to}` : '—'), valueStyle: { textTransform: 'none' } },
@@ -198,18 +260,57 @@ const AssetScreen = ({ navigation }) => {
         )}
       >
         <AdminFieldLabel>Name *</AdminFieldLabel>
-        <AdminInput value={form.name} onChangeText={(v) => setForm((f) => ({ ...f, name: v }))} placeholder="Asset name" />
+        <AdminInput value={form.assetName} onChangeText={(v) => setForm((f) => ({ ...f, assetName: v }))} placeholder="Asset name" />
         <AdminFieldLabel>Type</AdminFieldLabel>
-        <AdminInput value={form.type} onChangeText={(v) => setForm((f) => ({ ...f, type: v }))} placeholder="Laptop, Phone, etc." />
-        <AdminFieldLabel>Tag</AdminFieldLabel>
-        <AdminInput value={form.tag} onChangeText={(v) => setForm((f) => ({ ...f, tag: v }))} placeholder="Asset tag" />
+        <AdminInput value={form.assetType} onChangeText={(v) => setForm((f) => ({ ...f, assetType: v }))} placeholder="Laptop, Phone, etc." />
+        <AdminFieldLabel>Serial Number</AdminFieldLabel>
+        <AdminInput value={form.serialNumber} onChangeText={(v) => setForm((f) => ({ ...f, serialNumber: v }))} placeholder="Serial number" />
         <AdminFieldLabel>Value</AdminFieldLabel>
         <AdminInput value={form.value} onChangeText={(v) => setForm((f) => ({ ...f, value: v }))} placeholder="Purchase value" keyboardType="decimal-pad" />
         <AdminFieldLabel>Purchase Date</AdminFieldLabel>
         <AdminDateRow value={form.purchaseDate} onChange={(v) => setForm((f) => ({ ...f, purchaseDate: v }))} label="Select purchase date" />
         <AdminFieldLabel>Assign To (Employee ID)</AdminFieldLabel>
-        <AdminInput value={form.empId} onChangeText={(v) => setForm((f) => ({ ...f, empId: v }))} placeholder="Employee ID" keyboardType="number-pad" />
+        <AdminInput value={form.employeeId} onChangeText={(v) => setForm((f) => ({ ...f, employeeId: v }))} placeholder="Employee ID" keyboardType="number-pad" />
       </AdminCrudSheet>
+
+      <Modal visible={!!reasonModal} transparent animationType="slide" onRequestClose={() => setReasonModal(null)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setReasonModal(null)} />
+          <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 32 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 12 }}>
+              {reasonModal === 'maintenance' ? 'Maintenance Reason' : 'Return Reason'}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 10 }}>
+              {reasonModal === 'maintenance'
+                ? `Why is "${selectedItem?.assetName}" going to maintenance?`
+                : `Why are you returning "${selectedItem?.assetName}"?`}
+            </Text>
+            <TextInput
+              value={reasonText}
+              onChangeText={setReasonText}
+              placeholder="Enter reason..."
+              placeholderTextColor={colors.textTertiary}
+              multiline
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                padding: 12, fontSize: 14, color: colors.text, minHeight: 80,
+                textAlignVertical: 'top', marginBottom: 16 }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setReasonModal(null)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={submitReason}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: reasonModal === 'maintenance' ? '#F59E0B' : colors.primary }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFF' }}>Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

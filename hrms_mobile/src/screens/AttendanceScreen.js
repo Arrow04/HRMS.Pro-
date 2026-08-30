@@ -16,6 +16,8 @@ import { radii, spacing, shadows, resolveStatChip } from '../theme';
 import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 import { AdminMonthRow, scrollViewTopBarProps, bannerShellStyle } from '../components/AdminScreenKit';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
+import { useTimezone } from '../context/TimezoneContext';
+import { fmtTimeSec, fmtTime, fmtWeekday, fmtDateCompact, todayZone, nowZone, getTimezone, todayISO, daysAgoISO, monthStartISO, monthEndISO } from '../utils/timezone';
 
 const PAD = 20;
 const RECENT_RECORDS_LIMIT = 5;
@@ -488,10 +490,10 @@ function TimeClockDisplay() {
   return (
     <View style={styles.timeClockDisplay}>
       <Text style={styles.timeClockLiveTime}>
-        {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        {fmtTimeSec(time)}
       </Text>
       <Text style={styles.timeClockLiveDate}>
-        {time.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        {fmtWeekday(time)}, {fmtDateCompact(time)}
       </Text>
     </View>
   );
@@ -519,10 +521,10 @@ function LiveClock() {
   return (
     <View style={styles.clockWrap}>
       <Text style={styles.clockTime}>
-        {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        {fmtTimeSec(time)}
       </Text>
       <Text style={styles.clockDate}>
-        {time.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        {fmtWeekday(time)}, {fmtDateCompact(time)}
       </Text>
       <View style={styles.periodPill}>
         <Ionicons name={period.icon} size={14} color={isDark ? '#94A3B8' : '#64748B'} />
@@ -581,11 +583,11 @@ const AttendanceScreen = ({ navigation }) => {
     }
     try {
       const now = new Date();
-      const today = now.toISOString().split('T')[0];
+      const today = todayISO();
       const [year, month] = selectedMonth.split('-').map(Number);
-      const startStr = `${selectedMonth}-01`;
+      const startStr = monthStartISO(year, month);
       const lastDay = new Date(year, month, 0).getDate();
-      const endStr = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      const endStr = monthEndISO(year, month);
 
       const [attTodayRes, attMonthRes, attRecentRes] = await Promise.all([
         api.get('/attendance', { params: { employeeId: myEmployeeId, startDate: today, endDate: today } }),
@@ -593,7 +595,7 @@ const AttendanceScreen = ({ navigation }) => {
         api.get('/attendance', {
           params: {
             employeeId: myEmployeeId,
-            startDate: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            startDate: daysAgoISO(30),
             endDate: today } }),
       ]);
 
@@ -657,7 +659,7 @@ const AttendanceScreen = ({ navigation }) => {
   const isCheckedIn = !!(openSession?.checkIn && !openSession?.checkOut);
   const hasCompletedToday = !!(todayRecord?.checkIn && todayRecord?.checkOut);
   const isCompleted = !isAdmin && !isCheckedIn && hasCompletedToday;
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayISO();
   const openFromPriorDay = openSession && (openSession.date?.slice?.(0, 10) || openSession.date) !== todayStr;
 
   useEffect(() => {
@@ -682,7 +684,7 @@ const AttendanceScreen = ({ navigation }) => {
   const statusColor = isCompleted ? '#3B82F6' : isCheckedIn ? '#10B981' : '#94A3B8';
   const statusBg = isCompleted ? '#DBEAFE' : isCheckedIn ? '#DCFCE7' : colors.surfaceSecondary;
   const statusLabel = isCompleted
-    ? 'Shift Complete'
+    ? 'Shift Completed'
     : isCheckedIn
       ? 'On Duty'
       : isAdmin && todaySessionCount > 0
@@ -703,10 +705,10 @@ const AttendanceScreen = ({ navigation }) => {
     )
     : null;
   const clockInTime = punchRecord?.checkIn
-    ? new Date(punchRecord.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    ? fmtTime(punchRecord.checkIn)
     : '—';
   const clockOutTime = punchRecord?.checkOut
-    ? new Date(punchRecord.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    ? fmtTime(punchRecord.checkOut)
     : '—';
 
   const openCameraForPunch = async (type) => {
@@ -775,7 +777,7 @@ const AttendanceScreen = ({ navigation }) => {
       const activeCoords = coords || location;
 
       const payload = {
-        date: new Date().toISOString().split('T')[0],
+        date: todayISO(),
         clientRequestId: newPunchRequestId(),
         ...(activeCoords?.latitude != null && activeCoords?.longitude != null
           ? { latitude: activeCoords.latitude, longitude: activeCoords.longitude }
@@ -948,7 +950,7 @@ const AttendanceScreen = ({ navigation }) => {
                         />
                         <View style={{ alignItems: 'center' }}>
                           <Text style={styles.timeClockActionText}>
-                            {checking ? 'Processing…' : isCompleted ? 'Shift Complete' : isCheckedIn ? 'Clock Out' : 'Clock In'}
+                            {checking ? 'Processing…' : isCompleted ? 'Shift Completed' : isCheckedIn ? 'Clock Out' : 'Clock In'}
                           </Text>
                           {!checking && !isCompleted && (
                             <Text style={styles.timeClockActionSub}>
@@ -1055,24 +1057,24 @@ const AttendanceScreen = ({ navigation }) => {
                     const st = statusStyle(item.status, colors, isDark);
                     const isLast = idx === arr.length - 1;
                     const inTime = item.checkIn
-                      ? new Date(item.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                      ? new Date(item.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() })
                       : '—';
                     const outTime = item.checkOut
-                      ? new Date(item.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                      ? new Date(item.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: getTimezone() })
                       : '—';
                     return (
                       <View key={item.id || item.date} style={[styles.recordRow, isLast && styles.recordRowLast]}>
                         <View style={styles.recordDateCompact}>
                           <Text style={styles.recordDayNum}>{item.date ? new Date(item.date).getDate() : '—'}</Text>
                           <Text style={styles.recordDayLbl}>
-                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { weekday: 'short' }) : ''}
+                            {item.date ? new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', timeZone: getTimezone() }) : ''}
                           </Text>
                         </View>
                         <View style={styles.recordMid}>
                           <Text style={styles.recordTimeLine} numberOfLines={1}>{inTime} → {outTime}</Text>
                           <View style={styles.recordMeta}>
-                            <View style={[styles.recordDot, { backgroundColor: st.color }]} />
-                            <Text style={styles.recordStatus}>{(item.status || 'n/a').replace('_', ' ')}</Text>
+                            <View style={[styles.recordDot, { backgroundColor: item.checkIn && !item.checkOut ? '#DC2626' : st.color }]} />
+                            <Text style={[styles.recordStatus, item.checkIn && !item.checkOut && { color: '#DC2626' }]}>{item.checkIn && !item.checkOut ? 'No checkout' : (item.status || 'n/a').replace('_', ' ')}</Text>
                           </View>
                         </View>
                         <Text style={styles.recordHoursCompact}>
@@ -1139,6 +1141,13 @@ const AttendanceScreen = ({ navigation }) => {
           </LinearGradient>
         </View>
       </Modal>
+
+      <View style={{ position: 'absolute', right: 20, bottom: TAB_BAR_CLEARANCE + 8, alignItems: 'center' }}>
+        <TouchableOpacity onPress={() => navigation.navigate('Chat')} activeOpacity={0.85} style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#14B8A6', justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#14B8A6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8 }}>
+          <Ionicons name="sparkles" size={26} color="#FFF" />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 10, fontWeight: '700', color: '#14B8A6', marginTop: 4 }}>HR Assistant!</Text>
+      </View>
     </View>
   );
 };
