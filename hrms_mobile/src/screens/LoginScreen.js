@@ -414,7 +414,7 @@ const LoginScreen = () => {
       const { data } = await testApiConnection();
       Alert.alert('Server OK', `${saved}\n\n${data?.message || 'Connected successfully'}`);
     } catch {
-      Alert.alert('Connection Failed', `Could not reach:\n${serverUrl.trim()}\n\nUse your PC IP, e.g. http://192.168.1.6:8000/api`);
+      Alert.alert('Connection Failed', `Could not reach:\n${serverUrl.trim()}\n\nPlease check your internet connection and try again.`);
     } finally {
       setTestingServer(false);
     }
@@ -474,7 +474,7 @@ const LoginScreen = () => {
       <View style={styles.orb2} />
       <View style={styles.orb3} />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24 }]}
           keyboardShouldPersistTaps="always"
@@ -568,7 +568,7 @@ const LoginScreen = () => {
                       style={styles.serverInput}
                       value={serverUrl}
                       onChangeText={setServerUrl}
-                      placeholder="http://192.168.1.6:8000/api"
+                      placeholder={DEFAULT_API_BASE_URL}
                       placeholderTextColor={colors.textTertiary}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -583,7 +583,7 @@ const LoginScreen = () => {
                         )}
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.serverHint}>Same Wi-Fi as your PC. Tap Test Connection before Sign In.</Text>
+                    <Text style={styles.serverHint}>API server for cloud sync. Tap Test Connection before Sign In.</Text>
                   </View>
                 </>
               ) : !otpSent ? (
