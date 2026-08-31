@@ -57,6 +57,7 @@ const ExpensesScreen = ({ navigation }) => {
   const [search, setSearch] = useState('');
   const isAdmin = useIsAdmin();
   const { user } = useAuth();
+  const employeeId = user?.employeeId ?? user?.employee_id;
 
   const isModalOpen = !!selectedItem || isCreating;
 
@@ -95,7 +96,6 @@ const ExpensesScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     if (!form.amount || !form.category) { Alert.alert('Missing', 'Enter amount and select category.'); return; }
-    const employeeId = user?.employeeId ?? user?.employee_id;
     if (!employeeId) { Alert.alert('Error', 'Employee ID not found.'); return; }
     setSaving(true);
     try {
