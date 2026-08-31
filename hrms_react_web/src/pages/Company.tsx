@@ -17,6 +17,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import PhoneInput from '../components/PhoneInput';
 import FormField, { formInputClass, formTextareaClass, formReadonlyClass } from '../components/FormField';
 import { formGridClass } from '../components/FormGrid';
+import CompactImageUpload from '../components/CompactImageUpload';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import StateSelect from '../components/StateSelect';
 import PincodeInput from '../components/PincodeInput';
