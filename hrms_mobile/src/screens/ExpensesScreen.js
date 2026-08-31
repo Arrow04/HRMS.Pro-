@@ -157,10 +157,14 @@ const ExpensesScreen = ({ navigation }) => {
   };
 
   const list = expenses || [];
-  const totalAmount = list.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+  const myExpenses = isAdmin ? list : list.filter((e) => {
+    const eId = e.employee_id || e.employeeId;
+    return eId === employeeId || e.user_id === user?.id;
+  });
+  const totalAmount = myExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
   const empName = (e) => e.employee_name || e.employeeName || `${e.firstName || ''} ${e.lastName || ''}`.trim() || 'Employee';
 
-  const filteredExpenses = list.filter((e) => {
+  const filteredExpenses = myExpenses.filter((e) => {
     if (statusTab !== 'all' && e.status !== statusTab) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -224,10 +228,10 @@ const ExpensesScreen = ({ navigation }) => {
         isCreating={isCreating}
         onStartEdit={() => setIsEditing(true)}
         onSave={handleSave}
-        onDelete={handleDelete}
+        onDelete={isAdmin ? handleDelete : undefined}
         saving={saving}
         saveLabel={isCreating ? 'Submit Expense' : 'Update Expense'}
-        showEdit={selectedItem?.status === 'pending' || isCreating}
+        showEdit={isAdmin && (selectedItem?.status === 'pending' || isCreating)}
         footerContent={selectedItem && !isEditing && !isCreating && isAdmin && selectedItem.status === 'pending' ? (
           <View style={localStyles.modalActions}>
             <TouchableOpacity style={localStyles.rejectBtn} onPress={handleReject}>
