@@ -931,7 +931,7 @@ def save_onboarding_data(
     integer_fields = {
         "designation_id", "department_id", "company_id", "organization_id",
         "manager_id", "reporting_to", "branch_id", "graduation_year",
-        "number_of_children", "experience_years", "notice_period_days",
+        "number_of_children", "experience_years", "notice_period_days", "shift_id",
     }
     date_fields = {
         "date_of_birth", "join_date", "certification_date",
@@ -974,7 +974,7 @@ def save_onboarding_data(
               "spouse_phone", "number_of_children", "nominee_name",
               "nominee_relationship", "user_role", "device_type",
               "device_ip_address", "device_mac_address", "device_serial_number",
-              "status", "birth_certificate_number"]:
+              "status", "birth_certificate_number", "shift_id"]:
         if f in data and data[f] is not None:
             val = _clean_value(f, data[f])
             # Skip empty strings for identity fields to avoid clobbering the

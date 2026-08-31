@@ -70,20 +70,30 @@ const formatHours = (value) => {
   return Number.isNaN(n) ? '—' : `${n.toFixed(1)}h`;
 };
 
-const statusBadgeStatus = (status) => {
-  if (status === 'present') return 'present';
-  if (status === 'late') return 'late';
-  if (status === 'absent') return 'absent';
-  if (status === 'on_leave' || status === 'leave') return 'on_leave';
+const statusBadgeStatus = (item) => {
+  const s = item?.status;
+  if (item?.checkIn && !item?.checkOut && (s === 'present' || s === 'late')) return 'no_checkout';
+  if (s === 'present') return 'present';
+  if (s === 'late') return 'late';
+  if (s === 'absent') return 'absent';
+  if (s === 'on_leave' || s === 'leave') return 'on_leave';
   return 'pending';
 };
 
-const statusColor = (status) => {
-  if (status === 'present') return '#16A34A';
-  if (status === 'late') return '#D97706';
-  if (status === 'absent') return '#DC2626';
-  if (status === 'on_leave' || status === 'leave') return '#2563EB';
+const statusColor = (item) => {
+  const s = item?.status;
+  if (item?.checkIn && !item?.checkOut && (s === 'present' || s === 'late')) return '#DC2626';
+  if (s === 'present') return '#16A34A';
+  if (s === 'late') return '#D97706';
+  if (s === 'absent') return '#DC2626';
+  if (s === 'on_leave' || s === 'leave') return '#2563EB';
   return '#64748B';
+};
+
+const displayStatus = (item) => {
+  const s = item?.status;
+  if (item?.checkIn && !item?.checkOut && (s === 'present' || s === 'late')) return 'No checkout';
+  return (s || 'N/A').replace(/_/g, ' ');
 };
 
 const detailRows = (item) => {
@@ -261,9 +271,10 @@ const AttendanceHistoryScreen = ({ navigation }) => {
   });
 
   const summary = {
-    present: records.filter((r) => r.status === 'present').length,
+    present: records.filter((r) => r.status === 'present' && r.checkIn && r.checkOut).length,
     absent: records.filter((r) => r.status === 'absent').length,
     late: records.filter((r) => r.status === 'late').length,
+    noCheckout: records.filter((r) => (r.status === 'present' || r.status === 'late') && r.checkIn && !r.checkOut).length,
     leave: records.filter((r) => r.status === 'on_leave' || r.status === 'leave' || r.isOnLeave).length };
 
   return (
@@ -321,7 +332,7 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                 { val: summary.present, label: 'Present', color: '#10B981', bg: '#DCFCE7' },
                 { val: summary.absent, label: 'Absent', color: '#DC2626', bg: '#FEE2E2' },
                 { val: summary.late, label: 'Late', color: '#D97706', bg: '#FEF3C7' },
-                { val: summary.leave, label: 'Leave', color: '#2563EB', bg: '#DBEAFE' },
+                { val: summary.noCheckout, label: 'No Checkout', color: '#DC2626', bg: '#FEF2F2' },
               ]} />
 
               <AdminSearchBar value={search} onChangeText={setSearch} placeholder="Search by date or status..." />
@@ -356,12 +367,12 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                           {formatTime(item.checkIn)} → {formatTime(item.checkOut)}
                         </Text>
                         <Text style={adminStyles.listSub}>
-                          {item.workHours != null ? `${Number(item.workHours).toFixed(1)} hours worked` : 'No hours logged'}
+                          {item.checkIn && !item.checkOut ? '—' : item.workHours != null && Number(item.workHours) > 0 ? `${Number(item.workHours).toFixed(1)} hours worked` : 'No hours logged'}
                         </Text>
                       </View>
                       <Badge
-                        status={statusBadgeStatus(item.status)}
-                        label={(item.status || 'N/A').replace(/_/g, ' ')}
+                        status={statusBadgeStatus(item)}
+                        label={displayStatus(item)}
                         size="sm"
                         style={{ alignSelf: 'center' }}
                       />
@@ -398,8 +409,8 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                 </Text>
               </View>
               <Badge
-                status={statusBadgeStatus(selectedItem.status)}
-                label={(selectedItem.status || 'N/A').replace(/_/g, ' ')}
+                status={statusBadgeStatus(selectedItem)}
+                label={displayStatus(selectedItem)}
                 size="sm"
               />
             </View>

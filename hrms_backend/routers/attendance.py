@@ -69,6 +69,130 @@ def _resolve_punch_employee(db: Session, current_user: User) -> Optional[Employe
     )
 
 
+def _parse_shift_time(time_str: str) -> Optional[tuple]:
+    """Parse 'HH:MM' string to (hour, minute) tuple."""
+    if not time_str:
+        return None
+    try:
+        parts = str(time_str).strip().split(":")
+        return (int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return None
+
+
+def _resolve_shift(db: Session, employee_id: int, att_date) -> Optional[Shift]:
+    """Resolve the correct shift for an employee on a given date.
+    
+    Priority: DutyRoster for that day → Employee's default shift → None.
+    """
+    from models import DutyRoster
+    if att_date is None:
+        return None
+
+    if hasattr(att_date, 'date'):
+        att_date = att_date.date()
+    if isinstance(att_date, str):
+        att_date = datetime.strptime(att_date[:10], "%Y-%m-%d").date()
+
+    day_of_week = att_date.weekday()  # 0=Mon ... 6=Sun in Python
+
+    # 1. Check DutyRoster for this specific day
+    try:
+        # Find the roster entry for this employee and day_of_week
+        # week_start_date should be the Monday of the week containing att_date
+        import datetime as _dt
+        days_since_monday = att_date.weekday()
+        week_monday = att_date - _dt.timedelta(days=days_since_monday)
+        week_start = datetime.combine(week_monday, datetime.min.time())
+
+        roster = db.query(DutyRoster).filter(
+            DutyRoster.deleted_at.is_(None),
+            DutyRoster.employee_id == employee_id,
+            DutyRoster.day_of_week == day_of_week,
+            DutyRoster.week_start_date == week_start,
+        ).first()
+
+        if roster and roster.shift_id:
+            shift = db.query(Shift).filter(
+                Shift.id == roster.shift_id,
+                Shift.deleted_at.is_(None),
+            ).first()
+            if shift:
+                return shift
+    except Exception:
+        pass
+
+    # 2. Fallback to employee's default shift
+    try:
+        emp = db.query(Employee).filter(
+            Employee.id == employee_id,
+            Employee.deleted_at.is_(None),
+        ).first()
+        if emp and emp.shift_id:
+            shift = db.query(Shift).filter(
+                Shift.id == emp.shift_id,
+                Shift.deleted_at.is_(None),
+            ).first()
+            if shift:
+                return shift
+    except Exception:
+        pass
+
+    return None
+
+
+def _shift_duration_hours(shift: Shift) -> float:
+    """Calculate scheduled work hours from a shift's start/end times minus break."""
+    start = _parse_shift_time(shift.start_time)
+    end = _parse_shift_time(shift.end_time)
+    if not start or not end:
+        return 8.0
+    start_mins = start[0] * 60 + start[1]
+    end_mins = end[0] * 60 + end[1]
+    if end_mins <= start_mins:
+        end_mins += 24 * 60  # cross midnight
+    diff_mins = end_mins - start_mins
+    break_mins = getattr(shift, 'break_duration', 60) or 60
+    return round(max((diff_mins - break_mins) / 60, 0), 2)
+
+
+def _compute_late(shift: Shift, check_in_time: datetime, grace_minutes: int = 15) -> tuple:
+    """Check if check_in is late. Returns (is_late, late_minutes)."""
+    start = _parse_shift_time(shift.start_time)
+    if not start:
+        return (False, 0)
+    shift_start = check_in_time.replace(hour=start[0], minute=start[1], second=0, microsecond=0)
+    grace_cutoff = shift_start + timedelta(minutes=grace_minutes)
+    if check_in_time > grace_cutoff:
+        late_mins = int((check_in_time - shift_start).total_seconds() / 60)
+        return (True, late_mins)
+    return (False, 0)
+
+
+def _compute_overtime(shift: Shift, check_out_time: datetime) -> float:
+    """Calculate overtime hours past shift end time."""
+    end = _parse_shift_time(shift.end_time)
+    if not end:
+        return 0.0
+    shift_end = check_out_time.replace(hour=end[0], minute=end[1], second=0, microsecond=0)
+    if check_out_time > shift_end:
+        overtime_secs = (check_out_time - shift_end).total_seconds()
+        return round(max(overtime_secs / 3600, 0), 2)
+    return 0.0
+
+
+def _compute_early_departure(shift: Shift, check_out_time: datetime) -> tuple:
+    """Check if check_out is before shift end. Returns (is_early, early_minutes)."""
+    end = _parse_shift_time(shift.end_time)
+    if not end:
+        return (False, 0)
+    shift_end = check_out_time.replace(hour=end[0], minute=end[1], second=0, microsecond=0)
+    if check_out_time < shift_end:
+        early_mins = int((shift_end - check_out_time).total_seconds() / 60)
+        return (True, early_mins)
+    return (False, 0)
+
+
 _ADMIN_MULTI_PUNCH_ROLES = frozenset({
     "admin", "superadmin", "hr_admin", "hr_manager", "hr_executive",
 })
@@ -612,6 +736,26 @@ def check_in(
     from datetime import timezone as _tz
     IST = _tz(timedelta(hours=5, minutes=30))
     now = datetime.now(IST).replace(tzinfo=None)
+
+    # Resolve shift and compute late status
+    resolved_shift = _resolve_shift(db, emp.id, now.date())
+    shift_id_to_use = resolved_shift.id if resolved_shift else (request_data.shiftId or None)
+
+    is_late = False
+    late_minutes = 0
+    scheduled_hours = 8.0
+    if resolved_shift:
+        grace = 15
+        try:
+            from services.payroll_service import _get_attendance_policy
+            att_policy = _get_attendance_policy(db, emp)
+            if att_policy:
+                grace = att_policy.late_mark_threshold_minutes or 15
+                scheduled_hours = _shift_duration_hours(resolved_shift)
+        except Exception:
+            pass
+        is_late, late_minutes = _compute_late(resolved_shift, now, grace)
+
     att = Attendance(
         employee_id=emp.id,
         organization_id=current_user.organization_id,
@@ -619,17 +763,20 @@ def check_in(
         department_id=emp.department_id,
         date=now,
         check_in=now,
-        status="present",
+        status="late" if is_late else "present",
         check_in_latitude=request_data.latitude,
         check_in_longitude=request_data.longitude,
         check_in_location_name=request_data.locationName,
         check_in_selfie_url=selfie_url,
         device_id=request_data.deviceId,
         device_type=request_data.deviceType,
-        shift_id=request_data.shiftId,
+        shift_id=shift_id_to_use,
         notes=request_data.notes,
         is_within_geofence=is_within,
         is_manual_entry=False,
+        is_late=is_late,
+        late_minutes=late_minutes,
+        scheduled_hours=scheduled_hours,
         sync_status="synced",
     )
     db.add(att)
@@ -734,6 +881,14 @@ def check_out(
             co_naive = co.replace(tzinfo=None) if co.tzinfo else co
             work_hours = (co_naive - ci_naive).total_seconds() / 3600
             att.work_hours = round(max(work_hours, 0), 2)
+
+            # Resolve shift for overtime and early departure
+            resolved_shift = _resolve_shift(db, att.employee_id, att.date.date() if att.date else co_naive.date())
+            if resolved_shift:
+                att.overtime_hours = _compute_overtime(resolved_shift, co_naive)
+                is_early, early_mins = _compute_early_departure(resolved_shift, co_naive)
+                att.is_early_departure = is_early
+                att.early_departure_minutes = early_mins
         except Exception as e:
             _log(f"WORK_HOURS_CALC_ERROR: {e}")
 
@@ -749,6 +904,9 @@ def check_out(
         "check_out": _ist_iso(att.check_out),
         "status": att.status,
         "work_hours": att.work_hours,
+        "overtime_hours": att.overtime_hours,
+        "is_early_departure": att.is_early_departure,
+        "early_departure_minutes": att.early_departure_minutes,
         "is_within_geofence": att.is_within_geofence,
         "check_out_latitude": att.check_out_latitude,
         "check_out_longitude": att.check_out_longitude,

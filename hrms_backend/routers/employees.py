@@ -1010,6 +1010,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         login_email=snake_case_data.get("login_email"),
         # Geofence
         geofence_enabled=bool(snake_case_data.get("geofence_enabled", False)),
+        shift_id=(lambda v: int(float(v)) if v not in (None, "") else None)(snake_case_data.get("shift_id")),
         # Device
         device_name=snake_case_data.get("device_name"),
         device_type=snake_case_data.get("device_type"),
@@ -1205,6 +1206,8 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.employment_type = snake_case_data["employment_type"]
     if "geofence_enabled" in snake_case_data:
         employee.geofence_enabled = bool(snake_case_data["geofence_enabled"])
+    if "shift_id" in snake_case_data:
+        employee.shift_id = _int_or_none(snake_case_data["shift_id"])
     if "join_date" in snake_case_data:
         try:
             employee.join_date = datetime.fromisoformat(snake_case_data["join_date"]) if snake_case_data["join_date"] else None

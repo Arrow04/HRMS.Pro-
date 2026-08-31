@@ -185,9 +185,9 @@ const ExpensesScreen = ({ navigation }) => {
           <AdminDateRow value={filterDate} onChange={setFilterDate} />
           <AdminStatRow stats={[
             { val: `${(totalAmount / 1000).toFixed(0)}K`, label: 'Total', color: '#2563EB', bg: '#DBEAFE' },
-            { val: list.filter((e) => e.status === 'pending').length, label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
-            { val: list.filter((e) => e.status === 'approved').length, label: 'Approved', color: '#10B981', bg: '#DCFCE7' },
-            { val: list.filter((e) => e.status === 'rejected').length, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
+            { val: myExpenses.filter((e) => e.status === 'pending').length, label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
+            { val: myExpenses.filter((e) => e.status === 'approved').length, label: 'Approved', color: '#10B981', bg: '#DCFCE7' },
+            { val: myExpenses.filter((e) => e.status === 'rejected').length, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
           ]} />
           <AdminTabPills tabs={STATUS_TABS} active={statusTab} onChange={setStatusTab} />
           <AdminSearchBar value={search} onChangeText={setSearch} placeholder="Search expenses..." />

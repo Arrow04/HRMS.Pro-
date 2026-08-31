@@ -114,33 +114,98 @@ def selfie_retention_policy(current_user: User = Depends(get_current_user)):
 
 
 def _auto_close_attendance(db: Session) -> dict:
-    """Find all open sessions (check_in without check_out) and mark them as violations."""
+    """Auto-checkout open sessions from previous days at shift end time, then flag as violation."""
     from datetime import timezone as _tz
+    from models import Shift, DutyRoster, Employee, Attendance as AttModel
     IST = _tz(timedelta(hours=5, minutes=30))
     now_ist = datetime.now(IST)
     today_str = now_ist.strftime("%Y-%m-%d")
+    now_naive = now_ist.replace(tzinfo=None)
 
-    open_records = db.query(Attendance).filter(
+    open_records = db.query(AttModel).filter(
         and_(
-            Attendance.check_in.isnot(None),
-            Attendance.check_out.is_(None),
-            Attendance.deleted_at.is_(None),
+            AttModel.check_in.isnot(None),
+            AttModel.check_out.is_(None),
+            AttModel.deleted_at.is_(None),
         )
     ).all()
 
     closed = 0
     for att in open_records:
         att_date = att.date.strftime("%Y-%m-%d") if att.date else None
-        if att_date and att_date < today_str:
-            att.status = "present"
-            att.notes = (att.notes or "") + f" [auto-close: no checkout, flagged {today_str}]"
-            closed += 1
+        if not att_date or att_date >= today_str:
+            continue
+
+        # Resolve shift for this employee on this date
+        shift = None
+        if att.shift_id:
+            shift = db.query(Shift).filter(Shift.id == att.shift_id, Shift.deleted_at.is_(None)).first()
+        if not shift:
+            try:
+                day_of_week = att.date.date().weekday() if hasattr(att.date, 'date') else att.date.weekday()
+                import datetime as _dt
+                week_monday = att.date.date() - _dt.timedelta(days=day_of_week) if hasattr(att.date, 'date') else att.date - _dt.timedelta(days=day_of_week)
+                week_start = datetime.combine(week_monday, datetime.min.time())
+                roster = db.query(DutyRoster).filter(
+                    DutyRoster.deleted_at.is_(None),
+                    DutyRoster.employee_id == att.employee_id,
+                    DutyRoster.day_of_week == day_of_week,
+                    DutyRoster.week_start_date == week_start,
+                ).first()
+                if roster:
+                    shift = db.query(Shift).filter(Shift.id == roster.shift_id, Shift.deleted_at.is_(None)).first()
+            except Exception:
+                pass
+        if not shift:
+            try:
+                emp = db.query(Employee).filter(Employee.id == att.employee_id, Employee.deleted_at.is_(None)).first()
+                if emp and emp.shift_id:
+                    shift = db.query(Shift).filter(Shift.id == emp.shift_id, Shift.deleted_at.is_(None)).first()
+            except Exception:
+                pass
+
+        # Determine checkout time: shift end or 18:00 default
+        checkout_hour = 18
+        checkout_minute = 0
+        if shift:
+            try:
+                parts = str(shift.end_time).split(":")
+                checkout_hour = int(parts[0])
+                checkout_minute = int(parts[1]) if len(parts) > 1 else 0
+            except (ValueError, IndexError):
+                pass
+
+        checkout_time = att.date.replace(hour=checkout_hour, minute=checkout_minute, second=0, microsecond=0)
+
+        # Calculate work hours
+        ci = att.check_in if isinstance(att.check_in, datetime) else datetime.strptime(str(att.check_in)[:19], "%Y-%m-%d %H:%M:%S")
+        work_hours = max((checkout_time - ci).total_seconds() / 3600, 0)
+
+        # Calculate overtime from shift end
+        overtime_hours = 0.0
+        if shift:
+            try:
+                end_parts = str(shift.end_time).split(":")
+                shift_end_hour = int(end_parts[0])
+                shift_end_min = int(end_parts[1]) if len(end_parts) > 1 else 0
+                shift_end = att.date.replace(hour=shift_end_hour, minute=shift_end_min, second=0, microsecond=0)
+                if checkout_time > shift_end:
+                    overtime_hours = round((checkout_time - shift_end).total_seconds() / 3600, 2)
+            except Exception:
+                pass
+
+        att.check_out = checkout_time
+        att.work_hours = round(work_hours, 2)
+        att.overtime_hours = overtime_hours
+        att.status = "present"
+        att.notes = (att.notes or "") + f" [auto-checkout {checkout_hour:02d}:{checkout_minute:02d}, {work_hours:.1f}h, violation {today_str}]"
+        closed += 1
 
     if closed:
         db.commit()
         invalidate_cache("hrms:tenant:*")
 
-    return {"closed_violations": closed, "date": today_str}
+    return {"auto_checked_out": closed, "date": today_str}
 
 
 @router.post("/api/admin/maintenance/auto-close-attendance")
