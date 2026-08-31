@@ -429,7 +429,7 @@ export function AdminPillGrid({ options = [], value, onChange }) {
   );
 }
 
-export function AdminDateRow({ value, onChange, label }) {
+export function AdminDateRow({ value, onChange, label, maxDate }) {
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
   const [show, setShow] = React.useState(false);
@@ -449,6 +449,7 @@ export function AdminDateRow({ value, onChange, label }) {
           value={value ? new Date(`${value}T00:00:00`) : new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          maximumDate={maxDate}
           onChange={(_, date) => {
             setShow(Platform.OS === 'ios');
             if (date) onChange(dateToISO(date));

@@ -347,12 +347,15 @@ const LeaveRequestScreen = ({ route, navigation }) => {
               setAttachment(result.assets[0]);
             }
           }}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: colors.surfaceSecondary, borderRadius: 12, marginBottom: 14, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, marginTop: 14, backgroundColor: colors.surfaceSecondary, borderRadius: 12, marginBottom: 14, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
         >
           <Ionicons name="attach-outline" size={18} color={colors.primary} />
-          <Text style={{ fontSize: 13, color: attachment ? colors.primary : colors.textSecondary, fontWeight: '600' }}>
-            {attachment ? attachment.name : 'Attach file (optional)'}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, color: attachment ? colors.primary : colors.textSecondary, fontWeight: '600' }}>
+              {attachment ? attachment.name : 'Attach file'}
+            </Text>
+            {!attachment && <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 2 }}>Images, PDF · Max 10 MB</Text>}
+          </View>
           {attachment && (
             <TouchableOpacity onPress={() => setAttachment(null)} style={{ marginLeft: 'auto' }}>
               <Ionicons name="close-circle" size={18} color={colors.danger} />

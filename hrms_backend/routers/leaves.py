@@ -120,16 +120,60 @@ def delete_leave_type(
     return {"message": "Leave type deactivated"}
 
 
-@cached(ttl=60)
+def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
+    """Auto-create LeaveBalance records for an employee based on active LeaveTypes."""
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
+    if not emp:
+        return 0
+    org_id = emp.organization_id
+
+    leave_types = db.query(LeaveType).filter(
+        LeaveType.deleted_at.is_(None),
+        LeaveType.status == "active",
+    )
+    if org_id:
+        leave_types = leave_types.filter(
+            (LeaveType.organization_id == org_id) | (LeaveType.organization_id.is_(None))
+        )
+    leave_types = leave_types.all()
+
+    created = 0
+    for lt in leave_types:
+        existing = db.query(LeaveBalance).filter(
+            LeaveBalance.employee_id == employee_id,
+            LeaveBalance.year == year,
+            LeaveBalance.leave_type_id == lt.id,
+            LeaveBalance.deleted_at.is_(None),
+        ).first()
+        if existing:
+            continue
+        total = getattr(lt, 'days_allowed', None) or 0
+        bal = LeaveBalance(
+            employee_id=employee_id,
+            year=year,
+            leave_type_id=lt.id,
+            total_days=total,
+            used_days=0,
+            remaining_days=total,
+        )
+        db.add(bal)
+        created += 1
+
+    if created:
+        db.commit()
+    return created
+
+
 @router.get("/api/leave-balances", tags=["Leave Balances"])
 def get_leave_balances(
     employeeId: Optional[int] = None,
     year: Optional[int] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_read_db),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    year = year or datetime.now().year
     query = db.query(LeaveBalance).filter(LeaveBalance.deleted_at.is_(None))
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.join(Employee, LeaveBalance.employee_id == Employee.id).filter(
@@ -142,8 +186,22 @@ def get_leave_balances(
         emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.user_id == current_user.id).first()
         if emp:
             query = query.filter(LeaveBalance.employee_id == emp.id)
+            employeeId = emp.id
         else:
             return []
+
+    # Auto-initialize leave balances if none exist for this employee+year
+    if employeeId:
+        existing = db.query(LeaveBalance).filter(
+            LeaveBalance.employee_id == employeeId,
+            LeaveBalance.year == year,
+            LeaveBalance.deleted_at.is_(None),
+        ).count()
+        if existing == 0:
+            try:
+                _auto_init_leave_balances(db, employeeId, year)
+            except Exception:
+                pass
     if year:
         query = query.filter(LeaveBalance.year == year)
     total = query.count()
