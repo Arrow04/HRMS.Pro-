@@ -327,22 +327,22 @@ const createStyles = (colors, isDark) => ({
   seeAllText: { fontSize: 12, fontWeight: '700', color: colors.primary },
   recordRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight },
   recordRowLast: { borderBottomWidth: 0 },
-  recordDateCompact: { width: 36, alignItems: 'center' },
-  recordDayNum: { fontSize: 15, fontWeight: '800', color: colors.text, lineHeight: 18 },
-  recordDayLbl: { fontSize: 9, fontWeight: '700', color: colors.textTertiary, textTransform: 'uppercase' },
-  recordMid: { flex: 1, minWidth: 0 },
+  recordDateCompact: { width: 42, alignItems: 'center', paddingTop: 2 },
+  recordDayNum: { fontSize: 16, fontWeight: '800', color: colors.text, lineHeight: 20 },
+  recordDayLbl: { fontSize: 9, fontWeight: '700', color: colors.textTertiary, textTransform: 'uppercase', marginTop: 1 },
+  recordMid: { flex: 1, minWidth: 0, justifyContent: 'center' },
   recordTimeLine: { fontSize: 12, fontWeight: '600', color: colors.text },
   recordMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   recordDot: { width: 6, height: 6, borderRadius: 3 },
   recordStatus: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, textTransform: 'capitalize' },
-  recordHoursCompact: { fontSize: 12, fontWeight: '800', color: colors.text, minWidth: 36, textAlign: 'right' },
+  recordHoursCompact: { fontSize: 12, fontWeight: '800', color: colors.text, minWidth: 36, textAlign: 'right', paddingTop: 4 },
   recordCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1067,7 +1067,7 @@ const AttendanceScreen = ({ navigation }) => {
                         <View style={styles.recordDateCompact}>
                           <Text style={styles.recordDayNum}>{item.date ? parseInt(String(item.date).slice(8, 10), 10) || '—' : '—'}</Text>
                           <Text style={styles.recordDayLbl}>
-                            {item.date ? fmtDateShort(item.date) : ''}
+                            {item.date ? fmtWeekday(item.date) : ''}
                           </Text>
                         </View>
                         <View style={styles.recordMid}>

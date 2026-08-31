@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
@@ -71,6 +72,7 @@ const LeaveRequestScreen = ({ route, navigation }) => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [attachment, setAttachment] = useState(null);
 
   const isModalOpen = !!selectedItem || isCreating;
 
@@ -113,6 +115,7 @@ const LeaveRequestScreen = ({ route, navigation }) => {
     setSelectedItem(null);
     setIsCreating(false);
     setForm({ ...emptyForm });
+    setAttachment(null);
   };
 
   const openCreate = () => {
@@ -133,13 +136,18 @@ const LeaveRequestScreen = ({ route, navigation }) => {
     }
     setSubmitting(true);
     try {
-      await api.post('/leaves', {
-        employeeId: employeeId,
-        leaveTypeId: form.leaveTypeId,
-        startDate: form.startDate,
-        endDate: form.endDate || form.startDate,
-        reason: form.reason.trim() });
+      const fd = new FormData();
+      fd.append('employeeId', String(employeeId));
+      fd.append('leaveTypeId', String(form.leaveTypeId));
+      fd.append('startDate', form.startDate);
+      fd.append('endDate', form.endDate || form.startDate);
+      fd.append('reason', form.reason.trim());
+      if (attachment) {
+        fd.append('attachment', { uri: attachment.uri, name: attachment.name, type: attachment.mimeType || 'application/octet-stream' });
+      }
+      await api.post('/leaves', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       Alert.alert('Submitted', 'Your leave request has been sent for approval.');
+      setAttachment(null);
       closeModal();
       fetchData();
     } catch (e) {
@@ -332,6 +340,25 @@ const LeaveRequestScreen = ({ route, navigation }) => {
           multiline
           style={{ height: 88, textAlignVertical: 'top' }}
         />
+        <TouchableOpacity
+          onPress={async () => {
+            const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
+            if (!result.canceled && result.assets?.[0]) {
+              setAttachment(result.assets[0]);
+            }
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: colors.surfaceSecondary, borderRadius: 12, marginBottom: 14, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+        >
+          <Ionicons name="attach-outline" size={18} color={colors.primary} />
+          <Text style={{ fontSize: 13, color: attachment ? colors.primary : colors.textSecondary, fontWeight: '600' }}>
+            {attachment ? attachment.name : 'Attach file (optional)'}
+          </Text>
+          {attachment && (
+            <TouchableOpacity onPress={() => setAttachment(null)} style={{ marginLeft: 'auto' }}>
+              <Ionicons name="close-circle" size={18} color={colors.danger} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
       </AdminCrudSheet>
     </View>
   );

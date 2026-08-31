@@ -1,5 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
 import { getTimezone, todayISO, dateToISO } from '../utils/timezone';
@@ -55,6 +57,7 @@ const ExpensesScreen = ({ navigation }) => {
   const [saving, setSaving] = useState(false);
   const [statusTab, setStatusTab] = useState('all');
   const [search, setSearch] = useState('');
+  const [attachment, setAttachment] = useState(null);
   const isAdmin = useIsAdmin();
   const { user } = useAuth();
   const employeeId = user?.employeeId ?? user?.employee_id;
@@ -74,6 +77,7 @@ const ExpensesScreen = ({ navigation }) => {
     setIsEditing(false);
     setIsCreating(false);
     setForm({ ...emptyForm, date: filterDate });
+    setAttachment(null);
   };
 
   const openCreate = () => {
@@ -106,6 +110,9 @@ const ExpensesScreen = ({ navigation }) => {
         fd.append('amount', String(parseFloat(form.amount)));
         fd.append('expenseDate', form.date || todayISO());
         if (form.description) fd.append('description', form.description);
+        if (attachment) {
+          fd.append('attachment', { uri: attachment.uri, name: attachment.name, type: attachment.mimeType || 'application/octet-stream' });
+        }
         await api.post('/expenses', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
         await api.put(`/expenses/${selectedItem.id}`, {
@@ -117,6 +124,7 @@ const ExpensesScreen = ({ navigation }) => {
         });
       }
       Alert.alert('Success', isCreating ? 'Expense submitted!' : 'Expense updated.');
+      setAttachment(null);
       closeModal();
       refresh();
     } catch (e) { Alert.alert('Error', e.response?.data?.detail || 'Failed.'); }
@@ -270,6 +278,25 @@ const ExpensesScreen = ({ navigation }) => {
         <AdminDateRow value={form.date} onChange={(v) => setForm((f) => ({ ...f, date: v }))} />
         <AdminFieldLabel>Description</AdminFieldLabel>
         <AdminInput value={form.description} onChangeText={(v) => setForm((f) => ({ ...f, description: v }))} placeholder="Optional..." multiline style={{ height: 60, textAlignVertical: 'top' }} />
+        <TouchableOpacity
+          onPress={async () => {
+            const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
+            if (!result.canceled && result.assets?.[0]) {
+              setAttachment(result.assets[0]);
+            }
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: colors.surfaceSecondary, borderRadius: 12, marginBottom: 14, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+        >
+          <Ionicons name="attach-outline" size={18} color={colors.primary} />
+          <Text style={{ fontSize: 13, color: attachment ? colors.primary : colors.textSecondary, fontWeight: '600' }}>
+            {attachment ? attachment.name : 'Attach file (optional)'}
+          </Text>
+          {attachment && (
+            <TouchableOpacity onPress={() => setAttachment(null)} style={{ marginLeft: 'auto' }}>
+              <Ionicons name="close-circle" size={18} color={colors.danger} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
       </AdminCrudSheet>
     </View>
   );

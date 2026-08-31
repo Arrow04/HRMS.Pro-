@@ -475,18 +475,46 @@ def _sync_attendance_for_leave(db: Session, lv: LeaveApplication) -> None:
 
 @router.post("/api/leaves", tags=["Leaves"])
 def create_leave(
-    leave_data: LeaveCreate,
+    employeeId: int = Form(...),
+    leaveTypeId: int = Form(...),
+    startDate: str = Form(...),
+    endDate: str = Form(...),
+    reason: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    isHalfDay: Optional[bool] = Form(False),
+    attachment: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    data = convert_camel_to_snake(leave_data.model_dump())
+    data = {
+        "employee_id": employeeId,
+        "leave_type_id": leaveTypeId,
+        "start_date": startDate,
+        "end_date": endDate,
+        "reason": reason,
+        "description": description,
+        "is_half_day": isHalfDay,
+    }
     from core.employee_scope import apply_employee_scope
     data = apply_employee_scope(db, data)
     if current_user.role != "superadmin":
         get_employee_in_org(db, Employee, data.get("employee_id"), current_user.organization_id)
         validate_company_in_org(db, Company, data.get("company_id"), current_user.organization_id)
         data["organization_id"] = current_user.organization_id
+
+    # Handle attachment upload
+    attachment_url = None
+    if attachment and attachment.filename:
+        filename = f"leave_{uuid.uuid4().hex[:12]}_{attachment.filename}"
+        upload_dir = os.path.join(os.path.dirname(__file__), "uploads", "leaves")
+        os.makedirs(upload_dir, exist_ok=True)
+        with open(os.path.join(upload_dir, filename), "wb") as f:
+            f.write(attachment.file.read())
+        attachment_url = f"/uploads/leaves/{filename}"
+
     lv = LeaveApplication(**data)
+    if attachment_url:
+        lv.attachment_url = attachment_url
     if not lv.total_days:
         start = dateparser.parse(str(lv.start_date)).date()
         end = dateparser.parse(str(lv.end_date)).date()
@@ -495,13 +523,11 @@ def create_leave(
     db.add(lv)
     db.commit()
     db.refresh(lv)
-    # Sync attendance for the leave period so attendance reflects the new leave
     try:
         _sync_attendance_for_leave(db, lv)
         db.commit()
     except Exception:
         db.rollback()
-    # Notify approvers of the new request
     from services.notifier import notify_leave_submitted
     emp = db.query(Employee).filter(Employee.id == lv.employee_id).first()
     employee_name = f"{emp.first_name or ''} {emp.last_name or ''}".strip() or f"Employee #{lv.employee_id}"
