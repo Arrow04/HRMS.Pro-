@@ -8,6 +8,7 @@ import { useThemedStyles } from '../hooks/useThemedStyles';
 import { Avatar, Badge, EmptyState, Divider } from '../components/UI';
 import { useApiData, normalizeResponse } from '../hooks/useApiData';
 import { useIsAdmin } from '../hooks/useIsAdmin';
+import { useAuth } from '../context/AuthContext';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
   AdminListCard, AdminFieldLabel, AdminInput, AdminPillGrid, AdminDateRow,
@@ -55,6 +56,7 @@ const ExpensesScreen = ({ navigation }) => {
   const [statusTab, setStatusTab] = useState('all');
   const [search, setSearch] = useState('');
   const isAdmin = useIsAdmin();
+  const { user } = useAuth();
 
   const isModalOpen = !!selectedItem || isCreating;
 
@@ -93,11 +95,27 @@ const ExpensesScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     if (!form.amount || !form.category) { Alert.alert('Missing', 'Enter amount and select category.'); return; }
+    const employeeId = user?.employeeId ?? user?.employee_id;
+    if (!employeeId) { Alert.alert('Error', 'Employee ID not found.'); return; }
     setSaving(true);
     try {
-      const payload = { amount: parseFloat(form.amount), category: form.category, description: form.description, date: form.date };
-      if (isCreating) await api.post('/expenses', payload);
-      else await api.put(`/expenses/${selectedItem.id}`, payload);
+      if (isCreating) {
+        const fd = new FormData();
+        fd.append('employeeId', String(employeeId));
+        fd.append('category', form.category);
+        fd.append('amount', String(parseFloat(form.amount)));
+        fd.append('expenseDate', form.date || todayISO());
+        if (form.description) fd.append('description', form.description);
+        await api.post('/expenses', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      } else {
+        await api.put(`/expenses/${selectedItem.id}`, {
+          employeeId: employeeId,
+          amount: parseFloat(form.amount),
+          category: form.category,
+          description: form.description,
+          expenseDate: form.date,
+        });
+      }
       Alert.alert('Success', isCreating ? 'Expense submitted!' : 'Expense updated.');
       closeModal();
       refresh();

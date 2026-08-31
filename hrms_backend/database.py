@@ -48,15 +48,15 @@ try:
         # Per-process pool settings. With multiple uvicorn workers, the aggregate
         # connection count is workers * pool_size, so keep the per-worker pool
         # modest (default 5 + 10 overflow) to stay well under PG's max_connections.
-        DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '20'))
-        DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '40'))
+        DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
+        DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
         engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,
             pool_size=DB_POOL_SIZE,
             max_overflow=DB_MAX_OVERFLOW,
             pool_recycle=DB_POOL_RECYCLE,
-            pool_timeout=30,
+            pool_timeout=15,
             connect_args={
                 "options": (
                     f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS} "

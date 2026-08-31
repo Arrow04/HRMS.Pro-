@@ -20,11 +20,11 @@ const MY_HR_ITEMS = [
   { icon: 'time-outline', label: 'Attendance', screen: 'AttendanceHistory', color: '#3B82F6' },
   { icon: 'calendar-clear-outline', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
   { icon: 'card-outline', label: 'Payroll', screen: 'Payslips', color: '#059669' },
+  { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
   { icon: 'star-outline', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
   { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
   { icon: 'document-text-outline', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
   { icon: 'copy-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
-  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1' },
 ];
 
 const ADMIN_ITEMS = [
