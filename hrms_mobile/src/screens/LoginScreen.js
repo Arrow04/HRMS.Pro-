@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { radii, spacing, shadows } from '../theme';
+import { getStickyBarContentOffset } from '../components/ScrollTopBar';
 import hrmsLogo from '../../assets/hrms_logo1.png';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -420,7 +421,7 @@ const LoginScreen = () => {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 24 }]}
+          contentContainerStyle={[styles.scroll, { paddingTop: getStickyBarContentOffset(insets) + 24 }]}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}

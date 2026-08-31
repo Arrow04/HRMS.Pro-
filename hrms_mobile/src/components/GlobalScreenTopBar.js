@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect } from 'react';
 import { findFocusedRoute } from '@react-navigation/native';
 import { useScrollTopBarHost } from '../context/ScrollTopBarHost';
 
-const HIDDEN_ROUTES = new Set(['Login']);
+const HIDDEN_ROUTES = new Set([]);
 
 export function getFocusedRouteName(state) {
   if (!state) return null;
