@@ -121,11 +121,18 @@ def delete_leave_type(
 
 
 def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
-    """Auto-create LeaveBalance records for an employee based on active LeaveTypes."""
+    """Auto-create LeaveBalance records for an employee from the org's leave config.
+    
+    Reads from Organization.settings.leave_configs (the Leave Management page values).
+    """
     emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
         return 0
     org_id = emp.organization_id
+
+    config = _resolve_leave_config(db, employee_id, org_id)
+    if not config:
+        return 0
 
     leave_types = db.query(LeaveType).filter(
         LeaveType.deleted_at.is_(None),
@@ -138,7 +145,17 @@ def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
     leave_types = leave_types.all()
 
     created = 0
-    for lt in leave_types:
+    for field, (code, _label) in LEAVE_CONFIG_MAP.items():
+        days = config.get(field)
+        if days is None:
+            continue
+        try:
+            days = int(days)
+        except (TypeError, ValueError):
+            continue
+        lt = next((t for t in leave_types if (t.code or "").upper() == code), None)
+        if not lt:
+            continue
         existing = db.query(LeaveBalance).filter(
             LeaveBalance.employee_id == employee_id,
             LeaveBalance.year == year,
@@ -147,14 +164,13 @@ def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
         ).first()
         if existing:
             continue
-        total = getattr(lt, 'days_allowed', None) or 0
         bal = LeaveBalance(
             employee_id=employee_id,
             year=year,
             leave_type_id=lt.id,
-            total_days=total,
+            total_days=days,
             used_days=0,
-            remaining_days=total,
+            remaining_days=days,
         )
         db.add(bal)
         created += 1
@@ -828,30 +844,31 @@ def _resolve_leave_config(db, employee_id, organization_id):
     if not org:
         return None
     data = org.settings or {}
-    configs = data.get("leave_configs") or []
-    if not configs:
+    # Leave config can be in "leave" (new format) or "leave_configs" (old format)
+    config = data.get("leave") or {}
+    if not config:
+        configs = data.get("leave_configs") or []
+        if configs:
+            emp = db.query(Employee).filter(Employee.id == employee_id).first()
+            if not emp:
+                return None
+            branch_ids = _employee_branch_ids(db, employee_id)
+            def score(c):
+                cid = c.get("companyId")
+                bid = c.get("branchId")
+                did = c.get("departmentId")
+                rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
+                cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
+                bm = (bid is None) or (bid in branch_ids)
+                dm = (did is None) or (emp.department_id is not None and did == emp.department_id)
+                if not (cm and bm and dm):
+                    return (-1, -1, -1, -1)
+                return (rank, 1 if cm else 0, 1 if bm else 0, 1 if dm else 0)
+            best = max(configs, key=score, default=None)
+            if best and score(best)[0] >= 0:
+                return best
         return None
-    emp = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not emp:
-        return None
-    branch_ids = _employee_branch_ids(db, employee_id)
-
-    def score(c):
-        cid = c.get("companyId")
-        bid = c.get("branchId")
-        did = c.get("departmentId")
-        rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
-        cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
-        bm = (bid is None) or (bid in branch_ids)
-        dm = (did is None) or (emp.department_id is not None and did == emp.department_id)
-        if not (cm and bm and dm):
-            return (-1, -1, -1, -1)
-        return (rank, 1 if cm else 0, 1 if bm else 0, 1 if dm else 0)
-
-    best = max(configs, key=score, default=None)
-    if best and score(best)[0] >= 0:
-        return best
-    return None
+    return config
 
 
 @router.post("/api/leave-balances/init", tags=["Leave Balances"])
