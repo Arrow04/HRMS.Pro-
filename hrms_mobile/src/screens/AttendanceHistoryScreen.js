@@ -143,8 +143,10 @@ const AttendanceCalendar = ({ records, selectedMonth, selectedDate, colors, onSe
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+  const nowParts = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'numeric', timeZone: 'Asia/Kolkata' }).formatToParts(new Date());
+  const nowYear = parseInt(nowParts.find(p => p.type === 'year').value);
+  const nowMonth = parseInt(nowParts.find(p => p.type === 'month').value);
+  const isCurrentMonth = nowYear === year && nowMonth === month;
 
   return (
     <View style={{ marginBottom: 12 }}>
@@ -160,7 +162,8 @@ const AttendanceCalendar = ({ records, selectedMonth, selectedDate, colors, onSe
           if (day === null) return <View key={`e${i}`} style={{ width: '14.28%', aspectRatio: 1 }} />;
           const status = recordMap[day];
           const bg = dayColor(status);
-          const isToday = isCurrentMonth && day === today.getDate();
+          const nowDay = parseInt(new Intl.DateTimeFormat('en-US', { day: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date()), 10);
+          const isToday = isCurrentMonth && day === nowDay;
           const isSelected = selectedDate === `${selectedMonth}-${String(day).padStart(2, '0')}`;
           return (
             <TouchableOpacity

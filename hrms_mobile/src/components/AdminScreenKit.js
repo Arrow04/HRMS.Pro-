@@ -463,8 +463,10 @@ export function AdminMonthRow({ value, onChange, maxMonth }) {
   const adminStyles = useAdminStyles();
   const { colors } = useTheme();
   const [y, m] = value.split('-').map(Number);
-  const now = new Date();
-  const currentKey = maxMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const nowParts = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'numeric', timeZone: 'Asia/Kolkata' }).formatToParts(new Date());
+  const nowYear = parseInt(nowParts.find(p => p.type === 'year').value);
+  const nowMonth = parseInt(nowParts.find(p => p.type === 'month').value);
+  const currentKey = maxMonth || `${nowYear}-${String(nowMonth).padStart(2, '0')}`;
   const [maxY, maxM] = currentKey.split('-').map(Number);
   const atMax = y > maxY || (y === maxY && m >= maxM);
   const shift = (delta) => {

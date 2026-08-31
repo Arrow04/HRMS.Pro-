@@ -31,7 +31,9 @@ const formatCompact = (value) => {
 
 const payslipMonthIndex = (item) => {
   const d = new Date(item.payDate || item.periodStart || item.createdAt);
-  return Number.isNaN(d.getTime()) ? 0 : d.getMonth();
+  if (Number.isNaN(d.getTime())) return 0;
+  const parts = new Intl.DateTimeFormat('en-US', { month: 'numeric', timeZone: 'Asia/Kolkata' }).formatToParts(d);
+  return parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
 };
 
 const PayslipScreen = ({ navigation }) => {

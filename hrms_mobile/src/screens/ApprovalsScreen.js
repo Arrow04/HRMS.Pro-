@@ -102,7 +102,7 @@ const payrollPeriod = (p) => {
   const m = p.month;
   const y = p.year;
   if (m && y) {
-    return new Date(y, m - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric' });
+    return new Date(y, m - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric', timeZone: getTimezone() });
   }
   return '—';
 };

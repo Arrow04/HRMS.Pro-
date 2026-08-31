@@ -601,7 +601,7 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
   const trendLabels = trend6.map((t) => {
     if (t.label) return t.label;
     if (t.month && t.year) {
-      return new Date(t.year, t.month - 1, 1).toLocaleString('en', { month: 'short' });
+      return new Date(t.year, t.month - 1, 1).toLocaleString('en', { month: 'short', timeZone: getTimezone() });
     }
     return '';
   });
@@ -952,8 +952,8 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
   const attendanceByMonth = React.useMemo(() => {
     const counts = {};
     attendance.forEach((r) => {
-      const d = new Date(r.date || r.attendance_date);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const dateStr = (r.date || r.attendance_date || '').slice(0, 10);
+      const key = dateStr.slice(0, 7);
       if (!counts[key]) counts[key] = { present: 0, total: 0 };
       counts[key].total += 1;
       if (r.status === 'present' || r.status === 'late') counts[key].present += 1;
@@ -962,7 +962,7 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: counts[key]?.present || 0 });
     }
     return result;
@@ -971,15 +971,15 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
   const expensesByMonth = React.useMemo(() => {
     const totals = {};
     expenses.forEach((e) => {
-      const d = new Date(e.date || e.expense_date || e.created_at);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const dateStr = (e.date || e.expense_date || e.created_at || '').slice(0, 10);
+      const key = dateStr.slice(0, 7);
       totals[key] = (totals[key] || 0) + (parseFloat(e.amount) || 0);
     });
     const result = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: Math.round(totals[key] || 0) });
     }
     return result;
@@ -991,14 +991,14 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
     payrollArr.forEach((p) => {
       const m = (p.month || p.payroll_month || 0) - 1;
       const y = p.year || p.payroll_year || new Date().getFullYear();
-      const key = `${y}-${m}`;
+      const key = `${y}-${String(m + 1).padStart(2, '0')}`;
       salaries[key] = parseFloat(p.net_salary || p.netSalary || 0);
     });
     const result = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: Math.round(salaries[key] || 0) });
     }
     return result;
@@ -1191,11 +1191,10 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
     </BentoCard>
 
     {(() => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
+      const todayStr = todayISO();
       const upcoming = (Array.isArray(holidays) ? holidays : [])
-        .filter((h) => new Date(h.date) >= today)
-        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .filter((h) => (h.date || '').slice(0, 10) >= todayStr)
+        .sort((a, b) => (a.date || '').slice(0, 10).localeCompare((b.date || '').slice(0, 10)))
         .slice(0, 3);
       return (
         <BentoCard onPress={() => navigation.navigate('Holidays')}>
@@ -1314,21 +1313,21 @@ const DashboardScreen = ({ navigation }) => {
   const now = new Date();
   const totalWorkHours = attendance.reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
 
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
-  weekStart.setHours(0, 0, 0, 0);
+  const todayStr = todayISO();
+  const [istY, istM, istD] = todayStr.split('-').map(Number);
+  const istDow = new Date(istY, istM - 1, istD).getDay();
+  const weekStartStr = daysAgoISO(istDow);
   const weeklyHours = attendance
-    .filter((r) => new Date(r.date || r.attendance_date) >= weekStart)
+    .filter((r) => (r.date || r.attendance_date || '').slice(0, 10) >= weekStartStr)
     .reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
 
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStartStr = monthStartISO(istY, istM);
   const monthlyHours = attendance
-    .filter((r) => new Date(r.date || r.attendance_date) >= monthStart)
+    .filter((r) => (r.date || r.attendance_date || '').slice(0, 10) >= monthStartStr)
     .reduce((sum, r) => sum + (parseFloat(r.work_hours || r.workHours) || 0), 0);
 
-  const days30Ago = new Date(now);
-  days30Ago.setDate(now.getDate() - 30);
-  const last30 = attendance.filter((r) => new Date(r.date || r.attendance_date) >= days30Ago);
+  const days30AgoStr = daysAgoISO(30);
+  const last30 = attendance.filter((r) => (r.date || r.attendance_date || '').slice(0, 10) >= days30AgoStr);
   const avgDailyHours = last30.length > 0 ? totalWorkHours / last30.length : 0;
 
   const istHour = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date()), 10);

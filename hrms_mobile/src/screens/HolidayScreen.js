@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
-import { getTimezone, dateToISO } from '../utils/timezone';
+import { getTimezone, dateToISO, todayISO } from '../utils/timezone';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii } from '../theme';
@@ -127,17 +127,17 @@ const HolidayScreen = ({ navigation }) => {
     ]);
   };
 
-  const now = new Date();
+  const todayStr = todayISO();
   const filtered = holidays.filter((h) => {
     const q = search.toLowerCase();
     const matchSearch = !q || (h.name || '').toLowerCase().includes(q);
-    const isUpcoming = new Date(h.date) >= now;
+    const isUpcoming = h.date >= todayStr;
     if (activeTab === 'upcoming') return matchSearch && isUpcoming;
     if (activeTab === 'past') return matchSearch && !isUpcoming;
     return matchSearch;
   });
 
-  const upcomingCount = holidays.filter((h) => new Date(h.date) >= now).length;
+  const upcomingCount = holidays.filter((h) => h.date >= todayStr).length;
   const pastCount = holidays.length - upcomingCount;
 
   return (
@@ -164,12 +164,12 @@ const HolidayScreen = ({ navigation }) => {
           ) : (
             filtered.map((h) => {
               const c = typeColor(h.type);
-              const d = new Date(h.date);
+              const d = new Date((h.date || '') + 'T12:00:00');
               return (
                 <AdminListCard key={h.id} onPress={() => openDetail(h)}>
                   <View style={[styles.dateBox, { backgroundColor: c + '18' }]}>
                     <Text style={[styles.dateDay, { color: c }]}>{d.getDate()}</Text>
-                    <Text style={[styles.dateMonth, { color: c }]}>{d.toLocaleString('default', { month: 'short' }).toUpperCase()}</Text>
+                    <Text style={[styles.dateMonth, { color: c }]}>{d.toLocaleString('default', { month: 'short', timeZone: getTimezone() }).toUpperCase()}</Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={adminStyles.listTitle}>{h.name}</Text>
@@ -204,7 +204,7 @@ const HolidayScreen = ({ navigation }) => {
         viewContent={selectedItem && (
           <AdminDetailRows rows={[
             { label: 'Name', value: selectedItem.name, valueStyle: { textTransform: 'none' } },
-            { label: 'Date', value: selectedItem.date ? new Date(selectedItem.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
+            { label: 'Date', value: selectedItem.date ? new Date((selectedItem.date || '') + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
             { label: 'Type', value: selectedItem.type },
             { label: 'Description', value: selectedItem.description || '—', valueStyle: { textTransform: 'none' }, numberOfLines: 4 },
           ]} />
