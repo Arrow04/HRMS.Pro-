@@ -419,9 +419,9 @@ const LoginScreen = () => {
       <View style={styles.orb2} />
       <View style={styles.orb3} />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={0}>
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: getStickyBarContentOffset(insets) + 24 }]}
+          contentContainerStyle={[styles.scroll, { paddingTop: getStickyBarContentOffset(insets) + 24, paddingBottom: spacing.xxl + insets.bottom + 16 }]}
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="none"
           showsVerticalScrollIndicator={false}

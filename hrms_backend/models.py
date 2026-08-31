@@ -3070,3 +3070,25 @@ class JournalLine(Base):
 
     entry = relationship('JournalEntry', back_populates='lines')
     account = relationship('GLAccount')
+
+
+class CompanyPolicy(Base):
+    """HR policies that admins can CRUD. Employees see them as read-only."""
+    __tablename__ = 'company_policies'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
+
+    key = Column(String(50), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    icon = Column(String(50), default='document-text-outline')
+    color = Column(String(20), default='#3B82F6')
+    description = Column(Text, default='')
+    bullets = Column(JSON, default=list)
+    sort_order = Column(Integer, default=0)
+    status = Column(String(20), default='active', index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)

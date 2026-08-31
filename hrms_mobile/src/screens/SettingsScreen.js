@@ -123,7 +123,7 @@ const SettingsScreen = ({ navigation }) => {
     ]);
   };
 
-  const filteredUsers = users.filter(u => u.id === user?.id || u.email === user?.email);
+  const filteredUsers = isAdmin ? users : users.filter(u => u.id === user?.id || u.email === user?.email);
 
   return (
     <ScrollView {...scrollViewTopBarProps(scrollTopBar, { paddingBottom: TAB_BAR_CLEARANCE + 16 })} style={styles.container} refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={onRefresh} />} showsVerticalScrollIndicator={false}>
@@ -164,6 +164,24 @@ const SettingsScreen = ({ navigation }) => {
                         <Badge status={u.status === 'active' ? 'active' : 'inactive'} label={u.status || 'active'} size="sm" />
                         {u.last_login && <Text style={{ fontSize: 10, color: colors.textTertiary, marginLeft: 4 }}>Last: {new Date(u.last_login).toLocaleDateString('en-US', { timeZone: getTimezone() })}</Text>}
                       </View>
+                      {isAdmin && u.id !== user?.id && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                          <TouchableOpacity
+                            onPress={() => handleToggleStatus(u)}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: u.status === 'active' ? colors.dangerSurface : colors.successSurface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                          >
+                            <Ionicons name={u.status === 'active' ? 'pause-circle-outline' : 'checkmark-circle-outline'} size={14} color={u.status === 'active' ? colors.danger : colors.success} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: u.status === 'active' ? colors.danger : colors.success }}>{u.status === 'active' ? 'Deactivate' : 'Activate'}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleUpdateRole(u, u.role === 'admin' ? 'hr_manager' : 'admin')}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primarySurface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                          >
+                            <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>{u.role === 'admin' ? 'Make HR Mgr' : 'Make Admin'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </Card>

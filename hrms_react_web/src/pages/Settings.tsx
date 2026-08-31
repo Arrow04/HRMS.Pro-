@@ -150,6 +150,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'users', label: 'Users', dotColor: '#6366F1' },
       { id: 'devices', label: 'Devices', dotColor: '#10B981' },
       { id: 'notifications', label: 'Notifications', dotColor: '#F59E0B' },
+      { id: 'hr-policies', label: 'HR Policies', dotColor: '#8B5CF6' },
     ]
   },
   {
@@ -264,6 +265,199 @@ const RoleBadge = ({ role }: { role: 'Admin' | 'Manager' | 'Employee' }) => {
     Employee: 'bg-green-100 text-green-700 border-green-200',
   }[role];
   return <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles}`}>{role}</span>;
+};
+
+// =============================================================================
+// HR POLICIES PANEL
+// =============================================================================
+
+interface HRPolicy {
+  id: number;
+  key: string;
+  title: string;
+  icon: string;
+  color: string;
+  description: string;
+  bullets: string[];
+  sortOrder: number;
+  status: string;
+}
+
+const POLICY_ICONS = ['document-text-outline', 'finger-print-outline', 'calendar-outline', 'wallet-outline', 'star-outline', 'shield-checkmark-outline', 'laptop-outline', 'people-outline', 'briefcase-outline', 'heart-outline'];
+const POLICY_COLORS = ['#3B82F6', '#4F46E5', '#059669', '#8B5CF6', '#DC2626', '#0D9488', '#D97706', '#EC4899', '#6366F1', '#14B8A6'];
+
+const HRPoliciesPanel = () => {
+  const [policies, setPolicies] = useState<HRPolicy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editItem, setEditItem] = useState<HRPolicy | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', icon: 'document-text-outline', color: '#3B82F6', sortOrder: 0, bullets: [''] as string[] });
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    try {
+      const res = await api.get('/api/policies');
+      setPolicies(res.data?.data || []);
+    } catch { /* empty */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openCreate = () => { setEditItem(null); setForm({ title: '', description: '', icon: 'document-text-outline', color: '#3B82F6', sortOrder: policies.length, bullets: [''] }); setShowForm(true); };
+  const openEdit = (p: HRPolicy) => { setEditItem(p); setForm({ title: p.title, description: p.description, icon: p.icon, color: p.color, sortOrder: p.sortOrder, bullets: p.bullets?.length ? [...p.bullets] : [''] }); setShowForm(true); };
+
+  const handleSave = async () => {
+    if (!form.title.trim()) { toast.error('Title is required'); return; }
+    setSaving(true);
+    try {
+      const key = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const payload = { ...form, key, bullets: form.bullets.filter(b => b.trim()) };
+      if (editItem) {
+        await api.put(`/api/policies/${editItem.id}`, payload);
+        toast.success('Policy updated');
+      } else {
+        await api.post('/api/policies', payload);
+        toast.success('Policy created');
+      }
+      setShowForm(false);
+      load();
+    } catch { toast.error('Failed to save policy'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (p: HRPolicy) => {
+    if (!confirm(`Delete "${p.title}"?`)) return;
+    try {
+      await api.delete(`/api/policies/${p.id}`);
+      toast.success('Policy deleted');
+      load();
+    } catch { toast.error('Failed to delete'); }
+  };
+
+  const updateBullet = (i: number, val: string) => {
+    const b = [...form.bullets]; b[i] = val; setForm(f => ({ ...f, bullets: b }));
+  };
+  const addBullet = () => setForm(f => ({ ...f, bullets: [...f.bullets, ''] }));
+  const removeBullet = (i: number) => setForm(f => ({ ...f, bullets: f.bullets.filter((_, idx) => idx !== i) }));
+
+  if (loading) return <PageSkeleton />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-[var(--text-primary)]">HR Policies</h3>
+          <p className="text-sm text-[var(--text-secondary)]">Manage company policies visible to all employees</p>
+        </div>
+        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] text-white text-sm font-semibold shadow-md hover:shadow-lg transition-shadow">
+          <Plus size={16} /> Add Policy
+        </button>
+      </div>
+
+      {policies.length === 0 ? (
+        <EmptyState icon="📋" title="No policies" message="Create your first HR policy." />
+      ) : (
+        <div className="space-y-3">
+          {policies.map(p => (
+            <div key={p.id} className="bg-white border border-[#E2E8F0] rounded-xl p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: p.color + '18' }}>
+                    <span className="text-lg" style={{ color: p.color }}>📋</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-[var(--text-primary)]">{p.title}</h4>
+                      {p.status === 'inactive' && <span className="text-[10px] font-semibold bg-red-50 text-red-600 px-2 py-0.5 rounded-full">Inactive</span>}
+                    </div>
+                    {p.description && <p className="text-sm text-[var(--text-secondary)] mt-1">{p.description}</p>}
+                    {p.bullets?.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {p.bullets.map((b, i) => (
+                          <li key={i} className="text-sm text-[var(--text-secondary)] flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: p.color }} />
+                            {b}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 ml-2">
+                  <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-[var(--hover-bg)] text-[var(--text-secondary)] hover:text-[#4F46E5] transition-colors">
+                    <Edit2 size={15} />
+                  </button>
+                  <button onClick={() => handleDelete(p)} className="p-2 rounded-lg hover:bg-red-50 text-[var(--text-secondary)] hover:text-red-500 transition-colors">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{editItem ? 'Edit Policy' : 'New Policy'}</h3>
+              <button onClick={() => setShowForm(false)} className="p-1.5 rounded-lg hover:bg-[var(--hover-bg)]"><X size={18} /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wide">Title *</label>
+                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm bg-[var(--background)]" placeholder="e.g. Leave Policy" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wide">Description</label>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} className="w-full px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm bg-[var(--background)] resize-none" placeholder="Brief description of this policy" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wide">Color</label>
+                  <div className="flex flex-wrap gap-2">
+                    {POLICY_COLORS.map(c => (
+                      <button key={c} onClick={() => setForm(f => ({ ...f, color: c }))} className={`w-7 h-7 rounded-full border-2 transition-all ${form.color === c ? 'border-gray-800 scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wide">Sort Order</label>
+                  <input type="number" value={form.sortOrder} onChange={e => setForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))} className="w-full px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm bg-[var(--background)]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5 uppercase tracking-wide">Bullet Points</label>
+                <div className="space-y-2">
+                  {form.bullets.map((b, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input value={b} onChange={e => updateBullet(i, e.target.value)} className="flex-1 px-4 py-2 border border-[var(--border-color)] rounded-xl text-sm bg-[var(--background)]" placeholder={`Point ${i + 1}`} />
+                      {form.bullets.length > 1 && (
+                        <button onClick={() => removeBullet(i)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400"><Trash2 size={14} /></button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={addBullet} className="flex items-center gap-1.5 text-sm font-semibold text-[#4F46E5] hover:text-[#1C64F2]">
+                    <Plus size={14} /> Add point
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-color)] text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] text-white text-sm font-semibold shadow-md hover:shadow-lg disabled:opacity-50">
+                {saving ? 'Saving…' : editItem ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // =============================================================================
@@ -2198,6 +2392,9 @@ const Settings = () => {
 
       case 'audit':
         return <ActivityLog />;
+
+      case 'hr-policies':
+        return <HRPoliciesPanel />;
 
       default:
         return <div className="text-[var(--text-disabled)]">Select a setting from the sidebar</div>;

@@ -129,6 +129,7 @@ from routers.settings_inline import router as settings_inline_router
 from routers.employee_lifecycle import router as employee_lifecycle_router
 from routers.billing import router as billing_router
 from routers.maintenance import router as maintenance_router
+from routers.policies import router as policies_router
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from utils.helpers import convert_camel_to_snake
 
@@ -525,6 +526,7 @@ app.include_router(settings_inline_router)
 app.include_router(employee_lifecycle_router)
 app.include_router(billing_router)
 app.include_router(maintenance_router)
+app.include_router(policies_router)
 
 # --- Test Route ---
 

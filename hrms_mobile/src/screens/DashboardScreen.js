@@ -725,7 +725,6 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
             height={140}
             color={colors.primary}
             bare
-            showXLabels={false}
           />
         ) : (
           <View style={styles.emptyChart}><Text style={styles.emptyMiniText}>No trend data</Text></View>
@@ -749,7 +748,6 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
             height={140}
             color="#059669"
             bare
-            showXLabels={false}
           />
         ) : (
           <View style={styles.emptyChart}><Text style={styles.emptyMiniText}>No payroll data</Text></View>
@@ -780,7 +778,6 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
             height={130}
             color="#F59E0B"
             bare
-            showXLabels={false}
           />
         )}
       </BentoCard>
@@ -958,10 +955,10 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
       counts[key].total += 1;
       if (r.status === 'present' || r.status === 'late') counts[key].present += 1;
     });
+    const now = new Date();
     const result = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: counts[key]?.present || 0 });
     }
@@ -975,10 +972,10 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
       const key = dateStr.slice(0, 7);
       totals[key] = (totals[key] || 0) + (parseFloat(e.amount) || 0);
     });
+    const now = new Date();
     const result = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: Math.round(totals[key] || 0) });
     }
@@ -994,10 +991,10 @@ const EmployeeDashboard = ({ navigation, present, late, absent, onLeave, attenda
       const key = `${y}-${String(m + 1).padStart(2, '0')}`;
       salaries[key] = parseFloat(p.net_salary || p.netSalary || 0);
     });
+    const now = new Date();
     const result = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       result.push({ label: monthNames[d.getMonth()], value: Math.round(salaries[key] || 0) });
     }
