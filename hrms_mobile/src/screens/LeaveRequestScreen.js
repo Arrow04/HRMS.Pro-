@@ -134,6 +134,7 @@ const LeaveRequestScreen = ({ route, navigation }) => {
     setSubmitting(true);
     try {
       await api.post('/leaves', {
+        employeeId: employeeId,
         leaveTypeId: form.leaveTypeId,
         startDate: form.startDate,
         endDate: form.endDate || form.startDate,
