@@ -295,56 +295,6 @@ def update_leave_policy(
     data["leave"] = {**(data.get("leave") or {}), **payload}
     org.settings = data
     db.commit()
-
-    # Sync leave balances for all active employees in this org
-    try:
-        from models import Employee, LeaveType, LeaveBalance
-        LEAVE_MAP = {"casual": "CL", "sick": "SL", "earned": "EL", "maternity": "ML"}
-        year = datetime.now().year
-        employees = db.query(Employee).filter(
-            Employee.deleted_at.is_(None),
-            Employee.status == "active",
-            Employee.organization_id == org.id,
-        ).all()
-        leave_types = db.query(LeaveType).filter(
-            LeaveType.deleted_at.is_(None),
-            LeaveType.status == "active",
-            LeaveType.organization_id == org.id,
-        ).all()
-        for emp in employees:
-            for field, code in LEAVE_MAP.items():
-                days = payload.get(field)
-                if days is None:
-                    continue
-                try:
-                    days = int(days)
-                except (TypeError, ValueError):
-                    continue
-                lt = next((t for t in leave_types if (t.code or "").upper() == code), None)
-                if not lt:
-                    continue
-                bal = db.query(LeaveBalance).filter(
-                    LeaveBalance.employee_id == emp.id,
-                    LeaveBalance.year == year,
-                    LeaveBalance.leave_type_id == lt.id,
-                    LeaveBalance.deleted_at.is_(None),
-                ).first()
-                if bal:
-                    bal.total_days = days
-                    bal.remaining_days = max(0, days - (bal.used_days or 0))
-                else:
-                    db.add(LeaveBalance(
-                        employee_id=emp.id,
-                        year=year,
-                        leave_type_id=lt.id,
-                        total_days=days,
-                        used_days=0,
-                        remaining_days=days,
-                    ))
-        db.commit()
-    except Exception as e:
-        print(f"Leave balance sync error: {e}")
-
     invalidate_cache("hrms:tenant:*")
     return {"message": "Leave policy updated"}
 

@@ -840,35 +840,41 @@ def _employee_branch_ids(db, employee_id):
 
 
 def _resolve_leave_config(db, employee_id, organization_id):
+    """Resolve leave config for an employee from Organization.settings.leave_configs.
+    
+    Priority: Company-specific > Branch-specific > Department-specific > Org-wide.
+    The ScopedConfigManager saves configs here and syncs to LeaveType records.
+    """
     org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == organization_id).first()
     if not org:
         return None
     data = org.settings or {}
-    # Leave config can be in "leave" (new format) or "leave_configs" (old format)
-    config = data.get("leave") or {}
-    if not config:
-        configs = data.get("leave_configs") or []
-        if configs:
-            emp = db.query(Employee).filter(Employee.id == employee_id).first()
-            if not emp:
-                return None
-            branch_ids = _employee_branch_ids(db, employee_id)
-            def score(c):
-                cid = c.get("companyId")
-                bid = c.get("branchId")
-                did = c.get("departmentId")
-                rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
-                cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
-                bm = (bid is None) or (bid in branch_ids)
-                dm = (did is None) or (emp.department_id is not None and did == emp.department_id)
-                if not (cm and bm and dm):
-                    return (-1, -1, -1, -1)
-                return (rank, 1 if cm else 0, 1 if bm else 0, 1 if dm else 0)
-            best = max(configs, key=score, default=None)
-            if best and score(best)[0] >= 0:
-                return best
+    configs = data.get("leave_configs") or []
+    if not configs:
         return None
-    return config
+
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        return None
+
+    branch_ids = _employee_branch_ids(db, employee_id)
+
+    def score(c):
+        cid = c.get("companyId")
+        bid = c.get("branchId")
+        did = c.get("departmentId")
+        rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
+        cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
+        bm = (bid is None) or (bid in branch_ids)
+        dm = (did is None) or (emp.department_id is not None and did == emp.department_id)
+        if not (cm and bm and dm):
+            return (-1, -1, -1, -1)
+        return (rank, 1 if cm else 0, 1 if bm else 0, 1 if dm else 0)
+
+    best = max(configs, key=score, default=None)
+    if best and score(best)[0] >= 0:
+        return best
+    return None
 
 
 @router.post("/api/leave-balances/init", tags=["Leave Balances"])
