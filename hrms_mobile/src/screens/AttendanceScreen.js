@@ -511,7 +511,7 @@ function LiveClock() {
   const { isDark } = useTheme();
   const [time, setTime] = useState(new Date());
   useEffect(() => { const id = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(id); }, []);
-  const h = time.getHours();
+  const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(time), 10);
   const period = h < 12
     ? { icon: 'partly-sunny-outline', label: 'Morning' }
     : h < 17

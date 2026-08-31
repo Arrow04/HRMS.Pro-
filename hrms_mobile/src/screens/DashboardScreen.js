@@ -858,12 +858,12 @@ const AdminDashboard = ({ navigation, summary, pipeline, interviews, anomalyStat
               </View>
             ) : (
               holidays.slice(0, 3).map((h, i) => {
-                const d = new Date(h.date);
+                const d = new Date((h.date || '') + 'T12:00:00');
                 return (
                   <View key={i} style={styles.holidayMini}>
                     <View style={styles.holidayDate}>
                       <Text style={styles.holidayDay}>{d.getDate()}</Text>
-                      <Text style={styles.holidayMon}>{d.toLocaleString('en', { month: 'short' })}</Text>
+                      <Text style={styles.holidayMon}>{d.toLocaleString('en', { month: 'short', timeZone: getTimezone() })}</Text>
                     </View>
                     <Text style={styles.holidayName} numberOfLines={1}>{h.name}</Text>
                   </View>
@@ -1331,7 +1331,8 @@ const DashboardScreen = ({ navigation }) => {
   const last30 = attendance.filter((r) => new Date(r.date || r.attendance_date) >= days30Ago);
   const avgDailyHours = last30.length > 0 ? totalWorkHours / last30.length : 0;
 
-  const greeting = new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const istHour = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date()), 10);
+  const greeting = istHour < 12 ? 'Good morning' : istHour < 17 ? 'Good afternoon' : 'Good evening';
 
   const handleChatPress = () => {
     Animated.sequence([

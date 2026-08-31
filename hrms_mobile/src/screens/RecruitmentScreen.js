@@ -8,6 +8,7 @@ import { Badge, EmptyState, Avatar } from '../components/UI';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
   AdminListCard, AdminFieldLabel, AdminInput, AdminCrudSheet, AdminDetailRows, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
+import { getTimezone } from '../utils/timezone';
 
 const createLocalStyles = (colors) => ({
   actionBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
@@ -171,7 +172,7 @@ const RecruitmentScreen = ({ navigation }) => {
         { label: 'Candidate', value: selectedItem.candidate_name, valueStyle: { textTransform: 'none' } },
         { label: 'Job', value: selectedItem.job_title || 'N/A', valueStyle: { textTransform: 'none' } },
         { label: 'Interviewer', value: selectedItem.interviewer || 'TBD', valueStyle: { textTransform: 'none' } },
-        { label: 'Scheduled', value: selectedItem.scheduled_at ? new Date(selectedItem.scheduled_at).toLocaleString() : '—', valueStyle: { textTransform: 'none' } },
+        { label: 'Scheduled', value: selectedItem.scheduled_at ? new Date(selectedItem.scheduled_at).toLocaleString('en-US', { timeZone: getTimezone() }) : '—', valueStyle: { textTransform: 'none' } },
         { label: 'Status', value: selectedItem.status || 'scheduled' },
       ]} />
     );
@@ -234,7 +235,7 @@ const RecruitmentScreen = ({ navigation }) => {
                   <View style={{ flex: 1 }}>
                     <Text style={adminStyles.listTitle}>{int.candidate_name || `Interview-${int.id}`}</Text>
                     <Text style={adminStyles.listSub}>{int.job_title || 'N/A'} • {int.interviewer || 'TBD'}</Text>
-                    {int.scheduled_at ? <Text style={adminStyles.listSub}>{new Date(int.scheduled_at).toLocaleString()}</Text> : null}
+                    {int.scheduled_at ? <Text style={adminStyles.listSub}>{new Date(int.scheduled_at).toLocaleString('en-US', { timeZone: getTimezone() })}</Text> : null}
                     <View style={{ marginTop: 6 }}>
                       <Badge status={int.status === 'completed' ? 'completed' : 'pending'} label={int.status || 'scheduled'} size="sm" />
                     </View>

@@ -329,7 +329,7 @@ const AttendanceHistoryScreen = ({ navigation }) => {
                 <EmptyState icon="📅" title="No records found" message="No attendance records for this month." />
               ) : (
                 filtered.map((item, i) => {
-                  const d = item.date ? new Date(item.date) : null;
+                  const d = item.date ? new Date((item.date || '').slice(0, 10) + 'T12:00:00') : null;
                   return (
                     <AdminListCard key={`${item.date}-${item.id || i}`} onPress={() => setSelectedItem(item)}>
                       <View style={{

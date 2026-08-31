@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { getTimezone, todayISO, dateToISO } from '../utils/timezone';
+import { getTimezone, todayISO, dateToISO, fmtTime } from '../utils/timezone';
 import api from '../services/api';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
@@ -185,8 +185,8 @@ const AdminAttendanceScreen = ({ navigation }) => {
     setForm({
       employeeId: emp.id,
       status: att.status || 'present',
-      checkIn: ci ? new Date(ci).toTimeString().slice(0, 5) : '09:00',
-      checkOut: co ? new Date(co).toTimeString().slice(0, 5) : '',
+      checkIn: ci ? fmtTime(ci).replace(/ [AP]M$/, '').trim() : '09:00',
+      checkOut: co ? fmtTime(co).replace(/ [AP]M$/, '').trim() : '',
       notes: att.notes || '',
       reason: att.reason || '',
       isLate: att.is_late || false,

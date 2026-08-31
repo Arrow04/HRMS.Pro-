@@ -458,7 +458,7 @@ const AdminLeavesScreen = ({ navigation }) => {
                   <View style={[styles.historyDot, { backgroundColor: h.action === 'approved' ? '#10B981' : h.action === 'rejected' ? '#DC2626' : '#F59E0B' }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.historyAction}>{h.action} by {h.action_by_name || `User #${h.action_by}`}</Text>
-                    <Text style={styles.historyDate}>{h.created_at ? new Date(h.created_at).toLocaleString() : ''}</Text>
+                    <Text style={styles.historyDate}>{h.created_at ? new Date(h.created_at).toLocaleString('en-US', { timeZone: getTimezone() }) : ''}</Text>
                     {h.reason && <Text style={styles.historyReason}>Reason: {h.reason}</Text>}
                   </View>
                 </View>

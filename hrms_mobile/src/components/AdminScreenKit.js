@@ -15,6 +15,7 @@ import { ScrollTopBar, bannerShellStyle } from './ScrollTopBar';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
 import { useRegisterScrollTopBar } from '../hooks/useScrollTopBar';
 import { useScrollTopBarHost } from '../context/ScrollTopBarHost';
+import { getTimezone, dateToISO } from '../utils/timezone';
 
 export { useScrollTopBar, useRegisterScrollTopBar, ScrollTopBar };
 export { STICKY_BAR_TITLE, bannerUnderBarStyle, bannerShellStyle, BANNER_HORIZONTAL_INSET, BANNER_TOP_INSET } from './ScrollTopBar';
@@ -433,7 +434,7 @@ export function AdminDateRow({ value, onChange, label }) {
   const { colors } = useTheme();
   const [show, setShow] = React.useState(false);
   const display = value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: getTimezone() })
     : label || 'Select date';
 
   return (
@@ -450,7 +451,7 @@ export function AdminDateRow({ value, onChange, label }) {
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
           onChange={(_, date) => {
             setShow(Platform.OS === 'ios');
-            if (date) onChange(date.toISOString().split('T')[0]);
+            if (date) onChange(dateToISO(date));
           }}
         />
       )}
@@ -481,7 +482,7 @@ export function AdminMonthRow({ value, onChange, maxMonth }) {
         <Ionicons name="chevron-back" size={18} color={colors.primary} />
       </TouchableOpacity>
       <Text style={[adminStyles.dateText, { flex: 1, textAlign: 'center' }]}>
-        {new Date(`${value}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        {new Date(`${value}-01`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: getTimezone() })}
       </Text>
       <TouchableOpacity onPress={() => shift(1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} disabled={atMax} style={{ opacity: atMax ? 0.3 : 1 }}>
         <Ionicons name="chevron-forward" size={18} color={colors.primary} />
