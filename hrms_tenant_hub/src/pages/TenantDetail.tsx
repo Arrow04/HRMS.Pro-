@@ -96,11 +96,16 @@ export default function TenantDetail() {
   const openEdit = () => {
     setEditForm({
       company_name: tenant.company_name || '',
+      company_code: tenant.company_code || tenant.code || '',
       domain: tenant.domain || '',
       industry: tenant.industry || '',
       company_size: tenant.company_size || '',
       default_currency: tenant.default_currency || 'INR',
       timezone: tenant.timezone || 'UTC',
+      country: tenant.country || 'India',
+      pan_no: tenant.pan_no || '',
+      tan_no: tenant.tan_no || '',
+      gst_no: tenant.gst_no || '',
     });
     setEditOpen(true);
   };
@@ -108,7 +113,7 @@ export default function TenantDetail() {
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
   if (!tenant) return <div className="p-6 text-center text-gray-500">Tenant not found</div>;
 
-  const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm";
+  const inputCls = "w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all";
 
   return (
     <div className="p-6 space-y-6">
@@ -246,45 +251,95 @@ export default function TenantDetail() {
       {/* Edit Tenant Modal */}
       {editOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Edit Tenant</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                <input value={editForm.company_name || ''} onChange={e => setEditForm({ ...editForm, company_name: e.target.value })} className={inputCls} />
+          <div className="bg-white rounded-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Tenant</h3>
+              <button onClick={() => setEditOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-500" /> Organisation Details
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Name *</label>
+                    <input value={editForm.company_name || ''} onChange={e => setEditForm({ ...editForm, company_name: e.target.value })} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Code</label>
+                    <input value={editForm.company_code || ''} onChange={e => setEditForm({ ...editForm, company_code: e.target.value })} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Domain</label>
+                    <input value={editForm.domain || ''} onChange={e => setEditForm({ ...editForm, domain: e.target.value })} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Industry</label>
+                    <input value={editForm.industry || ''} onChange={e => setEditForm({ ...editForm, industry: e.target.value })} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Size</label>
+                    <select value={editForm.company_size || ''} onChange={e => setEditForm({ ...editForm, company_size: e.target.value })}
+                      className={inputCls}>
+                      <option value="">Select</option>
+                      <option>1-10</option><option>10-50</option><option>50-200</option>
+                      <option>200-500</option><option>500-1000</option><option>1000+</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Currency</label>
+                    <select value={editForm.default_currency || 'INR'} onChange={e => setEditForm({ ...editForm, default_currency: e.target.value })}
+                      className={inputCls}>
+                      <option value="INR">INR (₹)</option><option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Timezone</label>
+                    <select value={editForm.timezone || 'UTC'} onChange={e => setEditForm({ ...editForm, timezone: e.target.value })}
+                      className={inputCls}>
+                      <option value="Asia/Kolkata">Asia/Kolkata</option><option value="UTC">UTC</option>
+                      <option value="Asia/Dubai">Asia/Dubai</option><option value="America/New_York">America/New_York</option>
+                      <option value="Europe/London">Europe/London</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Country</label>
+                    <select value={editForm.country || 'India'} onChange={e => setEditForm({ ...editForm, country: e.target.value })}
+                      className={inputCls}>
+                      <option>India</option><option>United States</option><option>United Kingdom</option>
+                      <option>United Arab Emirates</option><option>Singapore</option><option>Canada</option>
+                      <option>Australia</option><option>Germany</option><option>Japan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">PAN No.</label>
+                    <input value={editForm.pan_no || ''} onChange={e => setEditForm({ ...editForm, pan_no: e.target.value })} className={inputCls} />
+                    <p className="text-[11px] text-gray-400 mt-1">PAN of this organisation (required for Form 16)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">TAN No.</label>
+                    <input value={editForm.tan_no || ''} onChange={e => setEditForm({ ...editForm, tan_no: e.target.value })} className={inputCls} />
+                    <p className="text-[11px] text-gray-400 mt-1">Tax Deduction Account No. (required to file TDS &amp; issue Form 16)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">GST No.</label>
+                    <input value={editForm.gst_no || ''} onChange={e => setEditForm({ ...editForm, gst_no: e.target.value })} className={inputCls} />
+                    <p className="text-[11px] text-gray-400 mt-1">GST registration number of this organisation</p>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
-                  <input value={editForm.domain || ''} onChange={e => setEditForm({ ...editForm, domain: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
-                  <input value={editForm.industry || ''} onChange={e => setEditForm({ ...editForm, industry: e.target.value })} className={inputCls} />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Size</label>
-                  <input value={editForm.company_size || ''} onChange={e => setEditForm({ ...editForm, company_size: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-                  <input value={editForm.default_currency || ''} onChange={e => setEditForm({ ...editForm, default_currency: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-                  <input value={editForm.timezone || ''} onChange={e => setEditForm({ ...editForm, timezone: e.target.value })} className={inputCls} />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => updateMut.mutate(editForm)}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
-                  {updateMut.isPending ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button onClick={() => setEditOpen(false)}
-                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200">Cancel</button>
-              </div>
+              <button
+                type="button"
+                onClick={() => updateMut.mutate(editForm)}
+                disabled={updateMut.isPending}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-blue-900/20"
+              >
+                {updateMut.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>

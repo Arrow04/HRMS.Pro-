@@ -212,10 +212,10 @@ const createAdminStyles = (colors) => StyleSheet.create({
     gap: 6,
     paddingVertical: 12,
     borderRadius: radii.lg,
-    backgroundColor: colors.dangerSurface,
+    backgroundColor: '#DC2626',
     marginTop: 16,
   },
-  deleteActionText: { fontSize: 14, fontWeight: '700', color: colors.dangerText },
+  deleteActionText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });
 
 export const adminStyles = createAdminStyles(staticColors);

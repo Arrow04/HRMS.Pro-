@@ -1,23 +1,32 @@
 ﻿import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   Building2, Mail, Lock, User, Globe, Users, Loader2, CheckCircle2,
   Copy, ArrowLeft, Briefcase, Wallet, CalendarCheck, Clock, FileText,
-  BarChart3, Settings, ShieldCheck, Wand2, RotateCcw, Eye, EyeOff, KeyRound
+  BarChart3, Settings, ShieldCheck, Wand2, RotateCcw, Eye, EyeOff, KeyRound,
+  Building, Palmtree, CreditCard, Monitor, TrendingUp, ShieldAlert, FileBarChart, Database, LogOut, Tag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
 const MODULE_OPTIONS = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+  { id: 'company', label: 'Company', icon: Building },
   { id: 'employees', label: 'Employees', icon: Users },
   { id: 'attendance', label: 'Attendance', icon: Clock },
-  { id: 'leave', label: 'Leaves', icon: CalendarCheck },
+  { id: 'holidays', label: 'Holidays', icon: Palmtree },
+  { id: 'recruitment', label: 'Recruitment', icon: Briefcase },
+  { id: 'leaves', label: 'Leaves', icon: CalendarCheck },
   { id: 'payroll', label: 'Payroll', icon: Wallet },
-  { id: 'expenses', label: 'Expenses', icon: FileText },
-  { id: 'holidays', label: 'Holidays', icon: CalendarCheck },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'expenses', label: 'Expenses', icon: CreditCard },
+  { id: 'assets', label: 'Assets', icon: Monitor },
+  { id: 'performance', label: 'Performance', icon: TrendingUp },
+  { id: 'reports', label: 'Reports', icon: FileBarChart },
+  { id: 'master_data', label: 'Master Data', icon: Database },
   { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'exit', label: 'Exits', icon: LogOut },
+  { id: 'anomalies', label: 'Anomalies', icon: ShieldAlert },
 ];
 
 const initialForm = {
@@ -36,6 +45,7 @@ const initialForm = {
   pan_no: '',
   tan_no: '',
   gst_no: '',
+  plan_id: '',
 };
 
 const buildSecureCode = (len: number) => {
@@ -77,6 +87,11 @@ export default function CreateTenant() {
     const t = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  const { data: plans = [] } = useQuery({
+    queryKey: ['plans'],
+    queryFn: () => api.get('/superadmin/legacy/plans').then(r => r.data),
+  });
 
   const fmtDate = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const fmtTime = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
@@ -228,7 +243,7 @@ export default function CreateTenant() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
         {/* Organisation Details */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
@@ -268,6 +283,15 @@ export default function CreateTenant() {
                 <option>India</option><option>United States</option><option>United Kingdom</option>
                 <option>United Arab Emirates</option><option>Singapore</option><option>Canada</option>
                 <option>Australia</option><option>Germany</option><option>Japan</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Plan *</label>
+              <select value={form.plan_id} onChange={update('plan_id')} className={inputCls}>
+                <option value="">Select a plan</option>
+                {plans.map((plan: any) => (
+                  <option key={plan.id} value={plan.id}>{plan.display_name} — Rs.{plan.price_monthly?.toLocaleString()}/mo</option>
+                ))}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -316,14 +340,14 @@ export default function CreateTenant() {
           </h2>
           <p className="text-xs text-gray-500 mb-4">This admin signs into the HRMS app and manages this organisation's workforce.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Admin Name *</label>
-              <input value={form.admin_name} onChange={update('admin_name')} placeholder="e.g. Rahul Sharma" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Admin Email *</label>
-              <input type="email" value={form.admin_email} onChange={update('admin_email')} placeholder="admin@company.com" className={inputCls} />
-            </div>
+              <div>
+                <label className={labelCls}>Admin Name *</label>
+                <input value={form.admin_name} onChange={update('admin_name')} placeholder="e.g. Rahul Sharma" className={inputCls} autoComplete="off" />
+              </div>
+              <div>
+                <label className={labelCls}>Admin Email *</label>
+                <input type="email" value={form.admin_email} onChange={update('admin_email')} placeholder="admin@company.com" className={inputCls} autoComplete="off" readOnly onFocus={(e) => e.target.removeAttribute('readonly')} />
+              </div>
             <div>
               <label className={labelCls}>Phone</label>
               <input value={form.admin_phone} onChange={update('admin_phone')} placeholder="+91 98765 43210" className={inputCls} />
@@ -337,6 +361,7 @@ export default function CreateTenant() {
                   onChange={update('password')}
                   placeholder="Min 8 chars"
                   className={`${inputCls} pr-28`}
+                  autoComplete="new-password"
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-1 gap-0.5">
                   {form.password ? (
@@ -366,6 +391,7 @@ export default function CreateTenant() {
                   onChange={update('passcode')}
                   placeholder="Passkey for secure login"
                   className={`${inputCls} pr-28`}
+                  autoComplete="new-password"
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-1 gap-0.5">
                   {form.passcode ? (
@@ -394,7 +420,7 @@ export default function CreateTenant() {
           <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-blue-500" /> Enabled Modules
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {MODULE_OPTIONS.map(m => {
               const active = modules.includes(m.id);
               const Icon = m.icon;

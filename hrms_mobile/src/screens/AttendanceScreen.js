@@ -462,6 +462,14 @@ const createStyles = (colors, isDark) => ({
 
 const getMyEmployeeId = (user) => user?.employeeId ?? user?.employee_id ?? null;
 
+const haversineDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 const normRecord = (r) => {
   if (!r) return r;
   return {
@@ -559,6 +567,9 @@ const AttendanceScreen = ({ navigation }) => {
   const [checking, setChecking] = useState(false);
   const [location, setLocation] = useState(null);
   const [locationErr, setLocationErr] = useState(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [geofenceInfo, setGeofenceInfo] = useState(null);
+  const [distanceFromBranch, setDistanceFromBranch] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthISO());
   const [showCamera, setShowCamera] = useState(false);
   const [pendingPunchType, setPendingPunchType] = useState(null);
@@ -611,6 +622,11 @@ const AttendanceScreen = ({ navigation }) => {
 
       const monthRecs = (attMonthRes.data?.data || attMonthRes.data || []).map(normRecord);
       setMonthRecords(monthRecs);
+
+      try {
+        const geoRes = await api.get('/attendance/geofence-info');
+        setGeofenceInfo(geoRes.data);
+      } catch {}
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, [myEmployeeId, selectedMonth]);
@@ -623,6 +639,7 @@ const AttendanceScreen = ({ navigation }) => {
       if (!servicesOn) {
         setLocationErr('Turn on device location (GPS) to punch.');
         setLocation(null);
+        setGpsAccuracy(null);
         return null;
       }
 
@@ -633,19 +650,31 @@ const AttendanceScreen = ({ navigation }) => {
       if (perm.status !== 'granted') {
         setLocationErr('Location permission is required for attendance.');
         setLocation(null);
+        setGpsAccuracy(null);
         return null;
       }
 
-      const loc = await Location.getLastKnownPositionAsync({ maxAge: 60000 })
-        || await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      // Always get a FRESH high-accuracy fix for geofence precision.
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+      const acc = loc.coords.accuracy ?? null;
+      setGpsAccuracy(acc);
       setLocation(loc.coords);
       setLocationErr(null);
+
+      if (geofenceInfo?.branch?.latitude && geofenceInfo?.branch?.longitude) {
+        const dist = haversineDistance(loc.coords.latitude, loc.coords.longitude, geofenceInfo.branch.latitude, geofenceInfo.branch.longitude);
+        setDistanceFromBranch(Math.round(dist));
+      }
+
       return loc.coords;
     } catch {
       setLocationErr('Could not get GPS fix. Move outdoors or tap GPS to retry.');
+      setGpsAccuracy(null);
       return location;
     }
-  }, [location]);
+  }, [location, geofenceInfo]);
 
   useFocusEffect(
     useCallback(() => {
@@ -776,13 +805,45 @@ const AttendanceScreen = ({ navigation }) => {
       const coords = await refreshLocation(true);
       const activeCoords = coords || location;
 
+      if (!activeCoords?.latitude || !activeCoords?.longitude) {
+        Alert.alert(
+          'Location Required',
+          'GPS location is mandatory for clock in/out. Please enable location services and try again.',
+          [
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            { text: 'Retry GPS', onPress: () => refreshLocation(true) },
+            { text: 'OK', style: 'cancel' },
+          ],
+        );
+        setChecking(false);
+        return;
+      }
+
       const payload = {
         date: todayISO(),
         clientRequestId: newPunchRequestId(),
-        ...(activeCoords?.latitude != null && activeCoords?.longitude != null
-          ? { latitude: activeCoords.latitude, longitude: activeCoords.longitude }
-          : {}),
+        latitude: activeCoords.latitude,
+        longitude: activeCoords.longitude,
+        locationName: 'Mobile GPS',
+        ...(gpsAccuracy != null ? { gpsAccuracy } : {}),
         ...(selfieBase64 ? { selfieData: `data:image/jpeg;base64,${selfieBase64}` } : {}) };
+
+      if (type === 'in' && geofenceInfo?.geoFenceEnabled && geofenceInfo?.branch?.latitude && geofenceInfo?.branch?.longitude) {
+        const dist = haversineDistance(activeCoords.latitude, activeCoords.longitude, geofenceInfo.branch.latitude, geofenceInfo.branch.longitude);
+        const radius = geofenceInfo.branch.geofenceRadius || 100;
+        if (dist > radius) {
+          Alert.alert(
+            'Outside Geofence',
+            `You are ${Math.round(dist)}m from your branch (${geofenceInfo.branch.name}). Please move within ${radius}m to clock in.`,
+            [
+              { text: 'Retry GPS', onPress: () => refreshLocation(true) },
+              { text: 'OK', style: 'cancel' },
+            ],
+          );
+          setChecking(false);
+          return;
+        }
+      }
       const res = await api.post(type === 'in' ? '/attendance/checkin' : '/attendance/checkout', payload);
       if (res.data) {
         const normalized = normRecord(res.data);
@@ -802,7 +863,7 @@ const AttendanceScreen = ({ navigation }) => {
           'Open session found',
           'You have an unfinished check-in. Please check out first, then you can check in again.',
         );
-      } else if (/location is required|geo-fence|away from your branch/i.test(detail)) {
+      } else if (/location.*required|location is required|geo-fence|away from your branch/i.test(detail)) {
         Alert.alert(
           'Location issue',
           String(detail),
@@ -926,14 +987,43 @@ const AttendanceScreen = ({ navigation }) => {
                     >
                       <Ionicons name="location-outline" size={14} color={location ? '#10B981' : '#D97706'} />
                       <Text style={[styles.verifyChipText, { color: location ? '#10B981' : colors.textSecondary }]}>
-                        {location ? 'Location ready' : 'Enable location'}
+                        {location
+                          ? (distanceFromBranch != null && geofenceInfo?.geoFenceEnabled
+                              ? `${distanceFromBranch}m away`
+                              : 'Location ready')
+                          : 'Enable location'}
                       </Text>
                     </TouchableOpacity>
                   </View>
 
+                  {geofenceInfo?.geoFenceEnabled && location && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 4, paddingHorizontal: 4 }}>
+                      <Ionicons name="shield-checkmark-outline" size={13} color={distanceFromBranch != null && distanceFromBranch <= (geofenceInfo?.branch?.geofenceRadius || 100) ? '#10B981' : '#EF4444'} />
+                      <Text style={{ fontSize: 11, color: distanceFromBranch != null && distanceFromBranch <= (geofenceInfo?.branch?.geofenceRadius || 100) ? '#10B981' : '#EF4444', fontWeight: '500' }}>
+                        {distanceFromBranch != null
+                          ? (distanceFromBranch <= (geofenceInfo?.branch?.geofenceRadius || 100)
+                              ? `Within geofence (${distanceFromBranch}m)`
+                              : `Outside geofence (${distanceFromBranch}m) — move closer`)
+                          : 'Locating...'}
+                      </Text>
+                      {gpsAccuracy != null && (
+                        <Text style={{ fontSize: 10, color: '#94A3B8', marginLeft: 'auto' }}>
+                          ±{Math.round(gpsAccuracy)}m
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
+                  {!geofenceInfo?.geoFenceEnabled && location && gpsAccuracy != null && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, marginBottom: 4, paddingHorizontal: 4 }}>
+                      <Ionicons name="information-circle-outline" size={12} color="#94A3B8" />
+                      <Text style={{ fontSize: 10, color: '#94A3B8' }}>GPS accuracy: ±{Math.round(gpsAccuracy)}m</Text>
+                    </View>
+                  )}
+
                   <TouchableOpacity
                     onPress={() => confirmPunch(isCheckedIn ? 'out' : 'in')}
-                    disabled={!!isCompleted || !!checking}
+                    disabled={!!isCompleted || !!checking || !location}
                     activeOpacity={0.9}
                   >
                     <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
@@ -941,7 +1031,7 @@ const AttendanceScreen = ({ navigation }) => {
                         colors={actionGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
-                        style={[styles.timeClockActionBtn, (checking || isCompleted) && { opacity: 0.85 }]}
+                        style={[styles.timeClockActionBtn, (checking || isCompleted || !location) && { opacity: 0.85 }]}
                       >
                         <Ionicons
                           name={isCompleted ? 'checkmark-circle' : isCheckedIn ? 'log-out-outline' : 'log-in-outline'}
@@ -950,11 +1040,11 @@ const AttendanceScreen = ({ navigation }) => {
                         />
                         <View style={{ alignItems: 'center' }}>
                           <Text style={styles.timeClockActionText}>
-                            {checking ? 'Processing…' : isCompleted ? 'Shift Completed' : isCheckedIn ? 'Clock Out' : 'Clock In'}
+                            {checking ? 'Processing…' : isCompleted ? 'Shift Completed' : !location ? 'Enable GPS' : isCheckedIn ? 'Clock Out' : 'Clock In'}
                           </Text>
                           {!checking && !isCompleted && (
                             <Text style={styles.timeClockActionSub}>
-                              {isCheckedIn ? 'End your work session' : 'Start your work session'}
+                              {isCheckedIn ? 'End your work session' : !location ? 'Location is required to punch' : 'Start your work session'}
                             </Text>
                           )}
                         </View>

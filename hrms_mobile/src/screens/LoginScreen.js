@@ -11,6 +11,8 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { setApiBaseUrl, API_URL_STORAGE_KEY, DEFAULT_API_BASE_URL } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { radii, spacing, shadows } from '../theme';
 import { getStickyBarContentOffset } from '../components/ScrollTopBar';
 import hrmsLogo from '../../assets/hrms_logo1.png';
@@ -330,7 +332,16 @@ const LoginScreen = () => {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showServerPicker, setShowServerPicker] = useState(false);
+  const [serverUrl, setServerUrl] = useState('');
   const { login, sendOTP, verifyOTP } = useAuth();
+
+  useEffect(() => {
+    AsyncStorage.getItem(API_URL_STORAGE_KEY).then((v) => {
+      if (v) setServerUrl(v);
+      else setServerUrl(DEFAULT_API_BASE_URL);
+    });
+  }, []);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -564,6 +575,68 @@ const LoginScreen = () => {
                 <Text style={styles.trustText}>Cloud synced</Text>
               </View>
             </View>
+
+            <TouchableOpacity onPress={() => setShowServerPicker(!showServerPicker)} style={{ alignSelf: 'center', paddingVertical: 6 }}>
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                {showServerPicker ? 'Hide' : 'Server'} · {serverUrl ? (serverUrl.includes('localhost') || serverUrl.includes('192.168') ? 'Local' : 'Production') : 'Default'}
+              </Text>
+            </TouchableOpacity>
+
+            {showServerPicker && (
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>Server URL</Text>
+                <TextInput
+                  value={serverUrl}
+                  onChangeText={setServerUrl}
+                  placeholder="https://hrms-api-8yv3.onrender.com/api"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    fontSize: 12,
+                    color: '#FFF',
+                  }}
+                />
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await setApiBaseUrl(serverUrl.trim());
+                      Alert.alert('Saved', `Server URL updated to:\n${serverUrl.trim()}`);
+                    }}
+                    style={{ flex: 1, backgroundColor: '#4F46E5', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>Save & Connect</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const local = 'http://192.168.1.1:8000/api';
+                      setServerUrl(local);
+                    }}
+                    style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>Local Dev</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await AsyncStorage.removeItem(API_URL_STORAGE_KEY);
+                      setServerUrl(DEFAULT_API_BASE_URL);
+                      Alert.alert('Reset', 'Server URL reset to default.');
+                    }}
+                    style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '600' }}>Reset</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 6, textAlign: 'center' }}>
+                  Tap "Local Dev" then edit IP to match your PC's WiFi IP
+                </Text>
+              </View>
+            )}
+
             <Text style={styles.versionText}>HRMS.Pro!</Text>
           </View>
         </ScrollView>

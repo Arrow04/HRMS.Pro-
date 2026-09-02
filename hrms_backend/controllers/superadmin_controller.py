@@ -173,6 +173,23 @@ async def create_tenant(
         
         db.commit()
         
+        # Create subscription if plan_id is provided
+        if data.plan_id:
+            plan = db.query(Plan).filter(Plan.id == data.plan_id, Plan.is_active == True).first()
+            if plan:
+                from core.datetime_utils import ist_now_naive
+                from datetime import timedelta
+                sub = Subscription(
+                    organization_id=org.id,
+                    plan_id=plan.id,
+                    status="active",
+                    start_date=ist_now_naive(),
+                    end_date=ist_now_naive() + timedelta(days=30),
+                    next_billing_date=ist_now_naive() + timedelta(days=30),
+                )
+                db.add(sub)
+                db.commit()
+        
         return {
             "message": "Tenant created successfully",
             "tenant_id": org.id,

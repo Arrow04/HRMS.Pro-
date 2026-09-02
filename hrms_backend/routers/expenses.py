@@ -46,6 +46,7 @@ def get_expenses(
     employeeId: Optional[int] = None,
     organizationId: Optional[int] = None,
     companyId: Optional[int] = None,
+    status: Optional[str] = None,
     includeInactive: bool = False,
     limit: int = Query(500, ge=1),
     db: Session = Depends(get_db),
@@ -67,6 +68,8 @@ def get_expenses(
         query = query.filter(Expense.organization_id == organizationId)
     if companyId:
         query = query.filter(Expense.company_id == companyId)
+    if status:
+        query = query.filter(Expense.status == status)
     if employeeId:
         if current_user.role != "superadmin":
             get_employee_in_org(db, Employee, employeeId, current_user.organization_id)
@@ -186,6 +189,7 @@ def create_expense(
     data = {k: v for k, v in data.items() if v is not None}
     from core.employee_scope import apply_employee_scope
     data = apply_employee_scope(db, data)
+    data.pop("branch_id", None)
     if amount is not None and amount <= 0:
         raise HTTPException(status_code=400, detail="Expense amount must be greater than zero")
     # Only the submitter's org may create the expense; status is always pending on submit.
@@ -409,6 +413,27 @@ def update_expense(
     db.commit()
     db.refresh(exp)
     return exp
+
+
+@router.delete("/api/expenses/{expense_id}", tags=["Expenses"])
+def delete_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    exp = db.query(Expense).filter(Expense.deleted_at.is_(None), Expense.id == expense_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    if exp.organization_id and current_user.organization_id and exp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this expense")
+    is_admin = current_user.role in ("admin", "superadmin", "hr_admin", "hr_manager")
+    emp = db.query(Employee).filter(Employee.id == exp.employee_id).first()
+    is_owner = emp and emp.user_id and emp.user_id == current_user.id
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    exp.deleted_at = ist_now_naive()
+    db.commit()
+    return {"message": "Expense deleted"}
 
 
 @cached(ttl=60)

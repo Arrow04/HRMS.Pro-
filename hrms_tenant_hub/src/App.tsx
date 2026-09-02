@@ -16,6 +16,7 @@ const AdminUsers = lazy(() => import('./pages/AdminUsers'));
 const SystemHealth = lazy(() => import('./pages/SystemHealth'));
 const AuditLogViewer = lazy(() => import('./pages/AuditLogViewer'));
 const FeatureFlags = lazy(() => import('./pages/FeatureFlags'));
+const PlanManagement = lazy(() => import('./pages/PlanManagement'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 const PageLoader = () => (
@@ -43,6 +44,7 @@ function App() {
             <Route path="/superadmin/health" element={<SystemHealth />} />
             <Route path="/superadmin/audit-logs" element={<AuditLogViewer />} />
             <Route path="/superadmin/feature-flags" element={<FeatureFlags />} />
+            <Route path="/superadmin/plans" element={<PlanManagement />} />
           </Route>
           <Route path="/register-tenant" element={<RegisterTenant />} />
           <Route path="*" element={<NotFound />} />

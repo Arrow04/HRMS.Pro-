@@ -5,7 +5,7 @@ Multi-tenant SaaS management endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Request, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, desc
 from typing import List, Optional
 from pydantic import BaseModel
 import re
@@ -18,7 +18,7 @@ except ImportError:
 import socket
 
 from database import get_db, SessionLocal
-from models import User, Organization, Plan, Subscription, FeatureFlag, SystemHealthLog, ModulePermission, AuditLog
+from models import User, Organization, Plan, Subscription, FeatureFlag, SystemHealthLog, ModulePermission, AuditLog, Employee
 from schemas.superadmin import (
     PlanCreate, PlanUpdate, PlanResponse,
     TenantCreate, TenantUpdate, TenantResponse,
@@ -213,9 +213,16 @@ def list_tenants(
     # Get employee counts
     result = []
     for org in orgs:
-        emp_count = db.query(func.count(User.id)).filter(
-            User.organization_id == org.id
-        ).scalar()
+        emp_count_total = db.query(func.count(Employee.id)).filter(
+            Employee.organization_id == org.id,
+            Employee.deleted_at.is_(None)
+        ).scalar() or 0
+        
+        emp_count_active = db.query(func.count(Employee.id)).filter(
+            Employee.organization_id == org.id,
+            Employee.deleted_at.is_(None),
+            Employee.status == "active"
+        ).scalar() or 0
         
         # Get last login
         last_login = db.query(func.max(User.last_login)).filter(
@@ -242,7 +249,8 @@ def list_tenants(
             "status": org.status,
             "plan_name": plan_name,
             "max_employees": max_emp,
-            "employee_count": emp_count,
+            "employee_count": emp_count_active,
+            "total_employee_count": emp_count_total,
             "created_at": org.created_at,
             "last_login": last_login,
             "logo_url": getattr(org, 'logo_url', None),
@@ -1052,6 +1060,15 @@ def get_dashboard_stats(
         User.last_login >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
     
+    total_employees = db.query(func.count(Employee.id)).filter(
+        Employee.deleted_at.is_(None)
+    ).scalar()
+    
+    active_employees = db.query(func.count(Employee.id)).filter(
+        Employee.deleted_at.is_(None),
+        Employee.status == "active"
+    ).scalar()
+    
     api_calls_24h = db.query(func.count(AuditLog.id)).filter(
         AuditLog.created_at >= ist_now_naive() - timedelta(hours=24)
     ).scalar()
@@ -1069,11 +1086,107 @@ def get_dashboard_stats(
         "suspended_tenants": suspended_tenants or 0,
         "trial_tenants": trial_tenants or 0,
         "total_users": total_users or 0,
+        "total_employees": total_employees or 0,
+        "active_employees": active_employees or 0,
         "active_users_today": active_users_today or 0,
         "api_calls_24h": api_calls_24h or 0,
         "revenue_this_month": revenue or 0.0,
         "system_status": health
     }
+
+
+@router.get("/dashboard/tenant-activity")
+def get_tenant_activity(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin)
+):
+    """Get tenant activity feed and per-tenant API call counts"""
+    today_start = ist_now_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    last_7_days = ist_now_naive() - timedelta(days=7)
+
+    orgs = db.query(Organization).all()
+    tenants_data = []
+    for org in orgs:
+        emp_count_total = db.query(func.count(Employee.id)).filter(
+            Employee.organization_id == org.id,
+            Employee.deleted_at.is_(None)
+        ).scalar() or 0
+        
+        emp_count_active = db.query(func.count(Employee.id)).filter(
+            Employee.organization_id == org.id,
+            Employee.deleted_at.is_(None),
+            Employee.status == "active"
+        ).scalar() or 0
+        last_login_user = db.query(User).filter(
+            User.organization_id == org.id
+        ).order_by(desc(User.last_login)).first()
+
+        api_calls_24h = db.query(func.count(AuditLog.id)).filter(
+            AuditLog.organization_id == org.id,
+            AuditLog.created_at >= today_start
+        ).scalar() or 0
+
+        recent_logs = db.query(AuditLog).filter(
+            AuditLog.organization_id == org.id
+        ).order_by(desc(AuditLog.created_at)).limit(8).all()
+
+        recent_activity = []
+        for log in recent_logs:
+            recent_activity.append({
+                "action": log.action,
+                "module": log.module,
+                "timestamp": log.created_at.isoformat() if log.created_at else None,
+                "user_name": log.user_name,
+            })
+
+        tenants_data.append({
+            "id": org.id,
+            "name": org.name,
+            "status": org.status,
+            "employee_count": emp_count_active,
+            "total_employee_count": emp_count_total,
+            "last_admin_login": last_login_user.last_login.isoformat() if last_login_user and last_login_user.last_login else None,
+            "api_calls_24h": api_calls_24h,
+            "recent_activity": recent_activity
+        })
+
+    # System-wide API call trend: last 7 days
+    trend = []
+    for i in range(7):
+        day_start = (ist_now_naive() - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        count = db.query(func.count(AuditLog.id)).filter(
+            AuditLog.created_at >= day_start,
+            AuditLog.created_at < day_end
+        ).scalar() or 0
+        trend.append({
+            "date": day_start.strftime("%Y-%m-%d"),
+            "api_calls": count
+        })
+    trend.reverse()
+
+    # Per-tenant API calls (last 24h) for bar chart
+    tenant_api = db.query(
+        Organization.name,
+        func.count(AuditLog.id).label("count")
+    ).outerjoin(
+        AuditLog, and_(
+            Organization.id == AuditLog.organization_id,
+            AuditLog.created_at >= today_start
+        )
+    ).group_by(Organization.id, Organization.name).order_by(desc(func.count(AuditLog.id))).all()
+
+    tenant_chart = [
+        {"tenant": name or "Unknown", "api_calls": count or 0}
+        for name, count in tenant_api
+    ]
+
+    return {
+        "tenants": tenants_data,
+        "trend": trend,
+        "tenant_chart": tenant_chart
+    }
+
 
 # ============== SYSTEM CONFIGURATION ==============
 
@@ -1363,6 +1476,72 @@ def delete_superadmin(
     db.delete(admin)
     db.commit()
     return {"message": "Superadmin deleted"}
+
+
+@router.get("/tenant-admins")
+def list_tenant_admins(
+    search: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin)
+):
+    """List all tenant admin users with full details"""
+    query = db.query(User).filter(User.role == "admin")
+    
+    if organization_id:
+        query = query.filter(User.organization_id == organization_id)
+    
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                User.email.ilike(search_term),
+                User.full_name.ilike(search_term),
+                User.phone.ilike(search_term)
+            )
+        )
+    
+    admins = query.order_by(desc(User.created_at)).all()
+    
+    result = []
+    for admin in admins:
+        org = db.query(Organization).filter(Organization.id == admin.organization_id).first()
+        
+        modules = db.query(ModulePermission).filter(ModulePermission.user_id == admin.id).all()
+        module_list = [m.module for m in modules]
+        
+        employee_count = db.query(func.count(Employee.id)).filter(
+            Employee.organization_id == admin.organization_id,
+            Employee.deleted_at.is_(None)
+        ).scalar() or 0
+        
+        result.append({
+            "id": admin.id,
+            "email": admin.email,
+            "full_name": admin.full_name,
+            "phone": admin.phone,
+            "role": admin.role,
+            "is_active": admin.is_active,
+            "organization_id": admin.organization_id,
+            "organization_name": org.name if org else None,
+            "organization_status": org.status if org else None,
+            "date_joined": admin.date_joined.isoformat() if admin.date_joined else None,
+            "join_time": admin.join_time.isoformat() if admin.join_time else None,
+            "last_login": admin.last_login.isoformat() if admin.last_login else None,
+            "is_locked_to_device": admin.is_locked_to_device,
+            "device_id": admin.device_id,
+            "allow_multi_device": admin.allow_multi_device,
+            "email_verified": admin.email_verified,
+            "phone_verified": admin.phone_verified,
+            "token_version": admin.token_version,
+            "modules": module_list,
+            "modules_count": len(module_list),
+            "organization_employee_count": employee_count,
+            "created_at": admin.created_at.isoformat() if admin.created_at else None,
+        })
+    
+    return result
+
 
 # ============== CUSTOM ANALYTICS & BILLING ==============
 

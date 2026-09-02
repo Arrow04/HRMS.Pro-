@@ -649,6 +649,36 @@ def get_employee_calendar(
     return {"employeeId": employee_id, "month": month, "year": year, "workdays": workdays, "days": days}
 
 
+@router.get("/api/attendance/geofence-info", tags=["Attendance"])
+def get_geofence_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    emp = _resolve_punch_employee(db, current_user)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee record not found")
+
+    from services.settings_service import is_feature_enabled
+    geo_enabled = is_feature_enabled(db, current_user.organization_id, "geoFence")
+    emp_geo = bool(getattr(emp, "geofence_enabled", False))
+
+    branch_info = None
+    if emp.branches:
+        primary = emp.branches[0]
+        branch_info = {
+            "id": primary.id,
+            "name": primary.name,
+            "latitude": primary.latitude,
+            "longitude": primary.longitude,
+            "geofenceRadius": primary.geofence_radius or 100,
+        }
+
+    return {
+        "geoFenceEnabled": geo_enabled and emp_geo,
+        "branch": branch_info,
+    }
+
+
 @router.post("/api/attendance/checkin", tags=["Attendance"])
 def check_in(
     request_data: ClockInRequest,
@@ -685,20 +715,21 @@ def check_in(
     if existing:
         raise HTTPException(status_code=400, detail="Already checked in")
 
+    # Location is always mandatory for check-in/out.
+    if request_data.latitude is None or request_data.longitude is None:
+        release_open_session(emp.id)
+        raise HTTPException(
+            status_code=400,
+            detail="Location is required. Please enable GPS and try again.",
+        )
+
     # Enforce geo-fence per employee: when geofence_enabled is ON the employee
-    # must be within their branch's geofence (latitude/longitude/radius) to
-    # check in; when OFF they can check in from anywhere.
+    # must be within their branch's geofence (latitude/longitude/radius).
     from services.settings_service import is_feature_enabled
     from services.workday_service import resolve_scoped_attendance_config
     geo_enabled = is_feature_enabled(db, current_user.organization_id, "geoFence")
     is_within = None
     if geo_enabled and emp.geofence_enabled:
-        if request_data.latitude is None or request_data.longitude is None:
-            release_open_session(emp.id)
-            raise HTTPException(
-                status_code=400,
-                detail="Geo-fence is enabled for you. Location is required to check in.",
-            )
         radius = 100
         try:
             cfg = resolve_scoped_attendance_config(db, emp.id, current_user.organization_id)
@@ -826,16 +857,18 @@ def check_out(
     if not att:
         raise HTTPException(status_code=400, detail="No active check-in found")
 
+    # Location is always mandatory for check-out.
+    if request_data.latitude is None or request_data.longitude is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Location is required. Please enable GPS and try again.",
+        )
+
     # Enforce geo-fence on check-out too (same per-employee toggle)
     from services.settings_service import is_feature_enabled
     from services.workday_service import resolve_scoped_attendance_config
     geo_enabled = is_feature_enabled(db, current_user.organization_id, "geoFence")
     if geo_enabled and emp.geofence_enabled:
-        if request_data.latitude is None or request_data.longitude is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Geo-fence is enabled for you. Location is required to check out.",
-            )
         radius = 100
         try:
             cfg = resolve_scoped_attendance_config(db, emp.id, current_user.organization_id)

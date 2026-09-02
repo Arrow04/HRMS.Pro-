@@ -374,6 +374,14 @@ def get_leaves(
     branch_ids = set(emp_branch_map.values())
     branch_map = {b.id: b.name for b in db.query(Branch).filter(Branch.id.in_(branch_ids), Branch.deleted_at.is_(None)).all()} if branch_ids else {}
 
+    # Batch-load approver names
+    from models import User as UserModel
+    approver_ids = {l.approver_id for l in leaves if l.approver_id}
+    approver_map = {}
+    if approver_ids:
+        approvers = db.query(UserModel).filter(UserModel.id.in_(approver_ids)).all()
+        approver_map = {u.id: (u.full_name or u.first_name or u.email or f"User-{u.id}") for u in approvers}
+
     # Fallback: reconcile leave_types from LEAVE_TYPE master data for ids not resolved
     missing_type_ids = [tid for tid in type_ids if tid not in types_map]
     if missing_type_ids:
@@ -409,6 +417,7 @@ def get_leaves(
             "purpose": l.purpose,
             "status": l.status,
             "approverId": l.approver_id,
+            "approvedBy": approver_map.get(l.approver_id),
             "approvedAt": l.approved_at.isoformat() if l.approved_at else None,
             "rejectionReason": l.rejection_reason,
             "isHalfDay": l.is_half_day,
@@ -571,6 +580,8 @@ def create_leave(
     }
     from core.employee_scope import apply_employee_scope
     data = apply_employee_scope(db, data)
+    # LeaveApplication has no branch_id column — strip it
+    data.pop("branch_id", None)
     if current_user.role != "superadmin":
         get_employee_in_org(db, Employee, data.get("employee_id"), current_user.organization_id)
         validate_company_in_org(db, Company, data.get("company_id"), current_user.organization_id)
@@ -752,7 +763,7 @@ def reject_leave_put(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
-    comments = (payload or {}).get("comments") if payload else None
+    comments = (payload or {}).get("comments") or (payload or {}).get("reason") if payload else None
     return _apply_leave_decision(db, lv, "reject", current_user, comments)
 
 

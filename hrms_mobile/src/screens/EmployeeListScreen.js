@@ -40,6 +40,7 @@ const EmployeeListScreen = ({ navigation }) => {
   const withPhone = (employees || []).filter((e) => e.phone).length;
 
   const renderItem = useCallback(({ item }) => (
+    <View style={{ paddingHorizontal: 16 }}>
     <AdminListCard onPress={() => navigation.navigate('EmployeeDetail', { employee: item })}>
       <Avatar firstName={item.firstName || item.first_name} lastName={item.lastName || item.last_name} size={42} status="online" />
       <View style={{ flex: 1, marginLeft: 12 }}>
@@ -54,6 +55,7 @@ const EmployeeListScreen = ({ navigation }) => {
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
     </AdminListCard>
+    </View>
   ), [navigation]);
 
   const ListHeader = () => (

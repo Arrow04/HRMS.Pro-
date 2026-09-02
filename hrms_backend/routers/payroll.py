@@ -639,6 +639,7 @@ def create_payroll(
     payload = convert_camel_to_snake(payroll_data.model_dump())
     from core.employee_scope import apply_employee_scope
     payload = apply_employee_scope(db, payload)
+    payload.pop("branch_id", None)
     pr = Payroll(**payload)
     pr.status = "draft"
     if current_user.role != "superadmin":

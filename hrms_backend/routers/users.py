@@ -420,3 +420,124 @@ def delete_user(
     user.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "User deleted successfully", "userId": user.id}
+
+
+# ---------------------------------------------------------------------------
+# Provision User accounts for orphan employees (userId is NULL)
+# ---------------------------------------------------------------------------
+
+@router.post("/provision-all", response_model=dict)
+def provision_all_orphan_employees(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in USER_MANAGER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    orphans = db.query(Employee).filter(
+        Employee.user_id.is_(None),
+        Employee.deleted_at.is_(None),
+    ).all()
+
+    default_password = "TempPass123!"
+    created = 0
+    skipped = 0
+    errors = []
+
+    for emp in orphans:
+        email = (emp.email or "").strip().lower()
+        if not email:
+            skipped += 1
+            continue
+
+        if db.query(User).filter(func.lower(User.email) == email).first():
+            skipped += 1
+            continue
+
+        user_phone = None
+        if emp.phone:
+            if not db.query(User).filter(User.phone == str(emp.phone).strip()).first():
+                user_phone = str(emp.phone).strip()
+
+        new_user = User(
+            email=emp.email,
+            password_hash=get_password_hash(default_password),
+            full_name=emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}".strip() or emp.email.split("@")[0],
+            role="employee",
+            phone=user_phone,
+            organization_id=emp.organization_id or current_user.organization_id,
+            is_active=True,
+        )
+        db.add(new_user)
+        db.flush()
+
+        emp.user_id = new_user.id
+        created += 1
+
+    db.commit()
+
+    return {
+        "message": f"Provisioned {created} user accounts ({skipped} skipped)",
+        "created": created,
+        "skipped": skipped,
+        "defaultPassword": default_password,
+    }
+
+
+@router.post("/provision", response_model=dict)
+def provision_single_employee(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role not in USER_MANAGER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    employee_id = data.get("employeeId") or data.get("employee_id")
+    if not employee_id:
+        raise HTTPException(status_code=400, detail="employeeId is required")
+
+    emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    if emp.user_id:
+        existing_user = db.query(User).filter(User.id == emp.user_id).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Employee already has a linked user account")
+
+    email = (emp.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Employee has no email address")
+
+    if db.query(User).filter(func.lower(User.email) == email).first():
+        raise HTTPException(status_code=409, detail="Email already exists as a user")
+
+    user_phone = None
+    if emp.phone:
+        if not db.query(User).filter(User.phone == str(emp.phone).strip()).first():
+            user_phone = str(emp.phone).strip()
+
+    default_password = data.get("password") or "TempPass123!"
+    new_user = User(
+        email=emp.email,
+        password_hash=get_password_hash(default_password),
+        full_name=emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}".strip() or emp.email.split("@")[0],
+        role="employee",
+        phone=user_phone,
+        organization_id=emp.organization_id or current_user.organization_id,
+        is_active=True,
+    )
+    db.add(new_user)
+    db.flush()
+
+    emp.user_id = new_user.id
+    db.commit()
+
+    return {
+        "message": f"User account created for {emp.full_name or emp.email}",
+        "userId": new_user.id,
+        "employeeId": emp.id,
+        "email": emp.email,
+        "defaultPassword": default_password,
+    }

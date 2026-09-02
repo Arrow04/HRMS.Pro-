@@ -8,7 +8,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Avatar, Badge, Divider, EmptyState, GradientButton } from '../components/UI';
-import { AdminModalShell, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
+import { AdminModalShell, AdminStatRow, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
 import { todayISO, dateToISO, getTimezone } from '../utils/timezone';
 
 const createStyles = (colors) => ({
@@ -74,11 +74,11 @@ const createStyles = (colors) => ({
   historyDate: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
   historyReason: { fontSize: 12, color: colors.textSecondary, marginTop: 4, fontStyle: 'italic' } });
 const TABS = [
+  { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'applied', label: 'Applied' },
-  { key: 'all', label: 'All' },
 ];
 
 const LEAVE_TYPES = ['Casual Leave', 'Sick Leave', 'Earned Leave', 'Unpaid Leave', 'Maternity Leave', 'Paternity Leave', 'Comp Off', 'WFH'];
@@ -92,7 +92,7 @@ const AdminLeavesScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('pending');
+  const [activeTab, setActiveTab] = useState('all');
   const [detailItem, setDetailItem] = useState(null);
   const [rejectModal, setRejectModal] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -110,16 +110,16 @@ const AdminLeavesScreen = ({ navigation }) => {
   const fetchData = useCallback(async () => {
     try {
       const [leaveRes, empRes] = await Promise.allSettled([
-        api.get('/leaves', { params: { status: 'all' } }),
+        api.get('/leaves'),
         api.get('/employees', { params: { status: 'active' } }),
       ]);
       if (leaveRes.status === 'fulfilled') setLeaves(leaveRes.value.data?.data || leaveRes.value.data?.items || (Array.isArray(leaveRes.value.data) ? leaveRes.value.data : []));
       if (empRes.status === 'fulfilled') {
-        const raw = empRes.value.data?.data || empRes.value.data?.items || [];
+        const raw = empRes.value.data?.data || empRes.value.data?.items || (Array.isArray(empRes.value.data) ? empRes.value.data : []);
         setEmployees(Array.isArray(raw) ? raw : []);
       }
     } catch (e) {
-      // Admin leaves fetch failed
+      console.error('Admin leaves fetch failed:', e);
     }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -252,19 +252,14 @@ const AdminLeavesScreen = ({ navigation }) => {
           <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(dateToISO(date)); }} />
         )}
 
-        <View style={styles.statRow}>
-          {[
+        <AdminStatRow
+          stats={[
             { val: pendingCount, label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
             { val: approvedCount, label: 'Approved', color: '#10B981', bg: '#DCFCE7' },
             { val: rejectedCount, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
             { val: appliedCount, label: 'Applied', color: '#4F46E5', bg: '#EEF2FF' },
-          ].map((s, i) => (
-            <View key={i} style={[styles.statItem, { backgroundColor: s.bg }]}>
-              <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
+          ]}
+        />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
           {TABS.map(t => (
@@ -293,7 +288,7 @@ const AdminLeavesScreen = ({ navigation }) => {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.leaveName}>{eName}</Text>
                   <Text style={styles.leaveType}>{getLeaveType(l)} • {getDays(l.start_date, l.end_date)} day{getDays(l.start_date, l.end_date) > 1 ? 's' : ''}</Text>
-                  <Text style={styles.leaveDates}>{l.start_date} → {l.end_date}</Text>
+                  <Text style={styles.leaveDates}>{(l.start_date || '').slice(0, 10)} → {(l.end_date || '').slice(0, 10)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <Badge status={l.status} size="sm" />
@@ -327,22 +322,25 @@ const AdminLeavesScreen = ({ navigation }) => {
                   <Avatar firstName={employees.find(e => e.id === detailItem.employee_id)?.firstName} lastName={employees.find(e => e.id === detailItem.employee_id)?.lastName} size={48} />
                   <View style={{ marginLeft: 14, flex: 1 }}>
                     <Text style={styles.detailName}>{detailItem.employee_name || empName(employees.find(e => e.id === detailItem.employee_id))}</Text>
-                    <Badge status={detailItem.status} label={detailItem.status} size="sm" />
+                    <Badge status={detailItem.status} label={detailItem.status} size="sm" style={{ alignSelf: 'flex-start' }} />
                   </View>
                 </View>
                 <Divider style={{ marginVertical: 12 }} />
                 {[
                   { label: 'Type', value: getLeaveType(detailItem) },
-                  { label: 'Duration', value: `${detailItem.start_date} → ${detailItem.end_date} (${getDays(detailItem.start_date, detailItem.end_date)}d)` },
-                  { label: 'Reason', value: detailItem.reason || '—' },
+                  { label: 'Duration', value: `${(detailItem.start_date || '').slice(0, 10)} → ${(detailItem.end_date || '').slice(0, 10)} (${getDays(detailItem.start_date, detailItem.end_date)}d)` },
                   { label: 'Applied On', value: detailItem.created_at ? new Date(detailItem.created_at).toLocaleDateString('en-US', { timeZone: getTimezone() }) : '—' },
                   { label: 'Approved By', value: detailItem.approved_by || '—' },
                 ].map((row, i) => (
                   <View key={i} style={styles.detailField}>
                     <Text style={styles.detailLabel}>{row.label}</Text>
-                    <Text style={[styles.detailValue, row.label === 'Reason' && { flex: 1 }]} numberOfLines={2}>{row.value}</Text>
+                    <Text style={[styles.detailValue]} numberOfLines={2}>{row.value}</Text>
                   </View>
                 ))}
+                <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                  <Text style={styles.detailLabel}>Reason</Text>
+                  <Text style={[styles.detailValue, { marginTop: 4 }]}>{detailItem.reason || '—'}</Text>
+                </View>
 
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                   {detailItem.status === 'pending' && (

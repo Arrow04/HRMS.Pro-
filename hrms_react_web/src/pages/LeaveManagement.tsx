@@ -291,7 +291,18 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   });
 
   const applyMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => api.post('/leaves', payload),
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const fd = new FormData();
+      if (payload.employeeId) fd.append('employeeId', String(payload.employeeId));
+      if (payload.leaveTypeId) fd.append('leaveTypeId', String(payload.leaveTypeId));
+      if (payload.startDate) fd.append('startDate', String(payload.startDate));
+      if (payload.endDate) fd.append('endDate', String(payload.endDate));
+      if (payload.reason) fd.append('reason', String(payload.reason));
+      if (payload.description) fd.append('description', String(payload.description));
+      if (payload.isHalfDay) fd.append('isHalfDay', 'true');
+      if (payload.attachment) fd.append('attachment', payload.attachment as Blob);
+      return api.post('/leaves', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
     onSuccess: () => {
       toast.success('Leave application submitted');
       queryClient.invalidateQueries({ queryKey: ['leaves'] });

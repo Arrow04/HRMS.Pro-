@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   Shield, Building2, CreditCard, Activity, ClipboardList, Server,
-  LogOut, Menu, ChevronDown, ChevronLeft, ChevronRight, Users
+  LogOut, Menu, ChevronDown, ChevronLeft, ChevronRight, Users, Tag
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,7 @@ const SIDEBAR_LINKS = [
   { path: '/superadmin', label: 'Dashboard', icon: Shield, color: 'bg-blue-500', textColor: 'text-blue-600', end: true },
   { path: '/superadmin/tenants', label: 'Tenants', icon: Building2, color: 'bg-blue-500', textColor: 'text-blue-600' },
   { path: '/superadmin/billing', label: 'Billing', icon: CreditCard, color: 'bg-green-500', textColor: 'text-green-600' },
+  { path: '/superadmin/plans', label: 'Plans', icon: Tag, color: 'bg-purple-500', textColor: 'text-purple-600' },
   { path: '/superadmin/admins', label: 'Admin Users', icon: Users, color: 'bg-blue-500', textColor: 'text-blue-600' },
   { path: '/superadmin/health', label: 'Health', icon: Activity, color: 'bg-amber-500', textColor: 'text-amber-600' },
   { path: '/superadmin/audit-logs', label: 'Audit Logs', icon: ClipboardList, color: 'bg-indigo-500', textColor: 'text-indigo-600' },

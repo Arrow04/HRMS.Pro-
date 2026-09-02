@@ -740,6 +740,18 @@ const UserManagementPanel = () => {
     }
   };
 
+  const handleProvisionOrphans = async () => {
+    if (!window.confirm('This will create login accounts for all employees without one. Continue?')) return;
+    try {
+      const res = await api.post('/api/users/provision-all');
+      const data = res.data;
+      toast.success(`${data.created} user accounts created (${data.skipped} skipped). Default password: ${data.defaultPassword}`);
+      loadUsers();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Failed to provision users');
+    }
+  };
+
   const handleAddUser = async () => {
     if (!newUser.role) { toast.error('Please select a role'); return; }
     if (!newUser.fullName.trim()) { toast.error('Please enter a user name'); return; }
@@ -837,6 +849,10 @@ const UserManagementPanel = () => {
             label="Export"
             variant="toolbar"
           />
+          <button onClick={handleProvisionOrphans} className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl hover:bg-amber-600 transition-colors shadow-sm">
+            <Users className="w-4 h-4" />
+            Provision Orphans
+          </button>
           <button onClick={() => { setNewUser({ fullName: '', email: '', phone: '', password: '', passcode: '', role: '', isActive: null, dateJoined: nowISODate(), joinTime: nowISOTime(), permissions: { ...defaultPermissions } }); setShowAddModal(true); setShowAddPw(false); }} className="flex items-center gap-2 px-4 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-medium rounded-xl hover:bg-[var(--primary-blue)]/90 transition-colors shadow-sm">
             <Plus className="w-4 h-4" />
             Add User

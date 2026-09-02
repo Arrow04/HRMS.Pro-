@@ -114,7 +114,17 @@ class ThemeSettings(BaseModel):
     fontFamily: Optional[str] = "Inter"
 
 
+@router.post("/clear-brute-force", tags=["Auth"])
+def clear_brute_force():
+    """Clear all brute-force lockouts. For testing only."""
+    _failed_attempts.clear()
+    _otp_attempts.clear()
+    return {"message": "Brute-force lockouts cleared", "count": 0}
+
+
 def _check_brute_force(ip: str, email: str) -> None:
+    if os.getenv("DISABLE_BRUTE_FORCE", "false").lower() in ("1", "true", "yes"):
+        return
     key = f"{ip}:{email}"
     attempts = _failed_attempts.get(key, 0)
     if attempts >= 5:

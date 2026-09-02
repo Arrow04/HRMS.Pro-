@@ -11,18 +11,22 @@ import api from '../services/api';
 export default function TenantManagement() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [tab, setTab] = useState<'active' | 'inactive' | 'all'>('active');
   const [actionMenu, setActionMenu] = useState<number | null>(null);
   const [editTenant, setEditTenant] = useState<any>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
 
   const { data: tenants, isLoading } = useQuery({
-    queryKey: ['tenants', filter, search],
+    queryKey: ['tenants', tab, search],
     queryFn: () => api.get('/superadmin/legacy/tenants', {
-      params: { status: filter !== 'all' ? filter : undefined, search: search || undefined }
+      params: { search: search || undefined }
     }).then(r => r.data),
   });
+
+  const activeTenants = tenants?.filter((t: any) => t.status === 'active' || t.status === 'trial') || [];
+  const inactiveTenants = tenants?.filter((t: any) => t.status !== 'active' && t.status !== 'trial') || [];
+  const visibleTenants = tab === 'active' ? activeTenants : tab === 'inactive' ? inactiveTenants : tenants || [];
 
   const approveMut = useMutation({
     mutationFn: (id: number) => api.post(`/superadmin/legacy/approve-tenant/${id}`),
@@ -82,11 +86,16 @@ export default function TenantManagement() {
     setEditTenant(t);
     setEditForm({
       company_name: t.company_name || '',
+      company_code: t.company_code || t.code || '',
       domain: t.domain || '',
       industry: t.industry || '',
       company_size: t.company_size || '',
       default_currency: t.default_currency || 'INR',
       timezone: t.timezone || 'UTC',
+      country: t.country || 'India',
+      pan_no: t.pan_no || '',
+      tan_no: t.tan_no || '',
+      gst_no: t.gst_no || '',
     });
   };
 
@@ -106,7 +115,9 @@ export default function TenantManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tenant Management</h1>
-          <p className="text-sm text-gray-500 mt-1">{tenants?.length || 0} organisations</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {tab === 'all' ? `${tenants?.length || 0} organisations` : `${visibleTenants.length} ${tab}`}
+          </p>
         </div>
         <Link to="/superadmin/tenants/new" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ Create Tenant</Link>
       </div>
@@ -117,19 +128,24 @@ export default function TenantManagement() {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..."
             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
         </div>
-        <select value={filter} onChange={e => setFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="suspended">Suspended</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        {(filter !== 'all' || search) && (
-          <button onClick={() => { setFilter('all'); setSearch(''); }}
+        <div className="flex items-center bg-gray-100 rounded-lg p-1">
+          {(['active', 'inactive', 'all'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t === 'all' ? 'All' : t === 'active' ? 'Active' : 'Inactive'}
+            </button>
+          ))}
+        </div>
+        {(search) && (
+          <button onClick={() => setSearch('')}
             className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors text-sm font-medium"
-            title="Clear Filters">
-            Clear Filters
+            title="Clear search">
+            Clear
           </button>
         )}
       </div>
@@ -145,13 +161,14 @@ export default function TenantManagement() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Admin</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Plan</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Employees</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total Emp</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Active Emp</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Created</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {tenants?.map((t: any) => (
+              {visibleTenants.map((t: any) => (
                 <tr key={t.id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
@@ -168,12 +185,19 @@ export default function TenantManagement() {
                     <p className="text-sm text-gray-700">{t.admin_name || t.email}</p>
                     <p className="text-xs text-gray-400">{t.admin_email || t.email}</p>
                   </td>
-                  <td className="px-4 py-4"><span className={getStatusBadge(t.status)}>{t.status}</span></td>
+                   <td className="px-4 py-4"><span className={getStatusBadge(t.status)}>{t.status.charAt(0).toUpperCase() + t.status.slice(1)}</span></td>
                   <td className="px-4 py-4">
                     <span className="text-sm text-gray-700">{t.plan_name || 'Free Trial'}</span>
                     <p className="text-xs text-gray-400">Max {t.max_employees || 10} emp</p>
                   </td>
-                  <td className="px-4 py-4"><span className="text-sm font-medium text-gray-900">{t.employee_count || 0}</span></td>
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-medium text-gray-900">{t.total_employee_count || 0}</span>
+                    <span className="text-xs text-gray-400 block">total</span>
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-medium text-gray-900">{t.employee_count || 0}</span>
+                    <span className="text-xs text-green-600 block">active</span>
+                  </td>
                   <td className="px-4 py-4"><span className="text-sm text-gray-500">{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</span></td>
                   <td className="px-4 py-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
@@ -199,8 +223,10 @@ export default function TenantManagement() {
                   </td>
                 </tr>
               ))}
-              {(!tenants || tenants.length === 0) && (
-                <tr><td colSpan={7} className="text-center py-16 text-sm text-gray-400">No organisations found</td></tr>
+              {visibleTenants.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-16 text-sm text-gray-400">
+                  {tab === 'active' ? 'No active tenants found' : tab === 'inactive' ? 'No inactive tenants found' : 'No organisations found'}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -210,51 +236,102 @@ export default function TenantManagement() {
       {/* Edit Tenant Modal */}
       {editTenant && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Edit Tenant</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                <input value={editForm.company_name || ''} onChange={e => setEditForm({ ...editForm, company_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <div className="bg-white rounded-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Tenant</h3>
+              <button onClick={() => setEditTenant(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-500" /> Organisation Details
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Name *</label>
+                    <input value={editForm.company_name || ''} onChange={e => setEditForm({ ...editForm, company_name: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Code</label>
+                    <input value={editForm.company_code || ''} onChange={e => setEditForm({ ...editForm, company_code: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Domain</label>
+                    <input value={editForm.domain || ''} onChange={e => setEditForm({ ...editForm, domain: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Industry</label>
+                    <input value={editForm.industry || ''} onChange={e => setEditForm({ ...editForm, industry: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Company Size</label>
+                    <select value={editForm.company_size || ''} onChange={e => setEditForm({ ...editForm, company_size: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all">
+                      <option value="">Select</option>
+                      <option>1-10</option><option>10-50</option><option>50-200</option>
+                      <option>200-500</option><option>500-1000</option><option>1000+</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Currency</label>
+                    <select value={editForm.default_currency || 'INR'} onChange={e => setEditForm({ ...editForm, default_currency: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all">
+                      <option value="INR">INR (₹)</option><option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Timezone</label>
+                    <select value={editForm.timezone || 'UTC'} onChange={e => setEditForm({ ...editForm, timezone: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all">
+                      <option value="Asia/Kolkata">Asia/Kolkata</option><option value="UTC">UTC</option>
+                      <option value="Asia/Dubai">Asia/Dubai</option><option value="America/New_York">America/New_York</option>
+                      <option value="Europe/London">Europe/London</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Country</label>
+                    <select value={editForm.country || 'India'} onChange={e => setEditForm({ ...editForm, country: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all">
+                      <option>India</option><option>United States</option><option>United Kingdom</option>
+                      <option>United Arab Emirates</option><option>Singapore</option><option>Canada</option>
+                      <option>Australia</option><option>Germany</option><option>Japan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">PAN No.</label>
+                    <input value={editForm.pan_no || ''} onChange={e => setEditForm({ ...editForm, pan_no: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                    <p className="text-[11px] text-gray-400 mt-1">PAN of this organisation (required for Form 16)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">TAN No.</label>
+                    <input value={editForm.tan_no || ''} onChange={e => setEditForm({ ...editForm, tan_no: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                    <p className="text-[11px] text-gray-400 mt-1">Tax Deduction Account No. (required to file TDS &amp; issue Form 16)</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">GST No.</label>
+                    <input value={editForm.gst_no || ''} onChange={e => setEditForm({ ...editForm, gst_no: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all" />
+                    <p className="text-[11px] text-gray-400 mt-1">GST registration number of this organisation</p>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
-                  <input value={editForm.domain || ''} onChange={e => setEditForm({ ...editForm, domain: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
-                  <input value={editForm.industry || ''} onChange={e => setEditForm({ ...editForm, industry: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Size</label>
-                  <input value={editForm.company_size || ''} onChange={e => setEditForm({ ...editForm, company_size: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-                  <input value={editForm.default_currency || ''} onChange={e => setEditForm({ ...editForm, default_currency: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-                  <input value={editForm.timezone || ''} onChange={e => setEditForm({ ...editForm, timezone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => updateMut.mutate({ id: editTenant.id, data: editForm })}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
-                  {updateMut.isPending ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button onClick={() => setEditTenant(null)}
-                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200">Cancel</button>
-              </div>
+              <button
+                type="button"
+                onClick={() => updateMut.mutate({ id: editTenant.id, data: editForm })}
+                disabled={updateMut.isPending}
+                className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-300 disabled:to-gray-300 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-semibold text-sm transition-all shadow-lg shadow-blue-900/20"
+              >
+                {updateMut.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { EmptyState, GradientButton } from '../components/UI';
-import { AdminModalShell, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
+import { AdminModalShell, AdminStatRow, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -186,18 +186,13 @@ const AdminAnomalyScreen = ({ navigation }) => {
         )}
 
         {/* Stats */}
-        <View style={styles.statRow}>
-          {[
+        <AdminStatRow
+          stats={[
             { val: openCount, label: 'Open', color: '#D97706', bg: '#FEF3C7' },
             { val: resolvedCount, label: 'Resolved', color: '#10B981', bg: '#DCFCE7' },
             { val: dismissedCount, label: 'Dismissed', color: '#94A3B8', bg: '#F1F5F9' },
-          ].map((s, i) => (
-            <View key={i} style={[styles.statItem, { backgroundColor: s.bg }]}>
-              <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
+          ]}
+        />
 
         {/* Status Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>

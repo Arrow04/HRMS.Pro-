@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
@@ -7,13 +7,16 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Card, Avatar, Badge, GradientButton } from '../components/UI';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useScrollTopBar } from '../hooks/useScrollTopBar';
+import { scrollViewTopBarProps, bannerShellStyle } from '../components/AdminScreenKit';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
-  hero: { backgroundColor: colors.primary, paddingTop: 56, paddingBottom: spacing.xxl, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
+  hero: { backgroundColor: colors.primary, paddingTop: 12, paddingBottom: 4, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, overflow: 'hidden' },
   heroOrb1: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.07)', top: -40, right: -40 },
   heroOrb2: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(167,139,250,0.12)', bottom: -10, left: 30 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20 },
   backBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   editToggle: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   profileSection: { alignItems: 'center', paddingHorizontal: spacing.xl, zIndex: 1, marginTop: 8 },
@@ -28,6 +31,8 @@ const createStyles = (colors) => ({
 const EmployeeDetailScreen = ({ route, navigation }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
+  const scrollTopBar = useScrollTopBar();
   const { employee } = route.params || {};
   const [data, setData] = useState(employee || {});
   const [editData, setEditData] = useState({});
@@ -81,8 +86,9 @@ const EmployeeDetailScreen = ({ route, navigation }) => {
   );
 
   return (
-    <ScrollView style={styles.container} refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={fetchData} />} showsVerticalScrollIndicator={false}>
-      <View style={styles.hero}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+    <ScrollView style={styles.container} {...scrollViewTopBarProps(scrollTopBar)} keyboardShouldPersistTaps="handled" refreshControl={<HrmsRefreshControl refreshing={refreshing} onRefresh={fetchData} />} showsVerticalScrollIndicator={false}>
+      <View style={[styles.hero, bannerShellStyle(scrollTopBar)]}>
         <View style={styles.heroOrb1} /><View style={styles.heroOrb2} />
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -94,7 +100,7 @@ const EmployeeDetailScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
         <View style={styles.profileSection}>
-          <Avatar firstName={data.firstName} lastName={data.lastName} size={80} premium />
+          <Avatar firstName={data.firstName} lastName={data.lastName} size={56} premium />
           <Text style={styles.profileName}>{data.firstName} {data.lastName}</Text>
           <Text style={styles.profileCode}>{data.employeeCode || ''}</Text>
           <Badge status={data.status || 'active'} size="md" />
@@ -127,6 +133,7 @@ const EmployeeDetailScreen = ({ route, navigation }) => {
         <View style={{ height: 40 }} />
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

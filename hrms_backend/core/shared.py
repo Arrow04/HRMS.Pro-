@@ -135,6 +135,7 @@ def save_selfie(
 async def record_audit_log(
     db: Session,
     user_id: int,
+    organization_id: int,
     user_name: str,
     action: str,
     entity_type: str,
@@ -146,6 +147,7 @@ async def record_audit_log(
     """Helper to record an audit log entry."""
     log_entry = AuditLog(
         user_id=user_id,
+        organization_id=organization_id,
         user_name=user_name,
         action=action,
         entity_type=entity_type,
@@ -214,6 +216,7 @@ def _create_audit_log(
         }
     log_entry = AuditLog(
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         user_name=current_user.full_name or current_user.email,
         action=action,
         entity_type=entity_type,

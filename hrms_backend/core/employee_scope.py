@@ -67,6 +67,7 @@ def apply_employee_scope(
     data: Dict[str, Any],
     *,
     employee_id_key: str = "employee_id",
+    include_branch: bool = False,
 ) -> Dict[str, Any]:
     """Fill missing org fields from the employee row (source of truth)."""
     emp_id = data.get(employee_id_key)
@@ -77,8 +78,9 @@ def apply_employee_scope(
         "organization_id": scope.get("organizationId"),
         "company_id": scope.get("companyId"),
         "department_id": scope.get("departmentId"),
-        "branch_id": scope.get("branchId"),
     }
+    if include_branch:
+        mapping["branch_id"] = scope.get("branchId")
     for key, value in mapping.items():
         if value is not None and not data.get(key):
             data[key] = value

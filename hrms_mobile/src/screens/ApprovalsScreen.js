@@ -28,10 +28,10 @@ const createLocalStyles = (colors) => ({
     gap: 6,
     paddingVertical: 14,
     borderRadius: radii.lg,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#DC2626',
     borderWidth: 1,
-    borderColor: '#FECACA' },
-  rejectBtnText: { fontSize: 15, fontWeight: '700', color: '#DC2626' },
+    borderColor: '#DC2626' },
+  rejectBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
   approveBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -187,10 +187,10 @@ const ApprovalsScreen = ({ navigation }) => {
         {
           text: action === 'approve' ? 'Approve' : 'Reject',
           style: action === 'reject' ? 'destructive' : 'default',
-          onPress: async () => {
+              onPress: async () => {
             setActing(true);
             try {
-              await api.post(`/leaves/${selectedItem.id}/${action}`);
+              await api.put(`/leaves/${selectedItem.id}/${action}`);
               Alert.alert('Done', `Leave ${action}d.`);
               closeModal();
               fetchData();
@@ -376,7 +376,7 @@ const ApprovalsScreen = ({ navigation }) => {
                       </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                      <Badge status="pending" size="sm" />
+                <Badge status="pending" size="sm" style={{ alignSelf: 'flex-start' }} />
                       <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
                     </View>
                   </AdminListCard>

@@ -31,8 +31,8 @@ const createStyles = (colors) => ({
   badgeRow: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.sm },
   approveBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.successSurface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: colors.successBorder },
   approveBtnText: { fontSize: 16, color: colors.success, fontWeight: '700' },
-  rejectBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.dangerSurface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: colors.dangerBorder },
-  rejectBtnText: { fontSize: 16, color: colors.danger, fontWeight: '700' },
+  rejectBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DC2626', justifyContent: 'center', alignItems: 'center' },
+  rejectBtnText: { fontSize: 16, color: '#FFF', fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   modalContent: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.xxl },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
@@ -277,7 +277,7 @@ const LeaveApprovalScreen = ({ navigation }) => {
                 <Divider />
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Status</Text>
-                  <Badge status={detailItem.status} label={detailItem.status} />
+                   <Badge status={detailItem.status} label={detailItem.status} style={{ alignSelf: 'flex-start' }} />
                 </View>
                 {detailItem.reason && (
                   <>

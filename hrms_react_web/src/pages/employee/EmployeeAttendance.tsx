@@ -36,13 +36,24 @@ const EmployeeAttendance = () => {
 
   const handleCheckIn = async () => {
     if (!employeeId) return;
+    if (!coords?.lat || !coords?.lon) {
+      toast.error('Location is required. Please enable GPS and allow location access.');
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+          () => {},
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }
+      return;
+    }
     setLoading(true);
     try {
       await checkIn({
         employeeId,
-        latitude: coords?.lat,
-        longitude: coords?.lon,
-        locationName: coords ? 'Current location' : undefined,
+        latitude: coords.lat,
+        longitude: coords.lon,
+        locationName: 'Current location',
         deviceType: 'web',
         requestSource: 'mobile_pwa',
       });
@@ -56,9 +67,20 @@ const EmployeeAttendance = () => {
 
   const handleCheckOut = async () => {
     if (!employeeId) return;
+    if (!coords?.lat || !coords?.lon) {
+      toast.error('Location is required. Please enable GPS and allow location access.');
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+          () => {},
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }
+      return;
+    }
     setLoading(true);
     try {
-      await checkOut({ latitude: coords?.lat, longitude: coords?.lon, locationName: coords ? 'Current location' : undefined });
+      await checkOut({ latitude: coords.lat, longitude: coords.lon, locationName: 'Current location' });
       toast.success('Checked out successfully');
       refresh(employeeId);
     } catch (e: unknown) {
@@ -79,14 +101,17 @@ const EmployeeAttendance = () => {
         {coords && (
           <p className="text-xs text-slate-400 mt-2 flex items-center justify-center gap-1"><MapPin className="w-3 h-3" /> Location detected</p>
         )}
+        {!coords && (
+          <p className="text-xs text-amber-500 mt-2 flex items-center justify-center gap-1"><MapPin className="w-3 h-3" /> Location required — enable GPS</p>
+        )}
         <div className="mt-5">
           {!active ? (
-            <button onClick={handleCheckIn} disabled={loading} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-blue-600 text-white rounded-2xl font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />} Check In
+            <button onClick={handleCheckIn} disabled={loading || !coords} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-blue-600 text-white rounded-2xl font-semibold hover:bg-blue-700 disabled:opacity-60 transition-colors">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />} {coords ? 'Check In' : 'Enable GPS First'}
             </button>
           ) : (
-            <button onClick={handleCheckOut} disabled={loading} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />} Check Out
+            <button onClick={handleCheckOut} disabled={loading || !coords} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogOut className="w-5 h-5" />} {coords ? 'Check Out' : 'Enable GPS First'}
             </button>
           )}
         </div>

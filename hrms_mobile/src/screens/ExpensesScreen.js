@@ -21,8 +21,8 @@ const createLocalStyles = (colors) => ({
   detailRow: { flexDirection: 'row', alignItems: 'center' },
   detailName: { fontSize: 16, fontWeight: '700', color: colors.text },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
-  rejectBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.dangerSurface, alignItems: 'center', borderWidth: 1, borderColor: colors.danger + '30' },
-  rejectBtnText: { fontSize: 14, fontWeight: '700', color: colors.danger },
+  rejectBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: '#DC2626', alignItems: 'center' },
+  rejectBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   approveBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.successSurface, alignItems: 'center', borderWidth: 1, borderColor: colors.success + '30' },
   approveBtnText: { fontSize: 14, fontWeight: '700', color: colors.success } });
 const CATEGORIES = [
@@ -136,7 +136,7 @@ const ExpensesScreen = ({ navigation }) => {
     Alert.alert('Approve', `Approve expense of ₹${Number(selectedItem.amount).toLocaleString()}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Approve', onPress: async () => {
-        try { await api.post(`/expenses/${selectedItem.id}/approve`); Alert.alert('Done', 'Expense approved.'); closeModal(); refresh(); }
+        try { await api.put(`/expenses/${selectedItem.id}/approve`); Alert.alert('Done', 'Expense approved.'); closeModal(); refresh(); }
         catch (e) { Alert.alert('Error', e.response?.data?.detail || 'Failed.'); }
       }},
     ]);
@@ -147,7 +147,7 @@ const ExpensesScreen = ({ navigation }) => {
     Alert.alert('Reject', `Reject expense of ₹${Number(selectedItem.amount).toLocaleString()}?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reject', style: 'destructive', onPress: async () => {
-        try { await api.post(`/expenses/${selectedItem.id}/reject`); Alert.alert('Done', 'Expense rejected.'); closeModal(); refresh(); }
+        try { await api.put(`/expenses/${selectedItem.id}/reject`); Alert.alert('Done', 'Expense rejected.'); closeModal(); refresh(); }
         catch (e) { Alert.alert('Error', e.response?.data?.detail || 'Failed.'); }
       }},
     ]);

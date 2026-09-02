@@ -9,7 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { radii, spacing, shadows } from '../theme';
 import { Avatar, Badge, Divider, EmptyState } from '../components/UI';
-import { AdminModalShell, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
+import { AdminModalShell, AdminStatRow, scrollViewTopBarProps, useScrollTopBar, bannerShellStyle } from '../components/AdminScreenKit';
 
 const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.bg },
@@ -315,19 +315,14 @@ const AdminAttendanceScreen = ({ navigation }) => {
             <DateTimePicker value={new Date(selectedDate + 'T00:00:00')} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(_, date) => { setShowDatePicker(false); if (date) setSelectedDate(dateToISO(date)); }} />
           )}
 
-          <View style={styles.statRow}>
-            {[
+          <AdminStatRow
+            stats={[
               { val: presentCount, label: 'Present', color: '#10B981', bg: '#DCFCE7' },
               { val: lateCount, label: 'Late', color: '#D97706', bg: '#FEF3C7' },
               { val: absentCount, label: 'Absent', color: '#DC2626', bg: '#FEE2E2' },
               { val: leaveCount, label: 'Leave', color: '#2563EB', bg: '#DBEAFE' },
-            ].map((s, i) => (
-              <View key={i} style={[styles.statItem, { backgroundColor: s.bg }]}>
-                <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
-            ))}
-          </View>
+            ]}
+          />
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
             {STATUS_TABS.map(t => (

@@ -4,8 +4,8 @@ import os
 # Default page size for employee and transaction lists
 DEFAULT_LIST_LIMIT = 50
 
-# Hard cap for open-ended list browsing (employees, unfiltered grids)
-MAX_LIST_LIMIT = 100
+# Hard cap for open-ended list browsing — effectively unlimited
+MAX_LIST_LIMIT = 100000
 
 # Period-scoped business queries (payroll month, attendance range) — one row per employee max
 MAX_PERIOD_LIST_LIMIT = int(os.getenv("MAX_PERIOD_LIST_LIMIT", "1000000"))
