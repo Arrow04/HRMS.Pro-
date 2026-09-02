@@ -100,7 +100,7 @@ def create_policy(
     db.add(policy)
     db.commit()
     db.refresh(policy)
-    invalidate_cache()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Policy created", "id": policy.id, "data": _to_dict(policy)}
 
 
@@ -124,7 +124,7 @@ def update_policy(
     policy.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(policy)
-    invalidate_cache()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Policy updated", "data": _to_dict(policy)}
 
 
@@ -144,5 +144,5 @@ def delete_policy(
         raise HTTPException(status_code=404, detail="Policy not found")
     policy.deleted_at = datetime.utcnow()
     db.commit()
-    invalidate_cache()
+    invalidate_cache("hrms:tenant:*")
     return {"message": "Policy deleted"}
