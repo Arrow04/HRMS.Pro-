@@ -1216,7 +1216,7 @@ const EmployeeManagement = () => {
             <EmployeeSection
              companiesList={companiesList || []}
              branchesList={branchesList || []}
-             filterBranchesList={allBranchesForFilter || []}
+             filterBranchesList={branchesList || []}
              departmentsList={departmentsList || []}
              loadingEmployees={loadingEmployees}
              filteredData={filteredData}
