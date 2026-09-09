@@ -5,38 +5,19 @@ import {
   Settings, Building, Briefcase, Palmtree,
   FileBarChart, CreditCard, TrendingUp, Database,
   ShieldAlert, Wallet, LogOut, Monitor,
-  ChevronLeft, ChevronRight, ChevronDown, Building2, Megaphone, AlertTriangle,
+  ChevronLeft, ChevronRight, Building2, Megaphone, AlertTriangle,
   Bell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
 import Chatbot from '../components/Chatbot';
 
-interface SidebarChild {
-  path: string;
-  label: string;
-}
-
-interface SidebarLink {
-  path: string;
-  label: string;
-  icon: React.ElementType;
-  children?: SidebarChild[];
-}
-
-const ALL_LINKS: SidebarLink[] = [
+const ALL_LINKS = [
   { path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/company', label: 'Company', icon: Building },
   { path: '/recruitment', label: 'Recruitment', icon: Briefcase },
-  {
-    path: '/employees',
-    label: 'Employees',
-    icon: Users,
-    children: [
-      { path: '/employees', label: 'All Employees' },
-      { path: '/letters', label: 'Letters' },
-    ],
-  },
+  { path: '/employees', label: 'Employees', icon: Users },
+  { path: '/letters', label: 'Letters', icon: FileText },
   { path: '/attendance', label: 'Attendance', icon: Clock },
   { path: '/leaves', label: 'Leaves', icon: CalendarCheck },
   { path: '/holidays', label: 'Holidays', icon: Palmtree },
@@ -57,9 +38,6 @@ const ALL_LINKS: SidebarLink[] = [
 const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-  const toggleGroup = (path: string) =>
-    setExpandedGroups((prev) => ({ ...prev, [path]: !(prev[path] ?? true) }));
   const { user, isLoading, canAccessModule } = useAuth();
   const navigate = useNavigate();
 
@@ -159,125 +137,52 @@ const DashboardLayout = () => {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {getFilteredSidebarLinks().map((link) => {
-            const childActive = link.children?.some(
-              (c) => location.pathname === c.path || location.pathname.startsWith(`${c.path}/`)
-            );
-            const expanded = expandedGroups[link.path] ?? !!childActive;
-            if (link.children && !sidebarCollapsed) {
-              return (
-                <div key={link.path}>
-                  <button
-                    onClick={() => toggleGroup(link.path)}
-                    className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium w-full transition-all duration-200"
-                    style={{
-                      backgroundColor: childActive ? 'var(--sidebar-active-bg)' : 'transparent',
-                      color: childActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
-                    }}
-                  >
-                    {childActive && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-500 to-indigo-500" />
-                    )}
-                    <link.icon className="w-5 h-5 shrink-0" style={{ color: 'inherit' }} />
-                    <span className="whitespace-nowrap overflow-hidden sidebar-label flex-1 text-left">
-                      {link.label}
-                    </span>
-                    <ChevronDown
-                      className={`w-4 h-4 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-                    />
-                  </button>
-                  {expanded && (
-                    <div className="ml-6 mt-0.5 space-y-0.5 border-l pl-2" style={{ borderColor: 'var(--sidebar-border)' }}>
-                      {link.children.map((child) => (
-                        <NavLink
-                          key={child.path}
-                          to={child.path}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors"
-                          style={({ isActive }) => ({
-                            backgroundColor: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
-                            color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
-                          })}
-                        >
-                          {child.label}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            return (
-              <NavLink
-                key={link.path}
-                to={link.path}
-                className={({ isActive }) => `
+          {getFilteredSidebarLinks().map((link) => (
+            <NavLink
+              key={link.path}
+              to={link.path}
+              className={({ isActive }) => `
                 relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium group
                 transition-all duration-200 ease-smooth
                 ${isActive
-                    ? ''
-                    : ''}
+                  ? ''
+                  : ''}
               `}
-                style={({ isActive }) => ({
-                  backgroundColor: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
-                  color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
-                })}
-                title={sidebarCollapsed ? link.label : ''}
-              >
-                {/* Active indicator bar */}
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <span
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-500 to-indigo-500 transition-all duration-300"
-                      />
-                    )}
-                    <link.icon
-                      className="w-5 h-5 shrink-0 transition-colors duration-200"
-                      style={{ color: 'inherit' }}
-                    />
+              style={({ isActive }) => ({
+                backgroundColor: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
+                color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
+              })}
+              title={sidebarCollapsed ? link.label : ''}
+            >
+              {/* Active indicator bar */}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
                     <span
-                      className="whitespace-nowrap overflow-hidden sidebar-label"
-                      style={{
-                        opacity: sidebarCollapsed ? 0 : 1,
-                        width: sidebarCollapsed ? 0 : 'auto',
-                        display: 'inline-block',
-                      }}
-                    >
-                      {link.label}
-                    </span>
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-500 to-indigo-500 transition-all duration-300"
+                    />
+                  )}
+                  <link.icon
+                    className="w-5 h-5 shrink-0 transition-colors duration-200"
+                    style={{ color: 'inherit' }}
+                  />
+                  <span
+                    className="whitespace-nowrap overflow-hidden sidebar-label"
+                    style={{
+                      opacity: sidebarCollapsed ? 0 : 1,
+                      width: sidebarCollapsed ? 0 : 'auto',
+                      display: 'inline-block',
+                    }}
+                  >
+                    {link.label}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          ))}
         </nav>
 
-        {/* User Section */}
-        {!sidebarCollapsed && (
-          <div className="px-3 pb-2">
-            <div
-              className="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
-              style={{
-                borderColor: 'var(--border-light)',
-                backgroundColor: 'var(--surface-secondary)',
-              }}
-            >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
-                {(user?.fullName || 'U').charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                  {user?.fullName || 'User'}
-                </p>
-                <p className="text-[10px] capitalize truncate" style={{ color: 'var(--text-tertiary)' }}>
-                  {user?.role || 'Admin'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Collapse Toggle */}
+        {/* Collapse Toggle */
         <div className="hidden lg:block p-2 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
