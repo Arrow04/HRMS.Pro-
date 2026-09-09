@@ -1,0 +1,13 @@
+{
+  "name": "Jobs.Pro! — Community Job Portal",
+  "short_name": "Jobs.Pro!",
+  "description": "One trusted home for jobs, gigs and careers. Verified employers, transparent salaries, safety-first.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "/logo.png", "sizes": "590x590", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

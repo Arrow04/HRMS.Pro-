@@ -14,6 +14,10 @@ import BlogDetail from './pages/BlogDetail';
 import Verify from './pages/Verify';
 import Talent from './pages/Talent';
 import TalentDetail from './pages/TalentDetail';
+import Gigs from './pages/Gigs';
+import GigDetail from './pages/GigDetail';
+import PostGig from './pages/PostGig';
+import Work from './pages/Work';
 import Safety from './pages/Safety';
 import Report from './pages/Report';
 import PostJob from './pages/PostJob';
@@ -38,6 +42,10 @@ function App() {
         <Route path="/verify" element={<Verify />} />
         <Route path="/talent" element={<Talent />} />
         <Route path="/talent/:id" element={<TalentDetail />} />
+        <Route path="/gigs" element={<Gigs />} />
+        <Route path="/gigs/:id" element={<GigDetail />} />
+        <Route path="/post-gig" element={<PostGig />} />
+        <Route path="/work" element={<Work />} />
         <Route path="/safety" element={<Safety />} />
         <Route path="/report" element={<Report />} />
         <Route path="/post-job" element={<PostJob />} />

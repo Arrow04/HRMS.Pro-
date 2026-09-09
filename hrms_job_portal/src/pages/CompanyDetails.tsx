@@ -5,6 +5,8 @@ import { apiGet } from '../lib/api';
 import type { PortalCompanyDetail } from '../lib/types';
 import TrustChip, { companyTrustState } from '../components/trust/TrustChip';
 import ReportButton from '../components/trust/ReportButton';
+import ShareMenu from '../components/ui/ShareMenu';
+import { usePageMeta, useJsonLd } from '../lib/seo';
 import { LoadingState, ErrorState } from '../components/ui/states';
 
 const CompanyDetails = () => {
@@ -13,6 +15,28 @@ const CompanyDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  usePageMeta({
+    title: company ? `${company.name} — careers & open roles` : 'Company',
+    description: company ? `${company.name} — ${company.industry || 'employer'} in ${company.city}. Verified jobs on Jobs.Pro!` : undefined,
+  });
+  useJsonLd(
+    company
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Organization',
+          name: company.name,
+          description: company.description?.slice(0, 300),
+          url: company.website,
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: company.city,
+            addressRegion: company.state,
+            addressCountry: company.country || 'IN',
+          },
+        }
+      : null
+  );
 
   const load = async () => {
     setLoading(true);
@@ -72,7 +96,10 @@ const CompanyDetails = () => {
                 </div>
               </div>
             </div>
-            <ReportButton kind="company" id={company.id} />
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <ShareMenu title={company.name} text={`${company.industry || 'Employer'} • ${company.city}`} />
+              <ReportButton kind="company" id={company.id} />
+            </div>
           </div>
         </div>
       </div>

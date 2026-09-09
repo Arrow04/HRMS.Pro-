@@ -25,6 +25,11 @@ from models import (
     JobPortalBlacklist,
     JobPortalSkill,
     JobPortalAlert,
+    JobPortalGig,
+    JobPortalProposal,
+    JobPortalContract,
+    JobPortalMilestone,
+    JobPortalReview,
 )
 
 router = APIRouter(tags=["Job Portal"])
@@ -1287,3 +1292,341 @@ def list_public_profiles(
         "limit": limit,
         "offset": offset,
     }
+
+# ============== Freelance Marketplace ==============
+
+class GigPost(BaseModel):
+    title: str
+    description: str
+    deliverables: Optional[str] = None
+    category: str = "general"
+    skills_required: List[str] = []
+    budget_min: Optional[int] = None
+    budget_max: Optional[int] = None
+    budget_type: str = "fixed"
+    delivery_days: Optional[int] = None
+    client_id: Optional[int] = None
+    client_name: Optional[str] = None
+    location: Optional[str] = None
+    is_remote: bool = True
+
+
+class ProposalCreate(BaseModel):
+    gig_id: int
+    freelancer_id: Optional[int] = None
+    freelancer_name: Optional[str] = None
+    cover_letter: str
+    bid_amount: int
+    delivery_days: Optional[int] = None
+
+
+class MilestoneCreate(BaseModel):
+    title: str
+    amount: int
+
+
+class ReviewCreate(BaseModel):
+    contract_id: int
+    reviewer_id: Optional[int] = None
+    reviewee_id: Optional[int] = None
+    reviewee_name: Optional[str] = None
+    rating: int
+    comment: Optional[str] = None
+
+
+def _gig_out(g):
+    return {
+        "id": g.id,
+        "title": g.title,
+        "slug": g.slug,
+        "description": (g.description or "")[:500],
+        "category": g.category,
+        "skills_required": g.skills_required or [],
+        "budget_min": g.budget_min,
+        "budget_max": g.budget_max,
+        "budget_type": g.budget_type,
+        "delivery_days": g.delivery_days,
+        "client_name": g.client_name,
+        "location": g.location,
+        "is_remote": g.is_remote,
+        "status": g.status,
+        "proposal_count": g.proposal_count or 0,
+        "view_count": g.view_count or 0,
+        "published_at": g.published_at.isoformat() if g.published_at else None,
+    }
+
+
+@router.get("/public/gigs")
+def list_gigs(
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    budget_type: Optional[str] = None,
+    is_remote: Optional[bool] = None,
+    limit: int = Query(20, le=50),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(JobPortalGig).filter(
+        JobPortalGig.status == "open",
+        JobPortalGig.deleted_at == None,
+    )
+    if search:
+        query = query.filter(
+            JobPortalGig.title.ilike(f"%{search}%")
+            | JobPortalGig.description.ilike(f"%{search}%")
+        )
+    if category:
+        query = query.filter(JobPortalGig.category == category)
+    if budget_type:
+        query = query.filter(JobPortalGig.budget_type == budget_type)
+    if is_remote is not None:
+        query = query.filter(JobPortalGig.is_remote == is_remote)
+    total = query.count()
+    gigs = query.order_by(JobPortalGig.published_at.desc()).offset(offset).limit(limit).all()
+    return {"gigs": [_gig_out(g) for g in gigs], "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/public/gigs/{gig_id}")
+def get_gig(gig_id: int, db: Session = Depends(get_db)):
+    g = db.query(JobPortalGig).filter(
+        JobPortalGig.id == gig_id, JobPortalGig.deleted_at == None
+    ).first()
+    if not g:
+        raise HTTPException(status_code=404, detail="Gig not found")
+    g.view_count = (g.view_count or 0) + 1
+    db.commit()
+    out = _gig_out(g)
+    out["description"] = g.description
+    out["deliverables"] = g.deliverables
+    return out
+
+
+@router.post("/public/gigs/post")
+def post_gig(gig: GigPost, db: Session = Depends(get_db)):
+    slug = f"{gig.title.lower().replace(' ', '-')}-{datetime.utcnow().timestamp()}"
+    new_gig = JobPortalGig(
+        title=gig.title,
+        slug=slug,
+        description=gig.description,
+        deliverables=gig.deliverables,
+        category=gig.category,
+        skills_required=gig.skills_required,
+        budget_min=gig.budget_min,
+        budget_max=gig.budget_max,
+        budget_type=gig.budget_type,
+        delivery_days=gig.delivery_days,
+        client_id=gig.client_id,
+        client_name=gig.client_name,
+        location=gig.location,
+        is_remote=gig.is_remote,
+        status="open",
+        published_at=datetime.utcnow(),
+    )
+    db.add(new_gig)
+    db.commit()
+    db.refresh(new_gig)
+    return {"id": new_gig.id, "slug": new_gig.slug, "status": new_gig.status, "message": "Gig posted successfully"}
+
+
+@router.get("/public/gigs/mine/list")
+def my_gigs(user_id: int, db: Session = Depends(get_db)):
+    gigs = db.query(JobPortalGig).filter(
+        JobPortalGig.client_id == user_id, JobPortalGig.deleted_at == None
+    ).order_by(JobPortalGig.created_at.desc()).all()
+    return {"gigs": [_gig_out(g) for g in gigs]}
+
+
+@router.post("/public/proposals")
+def create_proposal(p: ProposalCreate, db: Session = Depends(get_db)):
+    gig = db.query(JobPortalGig).filter(
+        JobPortalGig.id == p.gig_id, JobPortalGig.status == "open", JobPortalGig.deleted_at == None
+    ).first()
+    if not gig:
+        raise HTTPException(status_code=404, detail="Gig not found or closed")
+    if p.freelancer_id is not None:
+        dup = db.query(JobPortalProposal).filter(
+            JobPortalProposal.gig_id == p.gig_id,
+            JobPortalProposal.freelancer_id == p.freelancer_id,
+            JobPortalProposal.deleted_at == None,
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="You have already proposed on this gig")
+    prop = JobPortalProposal(
+        gig_id=p.gig_id,
+        freelancer_id=p.freelancer_id,
+        freelancer_name=p.freelancer_name,
+        cover_letter=p.cover_letter,
+        bid_amount=p.bid_amount,
+        delivery_days=p.delivery_days,
+        status="pending",
+    )
+    gig.proposal_count = (gig.proposal_count or 0) + 1
+    db.add(prop)
+    db.commit()
+    db.refresh(prop)
+    return {"id": prop.id, "status": prop.status, "message": "Proposal submitted successfully"}
+
+
+@router.get("/public/proposals/mine")
+def my_proposals(user_id: int, db: Session = Depends(get_db)):
+    props = db.query(JobPortalProposal).filter(
+        JobPortalProposal.freelancer_id == user_id, JobPortalProposal.deleted_at == None
+    ).order_by(JobPortalProposal.created_at.desc()).all()
+    return {
+        "proposals": [
+            {
+                "id": p.id,
+                "gig": {"id": p.gig.id, "title": p.gig.title} if p.gig else None,
+                "bid_amount": p.bid_amount,
+                "status": p.status,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in props
+        ]
+    }
+
+
+@router.get("/public/gigs/{gig_id}/proposals")
+def gig_proposals(gig_id: int, user_id: int, db: Session = Depends(get_db)):
+    gig = db.query(JobPortalGig).filter(JobPortalGig.id == gig_id).first()
+    if not gig:
+        raise HTTPException(status_code=404, detail="Gig not found")
+    if gig.client_id is not None and gig.client_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the client can view proposals")
+    props = db.query(JobPortalProposal).filter(
+        JobPortalProposal.gig_id == gig_id, JobPortalProposal.deleted_at == None
+    ).order_by(JobPortalProposal.created_at.desc()).all()
+    return {
+        "proposals": [
+            {
+                "id": p.id,
+                "freelancer_id": p.freelancer_id,
+                "freelancer_name": p.freelancer_name,
+                "cover_letter": p.cover_letter,
+                "bid_amount": p.bid_amount,
+                "delivery_days": p.delivery_days,
+                "status": p.status,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in props
+        ]
+    }
+
+
+@router.post("/public/proposals/{proposal_id}/accept")
+def accept_proposal(proposal_id: int, user_id: int, db: Session = Depends(get_db)):
+    prop = db.query(JobPortalProposal).filter(
+        JobPortalProposal.id == proposal_id, JobPortalProposal.deleted_at == None
+    ).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    gig = db.query(JobPortalGig).filter(JobPortalGig.id == prop.gig_id).first()
+    if not gig or gig.status != "open":
+        raise HTTPException(status_code=400, detail="Gig is no longer open")
+    if gig.client_id is not None and gig.client_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the client can accept")
+    prop.status = "accepted"
+    db.query(JobPortalProposal).filter(
+        JobPortalProposal.gig_id == gig.id,
+        JobPortalProposal.id != prop.id,
+        JobPortalProposal.status == "pending",
+    ).update({"status": "rejected"})
+    gig.status = "in_progress"
+    contract = JobPortalContract(
+        gig_id=gig.id,
+        proposal_id=prop.id,
+        client_id=gig.client_id,
+        freelancer_id=prop.freelancer_id,
+        freelancer_name=prop.freelancer_name,
+        agreed_amount=prop.bid_amount,
+        status="active",
+    )
+    db.add(contract)
+    db.commit()
+    db.refresh(contract)
+    return {"contract_id": contract.id, "status": contract.status, "message": "Contract started"}
+
+
+@router.get("/public/contracts/mine")
+def my_contracts(user_id: int, db: Session = Depends(get_db)):
+    contracts = db.query(JobPortalContract).filter(
+        ((JobPortalContract.client_id == user_id) | (JobPortalContract.freelancer_id == user_id)),
+        JobPortalContract.deleted_at == None,
+    ).order_by(JobPortalContract.created_at.desc()).all()
+    out = []
+    for c in contracts:
+        out.append({
+            "id": c.id,
+            "gig": {"id": c.gig.id, "title": c.gig.title} if c.gig else None,
+            "freelancer_name": c.freelancer_name,
+            "agreed_amount": c.agreed_amount,
+            "status": c.status,
+            "milestones": [
+                {"id": m.id, "title": m.title, "amount": m.amount, "status": m.status}
+                for m in (c.milestones or [])
+            ],
+            "reviews": [
+                {"id": r.id, "rating": r.rating, "comment": r.comment, "reviewee_name": r.reviewee_name}
+                for r in (c.reviews or [])
+            ],
+        })
+    return {"contracts": out}
+
+
+@router.post("/public/contracts/{contract_id}/milestones")
+def add_milestone(contract_id: int, m: MilestoneCreate, db: Session = Depends(get_db)):
+    contract = db.query(JobPortalContract).filter(JobPortalContract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    ms = JobPortalMilestone(contract_id=contract_id, title=m.title, amount=m.amount, status="pending")
+    db.add(ms)
+    db.commit()
+    db.refresh(ms)
+    return {"id": ms.id, "status": ms.status, "message": "Milestone added"}
+
+
+@router.put("/public/milestones/{milestone_id}")
+def update_milestone(milestone_id: int, status: str, db: Session = Depends(get_db)):
+    if status not in ("pending", "funded", "approved", "released"):
+        raise HTTPException(status_code=400, detail="Invalid milestone status")
+    ms = db.query(JobPortalMilestone).filter(JobPortalMilestone.id == milestone_id).first()
+    if not ms:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    ms.status = status
+    db.commit()
+    return {"id": ms.id, "status": ms.status}
+
+
+@router.post("/public/contracts/{contract_id}/complete")
+def complete_contract(contract_id: int, db: Session = Depends(get_db)):
+    contract = db.query(JobPortalContract).filter(JobPortalContract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    contract.status = "completed"
+    contract.completed_at = datetime.utcnow()
+    gig = db.query(JobPortalGig).filter(JobPortalGig.id == contract.gig_id).first()
+    if gig:
+        gig.status = "completed"
+    db.commit()
+    return {"id": contract.id, "status": contract.status, "message": "Contract completed - please leave a review"}
+
+
+@router.post("/public/reviews")
+def create_review(r: ReviewCreate, db: Session = Depends(get_db)):
+    if not (1 <= r.rating <= 5):
+        raise HTTPException(status_code=400, detail="Rating must be 1�5")
+    contract = db.query(JobPortalContract).filter(JobPortalContract.id == r.contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    review = JobPortalReview(
+        contract_id=r.contract_id,
+        reviewer_id=r.reviewer_id,
+        reviewee_id=r.reviewee_id,
+        reviewee_name=r.reviewee_name,
+        rating=r.rating,
+        comment=r.comment,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return {"id": review.id, "message": "Review published"}

@@ -5,6 +5,8 @@ import { apiGet, absoluteUrl, formatDate } from '../lib/api';
 import type { PortalMemberDetail } from '../lib/types';
 import TrustChip from '../components/trust/TrustChip';
 import ReportButton from '../components/trust/ReportButton';
+import ShareMenu from '../components/ui/ShareMenu';
+import { usePageMeta, useJsonLd } from '../lib/seo';
 import { LoadingState, ErrorState } from '../components/ui/states';
 
 function ListBlock({ title, icon: Icon, items, render }: { title: string; icon: any; items: any[]; render: (x: any, i: number) => React.ReactNode }) {
@@ -25,6 +27,27 @@ export default function TalentDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  usePageMeta({
+    title: member ? `${member.full_name} — ${member.headline || 'community talent'}` : 'Talent profile',
+    description: member ? `${member.full_name} — ${(member.skills || []).slice(0, 5).join(', ')}. Hire verified talent on Jobs.Pro!` : undefined,
+  });
+  useJsonLd(
+    member
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Person',
+          name: member.full_name,
+          description: member.headline,
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: member.city,
+            addressRegion: member.state,
+            addressCountry: member.country || 'IN',
+          },
+        }
+      : null
+  );
 
   const load = async () => {
     setLoading(true);
@@ -101,7 +124,10 @@ export default function TalentDetail() {
                 </p>
               )}
             </div>
-            <ReportButton kind="user" id={member.id} />
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <ShareMenu title={member.full_name} text={member.headline} dark />
+              <ReportButton kind="user" id={member.id} />
+            </div>
           </div>
         </div>
       </div>

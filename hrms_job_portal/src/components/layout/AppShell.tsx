@@ -4,7 +4,9 @@ import { Menu, X, ShieldCheck, Bookmark, User } from 'lucide-react';
 
 const NAV = [
   { to: '/jobs', label: 'Find Jobs' },
+  { to: '/gigs', label: 'Gigs' },
   { to: '/companies', label: 'Companies' },
+  { to: '/talent', label: 'Talent' },
   { to: '/blogs', label: 'Community' },
   { to: '/safety', label: 'Safety', danger: true },
 ];
@@ -14,8 +16,10 @@ const FOOT_COLS: Array<{ title: string; links: Array<{ to: string; label: string
     title: 'Job Seekers',
     links: [
       { to: '/jobs', label: 'Browse jobs' },
+      { to: '/gigs', label: 'Browse gigs' },
       { to: '/saved', label: 'Saved & applications' },
       { to: '/profile', label: 'My profile' },
+      { to: '/work', label: 'My work' },
     ],
   },
   {

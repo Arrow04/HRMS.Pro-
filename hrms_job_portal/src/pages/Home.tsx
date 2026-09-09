@@ -9,6 +9,7 @@ import type { PortalJobSummary, PortalCompanySummary, PortalMember } from '../li
 import JobCard from '../components/cards/JobCard';
 import CompanyCard from '../components/cards/CompanyCard';
 import MemberCard from '../components/cards/MemberCard';
+import { usePageMeta } from '../lib/seo';
 import SafetyBanner from '../components/trust/SafetyBanner';
 import { SkeletonCards } from '../components/ui/states';
 
@@ -47,10 +48,13 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [location, setLocation] = useState('');
-  const [gigEmail, setGigEmail] = useState('');
-  const [gigNotified, setGigNotified] = useState(false);
   const whatRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  usePageMeta({
+    title: 'Find trusted jobs, companies & talent',
+    description: 'Jobs.Pro! — one trusted community portal for job seekers, employers and freelancers. Verified listings, transparent companies.',
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -346,45 +350,19 @@ const Home = () => {
             </div>
           </div>
           <div className="rounded-3xl bg-white/[0.08] border border-white/15 p-6 md:p-8">
-            <p className="font-bold text-lg">Gigs marketplace — launching soon</p>
+            <p className="font-bold text-lg">Gigs marketplace — live now</p>
             <p className="text-sm text-indigo-200 mt-1">
-              Fixed-price gigs, proposals and contracts are next on our roadmap. Leave your email and we’ll invite you first.
+              Fixed-price and hourly gigs with proposals, milestones and reviews — all inside Jobs.Pro!
             </p>
-            {gigNotified ? (
-              <p className="mt-4 text-sm font-semibold text-emerald-300 bg-emerald-400/10 border border-emerald-300/20 rounded-xl px-4 py-3">
-                You’re on the list — watch your inbox. ✓
-              </p>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!gigEmail.includes('@')) return;
-                  try {
-                    const raw = localStorage.getItem('jobspro_gig_notify') || '[]';
-                    const list = JSON.parse(raw);
-                    if (!list.includes(gigEmail.trim().toLowerCase())) {
-                      list.push(gigEmail.trim().toLowerCase());
-                      localStorage.setItem('jobspro_gig_notify', JSON.stringify(list));
-                    }
-                  } catch { /* ignore */ }
-                  setGigNotified(true);
-                }}
-                className="mt-4 flex flex-col sm:flex-row gap-2"
-              >
-                <input
-                  type="email"
-                  required
-                  value={gigEmail}
-                  onChange={(e) => setGigEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="flex-1 rounded-xl px-4 py-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                />
-                <button type="submit" className="bg-emerald-400 text-emerald-950 font-bold px-5 py-3 rounded-xl text-sm hover:bg-emerald-300 transition-colors">
-                  Notify me
-                </button>
-              </form>
-            )}
-            <p className="text-xs text-indigo-300/70 mt-3">No spam, one invite email. Unsubscribe anytime.</p>
+            <div className="mt-4 flex flex-col sm:flex-row gap-2">
+              <button onClick={() => navigate('/gigs')} className="flex-1 bg-white text-indigo-950 font-bold px-5 py-3 rounded-xl text-sm hover:bg-indigo-50 transition-colors">
+                Browse gigs →
+              </button>
+              <button onClick={() => navigate('/work')} className="flex-1 border border-white/30 text-white font-semibold px-5 py-3 rounded-xl text-sm hover:bg-white/10 transition-colors">
+                My work
+              </button>
+            </div>
+            <p className="text-xs text-indigo-300/70 mt-3">Post a gig, propose, deliver in milestones, review.</p>
           </div>
         </div>
       </section>

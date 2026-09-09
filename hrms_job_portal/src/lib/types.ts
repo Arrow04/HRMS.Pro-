@@ -17,6 +17,7 @@ export interface PortalJobSummary {
   location: string;
   city?: string;
   state?: string;
+  country?: string;
   employment_type: string;
   work_mode?: string;
   experience_min?: number;
@@ -128,6 +129,60 @@ export interface Paginated<T> {
   items: T[];
   total: number;
 }
+
+export interface PortalGig {
+  id: number;
+  title: string;
+  slug?: string;
+  description: string;
+  deliverables?: string;
+  category: string;
+  skills_required: string[];
+  budget_min?: number;
+  budget_max?: number;
+  budget_type: string;
+  delivery_days?: number;
+  client_name?: string;
+  location?: string;
+  is_remote?: boolean;
+  status: string;
+  proposal_count: number;
+  view_count?: number;
+  published_at?: string;
+}
+
+export interface PortalProposal {
+  id: number;
+  gig?: { id: number; title: string } | null;
+  freelancer_id?: number;
+  freelancer_name?: string;
+  cover_letter?: string;
+  bid_amount: number;
+  delivery_days?: number;
+  status: string;
+  created_at?: string;
+}
+
+export interface PortalMilestone {
+  id: number;
+  title: string;
+  amount: number;
+  status: string;
+}
+
+export interface PortalContract {
+  id: number;
+  gig?: { id: number; title: string } | null;
+  freelancer_name?: string;
+  agreed_amount: number;
+  status: string;
+  milestones: PortalMilestone[];
+  reviews: Array<{ id: number; rating: number; comment?: string; reviewee_name?: string }>;
+}
+
+export const GIG_CATEGORIES = [
+  'design', 'writing', 'development', 'marketing', 'video', 'data', 'support', 'general',
+];
 
 export interface PortalMember {
   id: number;

@@ -3634,3 +3634,118 @@ class JobPortalAlert(Base):
 
     def __repr__(self):
         return f'<JobPortalAlert {self.email} {self.search}>'
+
+class JobPortalGig(Base):
+    """Fixed-price or hourly gig posted by a client"""
+    __tablename__ = 'job_portal_gigs'
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), unique=True, index=True)
+    description = Column(Text, nullable=False)
+    deliverables = Column(Text)
+    category = Column(String(100), index=True)
+    skills_required = Column(JSON, default=list)
+    budget_min = Column(Integer)
+    budget_max = Column(Integer)
+    budget_type = Column(String(20), default='fixed', index=True)
+    delivery_days = Column(Integer)
+    client_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    client_name = Column(String(255))
+    location = Column(String(255))
+    is_remote = Column(Boolean, default=True, index=True)
+    status = Column(String(50), default='open', index=True)
+    is_featured = Column(Boolean, default=False, index=True)
+    view_count = Column(Integer, default=0)
+    proposal_count = Column(Integer, default=0)
+    published_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalGig {self.title}>'
+
+
+class JobPortalProposal(Base):
+    """Freelancer proposal on a gig"""
+    __tablename__ = 'job_portal_proposals'
+
+    id = Column(Integer, primary_key=True)
+    gig_id = Column(Integer, ForeignKey('job_portal_gigs.id'), nullable=False, index=True)
+    freelancer_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    freelancer_name = Column(String(255))
+    cover_letter = Column(Text, nullable=False)
+    bid_amount = Column(Integer, nullable=False)
+    delivery_days = Column(Integer)
+    status = Column(String(50), default='pending', index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    gig = relationship('JobPortalGig', backref='proposals')
+
+    def __repr__(self):
+        return f'<JobPortalProposal {self.id}>'
+
+
+class JobPortalContract(Base):
+    """Active work contract between client and freelancer"""
+    __tablename__ = 'job_portal_contracts'
+
+    id = Column(Integer, primary_key=True)
+    gig_id = Column(Integer, ForeignKey('job_portal_gigs.id'), nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey('job_portal_proposals.id'), nullable=True, index=True)
+    client_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    freelancer_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    freelancer_name = Column(String(255))
+    agreed_amount = Column(Integer, nullable=False)
+    status = Column(String(50), default='active', index=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    gig = relationship('JobPortalGig', backref='contracts')
+
+    def __repr__(self):
+        return f'<JobPortalContract {self.id}>'
+
+
+class JobPortalMilestone(Base):
+    """Payment/delivery milestone inside a contract"""
+    __tablename__ = 'job_portal_milestones'
+
+    id = Column(Integer, primary_key=True)
+    contract_id = Column(Integer, ForeignKey('job_portal_contracts.id'), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    amount = Column(Integer, nullable=False)
+    status = Column(String(50), default='pending', index=True)
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    contract = relationship('JobPortalContract', backref='milestones')
+
+    def __repr__(self):
+        return f'<JobPortalMilestone {self.id}>'
+
+
+class JobPortalReview(Base):
+    """One-sided review after a contract completes"""
+    __tablename__ = 'job_portal_reviews'
+
+    id = Column(Integer, primary_key=True)
+    contract_id = Column(Integer, ForeignKey('job_portal_contracts.id'), nullable=False, index=True)
+    reviewer_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    reviewee_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    reviewee_name = Column(String(255))
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    contract = relationship('JobPortalContract', backref='reviews')
+
+    def __repr__(self):
+        return f'<JobPortalReview {self.id}>'

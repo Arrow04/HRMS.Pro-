@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MapPin, Building2, ChevronRight, Share2, Check } from 'lucide-react';
+import { MapPin, Building2, ChevronRight } from 'lucide-react';
+import ShareMenu from '../components/ui/ShareMenu';
+import { usePageMeta, useJsonLd } from '../lib/seo';
 import { apiGet, formatDate, prettify } from '../lib/api';
 import type { PortalJobDetail } from '../lib/types';
 import TrustChip, { companyTrustState } from '../components/trust/TrustChip';
@@ -14,27 +16,33 @@ const JobDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
-  const share = async () => {
-    const url = window.location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: job?.title || 'Jobs.Pro!', url });
-        return;
-      }
-      throw new Error('no-share');
-    } catch {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // clipboard unavailable — no-op
-      }
-    }
-  };
+  usePageMeta({
+    title: job ? `${job.title} at ${job.company.name}` : 'Job details',
+    description: job ? `${job.title} — ${job.company.name}, ${job.location}. Apply free on Jobs.Pro!` : undefined,
+  });
+  useJsonLd(
+    job
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'JobPosting',
+          title: job.title,
+          description: job.description?.slice(0, 500),
+          employmentType: job.employment_type,
+          jobLocationType: job.is_remote ? 'TELECOMMUTE' : undefined,
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: job.city,
+            addressRegion: job.state,
+            addressCountry: job.country || 'IN',
+          },
+          hiringOrganization: { '@type': 'Organization', name: job.company.name },
+          datePosted: job.published_at,
+          validThrough: job.application_deadline,
+        }
+      : null
+  );
 
   const daysLeft = (() => {
     if (!job?.application_deadline) return null;
@@ -80,7 +88,7 @@ const JobDetails = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <button onClick={() => navigate('/jobs')} className="text-indigo-600 hover:text-indigo-700 mb-4 flex items-center gap-1 text-sm font-medium">
@@ -122,15 +130,23 @@ const JobDetails = () => {
               </div>
             </div>
             <div className="flex flex-col items-end gap-2 shrink-0">
-              <button
-                onClick={share}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 rounded-lg px-3 py-1.5"
-              >
-                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Share2 className="w-4 h-4" />}
-                {copied ? 'Link copied' : 'Share'}
-              </button>
+              <ShareMenu title={job.title} text={`${job.company.name} • ${job.location}`} />
               <ReportButton kind="job" id={job.id} />
             </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <button
+              onClick={() => navigate(`/jobs/${job.id}/apply`)}
+              className="flex-1 bg-indigo-600 text-white py-3.5 rounded-xl hover:bg-indigo-700 font-bold shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99]"
+            >
+              Apply Now — free, never pay to apply
+            </button>
+            <button
+              onClick={() => setSaved(toggleSavedJob(job.id).includes(job.id))}
+              className="px-6 py-3.5 rounded-xl border border-gray-300 bg-white text-sm font-semibold hover:bg-gray-50 transition-colors"
+            >
+              {saved ? '★ Saved' : '☆ Save'}
+            </button>
           </div>
         </div>
       </div>
@@ -229,19 +245,17 @@ const JobDetails = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex gap-3">
-          <button
-            onClick={() => setSaved(toggleSavedJob(job.id).includes(job.id))}
-            className="px-5 py-3 rounded-lg border border-gray-300 text-sm font-medium hover:bg-gray-50"
-          >
-            {saved ? '★ Saved' : '☆ Save'}
-          </button>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
+        <div className="rounded-2xl bg-indigo-950 text-white p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="font-bold text-lg">Ready when you are</p>
+            <p className="text-sm text-indigo-200">Free forever. Genuine employers never ask for money.</p>
+          </div>
           <button
             onClick={() => navigate(`/jobs/${job.id}/apply`)}
-            className="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 font-medium"
+            className="bg-white text-indigo-950 px-6 py-3 rounded-xl font-bold hover:bg-indigo-50 transition-colors shrink-0"
           >
-            Apply Now — free, never pay to apply
+            Apply Now
           </button>
         </div>
       </div>
