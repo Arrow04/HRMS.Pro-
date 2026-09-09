@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Clock, CalendarDays, Receipt, FileText, User, LogOut,
+   LayoutDashboard, Clock, CalendarDays, Receipt, FileText, LogOut,
   Sparkles, TrendingUp, Globe, Bell, CheckCheck, Loader2, CheckCircle2, XCircle, CreditCard, CalendarCheck, FileDown, Calculator, Landmark,
 } from 'lucide-react';
 import { formatAppDateLong, formatAppDateTime } from '../services/appSettingsService';
@@ -17,8 +17,7 @@ const NAV = [
   { to: '/me/expenses', label: 'Expenses', icon: Receipt },
   { to: '/me/payslips', label: 'Salary', icon: FileText },
   { to: '/me/performance', label: 'Performance', icon: TrendingUp },
-  { to: '/me/tax-declarations', label: 'Tax', icon: Landmark },
-  { to: '/me/profile', label: 'Profile', icon: User },
+   { to: '/me/tax-declarations', label: 'Tax', icon: Landmark },
 ];
 
 const TYPE_STYLE: Record<string, { icon: React.ElementType; cls: string }> = {
