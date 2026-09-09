@@ -2,8 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, Bell, Sun, Moon, LogOut, Settings,
-  Menu, Users, Clock, CalendarCheck, DollarSign,
+  Search, Bell, Sun, Moon, LogOut, Settings, User,
+  ChevronDown, Menu, Users, Clock, CalendarCheck, DollarSign,
   Briefcase, Building2, FileText, LayoutDashboard, CheckCheck, Loader2,
   Plus, FileDown, Download, TrendingUp, CreditCard,
   ShieldAlert, Monitor, Palmtree, Database, CornerDownLeft
@@ -61,16 +61,19 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { user, canAccessModule } = useAuth();
+  const { user, logout, canAccessModule } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
     };
     document.addEventListener('mousedown', handler);
@@ -87,6 +90,7 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
       }
       if (e.key === 'Escape') {
         setSearchOpen(false);
+        setShowUserMenu(false);
         setShowNotifications(false);
       }
     };
@@ -384,6 +388,57 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
                     );
                   })
                 )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* User Profile */}
+        <div ref={userMenuRef} className="relative">
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl transition-colors"
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-semibold shadow-sm">
+              {(user?.fullName || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-medium leading-tight" style={{ color: 'var(--text-primary)' }}>{user?.fullName || 'User'}</p>
+              <p className="text-xs capitalize" style={{ color: 'var(--text-tertiary)' }}>{user?.role || 'Admin'}</p>
+            </div>
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} style={{ color: 'var(--text-tertiary)' }} />
+          </button>
+
+          {showUserMenu && (
+            <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl shadow-elevated z-50 py-2 border animate-scale-in"
+              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
+              <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-color)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{user?.fullName}</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{user?.email}</p>
+                <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800">
+                  {user?.role || 'admin'}
+                </span>
+              </div>
+              <button
+                onClick={() => { navigate('/settings'); setShowUserMenu(false); }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm transition-colors"
+                style={{ color: 'var(--text-body)' }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--hover-bg)'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Settings className="w-4 h-4" /> Settings
+              </button>
+              <div className="border-t mt-1 pt-1" style={{ borderColor: 'var(--border-color)' }}>
+                <button
+                  onClick={() => { logout(); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 transition-colors dark:text-red-400"
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--status-inactive-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </button>
               </div>
             </div>
           )}
