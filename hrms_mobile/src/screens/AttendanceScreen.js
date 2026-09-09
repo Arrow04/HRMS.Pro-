@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Alert, Platform, Modal, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Alert, Platform, Modal, Linking, TextInput } from 'react-native';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -458,6 +458,20 @@ const createStyles = (colors, isDark) => ({
     ...shadows.colored('#14B8A6', 0.5),
   },
   captureBtnInner: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#14B8A6' },
+  correctionModal: { flex: 1, backgroundColor: colors.bg },
+  correctionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingTop: spacing.xl, paddingBottom: spacing.md },
+  correctionTitle: { fontSize: 18, fontWeight: '800', color: colors.text, flex: 1, marginRight: 12 },
+  correctionBody: { padding: spacing.xl, gap: 12 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: {
+    backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: colors.text },
+  submitBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#14B8A6', borderRadius: radii.lg, paddingVertical: 14, marginTop: 8 },
+  submitBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
 });
 
 const getMyEmployeeId = (user) => user?.employeeId ?? user?.employee_id ?? null;
@@ -573,6 +587,9 @@ const AttendanceScreen = ({ navigation }) => {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthISO());
   const [showCamera, setShowCamera] = useState(false);
   const [pendingPunchType, setPendingPunchType] = useState(null);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionForm, setCorrectionForm] = useState({ date: todayISO(), checkIn: '09:00', checkOut: '18:00', reason: '' });
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -793,6 +810,40 @@ const AttendanceScreen = ({ navigation }) => {
   const closeCamera = () => {
     setShowCamera(false);
     setPendingPunchType(null);
+  };
+
+  const openCorrectionModal = () => {
+    setCorrectionForm({ date: todayISO(), checkIn: '09:00', checkOut: '18:00', reason: '' });
+    setShowCorrectionModal(true);
+  };
+
+  const closeCorrectionModal = () => {
+    setShowCorrectionModal(false);
+    setSubmittingCorrection(false);
+  };
+
+  const handleCorrectionSubmit = async () => {
+    if (!correctionForm.date || !correctionForm.reason.trim()) {
+      Alert.alert('Missing fields', 'Please select a date and enter a reason.');
+      return;
+    }
+    setSubmittingCorrection(true);
+    try {
+      await api.post('/api/attendance/correction-requests', {
+        requestDate: correctionForm.date,
+        requestedCheckIn: correctionForm.checkIn ? `${correctionForm.date}T${correctionForm.checkIn}:00` : null,
+        requestedCheckOut: correctionForm.checkOut ? `${correctionForm.date}T${correctionForm.checkOut}:00` : null,
+        requestedStatus: 'present',
+        reason: correctionForm.reason.trim(),
+      });
+      Alert.alert('Submitted', 'Your attendance correction request has been submitted for approval.');
+      closeCorrectionModal();
+      fetchData();
+    } catch (e) {
+      Alert.alert('Error', e.response?.data?.detail || 'Failed to submit correction request.');
+    } finally {
+      setSubmittingCorrection(false);
+    }
   };
 
   const submitPunch = async (type, selfieBase64) => {
@@ -1188,6 +1239,19 @@ const AttendanceScreen = ({ navigation }) => {
                   <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.8)" />
                 </LinearGradient>
               </TouchableOpacity>
+
+              <TouchableOpacity onPress={openCorrectionModal} activeOpacity={0.88}>
+                <LinearGradient colors={['#F59E0B', '#D97706']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.historyCard, { marginTop: 10 }]}>
+                  <View style={styles.historyIcon}>
+                    <Ionicons name="construct" size={24} color="#FFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.historyTitle}>Request Correction</Text>
+                    <Text style={styles.historySub}>Fix attendance for a past date</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.8)" />
+                </LinearGradient>
+              </TouchableOpacity>
             </>
           )}
         </View>
@@ -1229,6 +1293,65 @@ const AttendanceScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </LinearGradient>
+        </View>
+      </Modal>
+
+      <Modal visible={showCorrectionModal} animationType="slide" onRequestClose={closeCorrectionModal}>
+        <View style={styles.correctionModal}>
+          <View style={styles.correctionHeader}>
+            <Text style={styles.correctionTitle}>Request Attendance Correction</Text>
+            <TouchableOpacity onPress={closeCorrectionModal} activeOpacity={0.7}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.correctionBody}>
+            <Text style={styles.fieldLabel}>Date</Text>
+            <TextInput
+              style={styles.input}
+              value={correctionForm.date}
+              onChangeText={(text) => setCorrectionForm((f) => ({ ...f, date: text }))}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={styles.fieldLabel}>Check In</Text>
+            <TextInput
+              style={styles.input}
+              value={correctionForm.checkIn}
+              onChangeText={(text) => setCorrectionForm((f) => ({ ...f, checkIn: text }))}
+              placeholder="HH:MM"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={styles.fieldLabel}>Check Out</Text>
+            <TextInput
+              style={styles.input}
+              value={correctionForm.checkOut}
+              onChangeText={(text) => setCorrectionForm((f) => ({ ...f, checkOut: text }))}
+              placeholder="HH:MM"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={styles.fieldLabel}>Reason</Text>
+            <TextInput
+              style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+              value={correctionForm.reason}
+              onChangeText={(text) => setCorrectionForm((f) => ({ ...f, reason: text }))}
+              placeholder="Why is this correction needed?"
+              placeholderTextColor={colors.textTertiary}
+              multiline
+            />
+
+            <TouchableOpacity
+              style={[styles.submitBtn, submittingCorrection && { opacity: 0.7 }]}
+              onPress={handleCorrectionSubmit}
+              disabled={submittingCorrection}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.submitBtnText}>{submittingCorrection ? 'Submitting…' : 'Submit Correction'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 

@@ -1,7 +1,7 @@
 """
 SuperAdmin Pydantic Schemas
 """
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -106,6 +106,20 @@ class TenantCreate(BaseModel):
     plan_id: Optional[int] = None
     plan: Optional[str] = None
     modules: Optional[List[str]] = None
+
+    @field_validator('plan_id', mode='before')
+    @classmethod
+    def coerce_plan_id(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        return int(v)
+
+    @field_validator('password', mode='before')
+    @classmethod
+    def coerce_password(cls, v):
+        if v in (None, '', 'null'):
+            return None
+        return str(v)
 
 
 class TenantUpdate(BaseModel):

@@ -26,7 +26,7 @@ import structlog
 import uvicorn
 from dateutil import parser as dateparser
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -47,13 +47,16 @@ from controllers.permissions_controller import router as permissions_controller_
 from controllers.superadmin_controller import router as superadmin_controller_router
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.datetime_utils import ist_now_naive
+from core.api_versioning import APIVersionMiddleware
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache, ping_redis
+from core.serialization import json_response, CachedJSONResponse
 from core.config import settings
 from core.shared import logger
 from database import Base, SessionLocal, engine, get_db
 from models import (
     Attendance,
     AttendanceAuditLog,
+    AttendanceCorrectionRequest,
     AttendancePolicy,
     AuditLog,
     Asset,
@@ -108,6 +111,7 @@ from routers.anomaly import router as anomaly_router
 from routers.superadmin import router as superadmin_router
 from routers.users import router as users_router
 from routers.recruitment import router as recruitment_router
+from routers.job_portal_public import router as job_portal_public_router
 from routers.custom_fields import router as custom_fields_router
 from routers.reports import router as reports_router
 from routers.automation import router as automation_router
@@ -126,10 +130,15 @@ from routers.holidays import router as holidays_router
 from routers.dashboard import router as dashboard_router
 from routers.reports_inline import router as reports_inline_router
 from routers.settings_inline import router as settings_inline_router
+from routers.batch_operations import router as batch_operations_router
 from routers.employee_lifecycle import router as employee_lifecycle_router
 from routers.billing import router as billing_router
 from routers.maintenance import router as maintenance_router
 from routers.policies import router as policies_router
+from routers.announcements import router as announcements_router
+from routers.grievances import router as grievances_router
+from routers.aggregations import router as aggregations_router
+from routers.search import router as search_router
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from utils.helpers import convert_camel_to_snake
 
@@ -248,11 +257,28 @@ async def lifespan(app: FastAPI):
 
     retention_task = asyncio.create_task(_selfie_retention_loop())
     exited_docs_task = asyncio.create_task(_exited_document_retention_loop())
+    
+    from core.background_tasks import start_background_tasks
+    await start_background_tasks()
+
+    async def _archival_loop():
+        from core.archival import run_nightly_archival
+        await asyncio.sleep(300)
+        while True:
+            try:
+                with SessionLocal() as _db:
+                    run_nightly_archival(_db)
+            except Exception as exc:
+                logger.warning("Nightly archival job failed", error=str(exc))
+            await asyncio.sleep(24 * 3600)
+
+    archival_task = asyncio.create_task(_archival_loop())
 
     yield
 
     retention_task.cancel()
     exited_docs_task.cancel()
+    archival_task.cancel()
     try:
         await retention_task
     except asyncio.CancelledError:
@@ -261,6 +287,13 @@ async def lifespan(app: FastAPI):
         await exited_docs_task
     except asyncio.CancelledError:
         pass
+    try:
+        await archival_task
+    except asyncio.CancelledError:
+        pass
+    
+    from core.background_tasks import stop_background_tasks
+    await stop_background_tasks()
 
     logger.info("Shutting down HRMS Enterprise API")
 
@@ -280,15 +313,54 @@ app = FastAPI(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Serve uploaded files (employee photos, expense receipts, etc.)
-_uploads_dir = os.path.join(os.path.dirname(__file__), "routers", "uploads")
-os.makedirs(_uploads_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
-
-# Serve static billing assets (payment QR codes, logos)
+# Public static assets (QR codes, logos)
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(_static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+# Authenticated file serving for uploads (replaces public StaticFiles mount)
+_uploads_dir = os.path.join(os.path.dirname(__file__), "routers", "uploads")
+os.makedirs(_uploads_dir, exist_ok=True)
+
+
+def _is_public_upload(path: str) -> bool:
+    public_prefixes = ("/logos/", "/portal/")
+    return any(path.startswith(prefix) for prefix in public_prefixes)
+
+
+def _check_upload_access(path: str, user: User) -> bool:
+    if _is_public_upload(path):
+        return True
+    if user.role in ("superadmin", "admin", "hr_admin", "hr_manager", "hr_executive"):
+        return True
+    org_id = getattr(user, "organization_id", None)
+    if org_id and f"/{org_id}/" in path:
+        return True
+    return False
+
+
+@app.get("/uploads/{path:path}")
+async def serve_uploaded_file(path: str, current_user: User = Depends(get_current_user)):
+    if not _check_upload_access(f"/{path}", current_user):
+        raise HTTPException(status_code=403, detail="You do not have permission to access this file")
+    file_path = os.path.join(_uploads_dir, path)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+# ---------------------------------------------------------------------------
+# Health & Readiness
+# ---------------------------------------------------------------------------
+
+@app.get("/health/ready")
+def health_ready():
+    return {"status": "ready"}
+
+
+@app.get("/health/live")
+def health_live():
+    return {"status": "live"}
 
 
 # ---------------------------------------------------------------------------
@@ -340,33 +412,53 @@ except Exception as e:
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.state, "request_id", None)
     return JSONResponse(
         status_code=exc.status_code,
-        content={"detail": exc.detail},
+        content={
+            "error": {
+                "message": exc.detail,
+                "status_code": exc.status_code,
+                "request_id": request_id,
+                "timestamp": ist_now_naive().isoformat(),
+            }
+        },
     )
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    tb = traceback.format_exc()
-    logger.exception("Unhandled exception", path=request.url.path, method=request.method)
-    with open(r"D:\hrmsnew\hrms_backend\crash_debug.log", "a", encoding="utf-8") as f:
-        f.write(f"GLOBAL HANDLER: path={request.url.path} exc={exc}\n{tb}\n")
-    with open(r"D:\hrmsnew\hrms_backend\crash_debug.log", "a", encoding="utf-8") as f:
-        f.write(f"GLOBAL_HANDLER: path={request.url.path} exc={exc!r}\n{tb}\n")
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception("Unhandled exception", path=request.url.path, method=request.method, request_id=request_id)
+    detail = str(exc) if settings.APP_ENV != "production" else "Internal server error"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"GLOBAL_ERR: {str(exc)}", "path": request.url.path, "version": "v3"},
+        content={
+            "error": {
+                "message": detail,
+                "status_code": 500,
+                "request_id": request_id,
+                "timestamp": ist_now_naive().isoformat(),
+            }
+        },
     )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.warning("Validation error", path=request.url.path, errors=exc.errors())
+    request_id = getattr(request.state, "request_id", None)
+    logger.warning("Validation error", path=request.url.path, errors=exc.errors(), request_id=request_id)
     return JSONResponse(
         status_code=422,
-        content={"detail": "Validation error", "errors": exc.errors()},
+        content={
+            "error": {
+                "message": "Validation error",
+                "status_code": 422,
+                "request_id": request_id,
+                "timestamp": ist_now_naive().isoformat(),
+                "errors": exc.errors(),
+            }
+        },
     )
 
 
@@ -376,15 +468,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # Skip logging for health checks, static files, and docs
     path = request.url.path
     if path.startswith("/health") or path.startswith("/uploads") or path.startswith("/static") or path.startswith("/docs") or path.startswith("/openapi"):
         return await call_next(request)
+    request_id = getattr(request.state, "request_id", None)
     start = time.time()
     response = await call_next(request)
     elapsed = time.time() - start
     logger.info(
         "Request",
+        request_id=request_id,
         method=request.method,
         path=path,
         status=response.status_code,
@@ -399,14 +492,14 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": ist_now_naive().isoformat(), "service": "hrms-api"}
+    return json_response({"status": "healthy", "timestamp": ist_now_naive().isoformat(), "service": "hrms-api"}, cache_ttl=30)
 
 
 @app.get("/health/db")
 async def db_health_check(db: Session = Depends(get_db)):
     try:
         result = db.execute(text("SELECT 1"))
-        return {"status": "healthy", "database": "connected"}
+        return json_response({"status": "healthy", "database": "connected"}, cache_ttl=30)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Database unavailable: {e}")
 
@@ -429,6 +522,7 @@ async def readiness_check(db: Session = Depends(get_db)):
             "checks": checks,
             "timestamp": ist_now_naive().isoformat(),
         },
+        headers={"Cache-Control": "no-cache"},
     )
 
 
@@ -437,6 +531,86 @@ async def redis_health_check():
     stats = get_cache_stats()
     code = 200 if stats.get("status") == "connected" else 503
     return JSONResponse(status_code=code, content=stats)
+
+
+@app.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    from core.background_tasks import task_queue
+    task = task_queue.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "task_id": task.id,
+        "name": task.name,
+        "status": task.status,
+        "created_at": task.created_at.isoformat(),
+        "error": task.error,
+    }
+
+
+@app.get("/health/db/pool")
+async def db_pool_health():
+    from database import get_db_pool_stats
+    stats = get_db_pool_stats()
+    return stats
+
+
+@app.get("/reports/materialized/{view_name}")
+def get_materialized_report(
+    view_name: str,
+    organization_id: Optional[int] = Query(None),
+    limit: int = Query(1000, ge=1, le=10000),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Query materialized views for high-performance reporting"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin", "hr_manager"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
+    allowed_views = [
+        "mv_employee_summary",
+        "mv_attendance_daily_summary", 
+        "mv_leave_summary",
+        "mv_payroll_monthly_summary",
+        "mv_expense_summary"
+    ]
+    
+    if view_name not in allowed_views:
+        raise HTTPException(status_code=400, detail=f"Invalid view: {view_name}")
+    
+    try:
+        from core.materialized_views import query_materialized_view
+        data = query_materialized_view(db, view_name, organization_id, limit)
+        return {
+            "view": view_name,
+            "organization_id": organization_id,
+            "count": len(data),
+            "data": data
+        }
+    except Exception as e:
+        logger.error(f"Materialized view query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/reports/materialized/refresh")
+def refresh_materialized_views(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Refresh all materialized views - superadmin only"""
+    if current_user.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can refresh materialized views")
+    
+    try:
+        from core.materialized_views import refresh_materialized_views
+        results = refresh_materialized_views(db)
+        return {
+            "message": "Materialized views refreshed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Materialized view refresh failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 from core.context import current_user_ctx as _current_user_ctx
@@ -504,6 +678,7 @@ app.include_router(investment_declarations_router, tags=["Investment Declaration
 app.include_router(accounting_router, tags=["Accounting"])
 app.include_router(anomaly_router)
 app.include_router(recruitment_router)
+app.include_router(job_portal_public_router, prefix="/api")
 app.include_router(custom_fields_router)
 app.include_router(reports_router)
 app.include_router(automation_router)
@@ -527,6 +702,12 @@ app.include_router(employee_lifecycle_router)
 app.include_router(billing_router)
 app.include_router(maintenance_router)
 app.include_router(policies_router)
+app.include_router(announcements_router)
+app.include_router(grievances_router)
+app.include_router(batch_operations_router)
+
+app.include_router(aggregations_router)
+app.include_router(search_router)
 
 # --- Test Route ---
 

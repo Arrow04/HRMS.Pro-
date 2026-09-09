@@ -29,7 +29,7 @@ from core.config import settings
 from core.tenant import get_header_company_id
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
-from database import Base, SessionLocal, engine, get_db
+from database import Base, SessionLocal, engine, get_db, get_read_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from core.datetime_utils import ist_now_naive, ist_today_str, ist_month_start_str, ist_month_end_str
@@ -45,7 +45,7 @@ router = APIRouter(tags=["Dashboard"])
 def get_dashboard_summary(
     companyId: Optional[int] = None,
     months: int = 6,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
@@ -526,7 +526,7 @@ def get_dashboard_summary(
 @cached(ttl=60)
 @router.get("/api/dashboard/stats", tags=["Dashboard"])
 def get_dashboard_stats(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id

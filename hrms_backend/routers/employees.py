@@ -359,6 +359,7 @@ def get_employees(
             "deletedAt": emp.deleted_at.isoformat() if emp.deleted_at else None,
             "employmentType": emp.employment_type,
             "joinDate": emp.join_date.isoformat() if emp.join_date else None,
+            "reportingManagerId": emp.reporting_manager_id,
             "phone": emp.phone,
             "photoUrl": emp.photo_url,
         }
@@ -473,6 +474,7 @@ def get_employees(
             # Login
             "userRole": emp.user_role,
             "loginEmail": emp.login_email,
+            "reportingManagerId": emp.reporting_manager_id,
             # Device
             "deviceName": emp.device_name,
             "deviceType": emp.device_type,
@@ -525,6 +527,49 @@ def get_employees(
     return {
         "data": employee_list,
         "pagination": pagination,
+    }
+
+
+@router.get("/org-structure", response_model=dict)
+def get_org_structure(
+    db: Session = Depends(get_read_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return org structure as manager -> reportees tree."""
+    query = db.query(Employee).filter(Employee.deleted_at.is_(None))
+    if current_user.organization_id is not None:
+        query = query.filter(Employee.organization_id == current_user.organization_id)
+
+    employees = query.options(
+        joinedload(Employee.department),
+        joinedload(Employee.designation_obj),
+        joinedload(Employee.company),
+    ).all()
+
+    emp_map = {}
+    for emp in employees:
+        emp_map[emp.id] = {
+            "id": emp.id,
+            "name": emp.full_name or f"{emp.first_name} {emp.last_name}".strip(),
+            "email": emp.email,
+            "designation": emp.designation,
+            "department": emp.department.name if emp.department else None,
+            "company": emp.company.name if emp.company else None,
+            "reportingManagerId": emp.reporting_manager_id,
+            "directReports": [],
+        }
+
+    roots = []
+    for emp in employees:
+        node = emp_map[emp.id]
+        if emp.reporting_manager_id and emp.reporting_manager_id in emp_map:
+            emp_map[emp.reporting_manager_id]["directReports"].append(node)
+        else:
+            roots.append(node)
+
+    return {
+        "data": roots,
+        "totalEmployees": len(employees),
     }
 
 
@@ -937,6 +982,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         designation=snake_case_data.get("designation"),
         department_id=dept_id,
         organization_id=org_id if isinstance(org_id, int) else None,
+        reporting_manager_id=snake_case_data.get("reporting_manager_id"),
         status=snake_case_data.get("status", "active"),
         phone=snake_case_data.get("phone"),
         address=address_field,
@@ -1154,6 +1200,8 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.department_id = _int_or_none(snake_case_data["department_id"])
     if "organization_id" in snake_case_data:
         employee.organization_id = _int_or_none(snake_case_data["organization_id"])
+    if "reporting_manager_id" in snake_case_data:
+        employee.reporting_manager_id = _int_or_none(snake_case_data["reporting_manager_id"])
     # Handle company assignment (many-to-many)
     if "company_ids" in snake_case_data:
         companies = db.query(Company).filter(Company.id.in_(snake_case_data["company_ids"])).all()
@@ -1882,6 +1930,7 @@ def bulk_upload_employees(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _require_module_action(db, current_user, "employees", "write")
     import csv
     import io
 
@@ -1898,8 +1947,8 @@ def bulk_upload_employees(
     else:
         df = pd.read_excel(io.BytesIO(content))
 
-    # Normalize column names
-    df.columns = df.columns.str.strip().str.lower()
+    # Normalize column names: strip whitespace and trailing asterisks
+    df.columns = df.columns.str.strip().str.replace(r'\*$', '', regex=True).str.lower()
     
     # Column mapping for different naming conventions
     column_map = {
@@ -1909,6 +1958,7 @@ def bulk_upload_employees(
         'firstname': 'first_name',
         'last name': 'last_name',
         'lastname': 'last_name',
+        'name': 'full_name',
         'employee code': 'employee_code',
         'employeecode': 'employee_code',
         'company name': 'company_name',
@@ -1921,9 +1971,32 @@ def bulk_upload_employees(
         'joindate': 'join_date',
         'current address': 'current_address',
         'currentaddress': 'current_address',
+        'permanent address': 'permanent_address',
+        'permanentaddress': 'permanent_address',
+        'emergency contact': 'emergency_contact',
+        'emergencycontact': 'emergency_contact',
+        'emergency phone': 'emergency_phone',
+        'emergencyphone': 'emergency_phone',
+        'aadhar number': 'aadhar_number',
+        'aadharnumber': 'aadhar_number',
+        'pan number': 'pan_number',
+        'pannumber': 'pan_number',
+        'bank name': 'bank_name',
+        'bankname': 'bank_name',
+        'bank account number': 'bank_account_number',
+        'bankaccountnumber': 'bank_account_number',
+        'ifsc code': 'ifsc_code',
+        'ifsccode': 'ifsc_code',
     }
     
     df = df.rename(columns=column_map)
+
+    # Build a display-friendly header map for error messages
+    original_headers = list(df.columns)
+
+    def _row_val(row, key, default=""):
+        v = row.get(key, default)
+        return "" if pd.isna(v) else str(v).strip()
 
     # Enforce plan employee limit before inserting.
     try:
@@ -1936,38 +2009,34 @@ def bulk_upload_employees(
     errors = []
 
     for row_num, row in df.iterrows():
+        savepoint = db.begin_nested()
         try:
-            employee_code = str(row.get("employee_code", "")).strip()
-            email = str(row.get("email", "")).strip()
-            full_name = str(row.get("full_name", "")).strip()
+            employee_code = _row_val(row, "employee_code")
+            email = _row_val(row, "email")
+            full_name = _row_val(row, "full_name")
+            first_name = _row_val(row, "first_name")
+            last_name = _row_val(row, "last_name")
             if not full_name:
-                first_name = str(row.get("first_name", "")).strip()
-                last_name = str(row.get("last_name", "")).strip()
                 full_name = f"{first_name} {last_name}".strip()
             first_name, last_name = split_name(full_name)
-            phone = str(row.get("phone", "")).strip()
-            current_address = str(row.get("current_address", "")).strip()
+            phone = _row_val(row, "phone")
+            current_address = _row_val(row, "current_address")
 
-            # Mandatory fields: full_name, phone, current_address
-            if not full_name or not phone or not current_address:
-                errors.append({"row": row_num + 2, "error": "full_name, phone, and current_address are required"})
-                continue
+            if not full_name:
+                raise ValueError("full_name is required. Available columns in file: " + ", ".join(original_headers))
 
-            # Map company name to ID
             company_id = companyId
             if 'company_name' in row and pd.notna(row['company_name']):
                 company = db.query(Organization).filter(Organization.name == str(row['company_name']).strip()).first()
                 if company:
                     company_id = company.id
 
-            # Map branch name to ID
             branch_id = None
             if 'branch_name' in row and pd.notna(row['branch_name']):
                 branch = db.query(Branch).filter(Branch.name == str(row['branch_name']).strip()).first()
                 if branch:
                     branch_id = branch.id
 
-            # Map department name to ID
             department_id = None
             if 'department' in row and pd.notna(row['department']):
                 dept = db.query(Department).filter(Department.name == str(row['department']).strip()).first()
@@ -2003,7 +2072,7 @@ def bulk_upload_employees(
                 if 'join_date' in row and pd.notna(row['join_date']):
                     try:
                         join_date = pd.to_datetime(row['join_date']).to_pydatetime()
-                    except Exception as exc:
+                    except Exception:
                         join_date = ist_now_naive()
                 else:
                     join_date = ist_now_naive()
@@ -2012,7 +2081,7 @@ def bulk_upload_employees(
                 if 'date_of_birth' in row and pd.notna(row['date_of_birth']):
                     try:
                         date_of_birth = pd.to_datetime(row['date_of_birth']).to_pydatetime()
-                    except Exception as exc:
+                    except Exception:
                         pass
 
                 new_emp = Employee(
@@ -2041,8 +2110,11 @@ def bulk_upload_employees(
                     if branch:
                         new_emp.branches.append(branch)
                 db.add(new_emp)
+                db.flush()
                 created += 1
+            savepoint.commit()
         except Exception as e:
+            savepoint.rollback()
             errors.append({"row": row_num + 2, "error": str(e)})
 
     db.commit()

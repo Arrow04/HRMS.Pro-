@@ -28,6 +28,9 @@ import {
   RefreshCw,
   LayoutDashboard,
   Activity,
+  Monitor,
+  LogOut,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   BarChart,
@@ -51,6 +54,8 @@ import SearchableSelect from '../components/SearchableSelect';
 import ChartCard, { ACCENT_COLORS } from '../components/ChartCard';
 import PageHero from '../components/PageHero';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import ModuleSummaryCard from '../components/ModuleSummaryCard';
+import QuickActionButton from '../components/QuickActionButton';
 import type { Employee, Attendance, Holiday, LeaveApplication, Expense, Payroll } from '../types';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -387,59 +392,59 @@ export default function Dashboard() {
 
       {/* Secondary KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer">
+        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-blue-400/5 to-transparent opacity-100" />
           <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-[#E2E8F0] flex items-center justify-center text-blue-600">
+            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-blue-600 dark:text-blue-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
               <Users className="w-6 h-6" />
             </div>
           </div>
           <div className="relative mt-4">
-            <p className="text-sm font-medium text-[#475569]">Total Employees</p>
-            <p className="text-[28px] font-bold text-[#0F172A] leading-tight tracking-tight mt-1">{stats.totalEmployees}</p>
-            <p className="text-xs text-[#94A3B8] mt-1">{stats.activeEmployees} active{selectedCompanyId ? ' · ' + (companies.find((c: { id: number }) => c.id === selectedCompanyId) as { name?: string } | undefined)?.name || '' : ''}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Total Employees</p>
+            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.totalEmployees}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.activeEmployees} active{selectedCompanyId ? ' · ' + (companies.find((c: { id: number }) => c.id === selectedCompanyId) as { name?: string } | undefined)?.name || '' : ''}</p>
           </div>
         </button>
 
-        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer">
+        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-emerald-400/5 to-transparent opacity-100" />
           <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-[#E2E8F0] flex items-center justify-center text-emerald-600">
+            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-emerald-600 dark:text-emerald-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
               <TrendingUp className="w-6 h-6" />
             </div>
           </div>
           <div className="relative mt-4">
-            <p className="text-sm font-medium text-[#475569]">New Hires · This Month</p>
-            <p className="text-[28px] font-bold text-[#0F172A] leading-tight tracking-tight mt-1">{stats.newHiresThisPeriod}</p>
-            <p className="text-xs text-[#94A3B8] mt-1">{stats.attritionsThisPeriod} attritions</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>New Hires · This Month</p>
+            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.newHiresThisPeriod}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.attritionsThisPeriod} attritions</p>
           </div>
         </button>
 
-        <button type="button" onClick={() => navigate('/leaves')} className="group relative overflow-hidden rounded-2xl p-5 bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer">
+        <button type="button" onClick={() => navigate('/leaves')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
           <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-amber-400/5 to-transparent opacity-100" />
           <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-[#E2E8F0] flex items-center justify-center text-amber-600">
+            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-amber-600 dark:text-amber-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
               <FileText className="w-6 h-6" />
             </div>
           </div>
           <div className="relative mt-4">
-            <p className="text-sm font-medium text-[#475569]">Pending Approvals</p>
-            <p className="text-[28px] font-bold text-[#0F172A] leading-tight tracking-tight mt-1">{stats.leaveApproval + stats.expenseApproval}</p>
-            <p className="text-xs text-[#94A3B8] mt-1">{stats.leaveApproval} leaves · {stats.expenseApproval} expenses</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Pending Approvals</p>
+            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.leaveApproval + stats.expenseApproval}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.leaveApproval} leaves · {stats.expenseApproval} expenses</p>
           </div>
         </button>
 
-        <button type="button" onClick={() => navigate('/performance')} className="group relative overflow-hidden rounded-2xl p-5 bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer">
+        <button type="button" onClick={() => navigate('/performance')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-purple-400/5 to-transparent opacity-100" />
           <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-[#E2E8F0] flex items-center justify-center text-purple-600">
+            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-purple-600 dark:text-purple-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
               <TrendingUp className="w-6 h-6" />
             </div>
           </div>
           <div className="relative mt-4">
-            <p className="text-sm font-medium text-[#475569]">Avg Performance</p>
-            <p className="text-[28px] font-bold text-[#0F172A] leading-tight tracking-tight mt-1">{stats.employeePerformance ? `${stats.employeePerformance.toFixed(1)}` : 'N/A'}</p>
-            <p className="text-xs text-[#94A3B8] mt-1">out of 5.0 · {stats.reviewsThisMonth} reviews</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Avg Performance</p>
+            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.employeePerformance ? `${stats.employeePerformance.toFixed(1)}` : 'N/A'}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>out of 5.0 · {stats.reviewsThisMonth} reviews</p>
           </div>
         </button>
       </div>
@@ -447,23 +452,35 @@ export default function Dashboard() {
       {/* Charts Section */}
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-xl font-semibold text-[var(--text-primary)]">Analytics</h2>
-          <div className="inline-flex items-center gap-1 rounded-xl bg-[var(--hover-bg)] border border-[var(--border-color)] p-1 self-start">
+          <h2 className="text-xl font-semibold" style={{ color: 'var(--text-heading)' }}>Analytics</h2>
+          <div className="inline-flex items-center gap-1 rounded-xl border p-1 self-start"
+            style={{ backgroundColor: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>
             <button
               onClick={() => setAnalyticsTab('overview')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyticsTab === 'overview' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: analyticsTab === 'overview' ? 'var(--card)' : 'transparent',
+                color: analyticsTab === 'overview' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                boxShadow: analyticsTab === 'overview' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}
             >
               <LayoutDashboard className="w-4 h-4" />
               Overview
             </button>
             <button
               onClick={() => setAnalyticsTab('trends')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyticsTab === 'trends' ? 'bg-white text-[#0F172A] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: analyticsTab === 'trends' ? 'var(--card)' : 'transparent',
+                color: analyticsTab === 'trends' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                boxShadow: analyticsTab === 'trends' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}
             >
               <Activity className="w-4 h-4" />
               Trends
             </button>
-            <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--hover-bg)] text-[var(--text-secondary)] border border-[var(--border-color)] ml-1">
+            <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border ml-1"
+              style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
               Jan–Dec {new Date().getFullYear()}
             </span>
           </div>
@@ -690,212 +707,108 @@ export default function Dashboard() {
 
       {/* Quick Actions Grid */}
       <div className="mb-12">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Quick Actions</h2>
+        <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-heading)' }}>Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          <button onClick={() => navigate('/company')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 group-hover:bg-indigo-200 transition-colors">
-              <Building className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Company</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Manage organization</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/employees')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 group-hover:bg-emerald-200 transition-colors">
-              <Users className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Employees</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Manage staff ({stats.totalEmployees})</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/attendance')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-cyan-100 flex items-center justify-center shrink-0 group-hover:bg-cyan-200 transition-colors">
-              <Clock className="w-5 h-5 text-cyan-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Attendance</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Track attendance</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/leaves')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-rose-100 flex items-center justify-center shrink-0 group-hover:bg-rose-200 transition-colors">
-              <CalendarCheck className="w-5 h-5 text-rose-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Leaves</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Manage leave requests</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/payroll')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center shrink-0 group-hover:bg-orange-200 transition-colors">
-              <Coins className="w-5 h-5 text-orange-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Payroll</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Salary management</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/recruitment')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center shrink-0 group-hover:bg-violet-200 transition-colors">
-              <Briefcase className="w-5 h-5 text-violet-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Recruitment</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Hiring pipeline</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/performance')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center shrink-0 group-hover:bg-teal-200 transition-colors">
-              <TrendingUp className="w-5 h-5 text-teal-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Performance</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Employee reviews</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/expenses')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-pink-100 flex items-center justify-center shrink-0 group-hover:bg-pink-200 transition-colors">
-              <CreditCard className="w-5 h-5 text-pink-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Expenses</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Expense claims</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/holidays')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 group-hover:bg-amber-200 transition-colors">
-              <Palmtree className="w-5 h-5 text-amber-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Holidays</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Holiday calendar</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/reports')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-lime-100 flex items-center justify-center shrink-0 group-hover:bg-lime-200 transition-colors">
-              <FileBarChart className="w-5 h-5 text-lime-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Reports</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Analytics & reports</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/master-data')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 group-hover:bg-slate-200 transition-colors">
-              <Database className="w-5 h-5 text-slate-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Master Data</p>
-              <p className="text-xs text-[var(--text-tertiary)]">Master settings</p>
-            </div>
-          </button>
-
-          <button onClick={() => navigate('/settings')} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-color)] hover:bg-[var(--hover-bg)] hover:shadow-md transition-all duration-200 bg-white group">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 group-hover:bg-gray-200 transition-colors">
-              <Settings className="w-5 h-5 text-gray-600" />
-            </div>
-            <div className="text-left">
-              <p className="font-medium text-[var(--text-primary)] text-sm">Settings</p>
-              <p className="text-xs text-[var(--text-tertiary)]">System config</p>
-            </div>
-          </button>
+          <QuickActionButton icon={Building} label="Company" description="Manage organization" accent="indigo" onClick={() => navigate('/company')} />
+          <QuickActionButton icon={Users} label="Employees" description={`Manage staff (${stats.totalEmployees})`} accent="emerald" onClick={() => navigate('/employees')} />
+          <QuickActionButton icon={Clock} label="Attendance" description="Track attendance" accent="cyan" onClick={() => navigate('/attendance')} />
+          <QuickActionButton icon={CalendarCheck} label="Leaves" description="Manage leave requests" accent="rose" onClick={() => navigate('/leaves')} />
+          <QuickActionButton icon={Coins} label="Payroll" description="Salary management" accent="orange" onClick={() => navigate('/payroll')} />
+          <QuickActionButton icon={Briefcase} label="Recruitment" description="Hiring pipeline" accent="violet" onClick={() => navigate('/recruitment')} />
+          <QuickActionButton icon={TrendingUp} label="Performance" description="Employee reviews" accent="teal" onClick={() => navigate('/performance')} />
+          <QuickActionButton icon={CreditCard} label="Expenses" description="Expense claims" accent="pink" onClick={() => navigate('/expenses')} />
+          <QuickActionButton icon={Palmtree} label="Holidays" description="Holiday calendar" accent="amber" onClick={() => navigate('/holidays')} />
+          <QuickActionButton icon={FileBarChart} label="Reports" description="Analytics & reports" accent="lime" onClick={() => navigate('/reports')} />
+          <QuickActionButton icon={Database} label="Master Data" description="Master settings" accent="slate" onClick={() => navigate('/master-data')} />
+          <QuickActionButton icon={Settings} label="Settings" description="System config" accent="gray" onClick={() => navigate('/settings')} />
+          <QuickActionButton icon={Monitor} label="Assets" description="Asset management" accent="blue" onClick={() => navigate('/assets')} />
+          <QuickActionButton icon={LogOut} label="Exit Management" description="Employee exits" accent="rose" onClick={() => navigate('/exit-management')} />
+          <QuickActionButton icon={ShieldAlert} label="Anomalies" description="Detect anomalies" accent="amber" onClick={() => navigate('/anomalies')} />
         </div>
       </div>
 
       {/* Notifications Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Events & Holidays */}
-        <div className="bg-white rounded-xl border border-[var(--border-color)] p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
             <Palmtree className="w-5 h-5 text-amber-500" />
             Upcoming Events & Holidays
           </h2>
           <div className="space-y-3">
             {(summary?.upcomingHolidays || []).length > 0 ? (
               summary?.upcomingHolidays?.map((holiday: Holiday, idx: number) => (
-                <div key={idx} className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                  <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-                    <Palmtree className="w-5 h-5 text-amber-600" />
+                <div key={idx} className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <Palmtree className="w-5 h-5" style={{ color: 'inherit' }} />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-[var(--text-primary)] text-sm">{holiday.name}</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">{formatAppDate(holiday.date)}</p>
+                    <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{holiday.name}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{formatAppDate(holiday.date)}</p>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-sm text-gray-500">No upcoming events</p>
+              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No upcoming events</p>
             )}
           </div>
         </div>
 
         {/* Recent Attendance Activity */}
-        <div className="bg-white rounded-xl border border-[var(--border-color)] p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
             <Clock className="w-5 h-5 text-cyan-500" />
             Recent Attendance Activity
           </h2>
           <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <CheckCircle className="w-5 h-5 text-green-600" />
+            <div className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <CheckCircle className="w-5 h-5" style={{ color: 'inherit' }} />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[var(--text-primary)] text-sm">Today's Attendance</p>
-                <p className="text-xs text-[var(--text-tertiary)]">
+                <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Today's Attendance</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                    {(stats.filteredEmployeesCount ?? 0) > 0 ? Math.round((stats.presentToday / (stats.filteredEmployeesCount || 1)) * 100) : 0}% employees present
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-              <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-yellow-600" />
+            <div className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <AlertCircle className="w-5 h-5" style={{ color: 'inherit' }} />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[var(--text-primary)] text-sm">Late Arrivals</p>
-                <p className="text-xs text-[var(--text-tertiary)]">{stats.lateArrivals || 0} employees late today</p>
+                <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Late Arrivals</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{stats.lateArrivals || 0} employees late today</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                <ArrowDownRight className="w-5 h-5 text-orange-600" />
+            <div className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <ArrowDownRight className="w-5 h-5" style={{ color: 'inherit' }} />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[var(--text-primary)] text-sm">Early Departures</p>
-                <p className="text-xs text-[var(--text-tertiary)]">{stats.earlyDepartures || 0} employees left early today</p>
+                <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Early Departures</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{stats.earlyDepartures || 0} employees left early today</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* Recent Reports */}
-        <div className="bg-white rounded-xl border border-[var(--border-color)] p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
             <FileBarChart className="w-5 h-5 text-lime-500" />
             Recent Reports
           </h2>
           <div className="space-y-3">
             {recentReports.slice(0, 3).map((report, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <FileSpreadsheet className="w-5 h-5" style={{ color: 'inherit' }} />
                   </div>
                   <div>
-                    <p className="font-medium text-[var(--text-primary)] text-sm">{report.report_name || 'Report'}</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">
+                    <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>{report.report_name || 'Report'}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
                       {report.execution_time ? formatAppDate(report.execution_time) : ''}
                       {report.format ? ` · ${report.format.toUpperCase()}` : ''}
                     </p>
@@ -904,7 +817,7 @@ export default function Dashboard() {
               </div>
             ))}
             {recentReports.length === 0 && (
-              <p className="text-sm text-gray-500">No recent reports generated</p>
+              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No recent reports generated</p>
             )}
           </div>
         </div>
@@ -912,143 +825,48 @@ export default function Dashboard() {
 
       {/* Module Summaries */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {/* Attendance Module */}
-        <div className="bg-gradient-to-br from-cyan-500/10 to-cyan-400/5 rounded-xl border border-cyan-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center">
-              <Clock className="w-6 h-6 text-cyan-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Attendance</h3>
-              <p className="text-sm text-gray-600">Track employee attendance</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Present Today</span>
-              <span className="font-semibold text-gray-900">{stats.presentToday || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">On Leave</span>
-              <span className="font-semibold text-gray-900">{stats.onLeaveToday || 0}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Leaves Module */}
-        <div className="bg-gradient-to-br from-rose-500/10 to-rose-400/5 rounded-xl border border-rose-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-rose-100 flex items-center justify-center">
-              <CalendarCheck className="w-6 h-6 text-rose-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Leaves</h3>
-              <p className="text-sm text-gray-600">Leave management</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Pending Requests</span>
-              <span className="font-semibold text-gray-900">{stats.leaveApproval || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Approved This Month</span>
-              <span className="font-semibold text-gray-900">{summary?.leaves?.thisMonth || 0}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Payroll Module */}
-        <div className="bg-gradient-to-br from-orange-500/10 to-orange-400/5 rounded-xl border border-orange-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
-              <Coins className="w-6 h-6 text-orange-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Payroll</h3>
-              <p className="text-sm text-gray-600">Salary processing</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Payroll Run</span>
-              <span className="font-semibold text-gray-900">Monthly</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Total Payout</span>
-              <span className="font-semibold text-gray-900">{formatCurrency(trend.length > 0 ? trend[trend.length - 1]?.payroll || 0 : 0, currency)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Recruitment Module */}
-        <div className="bg-gradient-to-br from-violet-500/10 to-violet-400/5 rounded-xl border border-violet-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center">
-              <Briefcase className="w-6 h-6 text-violet-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Recruitment</h3>
-              <p className="text-sm text-gray-600">Hiring pipeline</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Interviews</span>
-              <span className="font-semibold text-gray-900">{stats.totalInterviewScheduled || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Offers</span>
-              <span className="font-semibold text-gray-900">{stats.jobOffered || 0}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Performance Module */}
-        <div className="bg-gradient-to-br from-teal-500/10 to-teal-400/5 rounded-xl border border-teal-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-teal-100 flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-teal-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Performance</h3>
-              <p className="text-sm text-gray-600">Employee reviews</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Reviews This Month</span>
-              <span className="font-semibold text-gray-900">{stats.reviewsThisMonth || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Avg Rating</span>
-              <span className="font-semibold text-gray-900">{stats.employeePerformance ? `${stats.employeePerformance}/5.0` : 'N/A'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Expenses Module */}
-        <div className="bg-gradient-to-br from-pink-500/10 to-pink-400/5 rounded-xl border border-pink-200 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-pink-100 flex items-center justify-center">
-              <CreditCard className="w-6 h-6 text-pink-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Expenses</h3>
-              <p className="text-sm text-gray-600">Expense claims</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Pending Claims</span>
-              <span className="font-semibold text-gray-900">{stats.expenseApproval || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">This Month Total</span>
-              <span className="font-semibold text-gray-900">{formatCurrency(trend.length > 0 ? trend[trend.length - 1]?.expenses || 0 : 0, currency)}</span>
-            </div>
-          </div>
-        </div>
+        <ModuleSummaryCard
+          icon={Clock} title="Attendance" subtitle="Track employee attendance" accent="cyan"
+          stats={[
+            { label: 'Present Today', value: stats.presentToday || 0 },
+            { label: 'On Leave', value: stats.onLeaveToday || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={CalendarCheck} title="Leaves" subtitle="Leave management" accent="rose"
+          stats={[
+            { label: 'Pending Requests', value: stats.leaveApproval || 0 },
+            { label: 'Approved This Month', value: summary?.leaves?.thisMonth || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Coins} title="Payroll" subtitle="Salary processing" accent="orange"
+          stats={[
+            { label: 'Payroll Run', value: 'Monthly' },
+            { label: 'Total Payout', value: formatCurrency(trend.length > 0 ? trend[trend.length - 1]?.payroll || 0 : 0, currency) },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Briefcase} title="Recruitment" subtitle="Hiring pipeline" accent="violet"
+          stats={[
+            { label: 'Interviews', value: stats.totalInterviewScheduled || 0 },
+            { label: 'Offers', value: stats.jobOffered || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={TrendingUp} title="Performance" subtitle="Employee reviews" accent="teal"
+          stats={[
+            { label: 'Reviews This Month', value: stats.reviewsThisMonth || 0 },
+            { label: 'Avg Rating', value: stats.employeePerformance ? `${stats.employeePerformance}/5.0` : 'N/A' },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={CreditCard} title="Expenses" subtitle="Expense claims" accent="pink"
+          stats={[
+            { label: 'Pending Claims', value: stats.expenseApproval || 0 },
+            { label: 'This Month Total', value: formatCurrency(trend.length > 0 ? trend[trend.length - 1]?.expenses || 0 : 0, currency) },
+          ]}
+        />
       </div>
     </div>
   );

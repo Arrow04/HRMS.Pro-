@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 APP_ENV = os.getenv("APP_ENV", "development").lower()
-ALLOW_SQLITE_FALLBACK = os.getenv("ALLOW_SQLITE_FALLBACK", "true").lower() == "true"
+ALLOW_SQLITE_FALLBACK = os.getenv("ALLOW_SQLITE_FALLBACK", "false").lower() == "true"
 SEED_DEFAULT_USERS = os.getenv("SEED_DEFAULT_USERS", "false").lower() == "true"
 RUN_SCHEMA_SYNC = os.getenv("RUN_SCHEMA_SYNC", "true").lower() == "true"
 
@@ -38,40 +38,40 @@ def _normalize_database_url(url: str) -> str:
 # Create engine
 original_db_url = _normalize_database_url(DATABASE_URL)
 DATABASE_URL = original_db_url
+if original_db_url.startswith('sqlite:///'):
+    engine = create_engine(original_db_url, connect_args={"check_same_thread": False})
+elif original_db_url.startswith('postgresql'):
+    DATABASE_URL = original_db_url
+    if original_db_url.startswith('postgresql://'):
+        DATABASE_URL = original_db_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
+    DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=DB_POOL_SIZE,
+        max_overflow=DB_MAX_OVERFLOW,
+        pool_recycle=DB_POOL_RECYCLE,
+        pool_timeout=15,
+        connect_args={
+            "options": (
+                f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS} "
+                f"-c application_name={PG_APP_NAME}"
+            ),
+        },
+    )
+else:
+    engine = create_engine(original_db_url)
+
 try:
-    if original_db_url.startswith('sqlite:///'):
-        engine = create_engine(original_db_url, connect_args={"check_same_thread": False})
-    elif original_db_url.startswith('postgresql'):
-        DATABASE_URL = original_db_url
-        if original_db_url.startswith('postgresql://'):
-            DATABASE_URL = original_db_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
-        # Per-process pool settings. With multiple uvicorn workers, the aggregate
-        # connection count is workers * pool_size, so keep the per-worker pool
-        # modest (default 5 + 10 overflow) to stay well under PG's max_connections.
-        DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
-        DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
-        engine = create_engine(
-            DATABASE_URL,
-            pool_pre_ping=True,
-            pool_size=DB_POOL_SIZE,
-            max_overflow=DB_MAX_OVERFLOW,
-            pool_recycle=DB_POOL_RECYCLE,
-            pool_timeout=15,
-            connect_args={
-                "options": (
-                    f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS} "
-                    f"-c application_name={PG_APP_NAME}"
-                ),
-            },
-        )
-    else:
-        engine = create_engine(original_db_url)
-    
-    # quick connection test
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 except Exception as e:
-    if ALLOW_SQLITE_FALLBACK and APP_ENV != "production":
+    if APP_ENV != "production":
+        print(f"Warning: could not connect using DATABASE_URL ({e}). Falling back to SQLite 'hrms_dev.db' for local development.")
+        sqlite_path = os.path.join(os.path.dirname(__file__), 'hrms_dev.db')
+        engine = create_engine(f"sqlite:///{sqlite_path}", connect_args={"check_same_thread": False})
+    elif ALLOW_SQLITE_FALLBACK:
         print(f"Warning: could not connect using DATABASE_URL ({e}). Falling back to SQLite 'hrms_dev.db'.")
         sqlite_path = os.path.join(os.path.dirname(__file__), 'hrms_dev.db')
         engine = create_engine(f"sqlite:///{sqlite_path}", connect_args={"check_same_thread": False})
@@ -138,6 +138,22 @@ def get_read_db():
         yield db
     finally:
         db.close()
+
+
+def get_db_pool_stats() -> dict:
+    """Return connection pool statistics for monitoring."""
+    try:
+        pool = engine.pool
+        return {
+            "pool_size": pool.size(),
+            "checkedin": pool.checkedin(),
+            "checkedout": pool.checkedout(),
+            "overflow": pool.overflow(),
+            "status": "healthy"
+        }
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
 
 def init_db():
     """Initialize the database with optional runtime schema sync and seed data."""

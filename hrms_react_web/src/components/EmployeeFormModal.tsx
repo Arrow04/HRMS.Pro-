@@ -100,6 +100,7 @@ export type EmployeeFormData = Record<string, unknown> & {
   deviceMacAddress?: string;
   deviceSerialNumber?: string;
   branchIds?: number[];
+  reportingManagerId?: number;
   aadharFile?: File | null;
   panFile?: File | null;
   voterFile?: File | null;
@@ -394,6 +395,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const { data: attendancePolicies = [] } = useQuery({ queryKey: ['attendance-policies'], queryFn: payrollApi.getAttendancePolicies, staleTime: 5 * 60 * 1000 });
   const { data: taxRegimes = [] } = useQuery({ queryKey: ['tax-regimes'], queryFn: payrollApi.getTaxRegimes, staleTime: 5 * 60 * 1000 });
   const { data: shifts = [] } = useQuery({ queryKey: ['shifts'], queryFn: async () => { const res = await api.get('/shifts'); return res.data?.data || []; } });
+  const { data: employeesList = [] } = useQuery({
+    queryKey: ['employees-picker'],
+    queryFn: async () => {
+      const res = await api.get('/employees', { params: { limit: 200, view: 'summary' } });
+      return res.data?.data || res.data?.items || [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
   const docEmployeeId = employeeId || (typeof formData.employeeId === 'number' ? formData.employeeId as number : undefined);
   const { data: currentRoster } = useQuery({
     queryKey: ['employee-roster', docEmployeeId],
@@ -1125,20 +1134,35 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select employment contract type</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Default Shift</label>
-                    <SearchableSelect
-                      value={input(formData.shiftId)}
-                      onChange={(v) => set({ shiftId: String(v) })}
-                      options={(shifts || []).map((s: any) => ({ id: s.id, name: `${s.name} (${s.start_time} - ${s.end_time})` }))}
-                      placeholder="Select default shift"
-                      showAllOption={false}
-                      clearable
-                      className="w-full"
-                    />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Default shift for attendance calculations</p>
-                  </div>
-                </div>
+                   <div>
+                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Default Shift</label>
+                     <SearchableSelect
+                       value={input(formData.shiftId)}
+                       onChange={(v) => set({ shiftId: String(v) })}
+                       options={(shifts || []).map((s: any) => ({ id: s.id, name: `${s.name} (${s.start_time} - ${s.end_time})` }))}
+                       placeholder="Select default shift"
+                       showAllOption={false}
+                       clearable
+                       className="w-full"
+                     />
+                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Default shift for attendance calculations</p>
+                   </div>
+                   <div>
+                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Reporting Manager</label>
+                     <SearchableSelect
+                       value={input(formData.reportingManagerId)}
+                       onChange={(v) => set({ reportingManagerId: v ? Number(v) : undefined })}
+                       options={(employeesList || [])
+                         .filter((emp: Employee) => !editingItem || emp.id !== editingItem?.id)
+                         .map((emp: Employee) => ({ id: emp.id, name: emp.fullName || emp.name || `Employee #${emp.id}` }))}
+                       placeholder="Select reporting manager"
+                       showAllOption={false}
+                       clearable
+                       className="w-full"
+                     />
+                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Employee’s direct supervisor for org hierarchy</p>
+                   </div>
+                 </div>
                 <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4">
                   <h5 className="text-sm font-semibold text-[#0F172A] mb-3">Weekly Roster</h5>
                   <p className="text-xs text-[#64748B] mb-3">Assign a shift for each day of the week. Leave blank for days off.</p>

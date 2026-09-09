@@ -337,8 +337,8 @@ const Attendance = () => {
   const { data: shiftNameOptions = [] } = useMasterData('DUTY_SHIFT');
   const { data: shiftTypeOptions = [] } = useMasterData('SHIFT_TYPE');
 
-  const { data: branches = [] } = useQuery<OptionItem[]>({ queryKey: ['branches'], queryFn: async () => { const res = await api.get('/branches'); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
-  const { data: departments = [] } = useQuery<OptionItem[]>({ queryKey: ['departments'], queryFn: async () => { const res = await api.get('/departments'); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
+  const { data: branches = [] } = useQuery<OptionItem[]>({ queryKey: ['branches', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/branches', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
+  const { data: departments = [] } = useQuery<OptionItem[]>({ queryKey: ['departments', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/departments', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
 
   const { data: attendanceData, isLoading: isAttendanceLoading, isFetching } = useQuery<AttendanceType[]>({
     queryKey: ['attendance', startDate, endDate, includeInactive],
@@ -1859,7 +1859,7 @@ const Attendance = () => {
                 </div>
                   <div>
                     <label className="block text-sm font-medium text-[#1E293B] mb-1">Company</label>
-                    <select value={shiftForm.company_id || ''} onChange={e => setShiftForm(f => ({ ...f, company_id: e.target.value ? parseInt(e.target.value) : null }))} className="w-full px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]">
+                     <select value={shiftForm.company_id || ''} onChange={e => setShiftForm(f => ({ ...f, company_id: e.target.value ? parseInt(e.target.value) : null, branch_id: null, department_id: null }))} className="w-full px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]">
                       <option value="">All Companies</option>
                       {companies.map((c: OptionItem) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>

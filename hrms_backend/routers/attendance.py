@@ -39,7 +39,7 @@ from core.attendance_pulse import (
 )
 from core.datetime_utils import ist_now_naive, ist_today_str
 from core.scale import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT
-from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
+from models import (Attendance, AttendanceAuditLog, AttendanceCorrectionRequest, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from utils.helpers import convert_camel_to_snake
 
@@ -1352,4 +1352,162 @@ def bulk_upload_attendance(
         count += 1
     db.commit()
     return {"message": f"{count} records uploaded", "count": count}
+
+
+# ============== ATTENDANCE CORRECTION REQUESTS ==============
+
+@router.get("/api/attendance/correction-requests", tags=["Attendance"])
+def get_correction_requests(
+    status: Optional[str] = None,
+    db: Session = Depends(get_read_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(AttendanceCorrectionRequest).filter(
+        AttendanceCorrectionRequest.deleted_at.is_(None),
+    )
+    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+        query = query.filter(AttendanceCorrectionRequest.employee_id == _get_employee_id_for_user(db, current_user))
+    if status:
+        query = query.filter(AttendanceCorrectionRequest.status == status)
+    requests = query.order_by(AttendanceCorrectionRequest.created_at.desc()).all()
+    result = []
+    for req in requests:
+        emp = db.query(Employee).filter(Employee.id == req.employee_id).first()
+        reviewer = db.query(User).filter(User.id == req.reviewed_by).first() if req.reviewed_by else None
+        result.append({
+            "id": req.id,
+            "employeeId": req.employee_id,
+            "employeeName": f"{emp.first_name} {emp.last_name}" if emp else None,
+            "attendanceId": req.attendance_id,
+            "requestDate": req.request_date.strftime("%Y-%m-%d") if req.request_date else None,
+            "requestedCheckIn": req.requested_check_in.isoformat() if req.requested_check_in else None,
+            "requestedCheckOut": req.requested_check_out.isoformat() if req.requested_check_out else None,
+            "requestedStatus": req.requested_status,
+            "requestedWorkHours": req.requested_work_hours,
+            "reason": req.reason,
+            "status": req.status,
+            "reviewedBy": req.reviewed_by,
+            "reviewerName": f"{reviewer.full_name} ({reviewer.email})" if reviewer else None,
+            "reviewedAt": req.reviewed_at.isoformat() if req.reviewed_at else None,
+            "reviewComments": req.review_comments,
+            "createdAttendanceId": req.created_attendance_id,
+            "createdAt": req.created_at.isoformat() if req.created_at else None,
+            "updatedAt": req.updated_at.isoformat() if req.updated_at else None,
+        })
+    return result
+
+
+@router.post("/api/attendance/correction-requests", tags=["Attendance"])
+def create_correction_request(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    employee_id = _get_employee_id_for_user(db, current_user)
+    if not employee_id:
+        raise HTTPException(status_code=400, detail="Employee profile not found")
+    req_date = dateparser.parse(data.get("requestDate", "")) if data.get("requestDate") else ist_now_naive()
+    if req_date is None:
+        raise HTTPException(status_code=400, detail="Invalid request date")
+    req = AttendanceCorrectionRequest(
+        employee_id=employee_id,
+        organization_id=current_user.organization_id,
+        attendance_id=data.get("attendanceId"),
+        request_date=req_date,
+        requested_check_in=dateparser.parse(data["requestedCheckIn"]) if data.get("requestedCheckIn") else None,
+        requested_check_out=dateparser.parse(data["requestedCheckOut"]) if data.get("requestedCheckOut") else None,
+        requested_status=data.get("requestedStatus"),
+        requested_work_hours=data.get("requestedWorkHours"),
+        reason=data.get("reason", ""),
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return {"message": "Correction request submitted", "id": req.id}
+
+
+@router.put("/api/attendance/correction-requests/{request_id}/approve", tags=["Attendance"])
+def approve_correction_request(
+    request_id: int,
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = db.query(AttendanceCorrectionRequest).filter(
+        AttendanceCorrectionRequest.id == request_id,
+        AttendanceCorrectionRequest.deleted_at.is_(None),
+    ).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    employee = db.query(Employee).filter(Employee.id == req.employee_id).first()
+    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+        if not employee or employee.company_id and employee.branch_id:
+            pass
+    req.status = "approved"
+    req.reviewed_by = current_user.id
+    req.reviewed_at = ist_now_naive()
+    req.review_comments = (payload or {}).get("comments")
+    att = Attendance(
+        employee_id=req.employee_id,
+        organization_id=req.organization_id,
+        company_id=req.company_id,
+        branch_id=req.branch_id,
+        department_id=req.department_id,
+        date=req.request_date,
+        check_in=req.requested_check_in,
+        check_out=req.requested_check_out,
+        status=req.requested_status or "present",
+        work_hours=req.requested_work_hours or 0,
+        is_manual_entry=True,
+        approved_by=current_user.id,
+        sync_status="synced",
+        reason=req.reason,
+    )
+    db.add(att)
+    db.commit()
+    db.refresh(att)
+    req.created_attendance_id = att.id
+    db.add(AttendanceAuditLog(
+        attendance_id=att.id,
+        employee_id=req.employee_id,
+        action="created",
+        previous_values={},
+        new_values={
+            "date": att.date.isoformat() if att.date else None,
+            "checkIn": att.check_in.isoformat() if att.check_in else None,
+            "checkOut": att.check_out.isoformat() if att.check_out else None,
+            "status": att.status,
+        },
+        changed_fields=["status", "checkIn", "checkOut"],
+        action_by=current_user.id,
+        action_source="web",
+        reason=f"Approved correction request {req.id}: {req.reason}",
+    ))
+    db.commit()
+    return {"message": "Correction request approved", "attendanceId": att.id}
+
+
+@router.put("/api/attendance/correction-requests/{request_id}/reject", tags=["Attendance"])
+def reject_correction_request(
+    request_id: int,
+    payload: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = db.query(AttendanceCorrectionRequest).filter(
+        AttendanceCorrectionRequest.id == request_id,
+        AttendanceCorrectionRequest.deleted_at.is_(None),
+    ).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    req.status = "rejected"
+    req.reviewed_by = current_user.id
+    req.reviewed_at = ist_now_naive()
+    req.review_comments = (payload or {}).get("comments")
+    db.commit()
+    return {"message": "Correction request rejected"}
 

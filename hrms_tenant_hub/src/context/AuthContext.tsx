@@ -8,13 +8,13 @@ interface User {
   fullName: string;
   role: string;
   organizationId?: number;
-  [key: string]: any;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isSuperadmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -27,24 +27,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    if (token && storedUser) {
+    let cancelled = false;
+    const bootstrap = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
       try {
-        setUser(JSON.parse(storedUser));
-      } catch {}
-    }
-    setIsLoading(false);
+        const res = await api.get('/auth/me');
+        if (cancelled) return;
+        const data = res.data;
+        if (data.role !== 'superadmin') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          localStorage.removeItem('refreshToken');
+          setUser(null);
+          return;
+        }
+        const userObj: User = {
+          id: data.id,
+          email: data.email,
+          fullName: data.fullName,
+          role: data.role,
+          organizationId: data.organizationId,
+        };
+        localStorage.setItem('user', JSON.stringify(userObj));
+        setUser(userObj);
+      } catch {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('refreshToken');
+        setUser(null);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const loginFn = async (email: string, password: string) => {
     const res = await api.post('/auth/login', { email, password });
     const data = res.data;
+    const role = data.user?.role;
+    if (role !== 'superadmin') {
+      throw new Error('Access denied. This portal is for superadmins only.');
+    }
     const userObj: User = {
       id: data.user?.id,
       email: data.user?.email || email,
       fullName: data.user?.fullName || email,
-      role: data.user?.role,
+      role,
       organizationId: data.user?.organizationId,
     };
     localStorage.setItem('token', data.token);
@@ -55,12 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutFn = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('refreshToken');
     setUser(null);
     navigate('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login: loginFn, logout: logoutFn }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, isSuperadmin: user?.role === 'superadmin', login: loginFn, logout: logoutFn }}>
       {children}
     </AuthContext.Provider>
   );

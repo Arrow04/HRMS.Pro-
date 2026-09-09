@@ -1,0 +1,301 @@
+HRMS.Pro! — Production Readiness Audit Report
+=============================================
+
+Date: 2026-09-08
+Scope: hrms_backend, hrms_react_web, hrms_mobile, hrms_tenant_hub
+
+EXECUTIVE SUMMARY
+-----------------
+The project shows strong architectural foundations: FastAPI backend with
+enterprise middleware, React 19 frontends with TanStack Query, and a
+multi-tenant data model. However, several P0/P1 gaps must be addressed
+before production deployment.
+
+Findings are grouped by module and severity.
+
+
+================================================================================
+1. BACKEND (hrms_backend)
+================================================================================
+
+| Severity | Category | Finding | File | Recommended Fix |
+|---|---|---|---|---|
+| P0 | Security | Brute-force protection uses in-memory dict, not Redis; lost on restart and breaks across workers | routers/auth.py:36-37 | Move `_failed_attempts` and `_otp_attempts` to Redis with TTL |
+| P0 | Security | Static upload directories mounted publicly without authentication | main.py:286,291 | Add authenticated endpoint or signed URLs for `/uploads` and `/static` |
+| P0 | Security | `.env.example` still contains weak defaults: `ADMIN_PASSWORD=admin123`, placeholder JWT secret | .env.example:12,17 | Replace placeholders with strong random values; add `.env` to `.gitignore` if missing |
+| P0 | Security | `ALLOW_SQLITE_FALLBACK=true` by default — production could silently use SQLite | database.py:11 | Default to `false`; require explicit opt-in for SQLite fallback |
+| P1 | Security | CORS allows `*` in non-production (line 298), which is acceptable for dev but should be explicit per environment | main.py:298-302 | Keep `*` only for `development`; require explicit origins for `staging` |
+| P1 | Performance | No global request timeout middleware — slow clients can hold connections indefinitely | main.py | Add `TimeoutMiddleware` with read/connect/write timeouts |
+| P1 | Observability | No OpenTelemetry / distributed tracing — request IDs exist but are not propagated to downstream services | main.py:326 | Add OTLP export or propagate `X-Request-ID` to DB/Redis logs |
+| P1 | Error Handling | Global exception handler returns `str(exc)` in non-production — may leak internal details | main.py:352 | Return sanitized error envelope with `error_id` in all environments |
+| P2 | Code Quality | `models.py` is monolithic (2700+ lines) — hard to navigate and maintain | models.py | Split into domain-specific files: `user_models.py`, `payroll_models.py`, etc. |
+| P2 | Code Quality | `main.py` is 540+ lines with 30+ router imports — violates single-responsibility | main.py | Extract router registration into `include_routers()` or use module auto-discovery |
+| P2 | Security | No Content-Security-Policy header in SecurityHeadersMiddleware | core/middleware.py | Add `Content-Security-Policy`, `X-Frame-Options`, `Referrer-Policy` |
+| P2 | Deployment | `docker-compose.yml` hardcodes replica count `3` without auto-scaling config | docker-compose.yml:80 | Use Docker Swarm/K8s HPA or remove hardcoded replicas |
+| P3 | Testing | pytest suite exists but no coverage threshold enforcement | pytest.ini | Add `--cov-fail-under=80` to CI |
+| P3 | Performance | `Database initialized successfully` logged at INFO for every startup — noisy in production | database.py | Downgrade to DEBUG or log only on schema change |
+
+BACKEND POSITIVES
+-----------------
+- Production config validation with fail-fast on missing JWT/DB/CORS
+- Rate limiting middleware with Redis backing
+- Request ID, security headers, tenant context middleware
+- Structured logging via structlog
+- Read replica support via `READ_REPLICA_URL`
+- Connection pooling with `pool_pre_ping` and timeouts
+- Audit logging setup in lifespan
+- Selfie/document retention background jobs
+
+
+================================================================================
+2. REACT WEB (hrms_react_web)
+================================================================================
+
+| Severity | Category | Finding | File | Recommended Fix |
+|---|---|---|---|---|
+| P0 | Security | JWT stored in `localStorage` — vulnerable to XSS token theft | src/context/AuthContext.tsx:169,211 | Migrate to `httpOnly` secure cookies with `SameSite=Strict` |
+| P0 | Security | `index.html` force-clears `localStorage` on load — breaks session persistence and is a UX antipattern | index.html:17 | Remove script; use proper logout flow |
+| P1 | Security | No CSRF protection on state-changing requests | src/services/api.ts | Add CSRF token header or rely on SameSite cookies |
+| P1 | Security | `api.ts` baseURL can be empty string, causing relative URL resolution issues | src/services/api.ts:3 | Fail fast if `VITE_API_URL` is missing in production |
+| P1 | Auth | `RoleRouter` only guards the index route; other dashboard routes lack role/ permission checks | src/App.tsx:115-138 | Wrap all protected routes with `ProtectedRoute` + `RoleGuard` |
+| P1 | Auth | `AuthContext` stores user object in `localStorage` as JSON — stale after permission changes | src/context/AuthContext.tsx:211 | Re-fetch `/auth/me` on app focus; add TTL to cached user |
+| P1 | UX | Login errors are re-thrown raw without user-friendly toast/messages | src/context/AuthContext.tsx:236-241 | Map errors to toasts; hide stack traces in production |
+| P1 | Performance | Lazy loading is used, but `DashboardLayout` and heavy admin pages load synchronously | src/App.tsx | Lazy-load `DashboardLayout` and admin-heavy sub-modules |
+| P2 | Testing | Only 8 test files exist; most are utility tests, no integration/E2E coverage | src/ | Add critical-path tests: login, permissions, payroll, attendance |
+| P2 | Code Quality | `any` types used in several components despite `no-explicit-any` rule | src/components | Replace `any` with proper interfaces |
+| P2 | Build | No `.env.production` or build-time API URL validation | package.json | Add `rollup-plugin-replace` or Vite `envPrefix` validation |
+| P2 | Accessibility | No ARIA labels, keyboard nav, or screen-reader testing | src/ | Add `@axe-core/react` tests and fix violations |
+| P3 | UX | Theme reset script in `index.html` is heavy-handed | index.html:17 | Use CSS custom properties or a theme provider instead |
+
+REACT WEB POSITIVES
+-------------------
+- React 19 + TypeScript + Vite 8
+- TanStack Query for server state caching
+- Lazy loading for most pages
+- Error boundaries and loading skeletons
+- Role-based routing logic
+- Axios interceptors with refresh token flow
+- Tailwind CSS for styling
+
+
+================================================================================
+3. MOBILE (hrms_mobile)
+================================================================================
+
+| Severity | Category | Finding | File | Recommended Fix |
+|---|---|---|---|---|
+| P0 | Security | `usesCleartextTraffic: true` in app config allows MITM attacks | app.json | Set `false`; enforce HTTPS in API client |
+| P0 | Security | No certificate pinning on API requests | src/services/api.js | Add `react-native-ssl-pinning` or OkHttp pinning |
+| P0 | Security | No biometric authentication — only email/password and OTP | src/screens/LoginScreen.js | Integrate `expo-local-authentication` |
+| P0 | Security | Sentry DSN is a hardcoded placeholder | src/sentry.ts | Move to EAS secrets; fail build if placeholder present |
+| P0 | Testing | Zero test files — CI `npm test` finds nothing | src/ | Add unit tests for auth, API interceptors, offline sync, screens |
+| P0 | Build | EAS production build uses `apk` instead of `aab` — cannot submit to Google Play | eas.json | Change to `app-bundle` for production Android |
+| P1 | Security | Push notification token stored in AsyncStorage instead of SecureStore | src/utils/pushNotifications.js | Use `expo-secure-store` |
+| P1 | Security | Server URL user-configurable from login screen — MITM risk in production | src/screens/LoginScreen.js | Disable server picker in production builds |
+| P1 | Offline | Offline queue has no conflict resolution — failed punches retry blindly | src/utils/offlineSync.js | Add server-side idempotency keys + deduplication |
+| P1 | Offline | Offline sync only covers attendance; other writes fail silently | src/utils/offlineSync.js | Extend queue to leaves, expenses, etc. |
+| P1 | Performance | `EmployeeListScreen` fetches `limit: 100000` with no server-side pagination | src/screens/EmployeeListScreen.js | Add cursor/offset pagination + `FlatList` |
+| P1 | Performance | No image caching library — remote images reload on every mount | src/components/UI.js | Use `expo-image` or `react-native-fast-image` |
+| P1 | Native | No background task registration — sync only in foreground | src/utils/offlineSync.js | Register `expo-task-manager` / `expo-background-fetch` |
+| P1 | UX | `NetworkBlocker` renders full-screen modal blocking all interaction | src/components/NetworkBlocker.js | Allow read-only nav; show banner instead |
+| P1 | Code Quality | Dual auth state management (`AuthContext` + `useAuthStore` zustand) causes race conditions | src/context/AuthContext.js, src/store/index.ts | Consolidate to single source of truth |
+| P2 | Push | No notification categories or action buttons | src/utils/pushNotifications.js | Define categories for approve/decline actions |
+| P2 | Push | No deep linking from notifications to specific screens | src/utils/pushNotifications.js | Parse `data` payload and navigate |
+| P2 | Performance | Dashboard quick actions use horizontal `ScrollView` instead of `FlatList` | src/screens/DashboardScreen.js | Replace with `FlatList` |
+| P2 | UX | `ErrorBoundary` only shows details in `__DEV__`; users see generic message | src/components/ErrorBoundary.js | Report to Sentry in production + add Restart button |
+| P3 | UX | `Toast` has no swipe-to-dismiss or queue limit | src/components/Toast.js | Add `PanResponder`; limit to max 3 visible |
+
+MOBILE POSITIVES
+---------------
+- Expo managed workflow with EAS Build
+- Offline sync queue architecture
+- Push notification integration
+- Selfie capture for attendance
+- Device fingerprinting on login
+- Refresh token interceptor pattern
+
+
+================================================================================
+4. TENANT HUB (hrms_tenant_hub)
+================================================================================
+
+| Severity | Category | Finding | File | Recommended Fix |
+|---|---|---|---|---|
+| P0 | Security | JWT stored in `localStorage` — XSS vulnerable | src/context/AuthContext.tsx:31-32 | Migrate to `httpOnly` secure cookies |
+| P0 | Security | No route guards — any authenticated user can access all superadmin routes if token is present | src/App.tsx:37-48 | Add `SuperAdminRoute` wrapper to all `/superadmin/*` routes |
+| P0 | Security | AuthContext bootstraps user from localStorage without server validation | src/context/AuthContext.tsx:31-48 | Validate token with `/auth/me` on app load |
+| P1 | Security | No CSRF protection | src/services/api.ts | Add CSRF token or SameSite cookies |
+| P1 | Testing | Zero test files | src/ | Add smoke tests for login, dashboard, tenant CRUD |
+| P1 | Auth | Refresh token logic duplicated from web app — should be shared library | src/services/api.ts:39-65 | Extract to `@hrms/auth-client` package |
+| P1 | Build | `vite.config.ts` has hardcoded `localhost:8000` proxy target | vite.config.ts | Use `VITE_API_URL` env var with production fallback |
+| P2 | Security | No Content-Security-Policy or security headers | — | Add CSP, X-Frame-Options, Referrer-Policy |
+| P2 | Code Quality | `AuthContext` uses `[key: string]: any` index signature | src/context/AuthContext.tsx:11 | Define explicit permission interface |
+| P2 | UX | No error boundary or global error handling | src/ | Add `ErrorBoundary` at root |
+| P2 | Deployment | No Dockerfile optimization (multi-stage build, non-root user) | Dockerfile | Use multi-stage build; run as non-root |
+| P3 | Performance | No image optimization or asset hashing for cache busting | vite.config.ts | Add `vite-plugin-imagemin` or build-time optimization |
+
+TENANT HUB POSITIVES
+--------------------
+- Clean separation from main web app
+- Superadmin-only auth guard in login flow
+- TanStack Query for server state
+- Tailwind CSS styling
+
+
+================================================================================
+5. CROSS-CUTTING RECOMMENDATIONS
+================================================================================
+
+1. SHARED AUTH CLIENT
+   Extract the axios + refresh token + permission logic into a shared
+   `@hrms/auth-client` package consumed by web, mobile, and tenant hub.
+   This eliminates duplication and ensures consistent security behavior.
+
+2. SECRETS MANAGEMENT
+   - Move all secrets out of `.env` and `.env.example`
+   - Use EAS Secrets (mobile), Vercel/Render env vars (web), and
+     Docker Secrets / AWS Secrets Manager (backend)
+   - Rotate `JWT_SECRET_KEY`, `ADMIN_PASSWORD`, `SENTRY_DSN` immediately
+
+3. TESTING STRATEGY
+   - Backend: add pytest-cov with 80% threshold; focus on auth, payroll,
+     attendance, and leave endpoints
+   - Web: expand beyond utility tests; add component tests for AuthContext,
+     RoleRouter, and critical admin pages
+   - Mobile: add Jest tests for offlineSync, auth context, and API interceptors
+   - Tenant Hub: add smoke tests for login and tenant CRUD
+
+4. DEPLOYMENT HARDENING
+   - Enable HTTPS everywhere (TLS termination at load balancer)
+   - Add HSTS header
+   - Set `secure`, `httpOnly`, `SameSite=Strict` on all cookies
+   - Add WAF rules for SQL injection and XSS
+   - Enable database connection SSL (`sslmode=require`)
+   - Add database backup automation with point-in-time recovery
+
+5. MONITORING & OBSERVABILITY
+   - Backend: add OpenTelemetry tracing with Jaeger/Zipkin
+   - Frontends: add Sentry session replay and performance monitoring
+   - Mobile: add Firebase Crashlytics or Sentry native SDK
+   - Add synthetic uptime checks for `/health/ready`
+   - Set up PagerDuty/OpsGenie alerts for 5xx spikes
+
+6. PERFORMANCE
+   - Backend: add database query profiling; fix N+1 queries in employee/attendance endpoints
+   - Web: implement route-based code splitting; add resource hints (`preload`, `prefetch`)
+   - Mobile: implement image caching and list virtualization; reduce bundle size
+   - All: add CDN for static assets and uploads
+
+
+================================================================================
+6. PRIORITIZED REMEDIATION PLAN
+================================================================================
+
+Week 1 (P0 — Blockers)
+  [ ] Fix backend brute-force: move to Redis
+  [ ] Secure static uploads: add auth or signed URLs
+  [ ] Replace hardcoded secrets in `.env.example`
+  [ ] Disable SQLite fallback by default
+  [ ] Enforce HTTPS and remove `usesCleartextTraffic`
+  [ ] Add certificate pinning to mobile API client
+  [ ] Move mobile Sentry DSN to EAS secrets
+  [ ] Change mobile EAS build to `app-bundle`
+  [ ] Migrate web/tenant hub JWT from `localStorage` to secure cookies
+
+Week 2 (P1 — High Impact)
+  [ ] Add global request timeout middleware
+  [ ] Add route guards to web dashboard and tenant hub
+  [ ] Extend mobile offline sync beyond attendance
+  [ ] Add server-side pagination to employee list
+  [ ] Implement image caching in mobile
+  [ ] Register background sync tasks in mobile
+  [ ] Add CSRF protection to all frontends
+  [ ] Validate `VITE_API_URL` at build time
+
+Week 3 (P2 — Important)
+  [ ] Split `models.py` into domain modules
+  [ ] Split `main.py` router imports
+  [ ] Add security headers (CSP, X-Frame-Options)
+  [ ] Expand test coverage to 40%+
+  [ ] Add error boundary to tenant hub
+  [ ] Optimize Docker multi-stage builds
+  [ ] Add OpenTelemetry tracing
+
+Week 4 (P3 — Polish)
+  [ ] Add swipe-to-dismiss to mobile Toast
+  [ ] Replace horizontal ScrollView with FlatList
+  [ ] Add accessibility props and axe tests
+  [ ] Add splash screen font loading
+  [ ] Document API with OpenAPI examples
+
+
+================================================================================
+FIXES APPLIED (2026-09-08)
+================================================================================
+
+BACKEND
+-------
+  [x] Moved brute-force protection from in-memory dicts to Redis with TTL
+      - routers/auth.py: replaced `_failed_attempts`/`_otp_attempts` with
+        Redis-backed `_get_brute_force_attempts`, `_increment_brute_force`,
+        `_clear_brute_force_key`
+  [x] Secured static upload mounts
+      - main.py: removed public StaticFiles mount for `/uploads`
+      - Added authenticated `/uploads/{path:path}` endpoint with org-level
+        access checks; `/static/` remains public for logos/QR codes
+  [x] Hardened `.env.example` and `core/config.py`
+      - Changed `ALLOW_SQLITE_FALLBACK` default to `false`
+      - Replaced `ADMIN_PASSWORD=admin123` with `CHANGE_ME_TO_A_STRONG_PASSWORD`
+      - Replaced weak JWT secret placeholder with stronger prompt
+      - Changed `SEED_DEFAULT_USERS` default to `false`
+  [x] Backend production validation already rejects weak JWT/DB/CORS settings
+
+WEB FRONTEND (hrms_react_web)
+------------------------------
+  [x] Removed localStorage force-clear from `index.html`
+      - Eliminated UX antipattern that reset user session on every load
+  [x] Added `ProtectedRoute` component
+      - Wrapped all protected layouts: `DashboardLayout`,
+        `DashboardLayoutSimple`, `EmployeePortalLayout`
+  [x] Route guards now enforce authentication before rendering protected pages
+
+TENANT HUB (hrms_tenant_hub)
+-----------------------------
+  [x] Added `ProtectedRoute` with `requireSuperadmin` check
+      - Wrapped all `/superadmin/*` routes
+  [x] Fixed `AuthContext` bootstrap to validate token server-side
+      - Calls `/auth/me` on app load instead of trusting localStorage
+      - Rejects non-superadmin users even if token is present
+
+MOBILE (hrms_mobile)
+--------------------
+  [x] Enforced HTTPS and disabled cleartext traffic
+      - app.json: `usesCleartextTraffic` set to `false`
+  [x] Changed EAS production build to `app-bundle`
+      - eas.json: production Android buildType updated
+  [x] Removed hardcoded localhost fallback from `app.config.js`
+      - Falls back to production Render URL instead of dev IP
+  [x] Disabled server URL picker in production
+      - LoginScreen: `showServerPicker` initialized with `__DEV__`
+  [x] Migrated auth tokens and user data to `expo-secure-store`
+      - AuthContext: token, user, and permissions now use SecureStore
+        instead of AsyncStorage
+
+REMAINING HIGH-PRIORITY ITEMS
+------------------------------
+  [ ] Migrate JWT from localStorage to httpOnly secure cookies
+        (requires backend cookie-auth endpoint + CSRF protection)
+  [ ] Add mobile certificate pinning to API client
+        (requires `react-native-ssl-pinning` or OkHttp native config)
+  [ ] Add mobile biometric authentication
+        (requires `expo-local-authentication` integration)
+  [ ] Add mobile background task registration for offline sync
+        (requires `expo-task-manager` + `expo-background-fetch`)
+  [ ] Extend mobile offline sync beyond attendance
+  [ ] Add server-side pagination to employee list
+  [ ] Expand test coverage across all modules
+
+
+================================================================================
+END OF REPORT
+================================================================================

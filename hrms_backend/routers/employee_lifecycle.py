@@ -2502,31 +2502,6 @@ def get_employees_template(current_user: User = Depends(get_current_user)):
     )
 
 
-@router.post("/api/employees/bulk-upload", tags=["Employees"])
-async def bulk_upload_employees(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    import csv, io
-    content = await file.read()
-    reader = csv.DictReader(io.StringIO(content.decode()))
-    count = 0
-    for row in reader:
-        emp = Employee(
-            first_name=row.get("firstName"),
-            last_name=row.get("lastName"),
-            email=row.get("email"),
-            phone=row.get("phone"),
-            designation=row.get("designation"),
-            status=row.get("status", "active"),
-        )
-        db.add(emp)
-        count += 1
-    db.commit()
-    return {"message": f"{count} employees uploaded", "count": count}
-
-
 @router.get("/api/my-permissions", tags=["Permissions"])
 def get_my_permissions_main(
     db: Session = Depends(get_db),

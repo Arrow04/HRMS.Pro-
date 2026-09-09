@@ -1,6 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as Application from 'expo-application';
 import api, { getApiBaseUrl } from '../services/api';
@@ -27,8 +26,8 @@ export const AuthProvider = ({ children }) => {
   const loadAuthData = async () => {
     try {
       const storedToken = await SecureStore.getItemAsync('auth_token');
-      const storedUser = await AsyncStorage.getItem('user');
-      const storedPermissions = await AsyncStorage.getItem('permissions');
+      const storedUser = await SecureStore.getItemAsync('auth_user');
+      const storedPermissions = await SecureStore.getItemAsync('auth_permissions');
 
       if (storedToken && storedUser) {
         setToken(storedToken);
@@ -49,7 +48,7 @@ export const AuthProvider = ({ children }) => {
       const res = await api.get('/my-permissions');
       const perms = res.data?.modules || res.data;
       setPermissions(perms);
-      await AsyncStorage.setItem('permissions', JSON.stringify(perms));
+      await SecureStore.setItemAsync('auth_permissions', JSON.stringify(perms));
       return perms;
     } catch {
       return null;
@@ -75,7 +74,7 @@ export const AuthProvider = ({ children }) => {
       const { token: newToken, user: userData } = response.data;
 
       await SecureStore.setItemAsync('auth_token', newToken);
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      await SecureStore.setItemAsync('auth_user', JSON.stringify(userData));
 
       setToken(newToken);
       setUser(userData);
@@ -117,7 +116,7 @@ export const AuthProvider = ({ children }) => {
       const { token: newToken, user: userData } = response.data;
 
       await SecureStore.setItemAsync('auth_token', newToken);
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
+      await SecureStore.setItemAsync('auth_user', JSON.stringify(userData));
 
       setToken(newToken);
       setUser(userData);
@@ -136,8 +135,8 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       await SecureStore.deleteItemAsync('auth_token');
-      await AsyncStorage.removeItem('user');
-      await AsyncStorage.removeItem('permissions');
+      await SecureStore.deleteItemAsync('auth_user');
+      await SecureStore.deleteItemAsync('auth_permissions');
       setToken(null);
       setUser(null);
       setPermissions(null);

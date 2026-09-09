@@ -114,11 +114,6 @@ def create_shift(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new shift"""
-    # Check for duplicate code
-    existing = db.query(Shift).filter(Shift.code == shift.code).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Shift code already exists")
-    
     data = shift.dict()
     if current_user.role != "superadmin":
         data["organization_id"] = current_user.organization_id
@@ -132,6 +127,19 @@ def create_shift(
             dep = db.query(Department).filter(Department.id == data["department_id"]).first()
             if dep is None or int(dep.organization_id) != int(current_user.organization_id):
                 raise HTTPException(status_code=404, detail="Department not found")
+    else:
+        if not data.get("organization_id"):
+            raise HTTPException(status_code=400, detail="organization_id is required for superadmin")
+
+    dup = db.query(Shift).filter(Shift.code == data["code"])
+    if data.get("company_id"):
+        dup = dup.filter(Shift.company_id == data["company_id"])
+    else:
+        dup = dup.filter(Shift.company_id == None)
+    if data.get("organization_id"):
+        dup = dup.filter(Shift.organization_id == data["organization_id"])
+    if dup.first():
+        raise HTTPException(status_code=400, detail="Shift code already exists for this scope")
     db_shift = Shift(**data)
     db.add(db_shift)
     db.commit()

@@ -1,5 +1,6 @@
 import api from './api';
 import { useState, useEffect } from 'react';
+import { logger } from '../utils/logger';
 
 export interface LookupValue {
   id: number;
@@ -44,7 +45,7 @@ export const getLookupValues = async (categoryCode: string): Promise<LookupValue
     lookupCache.set(categoryCode, activeValues);
     return activeValues;
   } catch (error) {
-    console.error(`Error fetching lookup values for ${categoryCode}:`, error);
+    logger.error(`Error fetching lookup values for ${categoryCode}:`, error);
     return [];
   }
 };

@@ -1,4 +1,5 @@
 import api from './api';
+import { logger } from '../utils/logger';
 
 export interface LoginResponse {
   token: string;
@@ -111,7 +112,7 @@ export const getCurrentUser = () => {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   } catch (e) {
-    console.error('Error parsing user from localStorage:', e);
+    logger.error('Error parsing user from localStorage:', e);
     return null;
   }
 };

@@ -34,8 +34,12 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 const Performance = lazy(() => import('./pages/Performance'));
+const Announcements = lazy(() => import('./pages/Announcements'));
+const Grievances = lazy(() => import('./pages/Grievances'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 const MasterData = lazy(() => import('./pages/MasterData'));
 const MobileOnly = lazy(() => import('./pages/MobileOnly'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 
 const AnomalyDetection = lazy(() => import('./pages/AnomalyDetection'));
@@ -110,37 +114,43 @@ function App() {
              <Route path="/me/tax-declarations" element={<EmployeeTaxDeclarations />} />
            </Route>
 
-            {/* Protected Dashboard Routes */}
-            <Route element={<DashboardLayout />}>
-              <Route index element={<RoleRouter />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/company" element={<Company />} />
-              <Route path="/employees" element={<EmployeeManagement />} />
-              <Route path="/recruitment" element={<Recruitment />} />
-              <Route path="/holidays" element={<Holidays />} />
-              <Route path="/leaves" element={<LeaveManagement />} />
-               <Route path="/payroll" element={<Payroll />} />
-               <Route path="/payroll/config" element={<Payroll initialTab="config" />} />
-               <Route path="/payroll/setup" element={<PayrollSetup />} />
+             {/* Protected Dashboard Routes */}
+             <Route element={<DashboardLayout />}>
+               <Route index element={<RoleRouter />} />
+               <Route path="/dashboard" element={<Dashboard />} />
+               <Route path="/company" element={<Company />} />
+               <Route path="/employees" element={<EmployeeManagement />} />
+               <Route path="/recruitment" element={<Recruitment />} />
+               <Route path="/holidays" element={<Holidays />} />
+               <Route path="/leaves" element={<LeaveManagement />} />
+                <Route path="/payroll" element={<Payroll />} />
+                <Route path="/payroll/config" element={<Payroll initialTab="config" />} />
+                <Route path="/payroll/setup" element={<PayrollSetup />} />
 
-               <Route path="/anomalies" element={<AnomalyDetection />} />
-              <Route path="/exit-management" element={<ExitManagement />} />
-              <Route path="/assets" element={<AssetManagement />} />
+                <Route path="/anomalies" element={<AnomalyDetection />} />
+               <Route path="/exit-management" element={<ExitManagement />} />
+               <Route path="/assets" element={<AssetManagement />} />
 
-              {/* Protected Dashboard Pages */}
-              <Route path="/attendance" element={<Attendance />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/expenses" element={<Expenses />} />
-              <Route path="/performance" element={<Performance />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/master-data" element={<MasterData />} />
-            </Route>
-         </Routes>
+               {/* Protected Dashboard Pages */}
+               <Route path="/attendance" element={<Attendance />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/expenses" element={<Expenses />} />
+                <Route path="/performance" element={<Performance />} />
+                <Route path="/announcements" element={<Announcements />} />
+                <Route path="/grievances" element={<Grievances />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/settings" element={<Settings />} />
+               <Route path="/master-data" element={<MasterData />} />
+             </Route>
+
+             {/* 404 Catch-all */}
+             <Route path="*" element={<NotFound />} />
+          </Routes>
           </ErrorBoundary>
         </Suspense>
        <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff' } }} />
-     </BrowserRouter>
-   );
-}
+      </BrowserRouter>
+    );
+  }
 
 export default App;

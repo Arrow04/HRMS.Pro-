@@ -129,7 +129,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           planFeatures: userData.planFeatures || [],
           themeSettings: userData.themeSettings || { fontFamily: 'Inter' },
         });
-      } catch {
+      } catch (error) {
+        console.error('[AuthContext] Bootstrap failed:', error);
         localStorage.clear();
         setUser(null);
       } finally {

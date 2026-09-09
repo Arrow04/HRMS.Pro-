@@ -59,7 +59,7 @@ class Settings(BaseSettings):
         return _coerce_bool(v)
     
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production"))
+    SECRET_KEY: str = os.getenv("SECRET_KEY", os.getenv("JWT_SECRET_KEY", "CHANGE_ME_TO_A_RANDOM_64_CHAR_STRING"))
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "1440")))
     
@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     
     # Admin Settings
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "admin@hrms.com")
-    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin123")
-    SEED_DEFAULT_USERS: bool = True
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "CHANGE_ME_TO_A_STRONG_PASSWORD")
+    SEED_DEFAULT_USERS: bool = False
 
     @field_validator("SEED_DEFAULT_USERS", mode="before")
     @classmethod

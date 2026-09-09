@@ -62,9 +62,16 @@ const BulkUploadModal = ({
   const handleUpload = async () => {
     if (!uploadFile) { toast.error('Please choose a CSV file first'); return; }
     if (onUpload) {
-      onUpload(uploadFile);
-      setUploadFile(null);
-      onClose();
+      setUploading(true);
+      try {
+        await onUpload(uploadFile);
+        setUploadFile(null);
+        onClose();
+      } catch (err) {
+        // Error toast is handled by the caller; keep modal open on failure
+      } finally {
+        setUploading(false);
+      }
       return;
     }
     if (!endpoint) { toast.error('Upload is not configured'); return; }

@@ -332,11 +332,12 @@ const LoginScreen = () => {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showServerPicker, setShowServerPicker] = useState(false);
+  const [showServerPicker, setShowServerPicker] = useState(__DEV__);
   const [serverUrl, setServerUrl] = useState('');
   const { login, sendOTP, verifyOTP } = useAuth();
 
   useEffect(() => {
+    if (!__DEV__) return;
     AsyncStorage.getItem(API_URL_STORAGE_KEY).then((v) => {
       if (v) setServerUrl(v);
       else setServerUrl(DEFAULT_API_BASE_URL);

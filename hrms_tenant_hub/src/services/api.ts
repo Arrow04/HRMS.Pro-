@@ -23,14 +23,65 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let isRedirecting = false;
+let refreshPromise: Promise<string> | null = null;
+
+function handleSessionExpired() {
+  if (isRedirecting) return;
+  isRedirecting = true;
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  if (!window.location.pathname.includes('/login')) {
+    window.location.href = '/login?expired=1';
+  }
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const currentToken = localStorage.getItem('token');
+      if (!currentToken) throw new Error('No token');
+      const res = await api.post('/auth/refresh', null, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+        _skipRefresh: true,
+      } as any);
+      const newToken = res.data?.token;
+      if (!newToken) throw new Error('No token in refresh response');
+      localStorage.setItem('token', newToken);
+      return newToken;
+    } catch {
+      refreshPromise = null;
+      handleSessionExpired();
+      throw new Error('Session expired');
+    }
+  })();
+  try {
+    const token = await refreshPromise;
+    return token;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+  async (error: unknown) => {
+    const axiosError = error as any;
+    const originalRequest = axiosError.config;
+    if (
+      axiosError.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retried &&
+      !originalRequest._skipRefresh
+    ) {
+      originalRequest._retried = true;
+      try {
+        const newToken = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch {
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);

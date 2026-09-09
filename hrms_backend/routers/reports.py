@@ -5,7 +5,7 @@ from typing import Optional
 from database import get_db
 from core.auth import get_current_user
 from core.datetime_utils import ist_now_naive
-from models import User
+from models import ReportExecutionLog, User
 
 router = APIRouter(tags=["Reports"])
 
@@ -156,12 +156,10 @@ def export_live_report(
     current_user: User = Depends(get_current_user),
 ):
     """Export the live report overview data."""
-    from sqlalchemy import func
     from models import Employee
-    from datetime import datetime
     org_id = current_user.organization_id
     q = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if org_id:
+    if current_user.role != "superadmin" and org_id:
         q = q.filter(Employee.organization_id == org_id)
     rows = [
         {
@@ -173,6 +171,16 @@ def export_live_report(
         }
         for e in q.limit(2000).all()
     ]
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Live Report",
+        status="completed",
+        format=format,
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
     return _export_response(format, rows, "live_report")
 
 
@@ -214,7 +222,7 @@ def export_report_by_id(
     # Otherwise fall back to a live data export scoped to the user's org.
     org_id = current_user.organization_id
     q = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if org_id:
+    if current_user.role != "superadmin" and org_id:
         q = q.filter(Employee.organization_id == org_id)
     rows = [
         {
@@ -225,6 +233,16 @@ def export_report_by_id(
         }
         for e in q.limit(2000).all()
     ]
+    new_log = ReportExecutionLog(
+        schedule_id=None,
+        report_name=f"Report {report_id}",
+        status="completed",
+        format=format,
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(new_log)
+    db.commit()
     return _export_response(format, rows, f"report_{report_id}")
 
 
@@ -241,9 +259,13 @@ def export_report_hub(
     org_id = current_user.organization_id
 
     rows = []
-    if report.lower() in ("employees", "employee"):
+    report_lower = report.lower().strip()
+    if report_lower.endswith(" report"):
+        report_lower = report_lower[:-7].strip()
+
+    if report_lower in ("employees", "employee") or report_lower.startswith("employee"):
         q = db.query(Employee).filter(Employee.deleted_at.is_(None))
-        if org_id:
+        if current_user.role != "superadmin" and org_id:
             q = q.filter(Employee.organization_id == org_id)
         rows = [
             {
@@ -255,9 +277,9 @@ def export_report_hub(
             }
             for e in q.limit(2000).all()
         ]
-    elif report.lower() in ("leaves", "leave"):
+    elif report_lower in ("leaves", "leave") or report_lower.startswith("leave"):
         q = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None))
-        if org_id:
+        if current_user.role != "superadmin" and org_id:
             q = q.filter(LeaveApplication.organization_id == org_id)
         rows = [
             {
@@ -269,9 +291,9 @@ def export_report_hub(
             }
             for l in q.limit(2000).all()
         ]
-    elif report.lower() in ("expenses", "expense"):
+    elif report_lower in ("expenses", "expense") or report_lower.startswith("expense"):
         q = db.query(Expense).filter(Expense.deleted_at.is_(None))
-        if org_id:
+        if current_user.role != "superadmin" and org_id:
             q = q.filter(Expense.organization_id == org_id)
         rows = [
             {
@@ -283,9 +305,9 @@ def export_report_hub(
             }
             for e in q.limit(2000).all()
         ]
-    elif report.lower() in ("payroll", "salary"):
+    elif report_lower in ("payroll", "salary") or report_lower.startswith("payroll"):
         q = db.query(Payroll).filter(Payroll.deleted_at.is_(None))
-        if org_id:
+        if current_user.role != "superadmin" and org_id:
             q = q.filter(Payroll.organization_id == org_id)
         rows = [
             {
@@ -300,7 +322,7 @@ def export_report_hub(
         ]
     else:
         q = db.query(Employee).filter(Employee.deleted_at.is_(None))
-        if org_id:
+        if current_user.role != "superadmin" and org_id:
             q = q.filter(Employee.organization_id == org_id)
         rows = [
             {
@@ -312,4 +334,14 @@ def export_report_hub(
         ]
 
     safe = report.lower().replace(" ", "_")
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name=report,
+        status="completed",
+        format=format,
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
     return _export_response(format, rows, f"{safe}_report")

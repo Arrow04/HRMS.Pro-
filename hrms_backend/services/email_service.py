@@ -18,7 +18,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from typing import Optional
-from uuid import uuid4
+from core.circuit_breaker import email_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +55,12 @@ class EmailService:
     FROM_NAME = os.getenv("FROM_NAME", "HRMS Pro")
 
     @staticmethod
-    def send_email(to_email: str, subject: str, html_content: str, text_content: Optional[str] = None) -> bool:
+    @email_circuit_breaker
+    def send_email(to_email: str, subject: str, html_content: str, text_content: Optional[str] = None, attachments: Optional[list] = None) -> bool:
         """Send email using the best available self-hosted method."""
         return EmailService.send_email_with_attachment(
             to_email, subject, html_content, text_content=text_content,
+            attachments=attachments,
         )
 
     @staticmethod

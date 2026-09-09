@@ -1,0 +1,385 @@
+HRMS.Pro! — User Manual
+========================
+
+1. INTRODUCTION
+---------------
+Welcome to HRMS.Pro!, your all-in-one Human Resource Management System.
+This manual will help you navigate and use the system effectively, whether
+you are an employee, manager, HR administrator, or superadmin.
+
+The system consists of:
+  - Web Portal (hrms_react_web)   : Desktop/browser access
+  - Mobile App (hrms_mobile)      : Android/iOS self-service
+  - Control Hub (hrms_tenant_hub) : Superadmin tenant management
+
+
+2. GETTING STARTED
+------------------
+2.1 Logging In
+
+  Web Portal:
+    1. Open your browser and go to the web portal URL provided by your HR.
+    2. Enter your email and password.
+    3. Click "Sign In".
+    4. If you forget your password, use the "Forgot Password" link.
+
+  Mobile App:
+    1. Install the HRMS.Pro! app from the Play Store / App Store.
+    2. Open the app and enter your company server URL if prompted.
+    3. Sign in with your email and password.
+    4. Enable biometric login for faster access (Face ID / fingerprint).
+
+  First-time login:
+    - Your account is created by your HR administrator.
+    - You will receive an invitation email with your temporary password.
+    - You will be asked to change your password on first login.
+
+
+3. EMPLOYEE SELF-SERVICE
+------------------------
+3.1 Dashboard
+
+  After logging in, you will see your personalized dashboard showing:
+    - Attendance summary for today
+    - Leave balance overview
+    - Pending approvals (if you are a manager)
+    - Upcoming holidays
+    - Recent announcements
+
+3.2 Attendance
+
+  Mark Attendance (Web):
+    1. Go to Attendance > Mark Attendance.
+    2. Select check-in or check-out.
+    3. Upload a selfie for verification if required.
+    4. Submit.
+
+  Mark Attendance (Mobile):
+    1. Open the app and go to the Attendance tab.
+    2. Tap "Check In" or "Check Out".
+    3. Take a selfie if prompted.
+    4. Your attendance is recorded with GPS and timestamp.
+
+  View Attendance History:
+    1. Go to Attendance > History.
+    2. Use filters to view by month, week, or date range.
+    3. Export attendance report as PDF or Excel.
+
+  Attendance Correction:
+    - If there is a missed punch, submit a correction request.
+    - Your manager/HR will review and approve it.
+
+3.3 Leave Management
+
+  Apply for Leave:
+    1. Go to Leaves > Apply for Leave.
+    2. Select leave type (Annual, Sick, Personal, etc.).
+    3. Choose start and end dates.
+    4. Enter a reason.
+    5. Submit for approval.
+
+  Track Leave Status:
+    - View all leave applications and their current status.
+    - Statuses: Pending, Approved, Rejected, Cancelled.
+
+  Leave Balance:
+    - View your remaining leave balance for each type.
+    - Balances are updated automatically upon approval.
+
+3.4 Expenses
+
+  Submit Expense:
+    1. Go to Expenses > New Expense.
+    2. Enter expense details (category, amount, date, description).
+    3. Upload supporting documents/receipts.
+    4. Submit for approval.
+
+  Expense Status:
+    - Track submitted expenses and reimbursement status.
+    - Finance will process approved expenses in the next payroll cycle.
+
+3.5 Payslips
+
+  View Payslip:
+    1. Go to Payroll > Payslips.
+    2. Select the month and year.
+    3. View detailed salary breakdown.
+    4. Download as PDF.
+
+3.6 Profile
+
+  Update Profile:
+    1. Go to My Profile.
+    2. Update personal information, contact details, emergency contacts.
+    3. Upload profile photo and documents.
+    4. Save changes.
+
+  Documents:
+    - View and download your stored documents (offer letter, ID proof, etc.).
+    - Upload new documents if required.
+
+
+4. MANAGER / HR FEATURES
+------------------------
+4.1 Employee Management
+
+  View Employees:
+    1. Go to Employees > Employee List.
+    2. Search, filter, and sort employees.
+    3. View detailed employee profiles.
+
+  Add Employee:
+    1. Click "Add Employee".
+    2. Fill in personal details, job information, and assign department/designation.
+    3. Set employment type and join date.
+    4. System generates employee code automatically.
+
+  Edit Employee:
+    1. Click on an employee record.
+    2. Update details as needed.
+    3. Save changes.
+
+4.2 Leave Approval
+
+  1. Go to Approvals > Leave Requests.
+  2. View pending leave requests from your team.
+  3. Review leave balance and attendance history.
+  4. Approve or reject with optional comments.
+
+4.3 Attendance Management
+
+  Attendance Policies:
+    - Configure company attendance rules, shifts, and grace periods.
+
+  Attendance Correction:
+    - Review and approve/reject correction requests.
+    - Bulk update attendance if needed.
+
+  Reports:
+    - Generate attendance reports by department, date range, or employee.
+    - Export to Excel or PDF.
+
+4.4 Payroll Processing
+
+  Payroll Configuration:
+    1. Go to Payroll > Configuration.
+    2. Set up salary components (basic, HRA, allowances, deductions).
+    3. Configure statutory compliance (PF, ESI, NPS, LWF, Professional Tax).
+    4. Define tax regimes and slabs.
+
+  Run Payroll:
+    1. Go to Payroll > Run Payroll.
+    2. Select month and year.
+    3. Review attendance and leave data.
+    4. Process payroll for selected employees.
+    5. Review and publish payslips.
+
+  Payroll Reports:
+    - Generate salary registers, PF/ESI reports, tax reports.
+    - Export for accounting and compliance.
+
+4.5 Recruitment
+
+  Job Postings:
+    1. Go to Recruitment > Job Openings.
+    2. Create new job posting with description, requirements, and deadline.
+    3. Publish on job portals if integrated.
+
+  Candidate Management:
+    1. View applications and resumes.
+    2. Schedule interviews.
+    3. Record interview feedback.
+    4. Move candidates through pipeline stages.
+
+  Offer Letter:
+    - Generate offer letters for selected candidates.
+    - Track acceptance and onboarding.
+
+4.6 Performance Management
+
+  Performance Reviews:
+    1. Go to Performance > Reviews.
+    2. Create review cycles.
+    3. Assign reviewers and set goals.
+    4. Collect self-assessments and manager ratings.
+    5. Generate performance reports.
+
+4.7 Asset Management
+
+  Assign Assets:
+    1. Go to Assets > Asset List.
+    2. Add new assets (laptop, mobile, etc.).
+    3. Assign to employees with issue and return dates.
+    4. Track asset condition and maintenance.
+
+4.8 Reports
+
+  Standard Reports:
+    - Employee reports (joiners, leavers, headcount)
+    - Attendance reports
+    - Leave reports
+    - Payroll reports
+    - Expense reports
+    - Recruitment reports
+
+  Custom Reports:
+    - Use the Reports module to create custom reports.
+    - Schedule automated report generation and email delivery.
+
+  Export:
+    - All reports can be exported to PDF, Excel, or CSV.
+
+
+5. SUPERADMIN / CONTROL HUB
+----------------------------
+5.1 Tenant Management
+
+  View Tenants:
+    - See all registered organizations/tenants.
+    - Monitor subscription status and usage.
+
+  Create Tenant:
+    1. Click "Register Tenant".
+    2. Enter organization details, plan, and admin user.
+    3. System provisions tenant database/schema.
+
+  Manage Tenant:
+    - Update tenant settings, plan, and status.
+    - View tenant-specific metrics and health.
+
+5.2 Billing & Subscriptions
+
+  Plans:
+    - Define pricing plans (monthly/yearly per user).
+    - Set feature limits per plan.
+
+  Invoices:
+    - Generate and send invoices to tenants.
+    - Track payment status.
+
+  Feature Flags:
+    - Enable/disable features per tenant or globally.
+
+5.3 System Health
+
+  Monitoring:
+    - View API response times, error rates, and uptime.
+    - Monitor database and Redis health.
+
+  Audit Logs:
+    - Review system-wide audit trail for compliance.
+
+5.4 Superadmin Dashboard
+
+  - High-level metrics across all tenants.
+  - Revenue and growth tracking.
+  - Recent activities and alerts.
+
+
+6. MOBILE APP FEATURES
+----------------------
+6.1 Attendance
+  - Check in / Check out with selfie verification.
+  - View attendance calendar and history.
+
+6.2 Leaves
+  - Apply for leave on the go.
+  - Track leave status and balance.
+
+6.3 Expenses
+  - Snap and upload receipts.
+  - Submit expense claims.
+
+6.4 Payslips
+  - View and download monthly payslips.
+
+6.5 Team Directory
+  - Search colleagues.
+  - View contact details and org chart.
+
+6.6 Notifications
+  - Receive push notifications for approvals, announcements, and reminders.
+  - Tap to navigate directly to relevant screens.
+
+6.7 Offline Mode
+  - App works offline for attendance and leave requests.
+  - Data syncs automatically when connectivity is restored.
+
+
+7. COMMON WORKFLOWS
+-------------------
+7.1 New Employee Onboarding
+  1. HR adds employee record in the system.
+  2. System sends invitation email.
+  3. Employee sets password and logs in.
+  4. Employee completes profile and uploads documents.
+  5. HR assigns assets and training.
+
+7.2 Leave Request Flow
+  1. Employee submits leave request.
+  2. Manager receives notification and reviews.
+  3. Manager approves or rejects.
+  4. Employee is notified.
+  5. Leave balance is updated automatically.
+  6. Payroll system considers approved leave.
+
+7.3 Payroll Flow
+  1. HR configures payroll policies and components.
+  2. Attendance and leave data is locked for the month.
+  3. HR runs payroll for selected employees.
+  4. System calculates gross, deductions, and net pay.
+  5. HR reviews and publishes payslips.
+  6. Employees receive notifications and can download payslips.
+
+7.4 Recruitment Flow
+  1. Manager creates job opening.
+  2. HR publishes and shares job posting.
+  3. Candidates apply with resume.
+  4. HR screens and schedules interviews.
+  5. Interviewers provide feedback.
+  6. HR selects candidate and sends offer.
+  7. Candidate accepts and joins.
+
+
+8. TROUBLESHOOTING
+------------------
+Cannot log in:
+  - Verify your email and password.
+  - Use "Forgot Password" to reset.
+  - Contact HR if your account is locked.
+
+Attendance not marked:
+  - Check GPS and internet connectivity.
+  - Ensure company policy allows mobile attendance.
+  - Submit correction request if missed.
+
+Leave not approved:
+  - Check with your manager for pending approval.
+  - Ensure you have sufficient leave balance.
+  - Verify dates do not conflict with holidays/shifts.
+
+Mobile app crashes:
+  - Update to the latest version.
+  - Clear app cache and restart.
+  - Reinstall if issue persists.
+
+
+9. SUPPORT
+----------
+For technical issues, feature requests, or training:
+  - Contact your HR administrator.
+  - Email support: support@hrmspro.com
+  - Phone support: +91-22-45678900
+
+
+10. RELEASE NOTES & UPDATES
+----------------------------
+Stay tuned for regular updates and new features:
+  - Enhanced mobile experience
+  - Advanced analytics and AI insights
+  - Integration with more HR tools
+  - Compliance updates for new labor laws
+
+========================
+End of User Manual
+========================

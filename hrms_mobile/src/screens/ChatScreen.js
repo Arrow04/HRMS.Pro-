@@ -16,6 +16,34 @@ import { bannerShellStyle } from '../components/AdminScreenKit';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
 import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
 
+const SUGGESTION_ICON_MAP = {
+  '👤': 'person-outline',
+  '🏖️': 'beach',
+  '💰': 'cash-outline',
+  '📊': 'chart-bar-outline',
+  '📋': 'clipboard-list-outline',
+  '❓': 'help-circle-outline',
+};
+
+const normalizeSuggestions = (suggestions, fallback) => {
+  const source = Array.isArray(suggestions) && suggestions.length > 0 ? suggestions : fallback;
+  return source.map((item, index) => {
+    const suggestion = typeof item === 'string' ? { query: item, label: item } : (item || {});
+    const fallbackItem = fallback[index % fallback.length];
+    const icon = typeof suggestion.icon === 'string' && /^[a-z0-9-]+$/i.test(suggestion.icon)
+      ? suggestion.icon
+      : SUGGESTION_ICON_MAP[suggestion.icon] || fallbackItem.icon;
+    return {
+      ...fallbackItem,
+      ...suggestion,
+      query: suggestion.query || fallbackItem.query,
+      label: suggestion.label || suggestion.query || fallbackItem.label,
+      icon,
+      color: suggestion.color || fallbackItem.color,
+    };
+  }).filter((suggestion) => suggestion.query);
+};
+
 const QUICK_Q = [
   { icon: 'calendar-outline', label: 'Leave balance', query: "What's my leave balance?", color: '#4F46E5' },
   { icon: 'sunny-outline', label: 'Next holiday', query: 'When is the next holiday?', color: '#F59E0B' },
@@ -211,7 +239,31 @@ const createStyles = (colors, isDark) => ({
     color: colors.textTertiary,
     marginTop: 8,
     fontWeight: '600',
-    letterSpacing: 0.3 } });
+    letterSpacing: 0.3 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  metaBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    borderWidth: 1 },
+  metaBadgeText: { fontSize: 10, fontWeight: '700' },
+  escalationBadge: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    color: '#92400E' },
+  actionBadge: {
+    backgroundColor: '#DBEAFE',
+    borderColor: '#93C5FD',
+    color: '#1E40AF' },
+  confidenceBadge: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#86EFAC',
+    color: '#065F46' },
+  intentBadge: {
+    backgroundColor: '#EDE9FE',
+    borderColor: '#C4B5FD',
+    color: '#4C1D95' },
+});
 
 const TypingIndicator = ({ styles }) => {
   const dot1 = useRef(new Animated.Value(0.3)).current;
@@ -263,6 +315,9 @@ const ChatScreen = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
+  const [assistantStatus, setAssistantStatus] = useState('connecting');
+  const [quickSuggestions, setQuickSuggestions] = useState([]);
   const flatListRef = useRef(null);
 
   const scrollToLatest = useCallback((animated = true) => {
@@ -277,32 +332,76 @@ const ChatScreen = () => {
     return () => showSub.remove();
   }, [scrollToLatest]);
 
+  useEffect(() => {
+    let active = true;
+    const checkAssistant = async () => {
+      try {
+        const health = await api.get('/ai/health');
+        if (active) {
+          setAssistantStatus(health.data?.status === 'online' ? 'online' : 'degraded');
+        }
+      } catch {
+        if (active) setAssistantStatus('offline');
+      }
+    };
+    checkAssistant();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadSuggestions = async () => {
+      try {
+        const res = await api.get('/ai/suggestions');
+        if (active && res.data?.suggestions) {
+          setQuickSuggestions(res.data.suggestions);
+        }
+      } catch {
+        // fallback to static QUICK_Q
+      }
+    };
+    loadSuggestions();
+    return () => { active = false; };
+  }, []);
+
   const send = useCallback(async (text) => {
     const msg = text || input.trim();
     if (!msg || loading) return;
-    const userId = String(user?.id || user?.employeeId || 'guest');
     const userMsg = { id: Date.now(), role: 'user', text: msg };
     setMessages((p) => [...p, userMsg]);
     setInput('');
     setLoading(true);
     try {
-      const res = await api.post('/chatbot/message', { user_id: userId, message: msg });
-      const reply = res.data?.response || res.data?.reply || res.data?.message || 'I received your message.';
-      const suggestions = res.data?.suggestions;
+      const res = await api.post('/ai/chat', {
+        message: msg,
+        conversation_id: conversationId || undefined,
+      });
+      const data = res.data || {};
+      const nextConversationId = data.conversationId || data.conversation_id || conversationId;
+      if (nextConversationId) setConversationId(nextConversationId);
+      const reply = data.response || data.reply || data.message || 'I received your message.';
+      const suggestions = data.suggestions || data.suggestions_list;
       setMessages((p) => [...p, {
         id: Date.now() + 1,
         role: 'bot',
         text: reply,
-        suggestions: Array.isArray(suggestions) ? suggestions : null }]);
-    } catch {
+        suggestions: Array.isArray(suggestions) ? suggestions : null,
+        intent: data.intent,
+        confidence: data.confidence,
+        actions: data.actionsTaken || data.actions_taken,
+        escalated: data.escalated,
+        escalationReason: data.escalation_reason || data.escalationReason,
+      }]);
+    } catch (error) {
+      const detail = error.response?.data?.detail;
       setMessages((p) => [...p, {
         id: Date.now() + 1,
         role: 'bot',
-        text: 'Sorry, I could not reach the assistant right now. Please try again in a moment.' }]);
+        text: typeof detail === 'string' ? detail : 'Sorry, I could not reach the assistant right now. Please try again in a moment.' }]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, user]);
+  }, [conversationId, input, loading]);
 
   const renderMessage = ({ item }) => {
     const isUser = item.role === 'user';
@@ -343,6 +442,32 @@ const ChatScreen = () => {
                 ))}
               </View>
             )}
+            {(item.intent || item.confidence || item.actions || item.escalated) && (
+              <View style={styles.metaRow}>
+                {item.intent && (
+                  <View style={[styles.metaBadge, styles.intentBadge]}>
+                    <Text style={[styles.metaBadgeText, { color: '#4C1D95' }]}>Intent: {item.intent}</Text>
+                  </View>
+                )}
+                {item.confidence !== undefined && item.confidence !== null && (
+                  <View style={[styles.metaBadge, styles.confidenceBadge]}>
+                    <Text style={[styles.metaBadgeText, { color: '#065F46' }]}>Confidence: {Math.round(item.confidence * 100)}%</Text>
+                  </View>
+                )}
+                {item.actions && Array.isArray(item.actions) && item.actions.length > 0 && (
+                  <View style={[styles.metaBadge, styles.actionBadge]}>
+                    <Text style={[styles.metaBadgeText, { color: '#1E40AF' }]}>Actions: {item.actions.length}</Text>
+                  </View>
+                )}
+                {item.escalated && (
+                  <View style={[styles.metaBadge, styles.escalationBadge]}>
+                    <Text style={[styles.metaBadgeText, { color: '#92400E' }]}>
+                      Escalated{item.escalationReason ? `: ${item.escalationReason}` : ''}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -350,6 +475,17 @@ const ChatScreen = () => {
   };
 
   const firstName = user?.fullName?.split(' ')[0] || 'there';
+
+  const statusLabel = assistantStatus === 'connecting' ? 'CONNECTING' : assistantStatus.toUpperCase();
+  const statusColor = assistantStatus === 'online'
+    ? '#34D399'
+    : assistantStatus === 'degraded'
+      ? '#FBBF24'
+      : assistantStatus === 'offline'
+        ? '#FB7185'
+        : '#94A3B8';
+
+  const dynamicSuggestions = normalizeSuggestions(quickSuggestions, QUICK_Q);
 
   const welcomeContent = (
     <>
@@ -364,7 +500,7 @@ const ChatScreen = () => {
       </View>
       <Text style={styles.sectionLabel}>Quick suggestions</Text>
       <View style={styles.quickGrid}>
-        {QUICK_Q.map((q, i) => (
+        {dynamicSuggestions.map((q, i) => (
           <TouchableOpacity key={i} style={styles.quickCard} onPress={() => send(q.query)} activeOpacity={0.75}>
             <View style={[styles.quickIcon, { backgroundColor: q.color + (isDark ? '22' : '14') }]}>
               <Ionicons name={q.icon} size={18} color={q.color} />
@@ -396,10 +532,10 @@ const ChatScreen = () => {
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>HR Assistant</Text>
             <Text style={styles.heroSub}>Powered by HRMS.Pro AI</Text>
-            <View style={styles.statusRow}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>ONLINE</Text>
-            </View>
+              <View style={[styles.statusRow]}>
+                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                <Text style={styles.statusText}>{statusLabel}</Text>
+              </View>
           </View>
           <View style={styles.aiBadge}>
             <Text style={styles.aiBadgeText}>AI</Text>
@@ -463,6 +599,8 @@ const ChatScreen = () => {
             onPress={() => send()}
             disabled={!input.trim() || loading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
           >
             {input.trim() && !loading ? (
               <LinearGradient colors={['#0D9488', '#14B8A6']} style={styles.sendBtn}>

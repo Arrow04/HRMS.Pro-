@@ -555,20 +555,21 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       
       const response = await api.get('/reports/live-export', { 
         params,
-        responseType: format === 'pdf' ? 'blob' : 'json'
+        responseType: 'blob'
       });
       
-      if (format === 'pdf') {
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `live_report_${new Date().toISOString().split('T')[0]}.pdf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } else {
-        toast.success(`${format.toUpperCase()} report exported successfully`);
-      }
+      const ext = format === 'pdf' ? 'pdf' : 'csv';
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `live_report_${new Date().toISOString().split('T')[0]}.${ext}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+      toast.success(`${format.toUpperCase()} report exported successfully`);
     } catch (error) {
       toast.error(`Failed to export ${format} report`);
     }
@@ -578,20 +579,21 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     try {
       const response = await api.get(`/reports/${reportId}/export`, { 
         params: { format },
-        responseType: format === 'pdf' ? 'blob' : 'json'
+        responseType: 'blob'
       });
       
-      if (format === 'pdf') {
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `report_${reportId}_${new Date().toISOString().split('T')[0]}.pdf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } else {
-        toast.success(`${format.toUpperCase()} report exported successfully`);
-      }
+      const ext = format === 'pdf' ? 'pdf' : 'csv';
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `report_${reportId}_${new Date().toISOString().split('T')[0]}.${ext}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+      toast.success(`${format.toUpperCase()} report exported successfully`);
     } catch (error) {
       toast.error(`Failed to export ${format} report`);
     }
@@ -601,25 +603,26 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     try {
       const params: Record<string, unknown> = { 
         report: reportName,
-        format
+        format: format === 'excel' ? 'csv' : format
       };
       
       const response = await api.get('/reports/export-hub', { 
         params,
-        responseType: format === 'pdf' ? 'blob' : 'json'
+        responseType: 'blob'
       });
       
-      if (format === 'pdf') {
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `${reportName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      } else {
-        toast.success(`${format.toUpperCase()} report exported successfully`);
-      }
+      const ext = format === 'pdf' ? 'pdf' : 'csv';
+      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
+      const blob = new Blob([response.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${reportName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.${ext}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+      toast.success(`${format.toUpperCase()} report exported successfully`);
     } catch (error) {
       toast.error(`Failed to export ${format} report`);
     }

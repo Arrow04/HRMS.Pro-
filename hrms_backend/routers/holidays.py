@@ -32,7 +32,7 @@ from core.tenant import org_owned, get_employee_in_org, validate_company_in_org,
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
-from core.datetime_utils import ist_year
+from core.datetime_utils import ist_now_naive, ist_year
 from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Holidays"])
@@ -169,6 +169,18 @@ def export_holidays(
     writer.writerow(["name", "date", "type", "description", "isPaid"])
     for h in query.all():
         writer.writerow([h.name, h.date, h.type, h.description, h.is_paid])
+
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Holidays",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),

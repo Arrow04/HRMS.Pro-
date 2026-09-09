@@ -40,6 +40,12 @@ import DocumentsScreen from './src/screens/DocumentsScreen';
 import AdminAttendanceScreen from './src/screens/AdminAttendanceScreen';
 import AdminLeavesScreen from './src/screens/AdminLeavesScreen';
 import AdminAnomalyScreen from './src/screens/AdminAnomalyScreen';
+import AnnouncementsScreen from './src/screens/AnnouncementsScreen';
+import GrievanceScreen from './src/screens/GrievanceScreen';
+import TeamDirectoryScreen from './src/screens/TeamDirectoryScreen';
+import ShiftRosterScreen from './src/screens/ShiftRosterScreen';
+import AuditLogScreen from './src/screens/AuditLogScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
@@ -157,6 +163,12 @@ const AppNavigator = () => {
             <Stack.Screen name="AdminAttendance" component={AdminAttendanceScreen} />
             <Stack.Screen name="AdminLeaves" component={AdminLeavesScreen} />
             <Stack.Screen name="AdminAnomalies" component={AdminAnomalyScreen} />
+            <Stack.Screen name="Announcements" component={AnnouncementsScreen} />
+            <Stack.Screen name="Grievance" component={GrievanceScreen} />
+            <Stack.Screen name="TeamDirectory" component={TeamDirectoryScreen} />
+            <Stack.Screen name="ShiftRoster" component={ShiftRosterScreen} />
+            <Stack.Screen name="AuditLog" component={AuditLogScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -719,28 +719,8 @@ def get_my_permissions(
         },
         "permissions": checker.get_user_permissions(current_user),
         "allowed_modules": checker.get_allowed_modules(current_user),
-        "can_access_web": any(
-            ra.role.can_access_web
-            for ra in db.query(UserRoleAssignment).filter(
-                UserRoleAssignment.user_id == current_user.id,
-                UserRoleAssignment.is_active == True
-            ).options(joinedload(UserRoleAssignment.role)).all()
-            if ra.role
-        ) if db.query(UserRoleAssignment).filter(
-            UserRoleAssignment.user_id == current_user.id,
-            UserRoleAssignment.is_active == True
-        ).first() else current_user.role != "employee",
-        "can_access_mobile": any(
-            ra.role.can_access_mobile
-            for ra in db.query(UserRoleAssignment).filter(
-                UserRoleAssignment.user_id == current_user.id,
-                UserRoleAssignment.is_active == True
-            ).options(joinedload(UserRoleAssignment.role)).all()
-            if ra.role
-        ) if db.query(UserRoleAssignment).filter(
-            UserRoleAssignment.user_id == current_user.id,
-            UserRoleAssignment.is_active == True
-        ).first() else True
+        "can_access_web": current_user.role != "employee",
+        "can_access_mobile": True,
     }
 
 

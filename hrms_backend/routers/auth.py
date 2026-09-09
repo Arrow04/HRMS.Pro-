@@ -28,56 +28,46 @@ from services.sms_service import NotificationService
 from services.email_service import EmailService
 from services.notification_templates import tenant_welcome_email, new_tenant_signup_notification
 from core.datetime_utils import ist_now_naive
+from core.schemas import ThemeSettings
 
 logger = logging.getLogger(__name__)
 APP_ENV = os.getenv("APP_ENV", "development")
 
-# In-memory brute-force tracking (use Redis in production)
-_failed_attempts: dict[str, int] = {}
-_otp_attempts: dict[str, int] = {}
-
 router = APIRouter(tags=["auth"])
-
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-    role: Optional[str] = "employee"
-    fullName: Optional[str] = None
-    organizationId: Optional[int] = None
-    phone: Optional[str] = None
-    permissions: Optional[dict] = None
-
-    @field_validator("password")
-    @classmethod
-    def password_complexity(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters long")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[a-z]", v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not re.search(r"\d", v):
-            raise ValueError("Password must contain at least one digit")
-        if not re.search(r"[!@#$%^&*(),.?\":{}|<>_\-]", v):
-            raise ValueError("Password must contain at least one special character")
-        return v
 
 
 class LoginRequest(BaseModel):
     email: str
     password: str
-    deviceId: Optional[str] = None
-    deviceFingerprint: Optional[str] = None
-    deviceInfo: Optional[dict] = None
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    fullName: Optional[str] = None
+    phone: Optional[str] = None
+    organizationId: Optional[int] = None
+
+
+class TenantRegistration(BaseModel):
+    admin_email: str
+    password: str
+    admin_name: str
+    phone: Optional[str] = None
+    company_name: str
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    registered_state: Optional[str] = None
+    registered_city: Optional[str] = None
 
 
 class PasskeyLoginRequest(BaseModel):
-    identifier: str
-    passcode: str
-    deviceId: Optional[str] = None
-    deviceFingerprint: Optional[str] = None
-    deviceInfo: Optional[dict] = None
+    identifier: Optional[str] = None
+    passcode: Optional[str] = None
+
+
+class ResendEmailVerificationRequest(BaseModel):
+    email: str
 
 
 class SendOTPRequest(BaseModel):
@@ -87,47 +77,59 @@ class SendOTPRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     phone: str
     otp: str
-    deviceId: Optional[str] = None
-    deviceFingerprint: Optional[str] = None
-    deviceInfo: Optional[dict] = None
 
 
-class TenantRegistration(BaseModel):
-    company_name: str
-    admin_name: str
-    admin_email: str
-    password: str
-    phone: Optional[str] = None
-    industry: Optional[str] = None
-    company_size: Optional[str] = None
-    registered_state: Optional[str] = None
-    registered_city: Optional[str] = None
-
-class ResendEmailVerificationRequest(BaseModel):
+class ForgotPasswordVerifyRequest(BaseModel):
     email: str
+    phone: str
 
 
-class ThemeSettings(BaseModel):
-    primaryColor: Optional[str] = "#3B82F6"
-    isDarkMode: Optional[bool] = False
-    glassIntensity: Optional[float] = 0.8
-    fontFamily: Optional[str] = "Inter"
+class ResetPasswordBasicRequest(BaseModel):
+    email: str
+    phone: str
+    reset_token: str
+    new_password: str
+
+from core.cache import get_redis, make_key
+
+BRUTE_FORCE_MAX_ATTEMPTS = 5
+BRUTE_FORCE_WINDOW_SECONDS = 15 * 60
+OTP_SEND_MAX_ATTEMPTS = 3
+OTP_VERIFY_MAX_ATTEMPTS = 5
+OTP_WINDOW_SECONDS = 15 * 60
 
 
-@router.post("/clear-brute-force", tags=["Auth"])
-def clear_brute_force():
-    """Clear all brute-force lockouts. For testing only."""
-    _failed_attempts.clear()
-    _otp_attempts.clear()
-    return {"message": "Brute-force lockouts cleared", "count": 0}
+def _get_brute_force_attempts(key: str) -> int:
+    rc = get_redis()
+    if rc is None:
+        return 0
+    value = rc.get(key)
+    return int(value) if value is not None else 0
+
+
+def _increment_brute_force(key: str, ttl: int) -> int:
+    rc = get_redis()
+    if rc is None:
+        return 0
+    attempts = rc.incr(key)
+    if attempts == 1:
+        rc.expire(key, ttl)
+    return attempts
+
+
+def _clear_brute_force_key(key: str) -> None:
+    rc = get_redis()
+    if rc is None:
+        return
+    rc.delete(key)
 
 
 def _check_brute_force(ip: str, email: str) -> None:
     if os.getenv("DISABLE_BRUTE_FORCE", "false").lower() in ("1", "true", "yes"):
         return
-    key = f"{ip}:{email}"
-    attempts = _failed_attempts.get(key, 0)
-    if attempts >= 5:
+    key = make_key("auth", "brute", "login", ip, email)
+    attempts = _get_brute_force_attempts(key)
+    if attempts >= BRUTE_FORCE_MAX_ATTEMPTS:
         raise HTTPException(
             status_code=429,
             detail="Too many failed login attempts. Please try again after 15 minutes.",
@@ -135,13 +137,47 @@ def _check_brute_force(ip: str, email: str) -> None:
 
 
 def _record_failed_attempt(ip: str, email: str) -> None:
-    key = f"{ip}:{email}"
-    _failed_attempts[key] = _failed_attempts.get(key, 0) + 1
+    key = make_key("auth", "brute", "login", ip, email)
+    _increment_brute_force(key, BRUTE_FORCE_WINDOW_SECONDS)
 
 
 def _reset_attempts(ip: str, email: str) -> None:
-    key = f"{ip}:{email}"
-    _failed_attempts.pop(key, None)
+    key = make_key("auth", "brute", "login", ip, email)
+    _clear_brute_force_key(key)
+
+
+def _check_otp_brute_force(ip: str, phone: str, action: str) -> None:
+    key = make_key("auth", "brute", "otp", action, ip, phone)
+    max_attempts = OTP_SEND_MAX_ATTEMPTS if action == "send" else OTP_VERIFY_MAX_ATTEMPTS
+    attempts = _get_brute_force_attempts(key)
+    if attempts >= max_attempts:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many OTP requests. Try again later.",
+        )
+
+
+def _record_otp_attempt(ip: str, phone: str, action: str) -> None:
+    key = make_key("auth", "brute", "otp", action, ip, phone)
+    _increment_brute_force(key, OTP_WINDOW_SECONDS)
+
+
+@router.post("/clear-brute-force", tags=["Auth"])
+def clear_brute_force():
+    """Clear all brute-force lockouts. For testing only."""
+    rc = get_redis()
+    if rc is None:
+        return {"message": "Redis unavailable; no lockouts to clear", "count": 0}
+    pattern = make_key("auth", "brute", "*")
+    cursor = 0
+    deleted = 0
+    while True:
+        cursor, keys = rc.scan(cursor=cursor, match=pattern, count=500)
+        if keys:
+            deleted += sum(rc.delete(*keys))
+        if cursor == 0:
+            break
+    return {"message": "Brute-force lockouts cleared", "count": deleted}
 
 
 def _validate_password_strength(password: str) -> Optional[str]:
@@ -156,17 +192,12 @@ def _validate_password_strength(password: str) -> Optional[str]:
 
 
 @router.post("/register", response_model=dict)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
+def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
     try:
         email = user_data.email
         password = user_data.password
-        # Self-service registration can NEVER grant privileged roles or pick an
-        # arbitrary tenant. Admins are provisioned via the hub (register-tenant /
-        # superadmin); this legacy endpoint only ever creates an employee-role
-        # user inside an active (approved) organization.
-        role = "employee"
-        organization_id = user_data.organizationId
         full_name = user_data.fullName or email.split("@")[0]
+        organization_id = user_data.organizationId
 
         if not email or not password:
             raise HTTPException(status_code=400, detail="Email and password are required")
@@ -431,17 +462,7 @@ def login(login_data: LoginRequest, request: Request, db: Session = Depends(get_
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        try:
-            with open(r"D:\hrmsnew\hrms_backend\crash_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"LOGIN_ERROR: {e}\n{tb}\n--------\n")
-        except OSError:
-            pass
-        try:
-            logger.exception("Login failed with unexpected error")
-        except OSError:
-            pass
+        logger.exception("Login failed with unexpected error")
         raise HTTPException(status_code=500, detail="Login failed. Please try again.")
 
 
@@ -488,6 +509,17 @@ def _build_login_payload(user: User, db: Session) -> dict:
         },
         "is_new_device": False,
     }
+
+
+@router.post("/refresh", response_model=dict)
+def refresh_token(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Issue a fresh access token for the authenticated user."""
+    if not current_user.is_active:
+        raise HTTPException(status_code=401, detail="User account is inactive")
+    return _build_login_payload(current_user, db)
 
 
 @router.post("/login-passkey", response_model=dict)
@@ -542,17 +574,7 @@ def login_passkey(login_data: PasskeyLoginRequest, request: Request, db: Session
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        try:
-            with open(r"D:\hrmsnew\hrms_backend\crash_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"LOGIN_PASSKEY_ERROR: {e}\n{tb}\n--------\n")
-        except OSError:
-            pass
-        try:
-            logger.exception("Passkey login failed with unexpected error")
-        except OSError:
-            pass
+        logger.exception("Passkey login failed with unexpected error")
         raise HTTPException(status_code=500, detail="Login failed. Please try again.")
 
 
@@ -819,13 +841,13 @@ def forgot_password_verify(req: ForgotPasswordVerifyRequest, request: Request, d
     phone = (req.phone or "").strip()
 
     # Brute-force protection: max 5 verify attempts per IP+email before lockout.
-    key = f"fpv:{client_ip}:{email}"
-    if _failed_attempts.get(key, 0) >= 5:
+    key = make_key("auth", "brute", "fpv", client_ip, email)
+    if _get_brute_force_attempts(key) >= 5:
         raise HTTPException(
             status_code=429,
             detail="Too many attempts. Please try again after 15 minutes.",
         )
-    _failed_attempts[key] = _failed_attempts.get(key, 0) + 1
+    _increment_brute_force(key, BRUTE_FORCE_WINDOW_SECONDS)
 
     user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user or not user.is_active:
@@ -842,7 +864,7 @@ def forgot_password_verify(req: ForgotPasswordVerifyRequest, request: Request, d
     user.reset_token = otp
     user.reset_token_expiry = ist_now_naive() + timedelta(minutes=10)
     db.commit()
-    _failed_attempts.pop(key, None)
+    _clear_brute_force_key(key)
 
     email_sent = EmailService.send_email(
         to_email=user.email,
@@ -876,13 +898,13 @@ def reset_password_basic(req: ResetPasswordBasicRequest, request: Request, db: S
     phone = (req.phone or "").strip()
 
     # Brute-force protection: max 5 reset attempts per IP+email before lockout.
-    key = f"fpr:{client_ip}:{email}"
-    if _failed_attempts.get(key, 0) >= 5:
+    key = make_key("auth", "brute", "fpr", client_ip, email)
+    if _get_brute_force_attempts(key) >= 5:
         raise HTTPException(
             status_code=429,
             detail="Too many attempts. Please try again after 15 minutes.",
         )
-    _failed_attempts[key] = _failed_attempts.get(key, 0) + 1
+    _increment_brute_force(key, BRUTE_FORCE_WINDOW_SECONDS)
 
     user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user or not user.is_active:
@@ -913,7 +935,7 @@ def reset_password_basic(req: ResetPasswordBasicRequest, request: Request, db: S
     # Invalidate every existing session/token for this account.
     user.token_version = (user.token_version or 0) + 1
     db.commit()
-    _failed_attempts.pop(key, None)
+    _clear_brute_force_key(key)
 
     # Notify the account owner that their password changed.
     try:
@@ -1008,13 +1030,13 @@ def block_device(log_id: int, db: Session = Depends(get_db), current_user: User 
 @router.post("/send-otp")
 def send_otp(req: SendOTPRequest, request: Request, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
-    otp_key = f"otp_send:{client_ip}:{req.phone}"
-    if _failed_attempts.get(otp_key, 0) >= 3:
-        raise HTTPException(status_code=429, detail="Too many OTP requests. Try again later.")
-    _failed_attempts[otp_key] = _failed_attempts.get(otp_key, 0) + 1
+    otp_key = make_key("auth", "brute", "otp", "send", client_ip, req.phone)
+    _check_otp_brute_force(client_ip, req.phone, "send")
+    _record_otp_attempt(client_ip, req.phone, "send")
 
     user = db.query(User).filter(User.phone == req.phone).first()
     if not user:
+        _clear_brute_force_key(otp_key)
         raise HTTPException(status_code=404, detail="User with this phone number not found")
     otp_service = OTPService()
     otp = otp_service.generate_otp()
@@ -1028,13 +1050,13 @@ def send_otp(req: SendOTPRequest, request: Request, db: Session = Depends(get_db
 @router.post("/verify-otp")
 def verify_otp(req: VerifyOTPRequest, request: Request, db: Session = Depends(get_db)):
     client_ip = request.client.host if request.client else "unknown"
-    otp_key = f"otp_verify:{client_ip}:{req.phone}"
-    if _failed_attempts.get(otp_key, 0) >= 5:
-        raise HTTPException(status_code=429, detail="Too many OTP attempts. Try again later.")
-    _failed_attempts[otp_key] = _failed_attempts.get(otp_key, 0) + 1
+    otp_key = make_key("auth", "brute", "otp", "verify", client_ip, req.phone)
+    _check_otp_brute_force(client_ip, req.phone, "verify")
+    _record_otp_attempt(client_ip, req.phone, "verify")
 
     user = db.query(User).filter(User.phone == req.phone).first()
     if not user:
+        _clear_brute_force_key(otp_key)
         raise HTTPException(status_code=404, detail="User not found")
     if not user.otp or not user.otp_expiry:
         raise HTTPException(status_code=400, detail="No OTP requested")
@@ -1050,7 +1072,7 @@ def verify_otp(req: VerifyOTPRequest, request: Request, db: Session = Depends(ge
     user.otp = None
     user.otp_expiry = None
     db.commit()
-    _failed_attempts.pop(otp_key, None)
+    _clear_brute_force_key(otp_key)
 
     access_token = create_access_token(data={"sub": str(user.id), "tv": user.token_version or 0})
     employee = db.query(Employee).filter(Employee.user_id == user.id).first()

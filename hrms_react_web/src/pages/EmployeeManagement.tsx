@@ -44,7 +44,9 @@ import {
   Clock,
   RotateCcw,
   Banknote,
-  Eye
+  Eye,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import TransfersSection from '../components/TransfersSection';
 import { format } from 'date-fns';
@@ -242,6 +244,7 @@ const EmployeeManagement = () => {
   const [archivedEndDate, setArchivedEndDate] = useState<string>('');
   const [showModal, setShowModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [expandedManagers, setExpandedManagers] = useState({});
   const EMPTY_FORM_DATA = {
     firstName: '', lastName: '', employeeCode: '', joinDate: '', email: '', phone: '',
     companyId: '', departmentId: '', branchIds: [] as number[], designationId: '',
@@ -559,15 +562,72 @@ const EmployeeManagement = () => {
     queryFn: () => api.get('/archived-employees').then(r => r.data),
   });
 
-  // Full branch list for the employee-list filter (independent of the employee form's company scope)
-  const { data: allBranchesForFilter = [] } = useQuery<Branch[]>({
-    queryKey: ['all-branches-for-filter'],
-    queryFn: async () => {
-      const response = await api.get('/branches');
-      return response.data || [];
-    },
+  const { data: orgStructure = [], isLoading: orgLoading } = useQuery({
+    queryKey: ['employees', 'org-structure'],
+    queryFn: () => api.get('/employees/org-structure').then(r => r.data?.data || []),
     staleTime: 5 * 60 * 1000,
   });
+
+  const toggleManager = (managerId: number) => {
+    setExpandedManagers((prev) => ({ ...prev, [managerId]: !prev[managerId] }));
+  };
+
+  const filterOrgTree = (nodes: any[], q: string): any[] => {
+    if (!q.trim()) return nodes;
+    const lower = q.toLowerCase();
+    return nodes.reduce((acc: any[], node: any) => {
+      const nodeMatches = `${node.name || ''} ${node.email || ''} ${node.department || ''} ${node.designation || ''}`.toLowerCase().includes(lower);
+      const filteredReports = filterOrgTree(node.directReports || [], q);
+      if (nodeMatches || filteredReports.length > 0) {
+        acc.push({ ...node, directReports: filteredReports });
+      }
+      return acc;
+    }, []);
+  };
+
+  const filteredOrg = useMemo(() => filterOrgTree(orgStructure, search), [orgStructure, search]);
+
+  const renderOrgNode = (node: any, level = 0): JSX.Element => {
+    const hasReports = node.directReports && node.directReports.length > 0;
+    const isExpanded = expandedManagers[node.id];
+    const initials = (node.name || '')
+      .split(' ')
+      .map((n: string) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+
+    return (
+      <div key={node.id}>
+        <div
+          className="flex items-center gap-4 p-4 rounded-xl border border-[var(--border-color)] hover:shadow-md transition-shadow"
+          style={{ marginLeft: level * 24 }}
+        >
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#6366F1] to-[#8B5CF6] flex items-center justify-center text-white font-bold text-lg">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{node.name}</p>
+            <p className="text-xs text-[var(--text-tertiary)] truncate">{node.designation || ''}</p>
+            <p className="text-xs text-[var(--text-tertiary)] truncate">{node.department || ''}</p>
+          </div>
+          {hasReports && (
+            <button
+              onClick={() => toggleManager(node.id)}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              {isExpanded ? <ChevronUp className="w-4 h-4 text-[#64748B]" /> : <ChevronDown className="w-4 h-4 text-[#64748B]" />}
+            </button>
+          )}
+        </div>
+        {isExpanded && hasReports && (
+          <div>
+            {node.directReports.map((child: any) => renderOrgNode(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const filteredArchivedEmployees = useMemo(() => {
     return (archivedEmployees || []).filter((a: ArchivedEmployee) => {
@@ -670,8 +730,20 @@ const EmployeeManagement = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
     },
-    onSuccess: (data: { data?: { created?: number; updated?: number } }) => {
-      toast.success(`Bulk upload completed: ${data.data?.created || 0} created, ${data.data?.updated || 0} updated`);
+    onSuccess: (data: { data?: { created?: number; updated?: number; errors?: Array<{ row: number; error: string }> } }) => {
+      const created = data.data?.created || 0;
+      const updated = data.data?.updated || 0;
+      const errors = data.data?.errors || [];
+      if (errors.length > 0) {
+        const errorSummary = errors.slice(0, 5).map(e => `Row ${e.row}: ${e.error}`).join('\n');
+        const moreCount = errors.length > 5 ? `\n... and ${errors.length - 5} more errors` : '';
+        toast.error(`Bulk upload completed with errors:\n${errorSummary}${moreCount}\n\nCreated: ${created}, Updated: ${updated}, Failed: ${errors.length}`, {
+          duration: 8000,
+          style: { whiteSpace: 'pre-line' }
+        });
+      } else {
+        toast.success(`Bulk upload completed: ${created} created, ${updated} updated`);
+      }
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employeeStats', filterOrgId, filterCompanyId] });
       setShowBulkUpload(false);
@@ -897,6 +969,7 @@ const EmployeeManagement = () => {
 
   const TABS = [
     { id: 'active', label: 'Active Employees', icon: Users },
+    { id: 'team', label: 'Team Directory', icon: Users },
     { id: 'transfers', label: 'Employee Transfer', icon: ArrowRightLeft },
     { id: 'inactive', label: 'Inactive Employees', icon: UserX },
     { id: 'archived', label: 'Archived', icon: Archive },
@@ -996,7 +1069,32 @@ const EmployeeManagement = () => {
         </div>
 
         {/* CONTENT */}
-        {activeTab === 'transfers' ? (
+        {activeTab === 'team' ? (
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[var(--border-color)]">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#94A3B8]" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search team by name, email, or department..."
+                  className="w-full pl-9 pr-4 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-transparent outline-none text-[var(--text-primary)] placeholder-[#94A3B8]"
+                />
+              </div>
+            </div>
+            <div className="p-6">
+              {orgLoading ? (
+                <div className="text-center py-12 text-[var(--text-tertiary)]">Loading org structure...</div>
+              ) : filteredOrg.length === 0 ? (
+                <div className="text-center py-12 text-[var(--text-tertiary)]">No reporting hierarchy configured yet.</div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredOrg.map((node: any) => renderOrgNode(node, 0))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeTab === 'transfers' ? (
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden flex flex-col flex-1">
             <TransfersSection
               companiesList={companiesList}
@@ -1253,9 +1351,9 @@ const EmployeeManagement = () => {
           isOpen={showBulkUpload}
           onClose={() => setShowBulkUpload(false)}
           title="Employees"
-          columns="first_name, last_name, email, employee_code, company_id, department_id, designation_id, status"
+          columns="first_name, last_name, email, employee_code, phone, current_address, company_id, department_id, designation_id, status"
           onDownloadTemplate={downloadTemplate}
-          onUpload={(file) => bulkUploadMutation.mutate(file)}
+          onUpload={async (file) => bulkUploadMutation.mutateAsync(file)}
           isUploading={bulkUploadMutation.isPending}
         />
 

@@ -21,10 +21,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
-    // Here you could send error to monitoring service
-    // e.g., Sentry.captureException(error, { extra: errorInfo });
-    // In development, you can use console.error
     if (import.meta.env.DEV) {
       console.error('Uncaught error:', error, errorInfo);
     }

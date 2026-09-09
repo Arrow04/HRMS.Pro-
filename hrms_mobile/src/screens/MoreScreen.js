@@ -16,32 +16,38 @@ const { width: W } = Dimensions.get('window');
 const GRID_ITEM = (W - 40 - 16 * 2) / 3;
 
 const MY_HR_ITEMS = [
-  { icon: 'calendar-outline', label: 'Leave', screen: 'Leaves', color: '#4F46E5' },
   { icon: 'time-outline', label: 'Attendance', screen: 'AttendanceHistory', color: '#3B82F6' },
-  { icon: 'calendar-clear-outline', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
-  { icon: 'card-outline', label: 'Payroll', screen: 'Payslips', color: '#059669' },
+  { icon: 'calendar-outline', label: 'Leave', screen: 'Leaves', color: '#4F46E5' },
+  { icon: 'card-outline', label: 'Payslips', screen: 'Payslips', color: '#059669' },
   { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
-  { icon: 'star-outline', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
-  { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
-  { icon: 'document-text-outline', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
   { icon: 'copy-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
+  { icon: 'document-text-outline', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
+  { icon: 'calendar-clear-outline', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
+  { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
+  { icon: 'alert-circle-outline', label: 'Grievances', screen: 'Grievance', color: '#EF4444' },
+  { icon: 'trophy-outline', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
+  { icon: 'people-outline', label: 'Team', screen: 'TeamDirectory', color: '#6366F1' },
+  { icon: 'star-outline', label: 'Feedback', screen: 'Chat', color: '#14B8A6' },
 ];
 
 const ADMIN_ITEMS = [
+  { icon: 'business-outline', label: 'Organization', screen: 'Company', color: '#1C64F2' },
+  { icon: 'document-text-outline', label: 'Recruitment', screen: 'Recruitment', color: '#7C3AED' },
   { icon: 'people-outline', label: 'Employees', screen: 'Employees', color: '#6366F1' },
   { icon: 'finger-print-outline', label: 'Attendance', screen: 'AdminAttendance', color: '#3B82F6' },
-  { icon: 'calendar-outline', label: 'Leaves', screen: 'AdminLeaves', color: '#4F46E5' },
-  { icon: 'checkmark-done-outline', label: 'Approvals', screen: 'Approvals', color: '#10B981' },
-  { icon: 'alert-circle-outline', label: 'Anomalies', screen: 'AdminAnomalies', color: '#DC2626' },
-  { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
-  { icon: 'business-outline', label: 'Organization', screen: 'Company', color: '#1C64F2' },
   { icon: 'calendar-outline', label: 'Holidays', screen: 'Holidays', color: '#4F46E5' },
-  { icon: 'cash-outline', label: 'Payroll', screen: 'PayrollAdmin', color: '#059669' },
-  { icon: 'document-text-outline', label: 'Recruitment', screen: 'Recruitment', color: '#7C3AED' },
+  { icon: 'calendar-outline', label: 'Leaves', screen: 'AdminLeaves', color: '#4F46E5' },
+  { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
   { icon: 'star-outline', label: 'Performance', screen: 'Performance', color: '#F59E0B' },
   { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
-  { icon: 'exit-outline', label: 'Exit Mgmt', screen: 'ExitMgmt', color: '#DC2626' },
+  { icon: 'cash-outline', label: 'Payroll', screen: 'PayrollAdmin', color: '#059669' },
+  { icon: 'checkmark-done-outline', label: 'Approvals', screen: 'Approvals', color: '#10B981' },
+  { icon: 'alert-circle-outline', label: 'Anomalies', screen: 'AdminAnomalies', color: '#DC2626' },
+  { icon: 'exit-outline', label: 'Offboarding', screen: 'ExitMgmt', color: '#DC2626' },
+  { icon: 'calendar-number-outline', label: 'Shift & Roster', screen: 'ShiftRoster', color: '#6366F1' },
+  { icon: 'megaphone-outline', label: 'Notices', screen: 'Announcements', color: '#EC4899' },
   { icon: 'bar-chart-outline', label: 'Reports', screen: 'Reports', color: '#4F46E5' },
+  { icon: 'document-lock-outline', label: 'Audit Log', screen: 'AuditLog', color: '#6366F1' },
   { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1' },
 ];
 
@@ -108,6 +114,10 @@ const MoreScreen = ({ navigation }) => {
     navigation.navigate('Chat');
   };
 
+  const handleNotificationPress = () => {
+    navigation.navigate('Notifications');
+  };
+
   return (
     <View style={themed.container}>
       <ScrollView
@@ -118,6 +128,9 @@ const MoreScreen = ({ navigation }) => {
         <LinearGradient colors={['#1C64F2', '#4F46E5', '#6366F1']} style={[themed.hero, bannerShellStyle(scrollTopBar)]}>
           <View style={themed.heroOrb1} />
           <View style={themed.heroOrb2} />
+          <TouchableOpacity style={themed.notificationBtn} onPress={handleNotificationPress} activeOpacity={0.8}>
+            <Ionicons name="notifications" size={22} color="#FFF" />
+          </TouchableOpacity>
           <View style={themed.heroContent}>
             <Text style={themed.heroTitle}>Menu</Text>
             <Text style={themed.heroSub}>Quick access to all modules</Text>
@@ -210,6 +223,18 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     overflow: 'hidden' },
   heroOrb1: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.06)', top: -40, right: -40 },
   heroOrb2: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(79,70,229,0.15)', bottom: -10, left: 30 },
+  notificationBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)' },
   heroContent: { paddingHorizontal: 20 },
   heroTitle: { fontSize: 22, fontWeight: '700', color: '#FFF' },
   heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 2 },

@@ -1,6 +1,7 @@
 import api from './api';
 import { fetchAllEmployeePickerList } from './employeeListService';
 import type { AxiosError } from 'axios';
+import { logger } from '../utils/logger';
 import type {
   Attendance,
   Expense,
@@ -173,7 +174,7 @@ export const getEmployee = async (employeeId: number): Promise<Employee> => {
     return response.data;
   } catch (error: unknown) {
     const err = error as AxiosError;
-    console.error('getEmployee error:', err.response?.status, err.response?.data);
+    logger.error('getEmployee error:', err.response?.status, err.response?.data);
     throw error;
   }
 };

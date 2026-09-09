@@ -29,7 +29,7 @@ from core.config import settings
 from core.schemas import (LeaveCreate, LeaveTypeCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
-from database import Base, SessionLocal, engine, get_db, get_read_db
+from database import Base, SessionLocal, engine, get_db, get_read_db, get_read_db
 from core.datetime_utils import ist_now_naive, ist_today, ist_year
 from core.scale import MAX_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
@@ -46,7 +46,7 @@ router = APIRouter(tags=["Leaves"])
 def get_leave_types(
     organizationId: Optional[int] = None,
     companyId: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
@@ -186,7 +186,7 @@ def get_leave_balances(
     year: Optional[int] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
     year = year or datetime.now().year
@@ -278,7 +278,7 @@ def update_leave_balance(
 @router.get("/api/leaves/{leave_id}/history", tags=["Leaves"])
 def get_leave_approval_history(
     leave_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
     lv = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None), LeaveApplication.id == leave_id).first()
@@ -433,7 +433,7 @@ def get_leaves(
 @cached(ttl=60)
 @router.get("/api/leaves/stats", tags=["Leaves"])
 def get_leave_stats(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
     today = ist_today()

@@ -9,7 +9,7 @@ Supports (in priority order — all free/open-source except Twilio):
 """
 import os
 import logging
-from typing import Optional
+from core.circuit_breaker import sms_circuit_breaker, email_circuit_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +68,13 @@ class NotificationService:
         return False
 
     @staticmethod
+    @sms_circuit_breaker
     def send_sms(phone: str, message: str) -> bool:
         """Send SMS — try Twilio, then Gammu, then email gateway, then console."""
         logger.info(f"\n{'='*60}\n📱 SMS TO: {phone}\n📩 MESSAGE: {message[:100]}...\n{'='*60}")
 
-        # Twilio SMS (paid, optional)
-        if NotificationService.TWILIO_ACCOUNT_SID and NotificationService.TWILIO_AUTH_TOKEN:
-            try:
+        try:
+            if NotificationService.TWILIO_ACCOUNT_SID and NotificationService.TWILIO_AUTH_TOKEN:
                 from twilio.rest import Client
                 client = Client(NotificationService.TWILIO_ACCOUNT_SID, NotificationService.TWILIO_AUTH_TOKEN)
                 client.messages.create(
@@ -84,16 +84,20 @@ class NotificationService:
                 )
                 logger.info("✅ SMS sent via Twilio")
                 return True
-            except Exception as e:
-                logger.warning(f"Twilio SMS failed: {e}")
+        except Exception as e:
+            logger.warning(f"Twilio SMS failed: {e}")
 
-        # Free open-source: Gammu SMSD gateway (GSM modem)
-        if NotificationService.GAMMU_URL and NotificationService._send_via_gammu(phone, message):
-            return True
+        try:
+            if NotificationService.GAMMU_URL and NotificationService._send_via_gammu(phone, message):
+                return True
+        except Exception as e:
+            logger.warning(f"Gammu SMS failed: {e}")
 
-        # Free: email-to-SMS carrier gateway
-        if NotificationService._send_via_email_gateway(phone, message):
-            return True
+        try:
+            if NotificationService._send_via_email_gateway(phone, message):
+                return True
+        except Exception as e:
+            logger.warning(f"Email-to-SMS gateway failed: {e}")
 
         logger.info("SMS logged to console (no SMS provider configured)")
         return True

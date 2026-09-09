@@ -1,8 +1,5 @@
 import axios, { AxiosError } from 'axios';
 
-// Dev: Vite proxy sends /api -> localhost:8000 (vite.config.ts).
-// Production (Vercel): set VITE_API_URL to your Render API origin, e.g.
-// https://hrms-api.onrender.com — or use vercel.json rewrites with baseURL ''.
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 
 const api = axios.create({
@@ -12,15 +9,12 @@ const api = axios.create({
   },
 });
 
-// Function to update the base URL dynamically
 export const updateApiBaseUrl = (newBaseUrl: string) => {
   api.defaults.baseURL = newBaseUrl;
 };
 
-// Add a request interceptor to include the auth token and company filter
 api.interceptors.request.use(
   (config) => {
-    // Ensure URL starts with /api
     if (config.url && !config.url.startsWith('/api/')) {
       const cleanUrl = config.url.startsWith('/') ? config.url : `/${config.url}`;
       config.url = `/api${cleanUrl}`;
@@ -35,21 +29,69 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Add a response interceptor for global error handling
+let isRedirecting = false;
+let refreshPromise: Promise<string> | null = null;
+
+function handleSessionExpired() {
+  if (isRedirecting) return;
+  isRedirecting = true;
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('refreshToken');
+  if (!window.location.pathname.includes('/login')) {
+    window.location.href = '/login?expired=1';
+  }
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const currentToken = localStorage.getItem('token');
+      if (!currentToken) throw new Error('No token');
+      const res = await api.post('/auth/refresh', null, {
+        headers: { Authorization: `Bearer ${currentToken}` },
+        _skipRefresh: true,
+      } as any);
+      const newToken = res.data?.token;
+      if (!newToken) throw new Error('No token in refresh response');
+      localStorage.setItem('token', newToken);
+      return newToken;
+    } catch {
+      refreshPromise = null;
+      handleSessionExpired();
+      throw new Error('Session expired');
+    }
+  })();
+  try {
+    const token = await refreshPromise;
+    return token;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error: unknown) => {
-    if ((error as AxiosError).response?.status === 401) {
-      if (!window.location.pathname.includes('/login')) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+  async (error: unknown) => {
+    const axiosError = error as AxiosError;
+    const originalRequest = axiosError.config as any;
+    if (
+      axiosError.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retried &&
+      !originalRequest._skipRefresh
+    ) {
+      originalRequest._retried = true;
+      try {
+        const newToken = await refreshAccessToken();
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch {
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);

@@ -3,6 +3,7 @@ SuperAdmin Controller - Multi-tenant Management Console
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, and_, or_, desc
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -90,18 +91,14 @@ async def create_tenant(
 ):
     """Create new company + admin user in one transaction"""
     try:
-        # Check if organization exists
-        existing = db.query(Organization).filter(Organization.email == data.admin_email).first()
-        if existing:
-            raise HTTPException(status_code=400, detail="Organization with this email already exists")
-        
-        # Check if user exists
-        existing_user = db.query(User).filter(User.email == data.admin_email).first()
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Admin email already registered")
-        
-        # Create organization
-        org_code = data.company_code or data.code or ""
+        org_code = data.company_code if data.company_code and data.company_code.strip() else None
+        if org_code:
+            suffix = 1
+            base_code = org_code
+            while db.query(Organization).filter(Organization.code == org_code).first():
+                org_code = f"{base_code}-{suffix}"
+                suffix += 1
+        org_domain = data.domain if data.domain and data.domain.strip() else None
         org = Organization(
             name=data.company_name,
             code=org_code,
@@ -109,7 +106,7 @@ async def create_tenant(
             phone=data.admin_phone or "",
             address="",
             status="active",
-            domain=data.domain,
+            domain=org_domain,
             industry=data.industry,
             company_size=data.company_size,
             legal_name=data.legal_name,
@@ -153,11 +150,18 @@ async def create_tenant(
             first_name=first_name,
             last_name=last_name,
             email=data.admin_email,
-            employee_code=f"{org_code}-ADMIN-01",
+            employee_code=f"{(org_code or org.id)}-ADMIN-01",
             designation="Tenant Administrator",
             status="active"
         )
         db.add(admin_employee)
+
+        print("ABOUT TO COMMIT:", {
+            "org_name": data.company_name,
+            "org_code": org_code,
+            "admin_email": data.admin_email,
+            "employee_code": f"{(org_code or org.id)}-ADMIN-01",
+        })
 
         # Create permissions based on selected modules
         modules = data.modules if data.modules else ["dashboard", "employees", "attendance", "leave", "payroll", "expenses", "holidays", "reports", "settings"]
@@ -200,6 +204,17 @@ async def create_tenant(
     except HTTPException:
         db.rollback()
         raise
+    except IntegrityError as e:
+        db.rollback()
+        msg = str(e.orig) if hasattr(e, 'orig') and e.orig else str(e)
+        print("INTEGRITY ERROR:", msg)
+        if 'users.email' in msg or ('email' in msg.lower() and 'user' in msg.lower()):
+            detail = f"Admin email '{data.admin_email}' conflicts with an existing record"
+        elif 'organizations' in msg.lower():
+            detail = "Organization creation failed due to a data conflict"
+        else:
+            detail = "Data conflict: a required value already exists"
+        raise HTTPException(status_code=400, detail=detail)
     except Exception as e:
         db.rollback()
         import traceback

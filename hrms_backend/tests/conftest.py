@@ -36,6 +36,45 @@ def engine():
             "TEST_DATABASE_URL was not overridden before imports."
         )
     Base.metadata.create_all(bind=app_engine)
+
+    # Seed a default admin user for tests
+    from core.auth import get_password_hash
+    from models import User, Organization
+    Session = sessionmaker(bind=app_engine)
+    db = Session()
+    try:
+        # Create default organization
+        org = db.query(Organization).filter(Organization.code == "TEST").first()
+        if not org:
+            org = Organization(
+                name="Test Organization",
+                code="TEST",
+                status="active",
+                default_currency="INR",
+                timezone="Asia/Kolkata",
+            )
+            db.add(org)
+            db.commit()
+            db.refresh(org)
+
+        # Create admin user
+        admin_email = os.getenv("ADMIN_EMAIL", "admin@hrms.com")
+        admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if not existing:
+            admin = User(
+                email=admin_email,
+                password_hash=get_password_hash(admin_password),
+                full_name="Test Admin",
+                role="admin",
+                is_active=True,
+                organization_id=org.id,
+            )
+            db.add(admin)
+            db.commit()
+    finally:
+        db.close()
+
     yield app_engine
     # Drop all tables in reverse dependency order with FK checks off to
     # avoid CircularDependencyError from the mutually-referencing schema.
@@ -65,6 +104,10 @@ def client(db_session):
         yield db_session
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
+        # Get admin user ID for test assertions
+        from models import User
+        admin_user = db_session.query(User).filter(User.email == os.getenv("ADMIN_EMAIL", "admin@hrms.com")).first()
+        c.admin_user_id = admin_user.id if admin_user else 1
         yield c
     app.dependency_overrides.clear()
 

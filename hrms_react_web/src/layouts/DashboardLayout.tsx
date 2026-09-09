@@ -1,11 +1,12 @@
-﻿import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import {
   BarChart3, Users, CalendarCheck, Clock, FileText,
   Settings, Building, Briefcase, Palmtree,
   FileBarChart, CreditCard, TrendingUp, Database,
   ShieldAlert, Wallet, LogOut, Monitor,
-  ChevronLeft, ChevronRight, ChevronDown, Building2
+  ChevronLeft, ChevronRight, Building2, Megaphone, AlertTriangle,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
@@ -26,6 +27,9 @@ const ALL_LINKS = [
   { path: '/exit-management', label: 'Exits', icon: LogOut },
   { path: '/anomalies', label: 'Anomalies', icon: ShieldAlert },
   { path: '/reports', label: 'Reports', icon: FileBarChart },
+  { path: '/announcements', label: 'Announcements', icon: Megaphone },
+  { path: '/grievances', label: 'Grievances', icon: AlertTriangle },
+  { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/master-data', label: 'Master Data', icon: Database },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -53,19 +57,20 @@ const DashboardLayout = () => {
     '/performance': 'performance', '/reports': 'reports', '/master-data': 'master_data',
     '/settings': 'settings', '/exit-management': 'exit', '/assets': 'assets',
     '/anomalies': 'anomalies', '/payroll/config': 'payroll_config',
+    '/announcements': 'announcements', '/grievances': 'grievances', '/notifications': 'notifications',
   };
 
   if (isLoading || !user) {
     return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#FAFBFE] z-[9999]">
+      <div className="fixed inset-0 flex flex-col items-center justify-center z-[9999]" style={{ background: 'var(--background-gradient)' }}>
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
             <img src="/hrms_logo1.png" alt="HRMS.Pro!" className="w-20 h-20 object-contain" />
             <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 blur-xl" />
           </div>
           <div className="flex flex-col items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-[#0F172A]">HRMS<span className="text-[#6366F1]">.Pro!</span></h1>
-            <p className="text-lg font-bold text-[#0F172A]">Setting your workspace in motion….</p>
+            <h1 className="text-2xl font-bold tracking-tight animate-brand-text">HRMS.Pro!</h1>
+            <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Setting your workspace in motion...</p>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#6366F1] animate-[bounce_1.2s_infinite]" />
               <span className="w-2 h-2 rounded-full bg-[#6366F1] animate-[bounce_1.2s_infinite_0.15s]" />
@@ -82,13 +87,14 @@ const DashboardLayout = () => {
 
   const getFilteredSidebarLinks = () => {
     if (!user) return [];
-    // Plan gating: admins/superadmins see modules included in their plan.
     const features = user.planFeatures;
-    const planAllows = (moduleId: string) =>
-      !features || !Array.isArray(features) || features.length === 0 || features.includes(moduleId);
-    // Admin & Superadmin see every module their plan includes
-    if (user.role === 'admin' || user.role === 'superadmin') {
-      return ALL_LINKS.filter(l => planAllows(routeToModule[l.path]));
+    const planAllows = (moduleId: string) => {
+      if (!features || !Array.isArray(features) || features.length === 0) return true;
+      if (features.includes('*') || features.includes('all')) return true;
+      return features.includes(moduleId);
+    };
+    if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'hr_admin' || user.role === 'hr_manager') {
+      return ALL_LINKS;
     }
     if (user.role === 'employee' && (!user.allowedModules || user.allowedModules.length === 0)) {
       return ALL_LINKS.filter(l =>
@@ -103,27 +109,26 @@ const DashboardLayout = () => {
   };
 
   return (
-    <div className="h-screen w-full bg-[#F1F5F9] flex">
+    <div className="h-screen w-full flex" style={{ background: 'var(--background)' }}>
       {/* Mobile Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm transition-opacity" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`
-          fixed lg:relative z-50 h-screen flex flex-col bg-white border-r border-gray-200
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
+        className="sidebar-transition fixed lg:relative z-50 h-screen flex flex-col border-r"
         style={{
           width: sidebarCollapsed ? 68 : 240,
+          backgroundColor: 'var(--sidebar-bg)',
+          borderColor: 'var(--sidebar-border)',
         }}
       >
         {/* Logo */}
-        <div className="flex items-center border-b border-gray-200 px-4 shrink-0 overflow-hidden" style={{ height: '60px' }}>
+        <div className="flex items-center px-4 shrink-0 overflow-hidden border-b" style={{ height: '60px', borderColor: 'var(--sidebar-border)' }}>
           <img src="/hrms_logo1.png" alt="HRMS.Pro!" className="w-10 h-10 shrink-0 object-cover object-center" />
           {!sidebarCollapsed && (
-            <span className="ml-3 font-bold text-xl text-gray-800 leading-tight whitespace-nowrap animate-brand-text">
+            <span className="ml-3 font-bold text-xl leading-tight whitespace-nowrap animate-brand-text sidebar-label">
               HRMS.Pro!
             </span>
           )}
@@ -136,32 +141,86 @@ const DashboardLayout = () => {
               key={link.path}
               to={link.path}
               className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium group
+                relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium group
+                transition-all duration-200 ease-smooth
                 ${isActive
-                  ? 'bg-[#EFF6FF] text-[#1C64F2]'
-                  : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'}
+                  ? ''
+                  : ''}
               `}
+              style={({ isActive }) => ({
+                backgroundColor: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
+                color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
+              })}
               title={sidebarCollapsed ? link.label : ''}
             >
-              <link.icon className="w-5 h-5 shrink-0" />
-              <span
-                className="whitespace-nowrap overflow-hidden"
-                style={{
-                  opacity: sidebarCollapsed ? 0 : 1,
-                  width: sidebarCollapsed ? 0 : 'auto',
-                  display: 'inline-block',
-                }}
-              >
-                {link.label}
-              </span>
+              {/* Active indicator bar */}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-gradient-to-b from-blue-500 to-indigo-500 transition-all duration-300"
+                    />
+                  )}
+                  <link.icon
+                    className="w-5 h-5 shrink-0 transition-colors duration-200"
+                    style={{ color: 'inherit' }}
+                  />
+                  <span
+                    className="whitespace-nowrap overflow-hidden sidebar-label"
+                    style={{
+                      opacity: sidebarCollapsed ? 0 : 1,
+                      width: sidebarCollapsed ? 0 : 'auto',
+                      display: 'inline-block',
+                    }}
+                  >
+                    {link.label}
+                  </span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
+        {/* User Section */}
+        {!sidebarCollapsed && (
+          <div className="px-3 pb-2">
+            <div
+              className="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
+              style={{
+                borderColor: 'var(--border-light)',
+                backgroundColor: 'var(--surface-secondary)',
+              }}
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
+                {(user?.fullName || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                  {user?.fullName || 'User'}
+                </p>
+                <p className="text-[10px] capitalize truncate" style={{ color: 'var(--text-tertiary)' }}>
+                  {user?.role || 'Admin'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Collapse Toggle */}
-        <div className="hidden lg:block p-2 border-t border-gray-200">
-          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-full flex items-center justify-center p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+        <div className="hidden lg:block p-2 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="w-full flex items-center justify-center p-2 rounded-lg transition-all duration-200"
+            style={{ color: 'var(--text-tertiary)' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = 'var(--hover-bg)';
+              e.currentTarget.style.color = 'var(--text-secondary)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-tertiary)';
+            }}
+          >
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
@@ -169,10 +228,7 @@ const DashboardLayout = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* Header */}
         <AppHeader onToggleSidebar={() => setSidebarOpen(true)} />
-
-        {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <Outlet />
         </main>

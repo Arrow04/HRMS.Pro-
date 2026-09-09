@@ -213,6 +213,17 @@ def export_employee_report(
         query = query.filter(Employee.company_id == companyId)
     employees = query.all()
 
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Employees",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["id", "firstName", "lastName", "email", "designation", "status", "phone"])
@@ -247,6 +258,18 @@ def export_attendance_report(
     writer.writerow(["id", "employeeId", "checkIn", "checkOut", "status", "workHours"])
     for a in query.all():
         writer.writerow([a.id, a.employee_id, a.check_in, a.check_out, a.status, a.work_hours])
+
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Attendance",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -277,6 +300,18 @@ def export_payroll_report(
     writer.writerow(["id", "employeeId", "month", "year", "grossSalary", "netSalary", "status"])
     for p in query.all():
         writer.writerow([p.id, p.employee_id, p.month, p.year, p.gross_salary, p.net_salary, p.status])
+
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Payroll",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -317,6 +352,18 @@ def export_leave_report(
     writer.writerow(["id", "employeeId", "leaveTypeId", "startDate", "endDate", "status", "reason"])
     for lv in query.all():
         writer.writerow([lv.id, lv.employee_id, lv.leave_type_id, lv.start_date, lv.end_date, lv.status, lv.reason])
+
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Leaves",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -347,6 +394,18 @@ def export_expense_report(
     writer.writerow(["id", "employeeId", "category", "amount", "status", "expenseDate"])
     for e in query.all():
         writer.writerow([e.id, e.employee_id, e.category, e.amount, e.status, e.expense_date])
+
+    log = ReportExecutionLog(
+        schedule_id=None,
+        report_name="Expenses",
+        status="completed",
+        format="csv",
+        execution_time=ist_now_naive(),
+        created_by=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),

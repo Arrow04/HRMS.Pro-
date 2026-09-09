@@ -54,6 +54,7 @@ const TABS = [
   { key: 'leaves', label: 'Leaves' },
   { key: 'expenses', label: 'Expenses' },
   { key: 'payroll', label: 'Payroll' },
+  { key: 'attendance', label: 'Attendance' },
 ];
 
 const parseList = (d) => {
@@ -118,6 +119,7 @@ const ApprovalsScreen = ({ navigation }) => {
   const [leaves, setLeaves] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [payroll, setPayroll] = useState([]);
+  const [corrections, setCorrections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -130,10 +132,11 @@ const ApprovalsScreen = ({ navigation }) => {
   const fetchData = useCallback(async () => {
     try {
       const year = new Date().getFullYear();
-      const [leavesRes, expRes, payrollRes] = await Promise.allSettled([
+      const [leavesRes, expRes, payrollRes, correctionsRes] = await Promise.allSettled([
         api.get('/leaves', { params: { status: 'pending' } }),
         api.get('/expenses', { params: { status: 'pending' } }),
         api.get('/payroll', { params: { year, limit: 500 } }),
+        api.get('/attendance/correction-requests', { params: { status: 'pending' } }),
       ]);
       if (leavesRes.status === 'fulfilled') {
         setLeaves(parseList(leavesRes.value.data));
@@ -144,6 +147,9 @@ const ApprovalsScreen = ({ navigation }) => {
       if (payrollRes.status === 'fulfilled') {
         const pending = parseList(payrollRes.value.data).filter((p) => p.status === 'pending_approval');
         setPayroll(pending);
+      }
+      if (correctionsRes.status === 'fulfilled') {
+        setCorrections(parseList(correctionsRes.value.data));
       }
     } catch (e) {
       console.error(e);
@@ -174,6 +180,11 @@ const ApprovalsScreen = ({ navigation }) => {
   const openPayroll = (item) => {
     setSelectedItem(item);
     setSelectedType('payroll');
+  };
+
+  const openCorrection = (item) => {
+    setSelectedItem(item);
+    setSelectedType('correction');
   };
 
   const handleLeaveAction = (action) => {
@@ -261,10 +272,40 @@ const ApprovalsScreen = ({ navigation }) => {
     );
   };
 
-  const totalPending = leaves.length + expenses.length + payroll.length;
+  const handleCorrectionAction = (action) => {
+    if (!selectedItem) return;
+    Alert.alert(
+      action === 'approve' ? 'Approve Correction' : 'Reject Correction',
+      `${action === 'approve' ? 'Approve' : 'Reject'} attendance correction for ${selectedItem.employeeName || 'employee'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: action === 'approve' ? 'Approve' : 'Reject',
+          style: action === 'reject' ? 'destructive' : 'default',
+          onPress: async () => {
+            setActing(true);
+            try {
+              const endpoint = action === 'approve'
+                ? `/attendance/correction-requests/${selectedItem.id}/approve`
+                : `/attendance/correction-requests/${selectedItem.id}/reject`;
+              await api.put(endpoint, { comments: '' });
+              Alert.alert('Done', `Correction ${action}d.`);
+              closeModal();
+              fetchData();
+            } catch (e) {
+              Alert.alert('Error', e.response?.data?.detail || 'Action failed.');
+            } finally {
+              setActing(false);
+            }
+          } },
+      ],
+    );
+  };
+
+  const totalPending = leaves.length + expenses.length + payroll.length + corrections.length;
   const payrollTotal = payroll.reduce((s, p) => s + payrollNet(p), 0);
 
-  const tabCounts = { leaves: leaves.length, expenses: expenses.length, payroll: payroll.length };
+  const tabCounts = { leaves: leaves.length, expenses: expenses.length, payroll: payroll.length, attendance: corrections.length };
   const tabLabels = TABS.map((t) => ({
     ...t,
     label: `${t.label} (${tabCounts[t.key]})` }));
@@ -293,10 +334,18 @@ const ApprovalsScreen = ({ navigation }) => {
     return name.includes(q) || period.includes(q);
   });
 
+  const filteredCorrections = corrections.filter((c) => {
+    if (!q) return true;
+    const name = (c.employeeName || '').toLowerCase();
+    const reason = (c.reason || '').toLowerCase();
+    return name.includes(q) || reason.includes(q);
+  });
+
   const runAction = (action) => {
     if (selectedType === 'leave') handleLeaveAction(action);
     else if (selectedType === 'expense') handleExpenseAction(action);
     else if (selectedType === 'payroll') handlePayrollAction(action);
+    else if (selectedType === 'correction') handleCorrectionAction(action);
   };
 
   const approvalFooter = (
@@ -330,14 +379,14 @@ const ApprovalsScreen = ({ navigation }) => {
         <AdminHeader
           navigation={navigation}
           title="Approvals"
-          subtitle="Review pending leave, expense & payroll requests"
+          subtitle="Review pending leave, expense, payroll & attendance requests"
         />
         <View style={adminStyles.body}>
           <AdminStatRow stats={[
             { val: totalPending, label: 'Total Pending', color: '#2563EB', bg: '#DBEAFE' },
             { val: leaves.length, label: 'Leaves', color: '#7C3AED', bg: '#EDE9FE' },
             { val: expenses.length, label: 'Expenses', color: '#D97706', bg: '#FEF3C7' },
-            { val: payroll.length, label: 'Payroll', color: '#059669', bg: '#DCFCE7' },
+            { val: corrections.length, label: 'Attendance', color: '#3B82F6', bg: '#DBEAFE' },
           ]} />
           {payrollTotal > 0 && (
             <Text style={localStyles.payrollHint}>
@@ -407,6 +456,30 @@ const ApprovalsScreen = ({ navigation }) => {
                 );
               })
             )
+          ) : activeTab === 'attendance' ? (
+            filteredCorrections.length === 0 ? (
+              <EmptyState icon="✅" title="No pending corrections" message="All attendance correction requests have been reviewed." />
+            ) : (
+              filteredCorrections.map((item) => (
+                <AdminListCard key={item.id} onPress={() => openCorrection(item)}>
+                  <View style={[localStyles.expIcon, { backgroundColor: '#3B82F618' }]}>
+                    <Ionicons name="construct-outline" size={22} color="#3B82F6" />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={adminStyles.listTitle}>{item.employeeName || 'Employee'}</Text>
+                    <Text style={adminStyles.listSub}>Request date: {formatDate(item.requestDate)}</Text>
+                    <Text style={adminStyles.listSub}>
+                      {item.requestedCheckIn ? `In: ${new Date(item.requestedCheckIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                      {item.requestedCheckOut ? `  Out: ${new Date(item.requestedCheckOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                    <Badge status={item.status || 'pending'} size="sm" />
+                    <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                  </View>
+                </AdminListCard>
+              ))
+            )
           ) : filteredPayroll.length === 0 ? (
             <EmptyState icon="✅" title="No pending payroll" message="All payroll records are approved." />
           ) : (
@@ -441,7 +514,8 @@ const ApprovalsScreen = ({ navigation }) => {
         detailTitle={
           selectedType === 'leave' ? 'Leave Request'
             : selectedType === 'expense' ? 'Expense Claim'
-              : 'Payroll Approval'
+              : selectedType === 'correction' ? 'Attendance Correction'
+                : 'Payroll Approval'
         }
         onClose={closeModal}
         showEdit={false}
@@ -521,6 +595,27 @@ const ApprovalsScreen = ({ navigation }) => {
             >
               <Text style={localStyles.openPayrollText}>Open Payroll module →</Text>
             </TouchableOpacity>
+          </>
+        ) : selectedItem && selectedType === 'correction' ? (
+          <>
+            <View style={localStyles.detailHero}>
+              <View style={[localStyles.expIconLg, { backgroundColor: '#3B82F618' }]}>
+                <Ionicons name="construct-outline" size={28} color="#3B82F6" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={localStyles.detailName}>{selectedItem.employeeName || 'Employee'}</Text>
+                <Text style={adminStyles.listSub}>Attendance Correction Request</Text>
+                <Badge status={selectedItem.status || 'pending'} size="sm" />
+              </View>
+            </View>
+            <AdminDetailRows rows={[
+              { label: 'Request Date', value: formatDate(selectedItem.requestDate) },
+              { label: 'Requested In', value: selectedItem.requestedCheckIn ? new Date(selectedItem.requestedCheckIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—' },
+              { label: 'Requested Out', value: selectedItem.requestedCheckOut ? new Date(selectedItem.requestedCheckOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—' },
+              { label: 'Requested Status', value: selectedItem.requestedStatus || '—' },
+              { label: 'Reason', value: selectedItem.reason || '—', numberOfLines: 4 },
+              { label: 'Submitted', value: formatDate(selectedItem.createdAt) },
+            ]} />
           </>
         ) : null}
       />

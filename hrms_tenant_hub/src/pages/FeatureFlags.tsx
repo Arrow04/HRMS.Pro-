@@ -58,93 +58,101 @@ export default function FeatureFlags() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6 animate-page-enter">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Feature Flags</h1>
-          <p className="text-sm text-gray-500 mt-1">Toggle features globally or per-tenant</p>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-heading)' }}>Feature Flags</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Toggle features globally or per-tenant</p>
         </div>
-        <button onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" /> Add Flag
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="table-container">
         {isLoading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Flag</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Description</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Scope</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {flags?.map((f: any) => (
-                <tr key={f.id} className="hover:bg-gray-50/50">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <Flag className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-900">{f.flag}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">{f.description || '-'}</td>
-                  <td className="px-4 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${f.enabled ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
-                      {f.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-gray-500">{f.organization_id ? `Org #${f.organization_id}` : 'Global'}</td>
-                  <td className="px-4 py-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button onClick={() => toggleMut.mutate({ id: f.id, enabled: f.enabled })}
-                        className={`p-2 rounded-lg ${f.enabled ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                        {f.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-                      </button>
-                      <button onClick={() => openEdit(f)} className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100">
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => setDeleteTarget(f)} className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th>Flag</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th>Scope</th>
+                  <th className="text-right">Actions</th>
                 </tr>
-              ))}
-              {(!flags || flags.length === 0) && (
-                <tr><td colSpan={5} className="text-center py-16 text-sm text-gray-400">No feature flags configured</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {flags?.map((f: any) => (
+                  <tr key={f.id}>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <Flag className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                        <span className="text-sm font-medium" style={{ color: 'var(--text-heading)' }}>{f.flag}</span>
+                      </div>
+                    </td>
+                    <td className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f.description || '-'}</td>
+                    <td>
+                      <span className={`status-badge ${f.enabled ? 'active' : 'draft'}`}>
+                        {f.enabled ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f.organization_id ? `Org #${f.organization_id}` : 'Global'}</td>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => toggleMut.mutate({ id: f.id, enabled: f.enabled })}
+                          className="p-2 rounded-lg transition-colors"
+                          style={{
+                            background: f.enabled ? 'var(--success-bg)' : 'var(--muted-bg)',
+                            color: f.enabled ? 'var(--success-text)' : 'var(--text-tertiary)',
+                          }}>
+                          {f.enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                        </button>
+                        <button onClick={() => openEdit(f)} className="p-2 rounded-lg transition-colors"
+                          style={{ background: 'rgba(59,130,246,0.08)', color: '#3B82F6' }}>
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setDeleteTarget(f)} className="p-2 rounded-lg transition-colors"
+                          style={{ background: 'var(--danger-bg)', color: 'var(--danger-text)' }}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(!flags || flags.length === 0) && (
+                  <tr><td colSpan={5} className="text-center py-16 text-sm" style={{ color: 'var(--text-tertiary)' }}>No feature flags configured</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold mb-4">{editFlag ? 'Edit Feature Flag' : 'Add Feature Flag'}</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card card-body w-full max-w-md" style={{ boxShadow: 'var(--shadow-elevated)' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-heading)' }}>{editFlag ? 'Edit Feature Flag' : 'Add Feature Flag'}</h3>
             <div className="space-y-4">
               <input value={form.flag} onChange={e => setForm(f => ({ ...f, flag: e.target.value }))} placeholder="Flag name"
                 disabled={!!editFlag}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50" />
+                className="w-full px-3 py-2 rounded-lg text-sm disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-primary)' }} />
               <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Description"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                style={{ background: 'var(--input-bg)', border: '1px solid var(--input-border)', color: 'var(--text-primary)' }} />
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={form.enabled} onChange={e => setForm(f => ({ ...f, enabled: e.target.checked }))} />
-                <span className="text-sm">Enabled</span>
+                <span className="text-sm" style={{ color: 'var(--text-body)' }}>Enabled</span>
               </label>
               <div className="flex gap-3">
-                <button onClick={save}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+                <button onClick={save} className="flex-1 btn-primary">
                   {(createMut.isPending || updateMut.isPending) ? 'Saving...' : editFlag ? 'Update' : 'Create'}
                 </button>
                 <button onClick={() => { setShowForm(false); setEditFlag(null); }}
-                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200">Cancel</button>
+                  className="flex-1 btn-secondary">Cancel</button>
               </div>
             </div>
           </div>
@@ -152,19 +160,19 @@ export default function FeatureFlags() {
       )}
 
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Delete Feature Flag?</h3>
-            <p className="text-sm text-gray-500 mt-2">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="card card-body w-full max-w-md" style={{ boxShadow: 'var(--shadow-elevated)' }}>
+            <h3 className="text-lg font-semibold" style={{ color: 'var(--text-heading)' }}>Delete Feature Flag?</h3>
+            <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
               This will permanently delete the <span className="font-semibold">{deleteTarget.flag}</span> flag.
             </p>
             <div className="flex gap-3 pt-5">
               <button onClick={() => deleteMut.mutate(deleteTarget.id)}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700">
+                className="flex-1 btn-danger">
                 {deleteMut.isPending ? 'Deleting...' : 'Delete Flag'}
               </button>
               <button onClick={() => setDeleteTarget(null)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200">Cancel</button>
+                className="flex-1 btn-secondary">Cancel</button>
             </div>
           </div>
         </div>

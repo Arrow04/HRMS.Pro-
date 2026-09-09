@@ -276,6 +276,7 @@ class Employee(Base):
     designation = Column(String(255))
     designation_id = Column(Integer, ForeignKey('designations.id'), nullable=True, index=True)
     department_id = Column(Integer, ForeignKey('departments.id'), nullable=True, index=True)
+    reporting_manager_id = Column(Integer, ForeignKey('employees.id'), nullable=True, index=True)
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     # Identity details
@@ -444,6 +445,7 @@ class Employee(Base):
     department = relationship('Department', foreign_keys='[Employee.department_id]', overlaps='employees')
     designation_obj = relationship('Designation', foreign_keys='[Employee.designation_id]')
     company = relationship('Company', foreign_keys='[Employee.company_id]', lazy=True)
+    reporting_manager = relationship('Employee', remote_side='Employee.id', foreign_keys='[Employee.reporting_manager_id]', backref='direct_reports', lazy=True)
     rosters = relationship('DutyRoster', back_populates='employee', lazy=True)
     
     def __repr__(self):
@@ -743,6 +745,50 @@ class AttendanceAuditLog(Base):
 
     def __repr__(self):
         return f'<AttendanceAuditLog {self.id}>'
+
+
+class AttendanceCorrectionRequest(Base):
+    """Attendance correction request model for employee -> admin approval workflow"""
+    __tablename__ = 'attendance_correction_requests'
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    attendance_id = Column(Integer, ForeignKey('attendances.id'), nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), index=True)
+    branch_id = Column(Integer, ForeignKey('branches.id'), index=True)
+    department_id = Column(Integer, ForeignKey('departments.id'), index=True)
+
+    # Requested values
+    request_date = Column(DateTime, nullable=False)
+    requested_check_in = Column(DateTime)
+    requested_check_out = Column(DateTime)
+    requested_status = Column(String(50))
+    requested_work_hours = Column(Float)
+    reason = Column(Text, nullable=False)
+
+    # Review fields
+    status = Column(String(50), default='pending', index=True)  # pending, approved, rejected
+    reviewed_by = Column(Integer, ForeignKey('users.id'), index=True)
+    reviewed_at = Column(DateTime)
+    review_comments = Column(Text)
+
+    # Created attendance after approval
+    created_attendance_id = Column(Integer, ForeignKey('attendances.id'), nullable=True, index=True)
+
+    # System fields
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    # Relationships
+    employee = relationship('Employee', backref='attendance_correction_requests')
+    reviewer = relationship('User', backref='reviewed_attendance_corrections')
+    original_attendance = relationship('Attendance', foreign_keys=[attendance_id], backref='correction_requests')
+    created_attendance = relationship('Attendance', foreign_keys=[created_attendance_id])
+
+    def __repr__(self):
+        return f'<AttendanceCorrectionRequest {self.id} emp={self.employee_id} status={self.status}>'
 
 
 class Expense(Base):
@@ -2767,7 +2813,7 @@ class ReportExecutionLog(Base):
     __tablename__ = "report_execution_logs"
     
     id = Column(Integer, primary_key=True, index=True)
-    schedule_id = Column(String(36), ForeignKey("report_schedules.id"), nullable=False, index=True)
+    schedule_id = Column(String(36), ForeignKey("report_schedules.id"), nullable=True, index=True)
     report_name = Column(String(255), nullable=False)
     status = Column(String(20), nullable=False, index=True)  # success, failed, in_progress
     format = Column(String(20))  # PDF, CSV, Excel
@@ -3092,3 +3138,499 @@ class CompanyPolicy(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True, index=True)
+
+
+class AIAuditLog(Base):
+    """Audit log for HRMS AI operations"""
+    __tablename__ = 'ai_audit_logs'
+
+    id = Column(String(36), primary_key=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    severity = Column(String(20), default='info', index=True)
+    message = Column(Text, nullable=True)
+    details = Column(JSON, nullable=True)
+    conversation_id = Column(String(255), nullable=True, index=True)
+    action_id = Column(String(255), nullable=True, index=True)
+    provider = Column(String(100), nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    tokens_used = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+    meta_data = Column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index('idx_ai_audit_user_ts', 'user_id', 'timestamp'),
+        Index('idx_ai_audit_org_ts', 'organization_id', 'timestamp'),
+        Index('idx_ai_audit_event_ts', 'event_type', 'timestamp'),
+    )
+
+
+class AIEscalation(Base):
+    """AI escalation records"""
+    __tablename__ = 'ai_escalations'
+
+    id = Column(String(36), primary_key=True)
+    conversation_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    reason = Column(String(100), nullable=False, index=True)
+    priority = Column(String(20), nullable=False, index=True)
+    status = Column(String(50), default='pending', index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    context = Column(JSON, nullable=True)
+    assigned_to = Column(String(255), nullable=True, index=True)
+    assigned_to_role = Column(String(100), nullable=True)
+    sla_deadline = Column(DateTime, nullable=True, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolution = Column(Text, nullable=True)
+    resolved_by = Column(String(255), nullable=True)
+    meta_data = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_ai_esc_org_status', 'organization_id', 'status'),
+        Index('idx_ai_esc_priority_status', 'priority', 'status'),
+    )
+
+
+class JobPortalCompany(Base):
+    """Public company profile on the job portal"""
+    __tablename__ = 'job_portal_companies'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), unique=True, index=True)
+    description = Column(Text)
+    logo_url = Column(String(500))
+    cover_image_url = Column(String(500))
+    website = Column(String(255))
+    industry = Column(String(100), index=True)
+    company_size = Column(String(50))
+    headquarters = Column(String(255))
+    founded_year = Column(Integer)
+    email = Column(String(255), index=True)
+    phone = Column(String(50))
+    address = Column(Text)
+    city = Column(String(100), index=True)
+    state = Column(String(100))
+    country = Column(String(100), default='India', index=True)
+    pincode = Column(String(10))
+    gstin = Column(String(20))
+    pan = Column(String(20))
+    social_links = Column(JSON, default=dict)
+    is_verified = Column(Boolean, default=False, index=True)
+    is_featured = Column(Boolean, default=False, index=True)
+    status = Column(String(50), default='active', index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalCompany {self.name}>'
+
+
+class JobPortalUser(Base):
+    """Extended user profile for job portal"""
+    __tablename__ = 'job_portal_users'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    phone = Column(String(50), nullable=True, index=True)
+    full_name = Column(String(255), nullable=False, index=True)
+    profile_picture = Column(String(500))
+    headline = Column(String(255))
+    summary = Column(Text)
+    current_designation = Column(String(255))
+    current_company = Column(String(255))
+    location = Column(String(255), index=True)
+    city = Column(String(100), index=True)
+    state = Column(String(100))
+    country = Column(String(100), default='India', index=True)
+    pincode = Column(String(10))
+    date_of_birth = Column(Date)
+    gender = Column(String(20))
+    marital_status = Column(String(20))
+    nationality = Column(String(100))
+    languages = Column(JSON, default=list)
+    social_links = Column(JSON, default=dict)
+    resume_url = Column(String(500))
+    portfolio_url = Column(String(500))
+    linkedin_url = Column(String(500))
+    github_url = Column(String(500))
+    expected_salary_min = Column(Integer)
+    expected_salary_max = Column(Integer)
+    current_salary = Column(Integer)
+    notice_period = Column(String(50))
+    employment_type_preference = Column(String(100))
+    remote_preference = Column(String(50))
+    skills = Column(JSON, default=list)
+    experience_years = Column(Integer, default=0)
+    profile_type = Column(String(20), default='experienced', index=True)
+    hourly_rate_min = Column(Integer)
+    hourly_rate_max = Column(Integer)
+    availability = Column(String(100))
+    services = Column(JSON, default=list)
+    education = Column(JSON, default=list)
+    work_experience = Column(JSON, default=list)
+    certifications = Column(JSON, default=list)
+    projects = Column(JSON, default=list)
+    achievements = Column(JSON, default=list)
+    references = Column(JSON, default=list)
+    is_open_to_opportunities = Column(Boolean, default=True, index=True)
+    is_verified = Column(Boolean, default=False, index=True)
+    is_featured = Column(Boolean, default=False, index=True)
+    profile_visibility = Column(String(20), default='public')
+    status = Column(String(50), default='active', index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalUser {self.full_name}>'
+
+
+class JobPortalJob(Base):
+    """Public job posting on the job portal"""
+    __tablename__ = 'job_portal_jobs'
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), unique=True, index=True)
+    description = Column(Text, nullable=False)
+    responsibilities = Column(Text)
+    requirements = Column(Text)
+    benefits = Column(Text)
+    company_id = Column(Integer, ForeignKey('job_portal_companies.id'), nullable=False, index=True)
+    posted_by = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    department = Column(String(100), index=True)
+    role = Column(String(100), index=True)
+    employment_type = Column(String(50), default='full_time', index=True)
+    work_mode = Column(String(50), default='on_site', index=True)
+    experience_min = Column(Integer, default=0)
+    experience_max = Column(Integer)
+    salary_min = Column(Integer)
+    salary_max = Column(Integer)
+    salary_currency = Column(String(10), default='INR')
+    salary_display = Column(String(50), default='range')
+    education_required = Column(String(255))
+    skills_required = Column(JSON, default=list)
+    languages_required = Column(JSON, default=list)
+    certifications_required = Column(JSON, default=list)
+    location = Column(String(255), index=True)
+    city = Column(String(100), index=True)
+    state = Column(String(100), index=True)
+    country = Column(String(100), default='India', index=True)
+    pincode = Column(String(10))
+    remote_friendly = Column(Boolean, default=False, index=True)
+    hybrid_friendly = Column(Boolean, default=False)
+    flexible_hours = Column(Boolean, default=False)
+    travel_required = Column(Boolean, default=False)
+    vacancy_count = Column(Integer, default=1)
+    application_count = Column(Integer, default=0, index=True)
+    view_count = Column(Integer, default=0)
+    save_count = Column(Integer, default=0)
+    is_featured = Column(Boolean, default=False, index=True)
+    is_urgent = Column(Boolean, default=False, index=True)
+    is_remote = Column(Boolean, default=False, index=True)
+    is_walkin = Column(Boolean, default=False)
+    walkin_date = Column(Date)
+    walkin_time = Column(String(50))
+    walkin_venue = Column(String(255))
+    application_deadline = Column(DateTime, index=True)
+    published_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expiry_date = Column(DateTime, index=True)
+    status = Column(String(50), default='open', index=True)
+    meta_title = Column(String(255))
+    meta_description = Column(Text)
+    tags = Column(JSON, default=list)
+    custom_fields = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    company = relationship('JobPortalCompany', backref='jobs')
+
+    def __repr__(self):
+        return f'<JobPortalJob {self.title}>'
+
+
+class JobPortalApplication(Base):
+    """Job application from job seeker"""
+    __tablename__ = 'job_portal_applications'
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey('job_portal_jobs.id'), nullable=False, index=True)
+    applicant_id = Column(Integer, ForeignKey('job_portal_users.id'), nullable=True, index=True)
+    cover_letter = Column(Text)
+    resume_url = Column(String(500))
+    expected_salary = Column(Integer)
+    notice_period = Column(String(50))
+    current_company = Column(String(255))
+    current_designation = Column(String(255))
+    experience_years = Column(Integer)
+    status = Column(String(50), default='applied', index=True)
+    is_shortlisted = Column(Boolean, default=False, index=True)
+    is_rejected = Column(Boolean, default=False, index=True)
+    is_hired = Column(Boolean, default=False, index=True)
+    applied_at = Column(DateTime, default=datetime.utcnow, index=True)
+    shortlisted_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    hired_at = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    rating = Column(Integer)
+    feedback = Column(Text)
+    custom_fields = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    job = relationship('JobPortalJob', backref='applications')
+    applicant = relationship('JobPortalUser', backref='applications')
+
+    def __repr__(self):
+        return f'<JobPortalApplication {self.id}>'
+
+
+class JobPortalInterview(Base):
+    """Interview scheduled for a job application"""
+    __tablename__ = 'job_portal_interviews'
+
+    id = Column(Integer, primary_key=True)
+    application_id = Column(Integer, ForeignKey('job_portal_applications.id'), nullable=False, index=True)
+    interviewer_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    interview_type = Column(String(50), default='video', index=True)
+    interview_round = Column(Integer, default=1)
+    scheduled_at = Column(DateTime, nullable=False, index=True)
+    duration_minutes = Column(Integer, default=60)
+    location = Column(String(255))
+    meeting_link = Column(String(500))
+    status = Column(String(50), default='scheduled', index=True)
+    feedback = Column(Text)
+    rating = Column(Integer)
+    technical_score = Column(Integer)
+    communication_score = Column(Integer)
+    overall_score = Column(Integer)
+    interviewer_notes = Column(Text)
+    next_steps = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    application = relationship('JobPortalApplication', backref='interviews')
+
+    def __repr__(self):
+        return f'<JobPortalInterview {self.id}>'
+
+
+class JobPortalBlog(Base):
+    """Community blog posts"""
+    __tablename__ = 'job_portal_blogs'
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), unique=True, index=True)
+    content = Column(Text, nullable=False)
+    excerpt = Column(Text)
+    featured_image = Column(String(500))
+    author_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    author_name = Column(String(255))
+    category = Column(String(100), index=True)
+    tags = Column(JSON, default=list)
+    view_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    comment_count = Column(Integer, default=0)
+    is_published = Column(Boolean, default=False, index=True)
+    is_featured = Column(Boolean, default=False, index=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalBlog {self.title}>'
+
+
+class JobPortalComment(Base):
+    """Comments on blogs and jobs"""
+    __tablename__ = 'job_portal_comments'
+
+    id = Column(Integer, primary_key=True)
+    commentable_type = Column(String(50), nullable=False, index=True)
+    commentable_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    user_name = Column(String(255))
+    user_email = Column(String(255))
+    content = Column(Text, nullable=False)
+    parent_id = Column(Integer, ForeignKey('job_portal_comments.id'), nullable=True, index=True)
+    is_approved = Column(Boolean, default=True, index=True)
+    like_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalComment {self.id}>'
+
+
+class JobPortalSavedJob(Base):
+    """Saved/bookmarked jobs by users"""
+    __tablename__ = 'job_portal_saved_jobs'
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(Integer, ForeignKey('job_portal_jobs.id'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('idx_saved_job_user_job', 'user_id', 'job_id', unique=True),
+    )
+
+    def __repr__(self):
+        return f'<JobPortalSavedJob {self.id}>'
+
+
+class JobPortalSkill(Base):
+    """Skills catalog for job seekers"""
+    __tablename__ = 'job_portal_skills'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    category = Column(String(100), index=True)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<JobPortalSkill {self.name}>'
+
+
+class JobPortalNotification(Base):
+    """Notifications for job portal users"""
+    __tablename__ = 'job_portal_notifications'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    type = Column(String(50), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text)
+    data = Column(JSON, default=dict)
+    is_read = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalNotification {self.id}>'
+
+
+class JobPortalReport(Base):
+    """Reports for jobs, companies, users, or comments"""
+    __tablename__ = 'job_portal_reports'
+
+    id = Column(Integer, primary_key=True)
+    reporter_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    reporter_name = Column(String(255))
+    reporter_email = Column(String(255))
+    reportable_type = Column(String(50), nullable=False, index=True)
+    reportable_id = Column(Integer, nullable=False, index=True)
+    reason = Column(String(100), nullable=False, index=True)
+    description = Column(Text)
+    evidence_url = Column(String(500))
+    status = Column(String(50), default='pending', index=True)
+    reviewed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    resolution = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalReport {self.id}>'
+
+
+class JobPortalVerification(Base):
+    """User/company verification records"""
+    __tablename__ = 'job_portal_verifications'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('job_portal_companies.id'), nullable=True, index=True)
+    verification_type = Column(String(50), nullable=False, index=True)
+    status = Column(String(50), default='pending', index=True)
+    document_type = Column(String(100))
+    document_url = Column(String(500))
+    document_number = Column(String(100))
+    verified_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<JobPortalVerification {self.id}>'
+
+
+class JobPortalScamAlert(Base):
+    """Public scam warnings"""
+    __tablename__ = 'job_portal_scam_alerts'
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    alert_type = Column(String(50), nullable=False, index=True)
+    company_name = Column(String(255), nullable=True, index=True)
+    website = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True, index=True)
+    phone = Column(String(50), nullable=True, index=True)
+    reported_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    is_verified = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalScamAlert {self.id}>'
+
+
+class JobPortalBlacklist(Base):
+    """Blacklisted entities"""
+    __tablename__ = 'job_portal_blacklist'
+
+    id = Column(Integer, primary_key=True)
+    entity_type = Column(String(50), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    entity_name = Column(String(255), nullable=False)
+    entity_email = Column(String(255), nullable=True, index=True)
+    entity_phone = Column(String(50), nullable=True, index=True)
+    reason = Column(String(255), nullable=False)
+    description = Column(Text)
+    blacklisted_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    is_permanent = Column(Boolean, default=False, index=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalBlacklist {self.id}>'
+
+class JobPortalAlert(Base):
+    """Saved-search job alerts for seekers (email-based, no login required)"""
+    __tablename__ = 'job_portal_alerts'
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), nullable=False, index=True)
+    search = Column(String(255), nullable=True)
+    location = Column(String(255), nullable=True)
+    remote_only = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True, index=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    def __repr__(self):
+        return f'<JobPortalAlert {self.email} {self.search}>'
