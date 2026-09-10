@@ -950,7 +950,8 @@ const Letters = () => {
   if (!mounted) return <PageSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-[var(--background)] animate-page-enter">
+      <div className="space-y-6">
       <PageHero
         title="Letters"
         subtitle="Offer, appointment, appraisal, relieving & more — generated in one click"
@@ -979,7 +980,7 @@ const Letters = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         <div className="xl:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">1 · Choose template</h3>
             <div className="space-y-4 max-h-[52vh] overflow-auto pr-1">
               {TEMPLATE_GROUPS.map((g) => (
@@ -1011,7 +1012,7 @@ const Letters = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">2 · Letterhead</h3>
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1064,7 +1065,7 @@ const Letters = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">3 · Pick employee</h3>
             <div className="relative" ref={pickerRef}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1141,7 +1142,7 @@ const Letters = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">4 · Letter details</h3>
             <div className="space-y-3">
               {template.fields.filter((fd) => fd.key !== 'designation' && fd.key !== 'department').map((fd) => (
@@ -1176,7 +1177,7 @@ const Letters = () => {
 
         </div>
 
-        <div className="xl:col-span-3">
+        <div className="xl:col-span-3 animate-in fade-in slide-in-from-right-4" style={{ animationDelay: '200ms' }}>
           <div className="sticky top-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-[var(--text-primary)]">Live preview</h3>
@@ -1237,6 +1238,7 @@ const Letters = () => {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 };
