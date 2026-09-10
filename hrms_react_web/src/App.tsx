@@ -17,6 +17,7 @@ import AuthLayout from './layouts/AuthLayout';
 // Components
 import RoleRouter from './components/RoleRouter';
 import ErrorBoundary from './components/ErrorBoundary';
+import CommandPalette from './components/CommandPalette';
 
 // Lazy loaded pages
 const Login = lazy(() => import('./pages/Login'));
@@ -153,6 +154,7 @@ function App() {
           </ErrorBoundary>
         </Suspense>
        <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff' } }} />
+       <CommandPalette />
       </BrowserRouter>
     );
   }

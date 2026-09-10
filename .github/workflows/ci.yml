@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, hrmsnew]
   pull_request:
-    branches: [main]
+    branches: [main, hrmsnew]
 
 jobs:
   backend:
@@ -35,6 +35,7 @@ jobs:
           cache-dependency-path: hrms_backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: pip install pytest pytest-cov httpx
+      - run: alembic check
       - run: pytest --cov=. --cov-report=xml -v
         env:
           DATABASE_URL: postgresql://hrms_user:hrms_password@localhost:5433/hrms_test
@@ -59,6 +60,24 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck || true
+      - run: npm run build
+
+  hubs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [hrms_tenant_hub, hrms_job_portal]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      - run: npm ci
       - run: npm run build
 
   lint:

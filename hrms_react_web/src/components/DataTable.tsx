@@ -212,7 +212,7 @@ const DataTable = <T,>({
     const pages: number[] = [];
     const window = 5;
     let start = Math.max(1, safePage - Math.floor(window / 2));
-    let end = Math.min(totalPages, start + window - 1);
+    const end = Math.min(totalPages, start + window - 1);
     start = Math.max(1, end - window + 1);
     for (let i = start; i <= end; i++) pages.push(i);
     return pages;
@@ -246,7 +246,7 @@ const DataTable = <T,>({
   const handleExport = (rows: T[], suffix = '') => {
     const csvRows = rows.map((row) => {
       return visibleColumns.map((col) => {
-        let val: unknown = col.render
+        const val: unknown = col.render
           ? (row as Record<string, unknown>)[col.key]
           : (row as Record<string, unknown>)[col.key];
         if (val === null || val === undefined) return '';

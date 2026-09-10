@@ -30,12 +30,19 @@ def _user_name(db: Session, user_id) -> Optional[str]:
     return (u.full_name or u.email or f"User #{u.id}") or None
 
 
-def _serialize(ticket: SupportTicket, db: Session) -> dict:
-    employee_name = None
-    if ticket.employee_id:
-        emp = db.query(Employee).filter(Employee.id == ticket.employee_id).first()
-        if emp:
-            employee_name = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+def _serialize(ticket: SupportTicket, db: Session, emp_map=None, user_map=None) -> dict:
+    if emp_map is None:
+        employee_name = None
+        if ticket.employee_id:
+            emp = db.query(Employee).filter(Employee.id == ticket.employee_id).first()
+            if emp:
+                employee_name = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+    else:
+        employee_name = emp_map.get(ticket.employee_id)
+    if user_map is None:
+        assigned_name = _user_name(db, ticket.assigned_to)
+    else:
+        assigned_name = user_map.get(ticket.assigned_to)
     return {
         "id": ticket.id,
         "ticket_no": ticket.ticket_no,
@@ -47,7 +54,7 @@ def _serialize(ticket: SupportTicket, db: Session) -> dict:
         "employeeId": ticket.employee_id,
         "employeeName": employee_name,
         "assignedTo": ticket.assigned_to,
-        "assignedToName": _user_name(db, ticket.assigned_to),
+        "assignedToName": assigned_name,
         "resolutionNotes": ticket.resolution_notes,
         "resolvedAt": ticket.resolved_at.isoformat() if ticket.resolved_at else None,
         "createdAt": ticket.created_at.isoformat() if ticket.created_at else None,
@@ -77,7 +84,18 @@ def list_tickets(
     if category:
         query = query.filter(SupportTicket.category == category)
     tickets = query.order_by(SupportTicket.created_at.desc()).limit(500).all()
-    return [_serialize(t, db) for t in tickets]
+    # Batch related names in 2 queries (no per-row N+1).
+    emp_ids = {t.employee_id for t in tickets if t.employee_id}
+    user_ids = {t.assigned_to for t in tickets if t.assigned_to}
+    emp_map = {}
+    if emp_ids:
+        for emp in db.query(Employee).filter(Employee.id.in_(emp_ids)).all():
+            emp_map[emp.id] = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+    user_map = {}
+    if user_ids:
+        for u in db.query(User).filter(User.id.in_(user_ids)).all():
+            user_map[u.id] = (u.full_name or u.email or f"User #{u.id}") or None
+    return [_serialize(t, db, emp_map, user_map) for t in tickets]
 
 
 @router.post("/api/helpdesk/tickets", tags=["Helpdesk"])

@@ -27,12 +27,19 @@ def _user_name(db: Session, user_id) -> Optional[str]:
     return (u.full_name or u.email or f"User #{u.id}") or None
 
 
-def _serialize(grievance: Grievance, db: Session) -> dict:
-    employee_name = None
-    if grievance.employee_id:
-        emp = db.query(Employee).filter(Employee.id == grievance.employee_id).first()
-        if emp:
-            employee_name = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+def _serialize(grievance: Grievance, db: Session, emp_map=None, user_map=None) -> dict:
+    if emp_map is None:
+        employee_name = None
+        if grievance.employee_id:
+            emp = db.query(Employee).filter(Employee.id == grievance.employee_id).first()
+            if emp:
+                employee_name = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+    else:
+        employee_name = emp_map.get(grievance.employee_id)
+    if user_map is None:
+        assigned_name = _user_name(db, grievance.assigned_to)
+    else:
+        assigned_name = user_map.get(grievance.assigned_to)
     return {
         "id": grievance.id,
         "subject": grievance.subject,
@@ -43,7 +50,7 @@ def _serialize(grievance: Grievance, db: Session) -> dict:
         "employeeId": grievance.employee_id,
         "employeeName": employee_name,
         "assignedTo": grievance.assigned_to,
-        "assignedToName": _user_name(db, grievance.assigned_to),
+        "assignedToName": assigned_name,
         "resolutionNotes": grievance.resolution_notes,
         "resolvedAt": grievance.resolved_at.isoformat() if grievance.resolved_at else None,
         "createdAt": grievance.created_at.isoformat() if grievance.created_at else None,
@@ -66,7 +73,18 @@ def get_grievances(
     if status:
         query = query.filter(Grievance.status == status)
     grievances = query.order_by(Grievance.created_at.desc()).limit(500).all()
-    return [_serialize(g, db) for g in grievances]
+    # Batch related names in 2 queries (no per-row N+1).
+    emp_ids = {g.employee_id for g in grievances if g.employee_id}
+    user_ids = {g.assigned_to for g in grievances if g.assigned_to}
+    emp_map = {}
+    if emp_ids:
+        for emp in db.query(Employee).filter(Employee.id.in_(emp_ids)).all():
+            emp_map[emp.id] = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+    user_map = {}
+    if user_ids:
+        for u in db.query(User).filter(User.id.in_(user_ids)).all():
+            user_map[u.id] = (u.full_name or u.email or f"User #{u.id}") or None
+    return [_serialize(g, db, emp_map, user_map) for g in grievances]
 
 
 @router.post("/api/grievances", tags=["Grievances"])
