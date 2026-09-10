@@ -2,6 +2,7 @@
 HRMS AI Escalation System
 Automatic and manual escalation to human HR representatives
 """
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -198,9 +199,6 @@ class EscalationManager:
         context: Dict[str, Any],
     ) -> EscalationPriority:
         """Auto-determine escalation priority based on reason and context"""
-        if reason == EscalationReason.CRITICAL:
-            return EscalationPriority.CRITICAL
-        
         if reason == EscalationReason.COMPLIANCE_ISSUE:
             return EscalationPriority.HIGH
         
