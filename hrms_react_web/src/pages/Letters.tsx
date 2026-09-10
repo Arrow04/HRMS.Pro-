@@ -70,13 +70,23 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Offer of Employment — ${f.designation || 'Position'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Candidate'},`,
     body: (f) => [
-      `On behalf of ${f.company_name || '[Company]'}, we are delighted to offer you the position of ${f.designation || '[Designation]'}${f.department ? ` within the ${f.department} department` : ''}. Your credentials and interview performance distinguished you among a competitive field, and we are confident you will make a substantive contribution to our organisation.`,
-      `Your annual cost-to-company (CTC) shall be Rs. ${f.salary || '[Amount]'} per annum, structured as detailed in the annexure hereto. Your expected date of joining is ${f.joining_date || '[Date]'}.`,
-      `This offer remains contingent upon the satisfactory completion of document verification, reference checks and pre-employment formalities. We kindly request you to signify your acceptance by signing and returning a copy of this letter within seven (7) days of receipt, failing which this offer shall stand withdrawn.`,
+      `We are pleased to extend to you this formal offer of employment for the position of ${f.designation || '[Designation]'}${f.department ? ', within the ' + f.department + ' department' : ''}, reporting to ${f.reporting_to || '[Reporting Manager]'}. This offer is made in recognition of the competencies you demonstrated during the selection process and the value you are expected to bring to ${f.company_name || '[Company]'}.`,
+      `Your annual cost-to-company (CTC) shall be Rs. ${f.salary || '[Amount]'} per annum, comprising basic salary, house rent allowance, provident fund, gratuity, medical insurance, and such other components as detailed in the enclosed compensation annexure. You shall additionally be eligible for benefits including ${f.probation_months ? 'completion of probation entitling you to' : ''} group personal accident insurance, paid leaves as per company policy, and such other perquisites as may be amended from time to time at the sole discretion of the management.`,
+      `Your expected date of joining is ${f.joining_date || '[Date]'} and you shall serve an initial probationary period of ${f.probation_months || '[X]'} months from the date of joining, during which your performance shall be periodically evaluated. Upon successful completion of probation, your employment shall be confirmed in writing by the management. During the probationary period, either party may terminate the engagement by providing ${f.notice_period || '[X]'} days' written notice or salary in lieu thereof.`,
+      `This offer is contingent upon the satisfactory completion of pre-employment formalities including verification of educational credentials, previous employment records, identity and address proof, police verification, medical fitness certificate, and such other documents as may be required by the Human Resources department. Any misrepresentation or suppression of material facts shall render this offer void ab initio at the discretion of the management.`,
+      `We kindly request you to signify your unconditional acceptance of this offer by signing and returning a duplicate copy of this letter within seven (7) calendar days of receipt. Failure to communicate acceptance within the stipulated period, or the receipt of any subsequent communication declining this offer, shall entitle the management to withdraw this offer without further notice. This offer letter shall not constitute a binding contract until acceptance is received and acknowledged in writing by the company.`,
     ],
-    closing: () => ['We look forward to welcoming you aboard.', 'Warm regards,'],
+    closing: () => ['We warmly welcome you to the team and look forward to a mutually rewarding association.', 'With warm regards,'],
     contextTitle: 'Terms of Employment',
-    context: termsContext,
+    context: (f) => {
+      const rows: string[] = [];
+      if (f.reporting_to) rows.push(`Reporting to: ${f.reporting_to}`);
+      if (f.probation_months) rows.push(`Probation period: ${f.probation_months} months from the date of joining`);
+      if (f.notice_period) rows.push(`Notice period: ${f.notice_period} on either side post confirmation`);
+      if (f.salary) rows.push(`Annual CTC: Rs. ${f.salary} per annum (detailed breakup enclosed in the annexure)`);
+      rows.push(`Non-compete and confidentiality obligations survive termination of employment`);
+      return rows;
+    },
     fields: [
       ...COMMON_FIELDS,
       { key: 'designation', label: 'Designation', type: 'text', required: true },
@@ -96,12 +106,14 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Letter of Appointment — ${f.employee_name || 'Employee'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `With reference to your application and our subsequent discussions, we are pleased to appoint you as ${f.designation || '[Designation]'} at ${f.company_name || '[Company]'}, with effect from ${f.joining_date || '[Date]'}.`,
-      `You shall be entitled to an annual cost-to-company (CTC) of Rs. ${f.salary || '[Amount]'} per annum. Your employment shall be governed by the company's human resource policies, code of conduct and applicable standing orders, copies of which will be furnished to you separately and shall be deemed to form part of this appointment.`,
-      `Your initial place of posting shall be ${f.location || '[Location]'}. The management reserves the right to transfer your services to any of its offices, branches or client sites, in India or abroad, as organisational requirements may dictate.`,
-      ...(f.address ? [`As per our records, your address for official communication is: ${f.address}. Please notify Human Resources in writing of any change thereto.`] : []),
+      `With reference to your application dated [Date], the subsequent interviews, and your acceptance of the offer of employment, the management is pleased to formally appoint you as ${f.designation || '[Designation]'} in the ${f.department || '[Department]'} department of ${f.company_name || '[Company]'}, with effect from ${f.joining_date || '[Date]'}. You shall report to ${f.reporting_to || '[Reporting Manager]'} at ${f.location || '[Location]'}. This appointment is made subject to the terms and conditions set forth herein and such other policies, standing orders, and amendments as may be promulgated by the company from time to time.`,
+      `You shall be entitled to an annual cost-to-company (CTC) of Rs. ${f.salary || '[Amount]'} per annum, structured in accordance with the compensation annexure enclosed hereto. The CTC is inclusive of basic pay, allowances, provident fund contributions, gratuity, superannuation benefits, and such other statutory and company-sponsored benefits as applicable. Your salary shall be subject to applicable deductions including but not limited to provident fund, professional tax, income tax at source (TDS), and any other statutory levies as mandated by law.`,
+      `Your initial period of employment shall be probationary for a duration of ${f.probation_months || '[X]'} months from the date of joining, during which period your performance, conduct, and suitability for continued employment shall be assessed. The management reserves the right, at its sole discretion, to extend the probationary period by such additional duration as may be deemed necessary, or to confirm your services upon satisfactory completion of the probationary term. Confirmation shall be communicated in writing and shall be contingent upon clearance from your reporting manager, the HR department, and completion of all induction milestones. Until such confirmation, either party may terminate this engagement by providing ${f.notice_period || '[X]'} days' written notice or salary in lieu thereof.`,
+      `Your employment shall be governed by the company's human resource policies, code of conduct, standing orders, and all amendments thereto, copies of which shall be furnished to you separately and shall be deemed to form an integral part of this appointment letter. You shall at all times conduct yourself in a manner consistent with the professional standards expected of employees of the company and shall comply with all lawful directions issued by the management in the discharge of your duties.`,
+      `The management reserves the right to transfer your services, at any time, to any of its offices, branches, subsidiaries, affiliates, or client sites, whether in India or abroad, as organisational requirements may necessitate. You acknowledge and agree that such transfers shall be binding and that failure to comply with a transfer order may be treated as misconduct. Upon confirmation, your employment shall be subject to a notice period of ${f.notice_period || '[X]'} days on either side, or salary in lieu of such notice, as per company policy.`,
+      ...(f.address ? [`As per our records, your address for official communication is: ${f.address}. Please notify Human Resources in writing of any change thereto within seven (7) days of such change. Failure to maintain updated records may result in correspondence being deemed served upon dispatch.`] : []),
     ],
-    closing: () => ['With regards,'],
+    closing: () => ['With warm regards,'],
     fields: [
       ...COMMON_FIELDS,
       { key: 'designation', label: 'Designation', type: 'text', required: true },
@@ -114,7 +126,17 @@ const TEMPLATES: Template[] = [
       { key: 'notice_period', label: 'Notice Period', type: 'text', placeholder: 'e.g. 60 days' },
     ],
     contextTitle: 'Terms of Employment',
-    context: termsContext,
+    context: (f) => {
+      const rows: string[] = [];
+      if (f.reporting_to) rows.push(`Reporting to: ${f.reporting_to}`);
+      if (f.probation_months) rows.push(`Probation period: ${f.probation_months} months from the date of joining`);
+      if (f.notice_period) rows.push(`Notice period: ${f.notice_period} on either side post confirmation`);
+      if (f.salary) rows.push(`Annual CTC: Rs. ${f.salary} per annum (detailed breakup enclosed in the annexure)`);
+      rows.push(`Transfer: Company reserves right to transfer to any office, branch or client site`);
+      rows.push(`Intellectual property created during employment vests in the company`);
+      rows.push(`Confidentiality and non-solicitation obligations survive termination`);
+      return rows;
+    },
   },
   {
     id: 'confirmation',
@@ -124,15 +146,19 @@ const TEMPLATES: Template[] = [
     subject: () => 'Confirmation of Employment',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `We take pleasure in informing you that, consequent upon the successful completion of your probationary period, your services as ${f.designation || '[Designation]'} stand confirmed with effect from ${f.confirmation_date || '[Date]'}.`,
-      `Your performance during probation has been assessed as satisfactory, and the management places on record its appreciation of your contributions to date. We look forward to your sustained association and professional growth with ${f.company_name || '[Company]'}. All other terms and conditions of your appointment shall remain unaltered.`,
+      `We are pleased to inform you that, consequent upon the successful completion of your probationary period of ${f.review_period || '[duration]'}, your services as ${f.designation || '[Designation]'} in the ${f.department || '[Department]'} department of ${f.company_name || '[Company]'} stand formally confirmed with effect from ${f.confirmation_date || '[Date]'}. This confirmation is issued subject to satisfactory compliance with all terms and conditions of your original appointment letter and applicable company policies.`,
+      `Your performance during the probationary period has been evaluated by your reporting manager and the Human Resources department, and the management records its appreciation of the contributions made by you. ${f.remarks ? 'In particular, the assessment noted: ' + f.remarks + '. ' : ''}Your conduct, adherence to deadlines, and alignment with organisational values have been found to be consistent with the standards expected of confirmed employees of the company.`,
+      `Upon confirmation, you shall henceforth be entitled to all benefits applicable to confirmed employees including enhanced leave entitlements, provident fund employer contribution as per statutory requirements, gratuity eligibility upon completion of five years of continuous service, group insurance coverage, and such other benefits as may be extended from time to time at the discretion of the management. The notice period applicable to your employment shall be ${f.notice_period || '[X]'} days on either side, or salary in lieu thereof, as per company policy.`,
+      `We look forward to your continued professional growth, dedication, and sustained contribution to the objectives of ${f.company_name || '[Company]'}. The management is committed to providing you with opportunities for skill development and career advancement, and we encourage you to actively participate in performance review cycles and training programmes. All other terms and conditions of your appointment, as set forth in your original appointment letter, shall remain unaltered unless expressly communicated in writing.`,
     ],
-    closing: () => ['Please accept our congratulations and best wishes for a rewarding career ahead.'],
+    closing: () => ['Please accept our heartfelt congratulations and best wishes for a rewarding and fulfilling career ahead.'],
     contextTitle: 'Assessment Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.review_period) rows.push(`Review period: ${f.review_period}`);
       if (f.remarks) rows.push(`Reviewer remarks: ${f.remarks}`);
+      rows.push(`Status: Probation completed — employment confirmed`);
+      rows.push(`Benefits: Enhanced entitlements effective from date of confirmation`);
       return rows;
     },
     fields: [
@@ -151,16 +177,20 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Salary Revision — FY ${f.financial_year || '2025-26'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `Further to the annual performance review for FY ${f.financial_year || '2025-26'}, the management is pleased to revise your compensation with an increment of ${f.increment_pct || '[X]'}%, effective ${f.effective_date || '[Date]'}.`,
-      `Your revised annual cost-to-company (CTC) shall accordingly be Rs. ${f.new_salary || '[Amount]'} per annum, the detailed structure of which is enclosed in the annexure. This revision is a recognition of your performance and a measure of the organisation's confidence in your continued contribution to ${f.company_name || '[Company]'}.`,
+      `With reference to the annual performance review conducted for the financial year ${f.financial_year || '2025-26'}, the management has reviewed your performance across the prescribed evaluation parameters and is pleased to communicate its decision regarding your compensation revision. The review encompassed your key performance indicators, behavioural competencies, project deliverables, and overall contribution to the departmental and organisational objectives during the review cycle.`,
+      `In recognition of your performance, the management has approved an increment of ${f.increment_pct || '[X]'}%, effective ${f.effective_date || '[Date]'}. Your revised annual cost-to-company (CTC) shall accordingly be Rs. ${f.new_salary || '[Amount]'} per annum, the detailed breakup of which is enclosed in the compensation annexure hereto. This revision shall be reflected in your salary disbursement from the month following the effective date, and any arrears payable shall be credited to your registered bank account in accordance with company practice.`,
+      `Your overall performance rating for the review period stands at ${f.rating || '[Rating]'}. ${f.remarks ? 'The assessment noted the following: ' + f.remarks + '. ' : ''}The management acknowledges your specific contributions including consistency in meeting deliverables, collaboration with cross-functional teams, and adherence to quality standards. This revision reflects the organisation's confidence in your capabilities and its commitment to rewarding merit.`,
+      `As you enter the next performance cycle, the management expects sustained improvement and continued alignment with organisational goals. You are encouraged to discuss career development objectives with your reporting manager and participate in the learning and development programmes offered by the company. Future revisions shall be contingent upon performance in the subsequent review cycles and prevailing business conditions.`,
     ],
-    closing: () => ['Best wishes,'],
+    closing: () => ['Best wishes for continued success and growth.'],
     contextTitle: 'Performance Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.rating) rows.push(`Overall rating: ${f.rating}`);
       if (f.financial_year) rows.push(`Review year: ${f.financial_year}`);
       if (f.remarks) rows.push(`Reviewer remarks: ${f.remarks}`);
+      if (f.increment_pct) rows.push(`Increment approved: ${f.increment_pct}%`);
+      if (f.new_salary) rows.push(`Revised CTC: Rs. ${f.new_salary} per annum`);
       return rows;
     },
     fields: [
@@ -182,15 +212,18 @@ const TEMPLATES: Template[] = [
     subject: () => 'Relieving Letter',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `This is to confirm that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}) stands relieved from the services of ${f.company_name || '[Company]'} with effect from the close of business hours on ${f.last_working_day || '[Date]'}.`,
-      `We further confirm that all exit formalities, including departmental clearance and full-and-final settlement of accounts, have been duly completed, and that no dues remain outstanding on either side as of the aforementioned date. We wish you every success in your future endeavours.`,
+      `This is to formally confirm that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}) stands relieved from the services of ${f.company_name || '[Company]'} with effect from the close of business hours on ${f.last_working_day || '[Date]'}. This relieving is issued in accordance with the terms of your resignation${f.notice_served ? ', noting that the notice period served was ' + f.notice_served : ''}.`,
+      `All exit formalities have been duly completed, including but not limited to departmental clearance, handover of responsibilities, return of company property (identity card, laptop, access cards, library books, and any other company assets), revocation of system access and email credentials, and full-and-final settlement of all monetary dues. ${f.clearance_notes ? 'The following clearances have been recorded: ' + f.clearance_notes + '. ' : ''}We confirm that no dues remain outstanding on either side as of the aforementioned date.`,
+      `We acknowledge and appreciate the contributions made by you during your tenure with ${f.company_name || '[Company]'} and wish you every success in your future professional endeavours. The company retains no obligation towards you beyond the date of this relieving, save and except for any obligations that survive termination as stipulated in your appointment letter or applicable policies.`,
     ],
-    closing: () => ['With regards,'],
+    closing: () => ['With warm regards,'],
     contextTitle: 'Separation Summary',
     context: (f) => {
       const rows: string[] = [];
-      if (f.notice_served) rows.push(`Notice period: ${f.notice_served}`);
+      if (f.notice_served) rows.push(`Notice period served: ${f.notice_served}`);
       if (f.clearance_notes) rows.push(`Clearance: ${f.clearance_notes}`);
+      rows.push(`All company property returned and access revoked`);
+      rows.push(`Full-and-final settlement completed`);
       return rows;
     },
     fields: [
@@ -210,12 +243,19 @@ const TEMPLATES: Template[] = [
     subject: () => 'To Whom It May Concern — Service Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
-      `This is to certify that ${f.employee_name || '[Name]'} was employed with ${f.company_name || '[Company]'} in the capacity of ${f.designation || '[Designation]'}, for the period ${f.joining_date || '[From]'} to ${f.last_working_day || '[To]'}.`,
-      `Throughout the tenure of employment, the conduct and performance were found to be ${f.conduct || 'entirely satisfactory'}. We have no hesitation in commending the individual to prospective employers, and we wish every success in all future assignments.`,
+      `This is to certify that ${f.employee_name || '[Name]'}, holding the designation of ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}), was employed with ${f.company_name || '[Company]'} for the period from ${f.joining_date || '[From]'} to ${f.last_working_day || '[To]'}, a total continuous tenure of [duration]. During this period, ${f.employee_name || 'the individual'} was assigned to the ${f.department || '[Department]'} department and ${f.responsibilities ? 'was responsible for ' + f.responsibilities + '.' : 'discharged the duties and responsibilities assigned to the role.'}`,
+      `Throughout the tenure of employment, the conduct and performance of ${f.employee_name || 'the individual'} were assessed as ${f.conduct || 'entirely satisfactory'}. ${f.employee_name || 'The individual'} demonstrated professional competence, reliability, and adherence to organisational values. No disciplinary proceedings were initiated or pending against ${f.employee_name || 'the individual'} during the said period, and all statutory and internal compliance requirements were met.`,
+      `We have no hesitation in commending ${f.employee_name || 'the individual'} to prospective employers and wish every success in all future professional assignments. This certificate is issued upon request without any admission of liability and without prejudice to any rights or obligations of either party under the employment contract or applicable law. The contents herein are based on records available with the company as on the date of issuance.`,
     ],
-    closing: () => ['Issued on request, without prejudice.', 'Sincerely,'],
+    closing: () => ['Issued on request, without prejudice to either party\'s rights.', 'Sincerely,'],
     contextTitle: 'Role Snapshot',
-    context: (f) => (f.responsibilities ? [`Key responsibilities: ${f.responsibilities}`] : []),
+    context: (f) => {
+      const rows: string[] = [];
+      if (f.responsibilities) rows.push(`Key responsibilities: ${f.responsibilities}`);
+      if (f.department) rows.push(`Department: ${f.department}`);
+      rows.push(`Conduct: ${f.conduct || 'Satisfactory'}`);
+      return rows;
+    },
     fields: [
       ...COMMON_FIELDS,
       { key: 'designation', label: 'Designation', type: 'text', required: true },
@@ -233,12 +273,20 @@ const TEMPLATES: Template[] = [
     subject: () => 'No Objection Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
-      `This is to certify that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}) is presently employed with ${f.company_name || '[Company]'}, having joined on ${f.joining_date || '[Date]'}.`,
-      `At the employee's request, we confirm that the organisation has no objection to the employee ${f.purpose || 'applying for a visa / loan / higher studies'}, as stated in the request dated ${f.date || '[Date]'}. This certificate is issued solely for the stated purpose and shall not be construed as a commitment or undertaking of any other nature.`,
+      `This is to certify that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}), is presently employed with ${f.company_name || '[Company]'} in the ${f.department || '[Department]'} department, having joined on ${f.joining_date || '[Date]'} on a ${f.probation_months ? f.probation_months + '-month probationary basis' : 'permanent basis'}. As on the date of this certificate, the employee is actively engaged in duties assigned by the management and is in good standing with the organisation.`,
+      `At the request of the employee, and subject to verification of the stated purpose, the management hereby confirms that it has no objection to the employee ${f.purpose || 'applying for a visa / loan / higher studies'}, as declared in the employee's request dated ${f.date || '[Date]'}. This No Objection Certificate is issued solely and exclusively for the specific purpose aforementioned and shall not be deemed or construed as a commitment, undertaking, or representation of any kind whatsoever for any other purpose, jurisdiction, or authority.`,
+      `This certificate is valid for a period of ${f.validity_days || '[X]'} days from the date of issuance and shall lapse automatically upon expiry unless renewed in writing by the authorised signatory. The contents herein are based on records available with the company and are subject to the employee's continued compliance with the terms of employment. The company reserves the right to withdraw or amend this certificate in the event of material change in circumstances, including but not limited to separation, disciplinary proceedings, or identification of discrepancies in the employee's declaration.`,
     ],
     closing: () => ['With regards,'],
-    contextTitle: 'Validity',
-    context: (f) => (f.validity_days ? [`This certificate remains valid for ${f.validity_days} days from the date of issue.`] : []),
+    contextTitle: 'Validity & Limitations',
+    context: (f) => {
+      const rows: string[] = [];
+      if (f.validity_days) rows.push(`This certificate is valid for ${f.validity_days} days from the date of issue`);
+      if (f.purpose) rows.push(`Issued for: ${f.purpose}`);
+      rows.push(`Not valid for any purpose other than the stated above`);
+      rows.push(`Subject to employee's continued compliance with terms of employment`);
+      return rows;
+    },
     fields: [
       ...COMMON_FIELDS,
       { key: 'designation', label: 'Designation', type: 'text', required: true },
@@ -256,16 +304,19 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Show Cause Notice — ${f.misconduct || 'Misconduct'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `It has come to the notice of the management that ${f.misconduct_details || '[describe the act of misconduct, with dates]'}. This conduct, if established, constitutes a serious violation of the company's code of conduct and standing orders.`,
-      `You are hereby required to show cause, in writing, within ${f.reply_days || '48 hours'} of receipt of this notice, as to why appropriate disciplinary action — up to and including termination of employment — should not be initiated against you.`,
-      `Please note that failure to respond within the stipulated time shall be construed as having no explanation to offer, and the management shall proceed ex parte on the basis of available records.`,
+      `It has been brought to the notice of the management that ${f.misconduct_details || '[describe the act of misconduct, with dates]'}. The matter has been duly investigated and the preliminary findings indicate conduct that, if substantiated upon inquiry, constitutes a material violation of the company's code of conduct, standing orders, and the terms of your employment. The management is therefore obligated to afford you an opportunity to be heard before any adverse finding is recorded or disciplinary action is initiated, in accordance with the principles of natural justice.`,
+      `You are hereby required to show cause, in writing, within ${f.reply_days || '48 hours'} of receipt of this notice, as to why appropriate disciplinary action — up to and including termination of employment — should not be initiated against you in respect of the matter specified above. Your written explanation shall set out in detail the facts, circumstances, and any mitigating factors that you wish the management to consider, and shall be supported by such documentary evidence as you may deem relevant.`,
+      `Please note that failure to furnish a reply within the stipulated time shall be construed as having no explanation to offer, and the management shall proceed to take such action as it may deem fit on the basis of available records and witness statements, ex parte and without further reference to you. You shall further be informed of the date and time of any domestic enquiry that may be convened, at which you shall have the right to present your defence and examine witnesses.`,
+      `This notice is issued without prejudice to any other rights or remedies available to the management under law, the terms of your employment, and applicable company policies. The issuance of this notice does not by itself constitute a finding of guilt or a precursor to any particular outcome; the same shall be determined upon conclusion of the enquiry process in accordance with established procedures.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Notice Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.misconduct) rows.push(`Matter: ${f.misconduct}`);
-      if (f.reply_days) rows.push(`Reply within: ${f.reply_days} of receipt`);
+      if (f.reply_days) rows.push(`Reply required within: ${f.reply_days} of receipt of this notice`);
+      rows.push(`Non-response shall be treated as having no defence to offer`);
+      rows.push(`Right to be heard: Enquiry proceedings shall be convened if explanation is unsatisfactory`);
       return rows;
     },
     fields: [
@@ -285,16 +336,20 @@ const TEMPLATES: Template[] = [
     subject: (f) => `${f.warning_level || 'Written'} Warning — ${f.misconduct || 'Conduct'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `This letter serves as a ${f.warning_level || 'written'} warning regarding ${f.misconduct_details || '[describe the issue]'}. Despite prior counselling, the expected improvement has not been observed, and the management views this matter with serious concern.`,
-      `You are advised to treat this as a final opportunity to demonstrate sustained improvement in ${f.improvement_area || 'the cited areas'}. Please be informed that any recurrence shall invite stricter disciplinary action, including suspension or termination of employment, without further notice.`,
-      `A copy of this warning shall be retained in your personnel file${f.warning_level === 'Final' ? ' and shall be considered during appraisals, promotions and confirmation decisions' : ''}.`,
+      `With reference to the show cause notice issued to you on [Show Cause Date] regarding ${f.misconduct_details || '[describe the issue]'} and the subsequent enquiry and/or your written explanation dated [Reply Date], the management has carefully considered the matter and finds that your conduct constituted a violation of the company's code of conduct and applicable standing orders. Accordingly, the management has decided to impose upon you a ${f.warning_level || 'written'} warning for the said misconduct, which shall be placed on record in your personnel file.`,
+      `This ${f.warning_level || 'written'} warning is issued to formally place on record the management's expectation of sustained and demonstrable improvement in ${f.improvement_area || 'the cited areas'} with immediate effect. You are hereby advised that any recurrence of similar misconduct, or any further breach of the company's policies, standing orders, or code of conduct, shall invite progressively stricter disciplinary action including but not limited to suspension, demotion, transfer, or termination of employment, without further warning or notice.`,
+      `A copy of this warning shall be retained in your personnel file and shall form part of your permanent employment record. ${f.warning_level === 'Final' ? 'As this constitutes a final warning, it shall be taken into consideration during future appraisals, promotions, confirmation decisions, and any other employment-related assessments. Repeated violations following a final warning may result in summary termination of employment in accordance with applicable standing orders.' : 'This warning shall be taken into consideration during future appraisals and employment-related assessments.'}`,
+      `You are expected to acknowledge receipt of this warning in writing and to ensure immediate and sustained compliance with all applicable policies and standards. The management remains available to discuss any concerns you may have regarding the expectations outlined herein and encourages you to seek guidance from your reporting manager and the Human Resources department for your professional development.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Warning Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.warning_level) rows.push(`Level: ${f.warning_level} warning`);
+      if (f.misconduct) rows.push(`Misconduct: ${f.misconduct}`);
       if (f.improvement_area) rows.push(`Improvement expected in: ${f.improvement_area}`);
+      rows.push(`Consequences of recurrence: Escalating disciplinary action up to and including termination`);
+      rows.push(`Record: This warning shall be retained in the employee's personnel file`);
       return rows;
     },
     fields: [
@@ -315,16 +370,20 @@ const TEMPLATES: Template[] = [
     subject: () => 'Performance Improvement Plan (PIP)',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `Following your recent performance review, the management has placed you on a Performance Improvement Plan for a period of ${f.pip_duration || '[X weeks]'}, commencing ${f.date || '[Date]'}. This plan is intended to support you in bridging identified performance gaps — it is developmental in intent and consequential in outcome.`,
-      `Your improvement goals for the plan period are: ${f.pip_goals || '[list the measurable goals]'}. Progress shall be reviewed ${f.review_frequency || 'fortnightly'} with your reporting manager, and the outcome shall be documented.`,
-      `Please be advised that failure to demonstrate the required improvement by the end of the plan period may lead to further action, including reassignment, demotion or separation of employment. We encourage you to seek guidance from your manager and HR throughout this period.`,
+      `Following your performance review conducted on [Review Date], the management has identified certain areas where your performance has fallen below the standards expected for your role as ${f.designation || '[Designation]'}. In order to provide you with a structured opportunity to demonstrate improvement, the management has placed you on a Performance Improvement Plan (PIP) for a period of ${f.pip_duration || '[X weeks]'}, commencing ${f.date || '[Date]'}. This plan is developmental in intent and consequential in outcome, and is issued in accordance with the company's performance management policy and applicable standing orders.`,
+      `The specific improvement goals prescribed for the duration of this PIP are: ${f.pip_goals || '[list the measurable goals]'}. Each goal shall be assessed against the defined metrics and benchmarks as agreed between you and your reporting manager. Progress shall be reviewed ${f.review_frequency || 'fortnightly'} at scheduled meetings with your reporting manager, during which your progress shall be documented and discussed. The minutes of each review meeting shall be signed by both parties and placed on record.`,
+      `During the PIP period, the company shall make available to you such support as may be reasonably required, including but not limited to mentoring by your reporting manager, access to training and development resources, periodic one-on-one feedback sessions with the HR department, and any other intervention that may be deemed appropriate to facilitate your improvement. You are expected to actively participate in all scheduled reviews and to demonstrate genuine and sustained effort towards achieving the prescribed goals.`,
+      `Please be advised that failure to demonstrate the required level of improvement by the end of the plan period, or failure to participate actively in the review process, may result in further disciplinary action including reassignment to an alternative role, demotion to a lower grade, or separation of employment, in accordance with applicable standing orders and company policy. The management reserves the right to modify, extend, or conclude the PIP at its discretion based on periodic assessment of your progress. We encourage you to engage fully with this process and to seek guidance from your manager and HR throughout the plan period.`,
     ],
-    closing: () => ['Wishing you a successful turnaround.', 'Warm regards,'],
+    closing: () => ['We wish you a successful turnaround and look forward to positive outcomes.', 'With warm regards,'],
     contextTitle: 'Plan Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.pip_duration) rows.push(`Duration: ${f.pip_duration}`);
       if (f.review_frequency) rows.push(`Reviews: ${f.review_frequency}`);
+      if (f.pip_goals) rows.push(`Goals: ${f.pip_goals}`);
+      rows.push(`Support available: Manager mentoring, HR feedback sessions, training resources`);
+      rows.push(`Consequences of non-improvement: Reassignment, demotion, or separation`);
       return rows;
     },
     fields: [
@@ -343,16 +402,21 @@ const TEMPLATES: Template[] = [
     subject: () => 'Order of Suspension Pending Enquiry',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `With reference to the show cause notice dated ${f.notice_date || '[Date]'} regarding ${f.misconduct || '[matter]'}, and pending completion of the disciplinary enquiry, you are hereby placed under suspension with effect from ${f.suspension_date || '[Date]'} for a period of ${f.suspension_days || '[X days]'}.`,
-      `During the period of suspension, you shall be entitled to subsistence allowance as per the applicable standing orders, and you shall not enter the company premises or contact witnesses without prior written permission from the enquiry officer.`,
-      `You are directed to cooperate fully with the enquiry proceedings. The final decision shall be communicated upon conclusion of the enquiry.`,
+      `With reference to the show cause notice dated ${f.notice_date || '[Date]'} issued to you regarding ${f.misconduct || '[matter]'}, and pending the completion and outcome of the domestic enquiry proceedings in respect thereof, you are hereby placed under suspension with effect from ${f.suspension_date || '[Date]'} for a period of ${f.suspension_days || '[X days]'}. This order of suspension is issued in accordance with the applicable standing orders, the company's disciplinary policy, and such other regulations as may be applicable to your employment.`,
+      `During the period of suspension, you shall be entitled to receive a subsistence allowance as determined in accordance with the applicable standing orders and statutory provisions, subject to such deductions as may be prescribed by law. You are hereby directed not to enter the company premises, access company systems, or contact any employee, client, vendor, or witness connected with the enquiry proceedings, whether directly or indirectly, without the prior written permission of the enquiry officer. Any breach of these restrictions shall be treated as a separate act of misconduct and may attract further disciplinary consequences.`,
+      `You are directed to cooperate fully and in good faith with the enquiry proceedings, including attendance at all hearings scheduled by the enquiry officer, production of documents as may be called for, and examination of witnesses as may be necessary. Failure to cooperate, or deliberate evasion of enquiry proceedings, shall be treated as insubordination and may result in an adverse inference being drawn against you. You shall further ensure that you remain available at your registered contact details and inform the company of any change of address or contact information during the suspension period.`,
+      `The enquiry proceedings shall be concluded as expeditiously as possible in accordance with the principles of natural justice, and the final decision of the management shall be communicated to you in writing upon conclusion of the enquiry. The suspension period may be extended if the enquiry cannot be concluded within the stipulated duration, in accordance with applicable standing orders. This suspension order is without prejudice to any other rights or remedies available to the management under law, the terms of your employment, or applicable company policies.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Suspension Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.suspension_days) rows.push(`Duration: ${f.suspension_days}`);
-      if (f.suspension_date) rows.push(`Effective: ${f.suspension_date}`);
+      if (f.suspension_date) rows.push(`Effective from: ${f.suspension_date}`);
+      if (f.notice_date) rows.push(`Show cause notice dated: ${f.notice_date}`);
+      rows.push(`Subsistence allowance: As per applicable standing orders`);
+      rows.push(`Restrictions: No entry to premises, no contact with witnesses or colleagues`);
+      rows.push(`Enquiry: Shall be concluded and decision communicated in writing`);
       return rows;
     },
     fields: [
@@ -373,9 +437,11 @@ const TEMPLATES: Template[] = [
     subject: () => 'Termination of Employment',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `We regret to inform you that your employment with ${f.company_name || '[Company]'} as ${f.designation || '[Designation]'} stands terminated with effect from ${f.last_working_day || '[Date]'}${f.termination_reason ? `, on account of ${f.termination_reason}` : ''}.`,
-      `You shall be paid ${f.notice_pay || 'salary in lieu of the applicable notice period'}, and your full-and-final settlement, including encashment of accrued leave as applicable, shall be processed within ${f.settlement_days || '30 days'} of your last working day, subject to completion of exit formalities and return of company property.`,
-      `We remind you that obligations relating to confidentiality, non-solicitation and return of company assets survive the termination of employment.`,
+      `We regret to inform you that, upon due consideration of all relevant circumstances, the management has found it necessary to terminate your employment with ${f.company_name || '[Company]'} as ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}), with effect from ${f.last_working_day || '[Date]'}${f.termination_reason ? ', on account of ' + f.termination_reason : ''}. This termination is issued in accordance with the applicable standing orders, the terms of your appointment letter, and such other policies and regulations as may govern your employment. The management has arrived at this decision after affording you due process and opportunity of hearing as required under applicable law and company policy.`,
+      `In settlement of your dues, you shall be paid ${f.notice_pay || 'salary in lieu of the applicable notice period'}, less any statutory deductions as applicable. Your full-and-final settlement, including encashment of accrued and unused earned leaves as per company policy, any outstanding salary dues, bonus or incentive payments as applicable, and such other amounts as may be payable, shall be computed and processed within ${f.settlement_days || '30 days'} of your last working day, subject to completion of all exit formalities and return of company property. An itemised statement of settlement shall be furnished to you upon processing.`,
+      `You are hereby directed to return all company property in your possession on or before your last working day, including but not limited to identity card, laptop, mobile phone, access cards, security tokens, documents, data, keys, and any other company assets. Your access to company systems, email, and premises shall be revoked with effect from the close of business on your last working day. Any company property not returned shall be deducted from your settlement dues, and the company reserves the right to initiate recovery proceedings for any shortfall.`,
+      `You acknowledge and agree that the following obligations shall survive the termination of your employment and shall continue to bind you: (a) confidentiality of proprietary information, trade secrets, and business data of the company and its clients; (b) non-solicitation of employees, clients, and business partners of the company for a period of [X months] from the date of termination; (c) non-compete obligations, if any, as stipulated in your employment contract; (d) return of all intellectual property and work product created during the course of your employment. Any breach of these surviving obligations may entitle the company to seek injunctive relief and damages as permitted by law.`,
+      `For any queries relating to your settlement or exit formalities, you may contact the Human Resources department at [HR Contact Details]. We acknowledge your contributions during your tenure with the company and, notwithstanding the circumstances of separation, wish you well in your future endeavours.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Separation Summary',
@@ -383,6 +449,8 @@ const TEMPLATES: Template[] = [
       const rows: string[] = [];
       if (f.notice_pay) rows.push(`Notice pay: ${f.notice_pay}`);
       if (f.settlement_days) rows.push(`Settlement within: ${f.settlement_days} of last working day`);
+      rows.push(`Return of company property: Mandatory on or before last working day`);
+      rows.push(`Surviving obligations: Confidentiality, non-solicitation, non-compete`);
       return rows;
     },
     fields: [
@@ -403,16 +471,19 @@ const TEMPLATES: Template[] = [
     subject: () => 'Notice Regarding Unauthorised Absence',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `Our records indicate that you have remained absent from duty without prior sanction or intimation since ${f.absent_since || '[Date]'}, and attempts to reach you at your registered contact details have been unsuccessful. Unauthorised absence of this nature amounts to abandonment of employment.`,
-      `You are hereby directed to report to Human Resources, in person or in writing, within ${f.reply_days || '7 days'} of receipt of this notice, along with a satisfactory explanation and supporting evidence for your absence.`,
-      `Should you fail to respond within the stipulated time, the management shall presume that you are no longer interested in continued employment and shall proceed with appropriate action, including termination and recovery of applicable dues, as per company policy.`,
+      `Our records indicate that you have remained absent from duty without prior sanction, approval, or intimation since ${f.absent_since || '[Date]'} — a continuous period of unauthorised absence of [duration] working days as on the date of this notice. Multiple attempts to contact you at your registered mobile number, email address, and residential address have been unsuccessful. Such prolonged unauthorised absence, devoid of any communication or reasonable explanation, constitutes a serious breach of the company's attendance policy and standing orders, and may amount to deemed abandonment of employment.`,
+      `You are hereby directed to report to the Human Resources department of ${f.company_name || '[Company]'}, either in person or in writing, within ${f.reply_days || '7 days'} of receipt of this notice, along with a satisfactory written explanation and supporting documentary evidence (including medical certificates, if applicable) for your unauthorised absence. Your explanation must address the specific reasons for your absence, the steps taken to inform the management, and the circumstances that prevented you from fulfilling your attendance obligations.`,
+      `Please note that failure to respond within the stipulated time, or failure to furnish a satisfactory explanation with supporting evidence, shall be construed as an admission that you have no defence to offer and that you have voluntarily abandoned your employment. The management shall in such event be entitled to presume that you are no longer interested in continued employment and shall proceed with appropriate action, including formal termination of your services, recovery of any outstanding dues (including salary overpaid, advances, or company property in your possession), and such other action as may be deemed necessary in accordance with company policy and applicable law.`,
+      `This notice is issued without prejudice to any other rights or remedies available to the management under the terms of your employment, standing orders, applicable labour laws, or any other statutory or contractual provisions. The issuance of this notice does not by itself constitute termination of your employment; the same shall be determined upon expiry of the stipulated response period or upon completion of any further enquiry as may be deemed necessary by the management.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Absence Summary',
     context: (f) => {
       const rows: string[] = [];
       if (f.absent_since) rows.push(`Absent since: ${f.absent_since}`);
-      if (f.reply_days) rows.push(`Respond within: ${f.reply_days} of receipt`);
+      if (f.reply_days) rows.push(`Respond within: ${f.reply_days} of receipt of this notice`);
+      rows.push(`Non-response: Treated as voluntary abandonment of employment`);
+      rows.push(`Consequences: Termination and recovery of applicable dues`);
       return rows;
     },
     fields: [
@@ -431,16 +502,20 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Promotion — ${f.new_designation || 'New Role'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `On the recommendation of your reporting manager and the leadership team, we are delighted to promote you from ${f.designation || '[Current Role]'} to ${f.new_designation || '[New Role]'}, with effect from ${f.promotion_date || '[Date]'}.`,
-      `Your revised annual CTC shall be Rs. ${f.new_salary || '[Amount]'} per annum${f.new_department ? `, and you shall henceforth be part of the ${f.new_department} function` : ''}. This elevation recognises your sustained performance, ownership and conduct.`,
-      `All other terms of your employment remain unchanged. We congratulate you and look forward to greater contributions in your enhanced capacity.`,
+      `On the recommendation of your reporting manager and the leadership team, and subject to approval by the competent authority, we are delighted to promote you from ${f.designation || '[Current Role]'} to ${f.new_designation || '[New Role]'}, with effect from ${f.promotion_date || '[Date]'}. ${f.new_department ? 'In connection with this elevation, you shall henceforth be assigned to the ' + f.new_department + ' department.' : ''} This promotion is a recognition of your consistent performance, demonstrated leadership qualities, ownership of responsibilities, and alignment with the values and objectives of ${f.company_name || '[Company]'}.`,
+      `Your revised annual cost-to-company (CTC) shall be Rs. ${f.new_salary || '[Amount]'} per annum, the detailed breakup of which is enclosed in the compensation annexure. This revised compensation supersedes your previous CTC with effect from the date of promotion, and any differential amount payable shall be computed and credited to your registered bank account in the next salary disbursement cycle, subject to applicable statutory deductions. You shall also be eligible for benefits commensurate with your new grade as per company policy.`,
+      `This promotion recognises your specific achievements including ${f.remarks || '[key contributions and accomplishments]'}, your ability to lead and mentor team members, your consistent delivery of results against targets, and your demonstrated commitment to professional excellence. The management acknowledges the value you have added to your team and the organisation, and considers this elevation well-deserved on the strength of your performance track record.`,
+      `In your enhanced capacity, you shall be expected to assume the responsibilities and duties associated with the new designation, including ${f.new_designation ? 'leadership of ' + f.new_designation + '-level initiatives' : 'elevated functional and strategic responsibilities'}, mentoring of junior team members, and contribution to departmental planning and goal-setting. The management shall provide you with such support, training, and resources as may be necessary to facilitate a smooth transition. All other terms and conditions of your employment, including notice period, transfer clause, and confidentiality obligations, shall remain unchanged unless expressly communicated in writing.`,
     ],
-    closing: () => ['Heartiest congratulations.', 'Warm regards,'],
+    closing: () => ['Heartfelt congratulations on this well-deserved recognition.', 'Warm regards,'],
     contextTitle: 'Promotion Summary',
     context: (f) => {
       const rows: string[] = [];
-      if (f.designation && f.new_designation) rows.push(`${f.designation} → ${f.new_designation}`);
+      if (f.designation && f.new_designation) rows.push(`Promotion: ${f.designation} → ${f.new_designation}`);
       if (f.new_salary) rows.push(`Revised CTC: Rs. ${f.new_salary} per annum`);
+      if (f.promotion_date) rows.push(`Effective from: ${f.promotion_date}`);
+      if (f.new_department) rows.push(`New department: ${f.new_department}`);
+      if (f.remarks) rows.push(`Key achievements: ${f.remarks}`);
       return rows;
     },
     fields: [
@@ -460,16 +535,21 @@ const TEMPLATES: Template[] = [
     subject: () => 'Order of Transfer',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `Consequent upon organisational requirements, you are hereby transferred from ${f.current_location || '[Current]'} to ${f.new_location || '[New]'}${f.new_department ? `, and shall henceforth function within the ${f.new_department} team` : ''}, with effect from ${f.transfer_date || '[Date]'}.`,
-      `Your designation, compensation and all other terms of employment remain unchanged. You are requested to complete handover of your current responsibilities by ${f.handover_date || 'the effective date'} and report to ${f.reporting_to || 'your new reporting manager'} at the new location.`,
-      `Reasonable relocation assistance, as per company policy, shall be extended on submission of bills. Please acknowledge receipt of this order.`,
+      `Consequent upon organisational requirements, operational exigencies, and in the interest of the company, the management has decided to transfer your services from ${f.current_location || '[Current Location]'} to ${f.new_location || '[New Location]'}${f.new_department ? ', and you shall henceforth function within the ' + f.new_department + ' department' : ''}, with effect from ${f.transfer_date || '[Date]'}. This transfer order is issued in accordance with the applicable standing orders, the terms of your appointment letter, and the transfer clause contained therein, which you acknowledged at the time of your appointment.`,
+      `You are directed to complete the handover of all your current responsibilities, projects, pending assignments, and documentation to your designated successor or such other person as may be nominated by your reporting manager, on or before ${f.handover_date || 'the effective date of transfer'}. Upon completion of handover, you shall report to ${f.reporting_to || 'your new reporting manager'} at the new location and assume the duties and responsibilities as may be assigned to you. You shall ensure a smooth and orderly transition with minimal disruption to ongoing operations.`,
+      `Your designation, compensation (CTC), and all other terms and conditions of your employment shall remain unchanged upon transfer. The company shall extend reasonable relocation assistance, as per the prevailing company policy, to facilitate your transition to the new location. Such assistance shall include reimbursement of travel expenses, temporary accommodation (if applicable), and such other support as may be prescribed under the relocation policy, subject to submission of valid receipts and bills in accordance with the prescribed procedure.`,
+      `The management acknowledges that a transfer involves personal disruption and appreciates your understanding and cooperation in this regard. The company shall make available to you such information and support as may be required to ensure a seamless transition, including introduction to the new team, familiarisation with local facilities, and any other administrative assistance. You are expected to acknowledge receipt of this transfer order in writing within three (3) working days and to confirm your compliance with the handover and reporting timeline specified herein.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Transfer Summary',
     context: (f) => {
       const rows: string[] = [];
-      if (f.current_location && f.new_location) rows.push(`${f.current_location} → ${f.new_location}`);
-      if (f.transfer_date) rows.push(`Effective: ${f.transfer_date}`);
+      if (f.current_location && f.new_location) rows.push(`Transfer: ${f.current_location} → ${f.new_location}`);
+      if (f.transfer_date) rows.push(`Effective from: ${f.transfer_date}`);
+      if (f.handover_date) rows.push(`Handover by: ${f.handover_date}`);
+      if (f.reporting_to) rows.push(`Report to: ${f.reporting_to}`);
+      rows.push(`Compensation and terms: Unchanged`);
+      rows.push(`Relocation assistance: As per company policy`);
       return rows;
     },
     fields: [
@@ -491,16 +571,19 @@ const TEMPLATES: Template[] = [
     subject: () => 'Acceptance of Resignation',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `This is with reference to your resignation dated ${f.resignation_date || '[Date]'}. The management has accepted your resignation, and you shall be relieved from the services of ${f.company_name || '[Company]'} with effect from close of business hours on ${f.last_working_day || '[Date]'}.`,
-      `You are requested to complete knowledge transfer and exit formalities, including return of company assets, prior to your last working day. Your full-and-final settlement shall be processed within ${f.settlement_days || '30 days'} thereafter.`,
-      `We thank you for your contributions and wish you every success ahead.`,
+      `This is with reference to your resignation letter dated ${f.resignation_date || '[Date]'}, submitted to the Human Resources department. After due consideration of your request, the management has accepted your resignation, and you shall be relieved from the services of ${f.company_name || '[Company]'} with effect from the close of business hours on ${f.last_working_day || '[Date]'}. This acceptance is subject to completion of all applicable notice period requirements and exit formalities as prescribed under company policy.`,
+      `You are directed to complete a thorough and orderly knowledge transfer of all your responsibilities, projects, client relationships, pending assignments, and documentation to your designated successor or such other person as may be nominated by your reporting manager, prior to your last working day. You shall further complete all exit formalities including return of company property (identity card, laptop, mobile phone, access cards, documents, and any other company assets), revocation of system access and email credentials, and settlement of any outstanding dues. An exit clearance form, duly signed by all relevant departmental heads, shall be submitted to the Human Resources department on or before your last working day.`,
+      `Your full-and-final settlement, including encashment of accrued and unused earned leaves, any outstanding salary dues, bonus or incentive payments as applicable, and deductions for any notice shortfall (if applicable) or unrecovered advances, shall be computed and processed within ${f.settlement_days || '30 days'} of your last working day, subject to receipt of the completed exit clearance form. An itemised statement of settlement shall be furnished to you upon processing, and the net payable amount shall be credited to your registered bank account.`,
+      `We acknowledge and appreciate the contributions made by you during your tenure with ${f.company_name || '[Company]'} and extend our sincere wishes for your continued success and growth in your future professional endeavours. You are reminded that obligations relating to confidentiality, non-solicitation, and return of company intellectual property, as stipulated in your appointment letter and applicable policies, shall survive the termination of your employment and shall continue to bind you.`,
     ],
-    closing: () => ['With regards,'],
+    closing: () => ['With warm regards,'],
     contextTitle: 'Exit Terms',
     context: (f) => {
       const rows: string[] = [];
-      if (f.resignation_date) rows.push(`Resigned: ${f.resignation_date}`);
+      if (f.resignation_date) rows.push(`Resignation dated: ${f.resignation_date}`);
       if (f.last_working_day) rows.push(`Last working day: ${f.last_working_day}`);
+      rows.push(`Exit formalities: Knowledge transfer, asset return, clearance required`);
+      rows.push(`Settlement: Full-and-final within ${f.settlement_days || '30 days'} of last working day`);
       return rows;
     },
     fields: [
@@ -519,17 +602,20 @@ const TEMPLATES: Template[] = [
     subject: () => 'Full and Final Settlement Statement',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
-      `Consequent upon your separation from ${f.company_name || '[Company]'} with effect from ${f.last_working_day || '[Date]'}, your full-and-final settlement has been computed as follows.`,
-      `Earnings payable: ${f.earnings || '[leave encashment, bonus, arrears…]'}. Deductions and recoveries: ${f.deductions || '[notice shortfall, advances, asset recovery…]'}. Net amount payable to you: Rs. ${f.net_payable || '[Amount]'}, to be credited to your registered bank account within ${f.settlement_days || '7 working days'} of this letter.`,
-      `Acceptance of this settlement shall constitute full and final discharge of all claims arising from your employment. Please sign and return the duplicate copy as acknowledgement.`,
+      `Consequent upon your separation from ${f.company_name || '[Company]'} with effect from ${f.last_working_day || '[Date]'}, and in accordance with the company's exit policy and applicable provisions of your appointment letter, your full-and-final settlement has been duly computed. This statement reflects all amounts payable to you by the company and all amounts recoverable from you, determined on the basis of records available as on the date of computation. We enclose herewith the detailed settlement statement for your review and records.`,
+      `The earnings payable to you are as follows: ${f.earnings || '[leave encashment for [X] accumulated earned leaves at daily rate of Rs. [amount]; performance bonus for [period] at Rs. [amount]; salary arrears for [period] at Rs. [amount]; gratuity as applicable]'}, as itemised in the enclosed annexure. All earnings have been computed in accordance with the terms of your appointment letter, applicable company policies, and statutory provisions, including the Payment of Gratuity Act, 1972, where applicable.`,
+      `The deductions and recoveries applied against your settlement are: ${f.deductions || '[notice period shortfall of [X] days at daily rate of Rs. [amount]; outstanding salary advance of Rs. [amount]; recovery of company assets (laptop model [X] valued at Rs. [amount], mobile phone valued at Rs. [amount]); any other recoverable amounts]'}, as detailed in the enclosed annexure. All deductions have been computed in accordance with the terms of your employment, applicable standing orders, and such authorisations as may have been furnished by you during the course of your employment.`,
+      `The net amount payable to you, after accounting for all earnings and deductions, is Rs. ${f.net_payable || '[Amount]'} (Rupees [in words] only). This amount shall be credited to your registered bank account (Account No. [XXXX]) within ${f.settlement_days || '7 working days'} from the date of this letter, subject to receipt of your signed acknowledgement in the duplicate copy enclosed. Your acceptance of this settlement shall constitute a full and final discharge of all claims, demands, and causes of action arising from or in connection with your employment with the company, and you shall have no further claim against the company in respect of any matter whatsoever.`,
     ],
     closing: () => ['With regards,'],
     contextTitle: 'Settlement Breakup',
     context: (f) => {
       const rows: string[] = [];
-      if (f.earnings) rows.push(`Payable: ${f.earnings}`);
-      if (f.deductions) rows.push(`Recoveries: ${f.deductions}`);
+      if (f.earnings) rows.push(`Earnings payable: ${f.earnings}`);
+      if (f.deductions) rows.push(`Deductions and recoveries: ${f.deductions}`);
       if (f.net_payable) rows.push(`Net payable: Rs. ${f.net_payable}`);
+      rows.push(`Credit timeline: ${f.settlement_days || '7 working days'} from date of this letter`);
+      rows.push(`Acknowledgement: Signed duplicate copy required`);
       return rows;
     },
     fields: [
@@ -551,8 +637,9 @@ const TEMPLATES: Template[] = [
     subject: () => 'Salary Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
-      `This is to certify that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}) is employed with ${f.company_name || '[Company]'} since ${f.joining_date || '[Date]'}.`,
-      `As per our records, the current gross monthly emoluments stand at Rs. ${f.gross_monthly || '[Amount]'}, translating to an annual CTC of Rs. ${f.salary || '[Amount]'}. This certificate is issued on request for ${f.purpose || 'official purposes'}.`,
+      `This is to certify that ${f.employee_name || '[Name]'}, ${f.designation || '[Designation]'} (Employee Code: ${f.employee_code || '[Code]'}), is presently employed with ${f.company_name || '[Company]'} in the ${f.department || '[Department]'} department, having joined on ${f.joining_date || '[Date]'} on a continuing basis. As on the date of this certificate, the employee is actively engaged in duties assigned by the management and is in good standing with the organisation.`,
+      `As per the company's records, the current compensation details of the employee are as follows: gross monthly emoluments (exclusive of variable components) stand at Rs. ${f.gross_monthly || '[Amount]'} per month, translating to an annual cost-to-company (CTC) of Rs. ${f.salary || '[Amount]'} per annum. The CTC comprises basic salary, house rent allowance, provident fund (employer contribution), gratuity provision, medical insurance, and such other components as detailed in the compensation annexure. All amounts are subject to applicable statutory deductions including provident fund (employee contribution), professional tax, and income tax at source (TDS) as per applicable law.`,
+      `This certificate is issued at the request of the employee for ${f.purpose || 'official purposes'} and is based on records available with the company as on the date of issuance. The contents herein are true and correct to the best of our knowledge and belief. This certificate does not constitute a guarantee of continued employment or a commitment regarding future compensation, and the company reserves the right to amend the terms of employment, including compensation, in accordance with applicable policy and law. Any reliance on this certificate for purposes beyond those stated herein shall be at the sole risk of the receiving party.`,
     ],
     closing: () => ['Sincerely,'],
     fields: [
@@ -573,16 +660,21 @@ const TEMPLATES: Template[] = [
     subject: (f) => `Internship Offer — ${f.designation || 'Intern'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Candidate'},`,
     body: (f) => [
-      `We are pleased to offer you an internship as ${f.designation || '[Role]'}${f.department ? ` with the ${f.department} team` : ''} at ${f.company_name || '[Company]'}, for a period of ${f.intern_duration || '[X months]'} commencing ${f.joining_date || '[Date]'}.`,
-      `You shall be paid a consolidated stipend of Rs. ${f.stipend || '[Amount]'} per month during the internship. A mentor shall be assigned to guide your learning, and a certificate shall be issued on satisfactory completion.`,
-      `Please note that this internship does not constitute an offer of employment. Any absorption shall be subject to a separate evaluation and offer process.`,
+      `We are pleased to offer you an internship as ${f.designation || '[Role]'}${f.department ? ', with the ' + f.department + ' department' : ''} at ${f.company_name || '[Company]'}, for a period of ${f.intern_duration || '[X months]'} commencing ${f.joining_date || '[Date]'} and concluding on [End Date]. This internship is offered to provide you with practical exposure and professional development in your chosen field, under the guidance of the company's experienced professionals.`,
+      `You shall be paid a consolidated stipend of Rs. ${f.stipend || '[Amount]'} per month for the duration of the internship, payable at the end of each calendar month subject to regular attendance and satisfactory engagement. A dedicated mentor shall be assigned from the ${f.department || '[Department]'} team to guide your learning, set objectives, and provide regular feedback. You shall be expected to adhere to the company's work culture, including punctuality, professional conduct, and compliance with applicable policies and confidentiality obligations.`,
+      `This internship offer does not constitute, and shall not be construed as, an offer of employment or a promise of future absorption into the company. Any extension of the internship or offer of employment upon completion shall be subject to a separate evaluation of your performance, the availability of suitable positions, and the sole discretion of the management. You acknowledge that all intellectual property created during the course of this internship shall vest exclusively in the company, and you shall maintain strict confidentiality regarding all proprietary information, trade secrets, and business data to which you may have access during the internship period.`,
+      `The company shall provide you with such infrastructure, tools, and resources as may be reasonably necessary for the discharge of your assigned duties. You shall be covered under the company's group personal accident insurance policy during the internship period, subject to the terms thereof. The internship shall require a minimum commitment of [X hours] per week, and you shall be entitled to [X] days of leave during the internship period, subject to prior approval from your mentor. Upon satisfactory completion of the internship, a certificate of completion shall be issued to you, detailing the duration, role, and key learnings from the programme.`,
     ],
-    closing: () => ['We look forward to hosting you.', 'Warm regards,'],
+    closing: () => ['We look forward to welcoming you to the team and hosting a rewarding internship experience.', 'With warm regards,'],
     contextTitle: 'Internship Terms',
     context: (f) => {
       const rows: string[] = [];
       if (f.intern_duration) rows.push(`Duration: ${f.intern_duration}`);
       if (f.stipend) rows.push(`Stipend: Rs. ${f.stipend} per month`);
+      if (f.department) rows.push(`Department: ${f.department}`);
+      rows.push(`Mentor: Assigned from the department team`);
+      rows.push(`IP assignment: All intellectual property vests in the company`);
+      rows.push(`No employment guarantee: Absorption subject to separate evaluation`);
       return rows;
     },
     fields: [
@@ -602,14 +694,17 @@ const TEMPLATES: Template[] = [
     subject: () => 'Certificate of Internship',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
-      `This is to certify that ${f.employee_name || '[Name]'} has successfully completed an internship as ${f.designation || '[Role]'} at ${f.company_name || '[Company]'}, during the period ${f.joining_date || '[From]'} to ${f.last_working_day || '[To]'}.`,
-      `During the internship, the performance was assessed as ${f.conduct || 'good'}, with notable contribution in ${f.responsibilities || 'assigned project work'}. We wish every success in future professional pursuits.`,
+      `This is to certify that ${f.employee_name || '[Name]'} has successfully completed an internship as ${f.designation || '[Role]'} in the ${f.department || '[Department]'} department of ${f.company_name || '[Company]'} during the period from ${f.joining_date || '[From]'} to ${f.last_working_day || '[To]'} — a total duration of [X months/weeks]. During this period, ${f.employee_name || 'the intern'} was actively engaged in ${f.responsibilities || 'assigned project work'} and participated in the day-to-day operations of the department under the supervision of the assigned mentor.`,
+      `The performance of ${f.employee_name || 'the intern'} during the internship period was assessed as ${f.conduct || 'good'}. ${f.employee_name || 'The intern'} demonstrated a commendable aptitude for learning, professional conduct, adherence to deadlines, and the ability to work both independently and collaboratively within team settings. ${f.responsibilities ? 'Key contributions include: ' + f.responsibilities + '. ' : ''}The skills and competencies developed during the internship reflect a genuine commitment to professional growth and alignment with the standards expected in a corporate environment.`,
+      `We commend ${f.employee_name || 'the intern'} on the successful completion of the internship and are confident that the knowledge, skills, and experience gained during this programme will serve as a strong foundation for future professional endeavours. We wish ${f.employee_name || 'the intern'} every success in all future academic and career pursuits. This certificate is issued upon request without any admission of liability and without prejudice to any rights or obligations of either party.`,
     ],
     closing: () => ['Sincerely,'],
     contextTitle: 'Internship Snapshot',
     context: (f) => {
       const rows: string[] = [];
       if (f.responsibilities) rows.push(`Key work: ${f.responsibilities}`);
+      if (f.department) rows.push(`Department: ${f.department}`);
+      rows.push(`Performance assessment: ${f.conduct || 'Good'}`);
       return rows;
     },
     fields: [
