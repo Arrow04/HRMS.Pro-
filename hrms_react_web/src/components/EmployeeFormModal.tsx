@@ -750,104 +750,8 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const tabFilledCount = (tid: string) => tabStats(tid).filled;
   const tabTotalCount = (tid: string) => tabStats(tid).total;
 
-  // ── Validation ──
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [duplicates, setDuplicates] = useState<Record<string, { duplicate: boolean; existingName?: string | null }>>({});
-  const [showValidation, setShowValidation] = useState(false);
-  const [dirty, setDirty] = useState(false);
-
-  const VALIDATORS: Record<string, (v: string) => string | null> = {
-    firstName: (v) => {
-      const full = joinEmployeeName(v, String(formData.lastName ?? ''));
-      return full.trim() ? null : 'Full name is required';
-    },
-    email: (v) => {
-      if (!v.trim()) return null;
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? null : 'Enter a valid email address';
-    },
-    phone: (v) => {
-      if (!v.trim()) return 'Phone is required';
-      const digits = v.replace(/^\+\d{1,4}\s?/, '').replace(/\D/g, '');
-      if (digits.length < 10) return 'Phone must have at least 10 digits';
-      return digits.length > 10 ? 'Phone must not exceed 10 digits' : null;
-    },
-    joinDate: (v) => {
-      if (!v) return null;
-      const d = new Date(v);
-      if (isNaN(d.getTime())) return null;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return d > today ? 'Join date cannot be in the future' : null;
-    },
-    aadharNumber: (v) => {
-      if (!v.trim()) return null;
-      return /^\d{4}\s?\d{4}\s?\d{4}$/.test(v.trim()) ? null : 'Aadhaar must be 12 digits (e.g. 1234 5678 9012)';
-    },
-    panNumber: (v) => {
-      if (!v.trim()) return null;
-      return /^[A-Z]{5}\d{4}[A-Z]$/.test(v.trim().toUpperCase()) ? null : 'PAN must be 10 chars (e.g. ABCDE1234F)';
-    },
-    ifscCode: (v) => {
-      if (!v.trim()) return null;
-      return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.trim().toUpperCase()) ? null : 'Enter a valid IFSC code';
-    },
-    voterId: (v) => {
-      if (!v.trim()) return null;
-      return /^[A-Z]{3}\d{7}$/.test(v.trim().toUpperCase()) ? null : 'Voter ID must be 10 chars (e.g. ABC1234567)';
-    },
-    emergencyPhone: (v) => {
-      if (!v.trim()) return null;
-      const digits = v.replace(/^\+\d{1,4}\s?/, '').replace(/\D/g, '');
-      if (digits.length < 10) return 'Phone must have at least 10 digits';
-      return digits.length > 10 ? 'Phone must not exceed 10 digits' : null;
-    },
-    spousePhone: (v) => {
-      if (!v.trim()) return null;
-      const digits = v.replace(/^\+\d{1,4}\s?/, '').replace(/\D/g, '');
-      if (digits.length < 10) return 'Phone must have at least 10 digits';
-      return digits.length > 10 ? 'Phone must not exceed 10 digits' : null;
-    },
-  };
-
-  const validateField = (key: string): string | null => {
-    const v = String(formData[key] ?? '').trim();
-    const fmt = VALIDATORS[key];
-    if (fmt) return fmt(v);
-    return null;
-  };
-
-  const validateAll = (): Record<string, string> => {
-    const errs: Record<string, string> = {};
-    for (const k of Object.keys(VALIDATORS)) {
-      const e = validateField(k);
-      if (e) errs[k] = e;
-    }
-    if (!errs.email && duplicates.email?.duplicate) errs.email = `Email already used by ${duplicates.email.existingName || 'another employee'}`;
-    if (!errs.phone && duplicates.phone?.duplicate) errs.phone = `Phone already used by ${duplicates.phone.existingName || 'another employee'}`;
-    return errs;
-  };
-
-  const checkDuplicate = async (field: 'email' | 'employee_code' | 'phone', value: string) => {
-    const v = (value || '').trim();
-    if (!v) {
-      setDuplicates((d) => ({ ...d, [field === 'employee_code' ? 'employeeCode' : field]: undefined }));
-      return;
-    }
-    try {
-      const res = await api.get('/employees/check-duplicate', { params: { field, value: v, excludeId: employeeId } });
-      const data = res.data || {};
-      const key = field === 'employee_code' ? 'employeeCode' : field;
-      setDuplicates((d) => ({ ...d, [key]: { duplicate: !!data.duplicate, existingName: data.existingName } }));
-    } catch {
-      // ignore network errors — validation still runs locally
-    }
-  };
-
-  const handleBlur = (key: string, dupField?: 'email' | 'employee_code' | 'phone') => {
-    const e = validateField(key);
-    setErrors((prev) => ({ ...prev, [key]: e || undefined }));
-    if (dupField) checkDuplicate(dupField, String(formData[key] ?? ''));
-  };
+  // NOTE: all frontend guards are disabled — values pass straight through on
+  // every keystroke and on save. The server is the single source of validation.
 
   const phoneDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emailDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -871,48 +775,17 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       }
     }
     updateField('employeeCode', code);
-    setDuplicates((d) => ({ ...d, employeeCode: undefined }));
-    setErrors((prev) => ({ ...prev, employeeCode: undefined }));
     return code;
   };
 
-  // Auto-check duplicate (email / employee_code / phone) as the user types;
-  // if found, wipe the field so a duplicate value can never be saved.
-  const handleAutoDuplicate = (field: 'email' | 'employee_code' | 'phone', key: string, value: string, timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>) => {
-    updateField(key, value);
+  // Guards disabled — values pass straight through, the server validates on save.
+  const handleAutoDuplicate = (_field: 'email' | 'employee_code' | 'phone', key: string, value: string, timerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    const v = (value || '').trim();
-    if (!v) {
-      setDuplicates((d) => ({ ...d, [key]: undefined }));
-      return;
-    }
-    timerRef.current = setTimeout(async () => {
-      const res = await api.get('/employees/check-duplicate', { params: { field, value: v, excludeId: employeeId } }).catch(() => null);
-      if (!res) return;
-      if (res.data?.duplicate) {
-        setDuplicates((d) => ({ ...d, [key]: { duplicate: true, existingName: res.data.existingName } }));
-        setErrors((prev) => ({ ...prev, [key]: `${key === 'employeeCode' ? 'Employee code' : key === 'email' ? 'Email' : 'Phone'} already used by ${res.data.existingName || 'another employee'} — please enter a different one` }));
-        updateField(key, '');
-      } else {
-        setDuplicates((d) => ({ ...d, [key]: undefined }));
-      }
-    }, 600);
+    updateField(key, value);
   };
 
   const handleSubmit = async () => {
-    // Ensure duplicate checks complete before validating (they run async on blur)
-    await Promise.all([
-      checkDuplicate('email', String(formData.email ?? '')),
-      checkDuplicate('phone', String(formData.phone ?? '')),
-      checkDuplicate('employee_code', String(formData.employeeCode ?? '')),
-    ]);
-    const errs = validateAll();
-    setShowValidation(true);
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      toast.error('Please fix the highlighted fields before saving');
-      return;
-    }
+    // No frontend guards — save always goes through, the server validates.
     onSubmit();
 
     const employeeIdForRoster = docEmployeeId;
@@ -937,14 +810,9 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
   const updateField = (key: string, value: unknown) => {
     set({ [key]: value });
-    setDirty(true);
-    setErrors((prev) => ({ ...prev, [key]: undefined }));
   };
 
-  const inputCls = (key: string) => {
-    const hasErr = !!(showValidation || errors[key] || duplicates[key]?.duplicate) && !!(errors[key] || duplicates[key]?.duplicate || validateField(key));
-    const hasDup = !!duplicates[key]?.duplicate;
-    if (hasErr || hasDup) return `${formInputClass} border-[#DC2626] focus:ring-[#DC2626]`;
+  const inputCls = (_key: string) => {
     return formInputClass;
   };
 
@@ -953,19 +821,13 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
   };
 
-  const FieldError: React.FC<{ name: string }> = ({ name }) => {
-    const msg = (showValidation || errors[name]) ? (errors[name] || validateField(name)) : null;
-    const dup = duplicates[name];
-    if (dup?.duplicate && !errors[name]) {
-      return <p className="mt-1 text-[11px] text-[#DC2626] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {name === 'email' ? 'Email already used' : name === 'phone' ? 'Phone already used' : ''}</p>;
-    }
-    if (!msg) return null;
-    return <p className="mt-1 text-[11px] text-[#DC2626] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {msg}</p>;
+  const FieldError: React.FC<{ name: string }> = () => {
+    return null;
   };
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className={`fixed inset-0 bg-black/50 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => { if (!dirty || window.confirm('You have unsaved changes. Discard them and close?')) onClose(); }} />
+      <div className={`fixed inset-0 bg-black/50 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => onClose()} />
       <div className={`fixed inset-0 bg-white shadow-2xl transform transition-all duration-300 ease-in-out ${isClosing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
         <div className="h-full flex flex-col">
           {/* Header */}
@@ -981,7 +843,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => { if (!dirty || window.confirm('You have unsaved changes. Discard them and close?')) onClose(); }}
+              <button type="button" onClick={() => onClose()}
                 className="px-4 py-2 text-sm font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
                 Cancel
               </button>
@@ -997,7 +859,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   <Save className="w-4 h-4" /> {savingProgress ? 'Saving...' : 'Save Progress'}
                 </button>
               ) : null}
-              <button onClick={() => { if (!dirty || window.confirm('You have unsaved changes. Discard them and close?')) onClose(); }} title="Close"
+              <button onClick={() => onClose()} title="Close"
                 className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
                 <X className="w-5 h-5" />
               </button>
@@ -1153,7 +1015,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                        value={input(formData.reportingManagerId)}
                        onChange={(v) => set({ reportingManagerId: v ? Number(v) : undefined })}
                        options={(employeesList || [])
-                         .filter((emp: Employee) => !editingItem || emp.id !== editingItem?.id)
+                          .filter((emp: Employee) => !employeeId || emp.id !== employeeId)
                          .map((emp: Employee) => ({ id: emp.id, name: emp.fullName || emp.name || `Employee #${emp.id}` }))}
                        placeholder="Select reporting manager"
                        showAllOption={false}
@@ -1308,7 +1170,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Email <span className="text-[#059669] font-normal">(Primary Login ID)</span></label>
                       <input type="email" value={input(formData.email)} onChange={(e) => handleAutoDuplicate('email', 'email', e.target.value, emailDupTimer)}
-                        onBlur={() => handleBlur('email', 'email')}
                         className={inputCls('email')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="name@company.com" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Primary login ID — used to sign in.</p>
                       <FieldError name="email" />
@@ -1316,7 +1177,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Phone Number <span className="text-[#059669] font-normal">(Secondary Login ID)</span></label>
                       <PhoneInput value={input(formData.phone)} onChange={(v) => handleAutoDuplicate('phone', 'phone', v, phoneDupTimer)}
-                        onBlur={() => handleBlur('phone', 'phone')} defaultDial={dialCode}
+                        defaultDial={dialCode}
                         placeholder="+91 98765 43210" inputClassName={formInputClass} />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Secondary login ID — can also be used to sign in.</p>
                       <FieldError name="phone" />
@@ -1354,10 +1215,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       onChange={(e) => {
                         const { firstName, lastName } = splitEmployeeName(e.target.value);
                         set({ firstName, lastName });
-                        setDirty(true);
-                        setErrors((prev) => ({ ...prev, firstName: undefined }));
                       }}
-                      onBlur={() => handleBlur('firstName')}
                       className={inputCls('firstName')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter full legal name" />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Full legal name as per ID documents</p>
                     <FieldError name="firstName" />
@@ -1366,7 +1224,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Employee Code</label>
                     <div className="relative">
                       <input type="text" value={input(formData.employeeCode)} onChange={(e) => handleAutoDuplicate('employee_code', 'employeeCode', e.target.value, codeDupTimer)}
-                        onBlur={() => handleBlur('employeeCode', 'employee_code')}
                         className={`${inputCls('employeeCode')} pr-24`} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter or generate code" />
                       <button type="button" onClick={generateEmployeeCode}
                         title="Auto-generate a unique 7-character code"
@@ -1580,7 +1437,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <div>
                         <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Aadhar Number</label>
                         <input type="text" value={input(formData.aadharNumber)} onChange={(e) => updateField('aadharNumber', formatAadhaar(e.target.value))}
-                          onBlur={() => handleBlur('aadharNumber')}
                           className={inputCls('aadharNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Aadhar number" maxLength={14} />
                         <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">12-digit Aadhaar number, e.g. 1234 5678 9012</p>
                         <FieldError name="aadharNumber" />
@@ -1611,7 +1467,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <div>
                         <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">PAN Number</label>
                         <input type="text" value={input(formData.panNumber)} onChange={(e) => updateField('panNumber', e.target.value.toUpperCase())}
-                          onBlur={() => handleBlur('panNumber')}
                           className={inputCls('panNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter PAN number" maxLength={10} />
                         <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">10-character PAN, e.g. ABCDE1234F</p>
                         <FieldError name="panNumber" />
@@ -1640,9 +1495,8 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   <div className="doc-pair">
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Voter ID</label>
-                      <input type="text" value={input(formData.voterId)} onChange={(e) => updateField('voterId', e.target.value.toUpperCase())}
-                        onBlur={() => handleBlur('voterId')}
-                        className={inputCls('voterId')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
+                        <input type="text" value={input(formData.voterId)} onChange={(e) => updateField('voterId', e.target.value.toUpperCase())}
+                          className={inputCls('voterId')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Voter ID card number, e.g. ABC1234567</p>
                       <FieldError name="voterId" />
                     </div>
