@@ -44,6 +44,13 @@ type ExpenseRow = Expense & {
   email?: string;
 };
 
+/** Coerces API amounts (number or numeric string) to a plain number so stat cards animate. */
+const num = (v: unknown): number => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+
 // Top-level page tabs
 const EXPENSE_TABS = [
   { id: 'records', label: 'Expense Records', icon: CreditCard },
@@ -390,10 +397,10 @@ const Expenses = () => {
   const hasActiveFilters = Boolean(searchTerm || companyFilter !== 'all' || branchFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || startDate !== '' || endDate !== '');
 
   const statCards = [
-    { label: 'Total', value: (stats.totalAmount ?? stats.total) || 0, icon: CreditCard, color: 'blue', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
-    { label: 'Pending', value: stats.pendingAmount || 0, icon: Clock, color: 'orange', onClick: () => { setActiveTab('records'); setStatusFilter('pending'); } },
-    { label: 'Approved', value: stats.approvedAmount || 0, icon: CheckCircle2, color: 'green', onClick: () => { setActiveTab('approved'); setStatusFilter('all'); } },
-    { label: 'This Month', value: stats.thisMonthAmount || 0, icon: Wallet, color: 'purple', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
+    { label: 'Total (Rs.)', value: num(stats.totalAmount ?? stats.total), icon: CreditCard, color: 'blue', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
+    { label: 'Pending (Rs.)', value: num(stats.pendingAmount), icon: Clock, color: 'orange', onClick: () => { setActiveTab('records'); setStatusFilter('pending'); } },
+    { label: 'Approved (Rs.)', value: num(stats.approvedAmount), icon: CheckCircle2, color: 'green', onClick: () => { setActiveTab('approved'); setStatusFilter('all'); } },
+    { label: 'This Month (Rs.)', value: num(stats.thisMonthAmount), icon: Wallet, color: 'purple', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);

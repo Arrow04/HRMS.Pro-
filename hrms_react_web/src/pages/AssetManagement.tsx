@@ -400,7 +400,7 @@ export default function AssetManagement() {
         <StatsCard icon={Laptop} label="Total Assets" value={assets.length} color="blue" onClick={() => setActiveTab('all')} />
         <StatsCard icon={User} label="Assigned" value={assignedAssets.length} color="purple" onClick={() => setActiveTab('assignments')} />
         <StatsCard icon={CheckCircle} label="Available" value={availableAssets.length} color="green" onClick={() => setActiveTab('available')} />
-        <StatsCard icon={Wallet} label="Total Book Value" value={`${formatCurrencyRs(totalBookValue)}`} color="orange" onClick={() => setActiveTab('analytics')} />
+        <StatsCard icon={Wallet} label="Total Book Value (Rs.)" value={Math.round(totalBookValue)} color="orange" onClick={() => setActiveTab('analytics')} />
       </div>
 
       {/* Sub-menu Tabs */}

@@ -1133,11 +1133,17 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     return matchSearch && matchCompany && matchBranch && matchDept && matchStatus && matchStart && matchEnd;
   });
 
+  const toNum = (v: unknown): number => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const n = Number(String(v ?? '').replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const statCards = [
-    { label: 'Total Payroll', value: stats.totalPayroll || 0, icon: Wallet, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('payslips') },
-    { label: 'Employees Paid', value: stats.employeesPaid || 0, icon: Users, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('payslips') },
-    { label: 'Pending', value: stats.pending || 0, icon: Clock, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => setActiveTab('payslips') },
-    { label: 'Avg Salary', value: stats.avgSalary || 0, icon: Coins, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => setActiveTab('payslips') },
+    { label: 'Total Payroll (Rs.)', value: toNum(stats.totalPayroll), icon: Wallet, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('payslips') },
+    { label: 'Employees Paid', value: toNum(stats.employeesPaid), icon: Users, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('payslips') },
+    { label: 'Pending', value: toNum(stats.pending), icon: Clock, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => setActiveTab('payslips') },
+    { label: 'Avg Salary (Rs.)', value: toNum(stats.avgSalary), icon: Coins, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => setActiveTab('payslips') },
   ];
 
   
