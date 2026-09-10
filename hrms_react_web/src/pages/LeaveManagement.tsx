@@ -1176,7 +1176,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl space-y-6">
+          <div className="space-y-6">
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1197,18 +1197,43 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Leave Types & Policies</div>
-                <div className="text-xs text-gray-400 mt-1">Define leave types and policy templates</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
+                    <Calendar className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Leave Types & Policies</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Define leave types and policy templates</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Accrual & Carry Forward</div>
-                <div className="text-xs text-gray-400 mt-1">Set accrual methods and carry-forward rules</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
+                    <TrendingUp className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Accrual & Carry Forward</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Accrual methods, carry-forward rules</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Holiday Calendar</div>
-                <div className="text-xs text-gray-400 mt-1">Manage company holidays and optional leaves</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
+                    <Award className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Encashment Rules</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Encashment, tax, frequency settings</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
+                    <CalendarDays className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Holiday Calendar</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Company holidays and optional leaves</p>
               </div>
             </div>
           </div>

@@ -2166,7 +2166,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl space-y-6">
+          <div className="space-y-6">
             <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -2187,18 +2187,43 @@ const [includeInactive, setIncludeInactive] = useState(false);
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Review Cycles & Ratings</div>
-                <div className="text-xs text-gray-400 mt-1">Define review frequency and rating scales</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] flex items-center justify-center text-white shadow-sm">
+                    <Target className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Review Cycles</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Review frequency, reminders, self-appraisal</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Competency & Goals</div>
-                <div className="text-xs text-gray-400 mt-1">Build competency frameworks and KRA templates</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
+                    <Star className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Rating Scales</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Numeric, grade, and custom rating scales</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Feedback Settings</div>
-                <div className="text-xs text-gray-400 mt-1">Configure 360° feedback and templates</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Competency & Goals</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Frameworks, KRAs, weight allocation</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
+                    <Users className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Feedback Settings</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">360° feedback, templates, deadlines</p>
               </div>
             </div>
           </div>

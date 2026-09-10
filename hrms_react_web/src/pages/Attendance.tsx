@@ -1658,7 +1658,7 @@ const Attendance = () => {
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl space-y-6">
+          <div className="space-y-6">
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -1679,18 +1679,43 @@ const Attendance = () => {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Work Schedule</div>
-                <div className="text-xs text-gray-400 mt-1">Set working days, hours, grace periods</div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
+                    <Clock className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Work Schedule</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Working days, hours, grace periods</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Shifts & Overtime</div>
-                <div className="text-xs text-gray-400 mt-1">Manage shift templates and OT rules</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
+                    <Zap className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Shifts & Overtime</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Shift templates, OT rules, comp-off</p>
               </div>
-              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
-                <div className="text-sm font-medium text-gray-500">Geofencing & IP</div>
-                <div className="text-xs text-gray-400 mt-1">Configure location and network restrictions</div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
+                    <MapPin className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Geofencing & IP</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Location, WiFi, IP restrictions</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
+                    <TrendingUp className="w-5 h-5" />
+                  </span>
+                  <h4 className="text-sm font-bold text-[#0F172A]">Payroll Integration</h4>
+                </div>
+                <p className="text-xs text-[#94A3B8]">Half-day, weekend, manual override rules</p>
               </div>
             </div>
           </div>
