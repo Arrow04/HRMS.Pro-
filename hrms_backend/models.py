@@ -3749,3 +3749,48 @@ class JobPortalReview(Base):
 
     def __repr__(self):
         return f'<JobPortalReview {self.id}>'
+
+class SupportTicket(Base):
+    """Helpdesk ticket for IT / HR / facility requests"""
+    __tablename__ = 'support_tickets'
+
+    id = Column(Integer, primary_key=True)
+    ticket_no = Column(String(50), unique=True, index=True)
+    subject = Column(String(255), nullable=False)
+    description = Column(Text)
+    category = Column(String(50), default='general', index=True)
+    priority = Column(String(20), default='medium', index=True)
+    status = Column(String(50), default='open', index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=True, index=True)
+    assigned_to = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    resolution_notes = Column(Text)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<SupportTicket {self.ticket_no}>'
+
+class Grievance(Base):
+    """Employee grievance record"""
+    __tablename__ = 'grievances'
+
+    id = Column(Integer, primary_key=True)
+    subject = Column(String(255), nullable=False)
+    description = Column(Text)
+    type = Column(String(100), default='grievance', index=True)
+    status = Column(String(50), default='open', index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
+    resolution_notes = Column(Text)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    def __repr__(self):
+        return f'<Grievance {self.id} {self.status}>'

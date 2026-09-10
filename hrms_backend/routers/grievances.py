@@ -1,23 +1,41 @@
-"""HRMS API grievances routes."""
+"""HRMS API grievances routes (dedicated grievance records)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
-from core.schemas import UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BulkDeleteRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse
-from core.shared import RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user
-from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
-from database import Base, SessionLocal, engine, get_db, get_read_db
-from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
-from services.payroll_service import calculate_payroll, generate_payroll_record
-from utils.helpers import convert_camel_to_snake
+from core.shared import _get_employee_id_for_user
+from database import get_db, get_read_db
+from models import Employee, Grievance, User
 
 router = APIRouter(tags=["Grievances"])
+
+ADMIN_ROLES = ("superadmin", "hr_admin", "admin")
+GRIEVANCE_STATUSES = ("open", "in_progress", "resolved", "closed")
+
+
+def _serialize(grievance: Grievance, db: Session) -> dict:
+    employee_name = None
+    if grievance.employee_id:
+        emp = db.query(Employee).filter(Employee.id == grievance.employee_id).first()
+        if emp:
+            employee_name = (emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}").strip() or None
+    return {
+        "id": grievance.id,
+        "subject": grievance.subject,
+        "description": grievance.description,
+        "status": grievance.status,
+        "type": grievance.type,
+        "employeeId": grievance.employee_id,
+        "employeeName": employee_name,
+        "resolutionNotes": None,
+        "createdAt": grievance.created_at.isoformat() if grievance.created_at else None,
+        "updatedAt": grievance.updated_at.isoformat() if grievance.updated_at else None,
+    }
 
 
 @router.get("/api/grievances", tags=["Grievances"])
@@ -26,13 +44,16 @@ def get_grievances(
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
-    query = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+    query = db.query(Grievance).filter(Grievance.deleted_at.is_(None))
+    if current_user.role not in ADMIN_ROLES:
         employee_id = _get_employee_id_for_user(db, current_user)
         if not employee_id:
             raise HTTPException(status_code=400, detail="Employee profile not found")
-        query = query.filter(Employee.id == employee_id)
-    return query.order_by(Employee.created_at.desc()).limit(500).all()
+        query = query.filter(Grievance.employee_id == employee_id)
+    if status:
+        query = query.filter(Grievance.status == status)
+    grievances = query.order_by(Grievance.created_at.desc()).limit(500).all()
+    return [_serialize(g, db) for g in grievances]
 
 
 @router.post("/api/grievances", tags=["Grievances"])
@@ -41,26 +62,27 @@ def create_grievance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    subject = (data.get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    description = (data.get("description") or "").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="Description is required")
     employee_id = _get_employee_id_for_user(db, current_user)
-    if not employee_id:
-        raise HTTPException(status_code=400, detail="Employee profile not found")
-    employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    notification = Notification(
-        user_id=current_user.id,
-        title=data.get("subject", "Grievance"),
-        body=data.get("description", ""),
-        type="grievance",
-        reference_id=str(employee_id),
-        data={"status": "open", "subject": data.get("subject", "")},
-        organization_id=current_user.organization_id,
-        company_id=employee.company_id,
+    employee = db.query(Employee).filter(Employee.id == employee_id).first() if employee_id else None
+    grievance = Grievance(
+        subject=subject,
+        description=description,
+        type=(data.get("type") or "grievance").strip().lower() or "grievance",
+        status="open",
+        employee_id=employee_id,
+        organization_id=getattr(employee, "organization_id", None) or current_user.organization_id,
+        company_id=getattr(employee, "company_id", None),
     )
-    db.add(notification)
+    db.add(grievance)
     db.commit()
-    db.refresh(notification)
-    return {"message": "Grievance submitted", "id": notification.id}
+    db.refresh(grievance)
+    return {"message": "Grievance submitted", "id": grievance.id}
 
 
 @router.put("/api/grievances/{grievance_id}", tags=["Grievances"])
@@ -70,12 +92,33 @@ def update_grievance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    notification = db.query(Notification).filter(Notification.id == grievance_id).first()
-    if not notification:
+    grievance = db.query(Grievance).filter(
+        Grievance.id == grievance_id, Grievance.deleted_at.is_(None)
+    ).first()
+    if not grievance:
         raise HTTPException(status_code=404, detail="Grievance not found")
-    notification.data = {**(notification.data or {}), **data}
+    is_admin = current_user.role in ADMIN_ROLES
+    employee_id = _get_employee_id_for_user(db, current_user)
+    is_owner = employee_id and grievance.employee_id == employee_id
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if "subject" in data and data["subject"] is not None:
+        grievance.subject = str(data["subject"]).strip() or grievance.subject
+    if "description" in data and data["description"] is not None:
+        grievance.description = str(data["description"])
+    if "type" in data and data["type"]:
+        grievance.type = str(data["type"])
+    if "status" in data and data["status"]:
+        status = str(data["status"]).strip().lower()
+        if status not in GRIEVANCE_STATUSES:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        if status in ("resolved", "closed") and not is_admin:
+            raise HTTPException(status_code=403, detail="Only admins can resolve grievances")
+        grievance.status = status
+        if status in ("resolved", "closed") and not grievance.resolved_at:
+            grievance.resolved_at = datetime.utcnow()
+        if status not in ("resolved", "closed"):
+            grievance.resolved_at = None
     db.commit()
     return {"message": "Grievance updated", "id": grievance_id}
 
@@ -86,11 +129,11 @@ def delete_grievance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+    if current_user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
-    notification = db.query(Notification).filter(Notification.id == grievance_id).first()
-    if not notification:
+    grievance = db.query(Grievance).filter(Grievance.id == grievance_id).first()
+    if not grievance:
         raise HTTPException(status_code=404, detail="Grievance not found")
-    notification.deleted_at = datetime.utcnow()
+    grievance.deleted_at = datetime.utcnow()
     db.commit()
     return {"message": "Grievance deleted", "id": grievance_id}

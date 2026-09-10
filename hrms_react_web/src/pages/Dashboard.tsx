@@ -31,6 +31,10 @@ import {
   Monitor,
   LogOut,
   ShieldAlert,
+  MessageSquare,
+  Megaphone,
+  Bell,
+  Headset,
 } from 'lucide-react';
 import {
   BarChart,
@@ -708,9 +712,10 @@ export default function Dashboard() {
       {/* Quick Actions Grid */}
       <div className="mb-12">
         <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-heading)' }}>Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <QuickActionButton icon={Building} label="Company" description="Manage organization" accent="indigo" onClick={() => navigate('/company')} />
           <QuickActionButton icon={Users} label="Employees" description={`Manage staff (${stats.totalEmployees})`} accent="emerald" onClick={() => navigate('/employees')} />
+          <QuickActionButton icon={FileText} label="Letters" description="Offer & relieving letters" accent="indigo" onClick={() => navigate('/letters')} />
           <QuickActionButton icon={Clock} label="Attendance" description="Track attendance" accent="cyan" onClick={() => navigate('/attendance')} />
           <QuickActionButton icon={CalendarCheck} label="Leaves" description="Manage leave requests" accent="rose" onClick={() => navigate('/leaves')} />
           <QuickActionButton icon={Coins} label="Payroll" description="Salary management" accent="orange" onClick={() => navigate('/payroll')} />
@@ -724,6 +729,10 @@ export default function Dashboard() {
           <QuickActionButton icon={Monitor} label="Assets" description="Asset management" accent="blue" onClick={() => navigate('/assets')} />
           <QuickActionButton icon={LogOut} label="Exit Management" description="Employee exits" accent="rose" onClick={() => navigate('/exit-management')} />
           <QuickActionButton icon={ShieldAlert} label="Anomalies" description="Detect anomalies" accent="amber" onClick={() => navigate('/anomalies')} />
+          <QuickActionButton icon={MessageSquare} label="Grievances" description="Resolve complaints" accent="orange" onClick={() => navigate('/grievances')} />
+          <QuickActionButton icon={Megaphone} label="Announcements" description="Company updates" accent="violet" onClick={() => navigate('/announcements')} />
+          <QuickActionButton icon={Bell} label="Notifications" description="Alerts & messages" accent="blue" onClick={() => navigate('/notifications')} />
+          <QuickActionButton icon={Headset} label="Helpdesk" description="IT & facility tickets" accent="cyan" onClick={() => navigate('/helpdesk')} />
         </div>
       </div>
 

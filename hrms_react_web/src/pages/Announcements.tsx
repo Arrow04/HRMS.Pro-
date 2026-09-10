@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Megaphone, Plus, Search, X, Edit2, Trash2, Download, Upload,
-  Info, Filter, Calendar, FileText, Users
+  Megaphone, Plus, Search, Edit2, Trash2,
+  Calendar, FileText
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -14,6 +14,7 @@ import Modal from '../components/Modal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import FormField, { formInputClass, formTextareaClass } from '../components/FormField';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 
 type AnnouncementRow = {
@@ -54,7 +55,7 @@ const Announcements = () => {
     setMounted(true);
   }, []);
 
-  const { data: announcements = [], isLoading, isFetching } = useQuery({
+  const { data: announcements = [], isLoading } = useQuery({
     queryKey: ['announcements'],
     queryFn: async () => {
       try {
@@ -226,13 +227,14 @@ const Announcements = () => {
   ], []);
 
   const stats = useMemo(() => {
-    const total = announcements.length;
-    const notices = announcements.filter((a) => a.type === 'notice').length;
-    const general = announcements.filter((a) => a.type !== 'notice').length;
+    const list = announcements as AnnouncementRow[];
+    const total = list.length;
+    const notices = list.filter((a) => a.type === 'notice').length;
+    const general = list.filter((a) => a.type !== 'notice').length;
     return [
-      { label: 'Total', value: total, color: '#6366F1', bg: '#EEF2FF', icon: FileText },
-      { label: 'Notices', value: notices, color: '#EC4899', bg: '#FDF2F8', icon: Megaphone },
-      { label: 'Announcements', value: general, color: '#3B82F6', bg: '#EFF6FF', icon: Calendar },
+      { label: 'Total', value: total, iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5', iconColor: 'text-[#4F46E5]', icon: FileText, tab: 'all' },
+      { label: 'Notices', value: notices, iconBg: 'bg-gradient-to-br from-[#EC4899]/20 via-[#F472B6]/10 to-[#F9A8D4]/5', iconColor: 'text-[#DB2777]', icon: Megaphone, tab: 'notice' },
+      { label: 'Announcements', value: general, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', icon: Calendar, tab: 'announcement' },
     ];
   }, [announcements]);
 
@@ -243,10 +245,13 @@ const Announcements = () => {
       <PageHero
         title="Announcements & Notices"
         subtitle="Manage company announcements and notices"
+        icon={Megaphone}
+        accent="violet"
+        breadcrumbs={['Home', 'Announcements']}
         actions={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity shadow-md shadow-black/10"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
           >
             <Plus className="w-4 h-4" />
             New Announcement
@@ -255,14 +260,17 @@ const Announcements = () => {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat) => (
+        {stats.map((stat, i) => (
           <StatsCard
             key={stat.label}
-            title={stat.label}
+            label={stat.label}
             value={stat.value}
             icon={stat.icon}
-            color={stat.color}
-            bg={stat.bg}
+            iconBg={stat.iconBg}
+            iconColor={stat.iconColor}
+            isLoading={isLoading}
+            delay={i * 60}
+            onClick={() => setActiveTab(stat.tab)}
           />
         ))}
       </div>
@@ -298,21 +306,24 @@ const Announcements = () => {
           </div>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={filteredData}
-          rowKey={(row) => row.id}
-          searchable={false}
-          emptyMessage="No announcements found"
-          isLoading={isLoading || isFetching}
-        />
+        {isLoading ? (
+          <TableSkeleton rows={6} cols={5} />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filteredData}
+            rowKey={(row) => row.id}
+            searchable={false}
+            emptyMessage="No announcements found"
+          />
+        )}
       </div>
 
       <Modal
         isOpen={showModal}
         onClose={() => { setShowModal(false); setEditingItem(null); resetForm(); }}
         title={editingItem ? 'Edit Announcement' : 'New Announcement'}
-        width="lg"
+        size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <FormField label="Title" required>

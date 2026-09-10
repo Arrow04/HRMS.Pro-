@@ -120,26 +120,42 @@ def create_asset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    serial = (data.serialNumber or "").strip()
+    if not serial:
+        raise HTTPException(status_code=400, detail="Serial number is required")
     existing = db.query(Asset).filter(
-        Asset.serial_number == data.serialNumber,
+        Asset.serial_number == serial,
         Asset.deleted_at.is_(None),
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Asset with this serial number already exists")
     snake = convert_camel_to_snake(data.model_dump())
+    snake["serial_number"] = serial
+    if isinstance(snake.get("asset_name"), str):
+        snake["asset_name"] = snake["asset_name"].strip()
     if current_user.role != "superadmin":
         snake["organization_id"] = current_user.organization_id
         if snake.get("employee_id"):
             get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
     else:
         snake["organization_id"] = data.organizationId or current_user.organization_id
-    if snake.get("purchase_date"):
-        snake["purchase_date"] = dateparser.parse(snake["purchase_date"]).date()
-    if snake.get("issue_date"):
-        snake["issue_date"] = dateparser.parse(snake["issue_date"]).date()
+    for date_key in ("purchase_date", "issue_date"):
+        raw = snake.get(date_key)
+        if raw:
+            try:
+                parsed = dateparser.parse(str(raw))
+            except Exception:
+                parsed = None
+            if parsed is None:
+                raise HTTPException(status_code=400, detail=f"Invalid {date_key}: {raw}")
+            snake[date_key] = parsed.date()
     att = Asset(**snake)
     db.add(att)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Could not create asset: {e}")
     db.refresh(att)
     return {"message": "Asset created", "id": att.id}
 

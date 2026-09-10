@@ -6,7 +6,7 @@ import {
   FileBarChart, CreditCard, TrendingUp, Database,
   ShieldAlert, Wallet, LogOut, Monitor,
   ChevronLeft, ChevronRight, Building2, Megaphone, AlertTriangle,
-  Bell
+  Bell, Headset
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
@@ -31,6 +31,7 @@ const ALL_LINKS = [
   { path: '/announcements', label: 'Announcements', icon: Megaphone },
   { path: '/grievances', label: 'Grievances', icon: AlertTriangle },
   { path: '/notifications', label: 'Notifications', icon: Bell },
+  { path: '/helpdesk', label: 'Helpdesk', icon: Headset },
   { path: '/master-data', label: 'Master Data', icon: Database },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -59,6 +60,7 @@ const DashboardLayout = () => {
     '/settings': 'settings', '/exit-management': 'exit', '/assets': 'assets',
     '/anomalies': 'anomalies', '/payroll/config': 'payroll_config',
     '/announcements': 'announcements', '/grievances': 'grievances', '/notifications': 'notifications',
+    '/helpdesk': 'helpdesk',
   };
 
   if (isLoading || !user) {
@@ -182,7 +184,7 @@ const DashboardLayout = () => {
           ))}
         </nav>
 
-        {/* Collapse Toggle */
+        {/* Collapse Toggle */}
         <div className="hidden lg:block p-2 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}

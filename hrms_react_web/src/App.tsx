@@ -37,6 +37,7 @@ const Performance = lazy(() => import('./pages/Performance'));
 const Announcements = lazy(() => import('./pages/Announcements'));
 const Grievances = lazy(() => import('./pages/Grievances'));
 const Notifications = lazy(() => import('./pages/Notifications'));
+const Helpdesk = lazy(() => import('./pages/Helpdesk'));
 const MasterData = lazy(() => import('./pages/MasterData'));
 const MobileOnly = lazy(() => import('./pages/MobileOnly'));
 const NotFound = lazy(() => import('./pages/NotFound'));
@@ -45,6 +46,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const AnomalyDetection = lazy(() => import('./pages/AnomalyDetection'));
 const ExitManagement = lazy(() => import('./pages/ExitManagement'));
 const AssetManagement = lazy(() => import('./pages/AssetManagement'));
+const Letters = lazy(() => import('./pages/Letters'));
 
 // Employee self-service portal (PWA)
 const EmployeePortalLayout = lazy(() => import('./layouts/EmployeePortalLayout'));
@@ -119,7 +121,8 @@ function App() {
                <Route index element={<RoleRouter />} />
                <Route path="/dashboard" element={<Dashboard />} />
                <Route path="/company" element={<Company />} />
-               <Route path="/employees" element={<EmployeeManagement />} />
+                <Route path="/employees" element={<EmployeeManagement />} />
+                <Route path="/letters" element={<Letters />} />
                <Route path="/recruitment" element={<Recruitment />} />
                <Route path="/holidays" element={<Holidays />} />
                <Route path="/leaves" element={<LeaveManagement />} />
@@ -139,6 +142,7 @@ function App() {
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/grievances" element={<Grievances />} />
                 <Route path="/notifications" element={<Notifications />} />
+                <Route path="/helpdesk" element={<Helpdesk />} />
                 <Route path="/settings" element={<Settings />} />
                <Route path="/master-data" element={<MasterData />} />
              </Route>

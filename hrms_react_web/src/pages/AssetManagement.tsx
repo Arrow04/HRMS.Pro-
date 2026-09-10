@@ -26,6 +26,7 @@ import { normalizeArray } from '../utils/normalize';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee, toEmployeeSelectOptions, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import type { EmployeePickerItem } from '../services/employeeListService';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import { calcDepreciation, formatCurrencyRs } from '../utils/depreciation';
 import Tooltip from '../components/Tooltip';
@@ -710,15 +711,19 @@ export default function AssetManagement() {
                             <p className="mt-1 text-xs text-gray-400">Department for the asset</p>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Employee</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Employee <span className="text-gray-400 font-normal">(optional — assign later from the list)</span></label>
                             <SearchableSelect
                               value={form.employeeId || 'all'}
                               onChange={(val) => setForm(f => ({ ...f, employeeId: val === 'all' ? '' : val.toString() }))}
-                              options={filteredEmployees.map((e: EmployeeWithLegacy) => ({ id: e.id, name: personDisplayName(e) }))}
+                              options={filteredEmployees.map((e: EmployeeWithLegacy) => ({ id: e.id, name: formatEmployeeLabel(e as unknown as EmployeePickerItem) }))}
                               placeholder="Unassigned"
                               allOption="Unassigned"
                             />
-                            <p className="mt-1 text-xs text-gray-400">Employee the asset is assigned to</p>
+                            <p className="mt-1 text-xs text-gray-400">
+                              {filteredEmployees.length === 0
+                                ? 'No employees match the selected company / branch / department — clear filters to see everyone.'
+                                : 'Leave unassigned to add the asset to stock first.'}
+                            </p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>

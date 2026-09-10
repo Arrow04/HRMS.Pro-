@@ -137,6 +137,7 @@ from routers.maintenance import router as maintenance_router
 from routers.policies import router as policies_router
 from routers.announcements import router as announcements_router
 from routers.grievances import router as grievances_router
+from routers.helpdesk import router as helpdesk_router
 from routers.aggregations import router as aggregations_router
 from routers.search import router as search_router
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -704,6 +705,7 @@ app.include_router(maintenance_router)
 app.include_router(policies_router)
 app.include_router(announcements_router)
 app.include_router(grievances_router)
+app.include_router(helpdesk_router)
 app.include_router(batch_operations_router)
 
 app.include_router(aggregations_router)
