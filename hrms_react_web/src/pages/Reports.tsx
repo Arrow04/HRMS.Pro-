@@ -23,6 +23,9 @@ import TimePicker from '../components/TimePicker';
 import AiInsightsPanel from '../components/AiInsightsPanel';
 import PageHero from '../components/PageHero';
 import DataTable from '../components/DataTable';
+import StatsCard from '../components/StatsCard';
+import EmptyState from '../components/EmptyState';
+import PageSkeleton from '../components/skeleton/PageSkeleton';
 import type { Employee, Attendance, Payroll, LeaveApplication, Expense, Holiday, Department, Company } from '../types';
 
 
@@ -116,54 +119,6 @@ const COLORS = {
 // =============================================================================
 // COMPONENTS
 // =============================================================================
-
-// Stats Card Component (matching Company page)
-interface StatsCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: number;
-  trend?: number;
-  isLoading?: boolean;
-  iconBg: string;
-  iconColor: string;
-}
-
-const StatsCard = ({ icon: Icon, label, value, trend, isLoading, iconBg, iconColor }: StatsCardProps) => {
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-5 animate-pulse">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-slate-200 rounded-xl"></div>
-          <div className="flex-1 space-y-2">
-            <div className="h-3 bg-slate-200 rounded w-20"></div>
-            <div className="h-6 bg-slate-200 rounded w-16"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`group relative overflow-hidden rounded-2xl p-5 ${iconBg} hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border border-white/20`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-50" />
-      <div className="relative flex items-start justify-between">
-        <div className={`w-12 h-12 rounded-xl bg-white shadow-lg flex items-center justify-center ${iconColor}`}>
-          <Icon className="w-6 h-6" />
-        </div>
-        {trend !== undefined && (
-          <div className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full bg-white/60 backdrop-blur-sm ${trend >= 0 ? 'text-[var(--success-green)]' : 'text-[var(--danger-red)]'}`}>
-            <TrendingUp className={`w-3 h-3 mr-1 ${trend < 0 ? 'rotate-180' : ''}`} />
-            {Math.abs(trend)}%
-          </div>
-        )}
-      </div>
-      <div className="relative mt-4">
-        <p className="text-sm font-medium text-[var(--text-primary)]">{label}</p>
-        <p className="text-[28px] font-bold text-[var(--text-primary)] leading-tight tracking-tight mt-1">{value}</p>
-      </div>
-    </div>
-  );
-};
 
 const KPICard = ({ label, value, trend, icon: Icon, color, onClick }: KPICardProps) => {
   const c = COLORS[color];
@@ -923,6 +878,10 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     { id: 'report-log', label: 'Execution Logs', icon: History },
     { id: 'ai-insights', label: 'AI Insights', icon: Brain },
   ];
+
+  if (!mounted) {
+    return <PageSkeleton />;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)] animate-page-enter">
