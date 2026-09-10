@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, func
+from sqlalchemy.exc import SQLAlchemyError
 
 from core.auth import check_role, get_current_user, get_password_hash
 from core.datetime_utils import ist_now_naive
@@ -947,7 +948,33 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
     elif org_id is None:
         org_id = current_user.organization_id
 
+    def _int_or_none(value):
+        """Coerce blank form values to None so integer columns never receive ''."""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    manager_id = _int_or_none(snake_case_data.get("reporting_manager_id"))
+    if manager_id is not None and not db.query(Employee).filter(Employee.id == manager_id).first():
+        raise HTTPException(status_code=400, detail="Selected reporting manager does not exist")
+    snake_case_data["reporting_manager_id"] = manager_id
+
     dept_id = snake_case_data.get("department_id")
+    if dept_id not in (None, ""):
+        try:
+            dept_id = int(dept_id)
+        except (TypeError, ValueError):
+            pass  # department name — resolved by name below
+        else:
+            if not db.query(Department).filter(Department.id == dept_id).first():
+                raise HTTPException(status_code=400, detail="Selected department does not exist")
     if isinstance(dept_id, str) and dept_id.strip():
         dept = db.query(Department).filter(Department.name == dept_id).first()
         if dept:
@@ -982,7 +1009,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         designation=snake_case_data.get("designation"),
         department_id=dept_id,
         organization_id=org_id if isinstance(org_id, int) else None,
-        reporting_manager_id=snake_case_data.get("reporting_manager_id"),
+        reporting_manager_id=_int_or_none(snake_case_data.get("reporting_manager_id")),
         status=snake_case_data.get("status", "active"),
         phone=snake_case_data.get("phone"),
         address=address_field,
@@ -1051,7 +1078,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         sibling_name=snake_case_data.get("sibling_name"),
         spouse_name=snake_case_data.get("spouse_name"),
         spouse_phone=snake_case_data.get("spouse_phone"),
-        number_of_children=snake_case_data.get("number_of_children"),
+        number_of_children=_int_or_none(snake_case_data.get("number_of_children")),
         nominee_name=snake_case_data.get("nominee_name"),
         nominee_relationship=snake_case_data.get("nominee_relationship"),
         family_info=snake_case_data.get("family_info", []),
@@ -1096,7 +1123,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         employee.companies = companies
         if companies:
             employee.company_id = companies[0].id
-    elif snake_case_data.get("company_id"):
+    elif snake_case_data.get("company_id") not in (None, "", 0):
         company = db.query(Company).filter(Company.id == snake_case_data["company_id"]).first()
         if company:
             employee.companies = [company]
@@ -1107,7 +1134,11 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         branches = db.query(Branch).filter(Branch.id.in_(snake_case_data["branch_ids"])).all()
         employee.branches = branches
 
-    db.commit()
+    try:
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Could not create employee: {e}")
     db.refresh(employee)
     
     # Massive Automation: Generate standard Onboarding Tasks based on Indian requirements
@@ -1208,7 +1239,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.companies = companies
         if companies:
             employee.company_id = companies[0].id
-    elif "company_id" in snake_case_data:
+    elif "company_id" in snake_case_data and snake_case_data["company_id"] not in (None, "", 0):
         # Convert single company_id to company_ids array for many-to-many
         company = db.query(Company).filter(Company.id == snake_case_data["company_id"]).first()
         if company:
@@ -1469,7 +1500,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
     if "spouse_phone" in snake_case_data:
         employee.spouse_phone = snake_case_data["spouse_phone"]
     if "number_of_children" in snake_case_data:
-        employee.number_of_children = snake_case_data["number_of_children"]
+        employee.number_of_children = _int_or_none(snake_case_data["number_of_children"])
     if "nominee_name" in snake_case_data:
         employee.nominee_name = snake_case_data["nominee_name"]
     if "nominee_relationship" in snake_case_data:
