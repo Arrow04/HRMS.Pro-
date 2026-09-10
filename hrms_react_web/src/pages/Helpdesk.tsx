@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Headset, Plus, Search, Edit2, Trash2,
-  MessageSquare, CheckCircle2, Clock, PauseCircle, AlertTriangle
+  Headset, Plus, Search, Eye, Edit2, Trash2,
+  MessageSquare, CheckCircle2, Clock, PauseCircle, AlertTriangle, XCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -16,17 +16,22 @@ import FormField, { formInputClass, formTextareaClass } from '../components/Form
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
+import ExportButton from '../components/ExportButton';
 
 type TicketRow = {
   id: number;
   ticket_no?: string;
   subject: string;
   description?: string;
-  category?: string;
-  priority?: string;
-  status?: string;
+  category?: 'it' | 'hr' | 'facility' | 'admin' | 'general' | string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent' | string;
+  status?: 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | string;
+  employeeId?: number;
   employeeName?: string;
-  resolutionNotes?: string;
+  assignedTo?: number | null;
+  assignedToName?: string | null;
+  resolutionNotes?: string | null;
+  resolvedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -37,6 +42,7 @@ const TICKET_TABS = [
   { id: 'in_progress', label: 'In Progress', icon: Clock },
   { id: 'on_hold', label: 'On Hold', icon: PauseCircle },
   { id: 'resolved', label: 'Resolved', icon: CheckCircle2 },
+  { id: 'closed', label: 'Closed', icon: XCircle },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -56,14 +62,38 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const CATEGORIES = ['general', 'it', 'hr', 'facility', 'admin'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+const STATUSES = ['open', 'in_progress', 'on_hold', 'resolved', 'closed'];
+
+const CLOSED_STATUSES = ['resolved', 'closed'];
+const OPEN_STATUSES = ['open', 'in_progress', 'on_hold'];
+
+const ageInDays = (from?: string | null, to?: string | null): number | null => {
+  if (!from) return null;
+  const start = new Date(from).getTime();
+  const end = to ? new Date(to).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  return Math.max(0, Math.floor((end - start) / (1000 * 60 * 60 * 24)));
+};
+
+const slaLimitDays = (priority?: string): number => {
+  if (priority === 'urgent') return 1;
+  if (priority === 'high') return 3;
+  return 7;
+};
+
+const formatStatus = (status?: string): string =>
+  (status || 'open').split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
 const Helpdesk = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [mounted, setMounted] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<TicketRow | null>(null);
+  const [detailItem, setDetailItem] = useState<TicketRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TicketRow | null>(null);
 
   const [form, setForm] = useState({
@@ -82,25 +112,36 @@ const Helpdesk = () => {
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['helpdesk-tickets'],
-    queryFn: async () => {
+    queryFn: async (): Promise<TicketRow[]> => {
       const response = await api.get('/helpdesk/tickets');
-      return response.data || [];
+      const payload = response.data;
+      if (Array.isArray(payload)) return payload as TicketRow[];
+      if (payload && Array.isArray(payload.data)) return payload.data as TicketRow[];
+      if (payload && Array.isArray(payload.items)) return payload.items as TicketRow[];
+      return [];
     },
     staleTime: 2 * 60 * 1000,
   });
 
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['helpdesk-tickets'] });
+
+  const getErrorMessage = (err: unknown, fallback: string): string => {
+    const msg = (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data;
+    if (typeof msg?.detail === 'string') return msg.detail;
+    if (typeof msg?.message === 'string') return msg.message;
+    return fallback;
+  };
+
   const createMutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) => api.post('/helpdesk/tickets', payload),
     onSuccess: (res) => {
-      toast.success(`Ticket ${res.data?.ticket_no || ''} raised successfully`.trim());
-      queryClient.invalidateQueries({ queryKey: ['helpdesk-tickets'] });
+      const ticketNo = (res.data as { ticket_no?: string } | undefined)?.ticket_no;
+      toast.success(ticketNo ? `Ticket ${ticketNo} raised successfully` : 'Ticket raised successfully');
+      invalidate();
       setShowModal(false);
       resetForm();
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      toast.error(typeof msg === 'string' ? msg : 'Failed to raise ticket');
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to raise ticket')),
   });
 
   const updateMutation = useMutation({
@@ -108,25 +149,38 @@ const Helpdesk = () => {
       api.put(`/helpdesk/tickets/${id}`, payload),
     onSuccess: () => {
       toast.success('Ticket updated successfully');
-      queryClient.invalidateQueries({ queryKey: ['helpdesk-tickets'] });
+      invalidate();
       setShowModal(false);
       setEditingItem(null);
       resetForm();
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      toast.error(typeof msg === 'string' ? msg : 'Failed to update ticket');
-    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to update ticket')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => api.delete(`/helpdesk/tickets/${id}`),
     onSuccess: () => {
       toast.success('Ticket deleted successfully');
-      queryClient.invalidateQueries({ queryKey: ['helpdesk-tickets'] });
+      invalidate();
       setDeleteTarget(null);
     },
     onError: () => toast.error('Failed to delete ticket'),
+  });
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.put(`/helpdesk/tickets/${id}`, { status }))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) throw new Error(`${failed} of ${ids.length} tickets failed to update`);
+      return ids.length;
+    },
+    onSuccess: (count, { status }) => {
+      toast.success(`${count} ticket${count !== 1 ? 's' : ''} marked as ${formatStatus(status)}`);
+      invalidate();
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Bulk update failed'),
   });
 
   const resetForm = () => {
@@ -154,6 +208,10 @@ const Helpdesk = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.subject.trim() || !form.description.trim()) {
+      toast.error('Subject and description are required');
+      return;
+    }
     const payload: Record<string, unknown> = {
       subject: form.subject.trim(),
       description: form.description.trim(),
@@ -169,43 +227,76 @@ const Helpdesk = () => {
     }
   };
 
+  const isResolving = editingItem !== null && CLOSED_STATUSES.includes(form.status);
+
   const filteredData = useMemo(() => {
     let items = tickets as TicketRow[];
     if (activeTab !== 'all') {
       items = items.filter((item) => item.status === activeTab);
     }
+    if (categoryFilter !== 'all') {
+      items = items.filter((item) => (item.category || 'general') === categoryFilter);
+    }
+    if (priorityFilter !== 'all') {
+      items = items.filter((item) => (item.priority || 'medium') === priorityFilter);
+    }
     if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase();
+      const q = searchTerm.trim().toLowerCase();
       items = items.filter(
         (item) =>
           item.subject.toLowerCase().includes(q) ||
-          (item.description || '').toLowerCase().includes(q) ||
           (item.ticket_no || '').toLowerCase().includes(q) ||
           (item.employeeName || '').toLowerCase().includes(q)
       );
     }
     return items;
-  }, [tickets, activeTab, searchTerm]);
+  }, [tickets, activeTab, categoryFilter, priorityFilter, searchTerm]);
+
+  const stats = useMemo(() => {
+    const list = tickets as TicketRow[];
+    const isActive = (t: TicketRow) => OPEN_STATUSES.includes(t.status || 'open');
+    const open = list.filter((t) => t.status === 'open').length;
+    const urgent = list.filter(
+      (t) => (t.priority || '') === 'urgent' && !CLOSED_STATUSES.includes(t.status || 'open')
+    ).length;
+    const overdue = list.filter((t) => {
+      if (!isActive(t)) return false;
+      const age = ageInDays(t.createdAt);
+      return age !== null && age > 3;
+    }).length;
+    const resolved = list.filter((t) => t.status === 'resolved').length;
+    return [
+      { label: 'Total Tickets', value: list.length, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', icon: Headset, tab: 'all' },
+      { label: 'Open', value: open, iconBg: 'bg-gradient-to-br from-[#DC2626]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', icon: MessageSquare, tab: 'open' },
+      { label: 'Urgent', value: urgent, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', icon: AlertTriangle, tab: 'all' },
+      { label: 'Overdue (3d+)', value: overdue, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', icon: Clock, tab: 'all' },
+      { label: 'Resolved', value: resolved, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', icon: CheckCircle2, tab: 'resolved' },
+    ];
+  }, [tickets]);
 
   const columns: DataTableColumn<TicketRow>[] = useMemo(() => [
     {
       key: 'subject',
       header: 'Ticket',
       sortable: true,
+      sortValue: (row) => row.ticket_no || row.subject,
       render: (row) => (
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[row.status || 'open'] || '#64748B' }} />
-          <div className="min-w-0">
-            <span className="font-medium text-[var(--text-primary)] block truncate">{row.subject}</span>
-            {row.ticket_no && <span className="text-xs text-gray-400">{row.ticket_no}</span>}
-          </div>
-        </div>
+        <button type="button" onClick={() => setDetailItem(row)} className="flex items-center gap-2 text-left min-w-0 group">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[row.status || 'open'] || '#64748B' }} />
+          <span className="min-w-0">
+            <span className="font-semibold text-[var(--text-primary)] text-sm block truncate group-hover:text-[var(--primary-blue)]">
+              {row.subject}
+            </span>
+            <span className="text-xs text-gray-400">{row.ticket_no || `#${row.id}`}</span>
+          </span>
+        </button>
       ),
     },
     {
       key: 'employeeName',
       header: 'Raised By',
       sortable: true,
+      sortValue: (row) => row.employeeName || '',
       render: (row) => (
         <span className="text-sm text-[var(--text-secondary)]">{row.employeeName || '-'}</span>
       ),
@@ -214,6 +305,7 @@ const Helpdesk = () => {
       key: 'category',
       header: 'Category',
       sortable: true,
+      sortValue: (row) => row.category || 'general',
       render: (row) => (
         <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 capitalize">
           {row.category || 'general'}
@@ -224,11 +316,12 @@ const Helpdesk = () => {
       key: 'priority',
       header: 'Priority',
       sortable: true,
+      sortValue: (row) => row.priority || 'medium',
       render: (row) => {
         const priority = row.priority || 'medium';
         return (
           <span
-            className="px-2.5 py-1 text-xs font-medium rounded-full capitalize"
+            className="px-2.5 py-1 text-xs font-semibold rounded-full capitalize"
             style={{
               backgroundColor: `${PRIORITY_COLORS[priority] || '#64748B'}15`,
               color: PRIORITY_COLORS[priority] || '#64748B',
@@ -240,75 +333,68 @@ const Helpdesk = () => {
       },
     },
     {
-      key: 'status',
-      header: 'Status',
+      key: 'assignedToName',
+      header: 'Assignee',
       sortable: true,
+      sortValue: (row) => row.assignedToName || '',
+      render: (row) => (
+        row.assignedToName
+          ? <span className="text-sm text-[var(--text-primary)]">{row.assignedToName}</span>
+          : <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Unassigned</span>
+      ),
+    },
+    {
+      key: 'age',
+      header: 'Age / SLA',
+      sortable: true,
+      sortValue: (row) => ageInDays(row.createdAt) ?? -1,
       render: (row) => {
-        const status = row.status || 'open';
+        const closed = CLOSED_STATUSES.includes(row.status || 'open');
+        const age = closed
+          ? ageInDays(row.createdAt, row.resolvedAt || row.updatedAt)
+          : ageInDays(row.createdAt);
+        if (age === null) return <span className="text-sm text-gray-400">-</span>;
+        const limit = slaLimitDays(row.priority);
+        const breached = !closed && age > limit;
         return (
-          <span
-            className="px-2.5 py-1 text-xs font-medium rounded-full"
-            style={{
-              backgroundColor: `${STATUS_COLORS[status] || '#64748B'}15`,
-              color: STATUS_COLORS[status] || '#64748B',
-            }}
-          >
-            {status.replace('_', ' ')}
+          <span className="inline-flex flex-col">
+            <span className={`text-sm font-semibold ${breached ? 'text-[#DC2626]' : closed ? 'text-[#64748B]' : 'text-[var(--text-primary)]'}`}>
+              {age}d{closed ? ' to close' : ' open'}
+            </span>
+            {!closed && (
+              <span className={`text-[11px] ${breached ? 'text-[#DC2626] font-medium' : 'text-gray-400'}`}>
+                {breached ? `SLA breached (>${limit}d)` : `SLA ${limit}d`}
+              </span>
+            )}
           </span>
         );
       },
     },
     {
-      key: 'date',
-      header: 'Raised On',
+      key: 'status',
+      header: 'Status',
       sortable: true,
-      render: (row) => (
-        <span className="text-sm text-[var(--text-secondary)] whitespace-nowrap">
-          {row.createdAt ? formatAppDate(row.createdAt) : '-'}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      align: 'right',
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          <Tooltip id={`edit-ticket-${row.id}`} content="Edit">
-            <button
-              onClick={() => openEdit(row)}
-              className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
-          <Tooltip id={`delete-ticket-${row.id}`} content="Delete">
-            <button
-              onClick={() => setDeleteTarget(row)}
-              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#C81E1E] hover:bg-red-50 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        </div>
-      ),
+      sortValue: (row) => row.status || 'open',
+      render: (row) => {
+        const status = row.status || 'open';
+        return (
+          <span
+            className="px-2.5 py-1 text-xs font-medium rounded-full whitespace-nowrap"
+            style={{
+              backgroundColor: `${STATUS_COLORS[status] || '#64748B'}15`,
+              color: STATUS_COLORS[status] || '#64748B',
+            }}
+          >
+            {formatStatus(status)}
+          </span>
+        );
+      },
     },
   ], []);
 
-  const stats = useMemo(() => {
-    const list = tickets as TicketRow[];
-    const open = list.filter((t) => t.status === 'open').length;
-    const inProgress = list.filter((t) => t.status === 'in_progress').length;
-    const resolved = list.filter((t) => t.status === 'resolved' || t.status === 'closed').length;
-    return [
-      { label: 'Total', value: list.length, iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5', iconColor: 'text-[#4F46E5]', icon: Headset, tab: 'all' },
-      { label: 'Open', value: open, iconBg: 'bg-gradient-to-br from-[#DC2626]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', icon: MessageSquare, tab: 'open' },
-      { label: 'In Progress', value: inProgress, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', icon: Clock, tab: 'in_progress' },
-      { label: 'Resolved', value: resolved, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', icon: CheckCircle2, tab: 'resolved' },
-    ];
-  }, [tickets]);
-
   if (!mounted) return <PageSkeleton />;
+
+  const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all' || searchTerm.trim() !== '';
 
   return (
     <div className="space-y-6">
@@ -329,7 +415,7 @@ const Helpdesk = () => {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat, i) => (
           <StatsCard
             key={stat.label}
@@ -346,8 +432,8 @@ const Helpdesk = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm">
-        <div className="p-4 border-b border-[var(--border-color)]">
-          <div className="flex flex-col sm:flex-row gap-3">
+        <div className="p-4 border-b border-[var(--border-color)] space-y-3">
+          <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -358,40 +444,122 @@ const Helpdesk = () => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
               />
             </div>
-            <div className="flex rounded-xl border border-gray-200 overflow-x-auto">
-              {TICKET_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-[var(--primary-blue)] text-white'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
+                aria-label="Filter by category"
+              >
+                <option value="all">All Categories</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c} className="capitalize">{c}</option>
+                ))}
+              </select>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
+                aria-label="Filter by priority"
+              >
+                <option value="all">All Priorities</option>
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p} className="capitalize">{p}</option>
+                ))}
+              </select>
+              <ExportButton rows={filteredData} filename="helpdesk_tickets.csv" variant="toolbar" />
             </div>
+          </div>
+          <div className="flex rounded-xl border border-gray-200 overflow-x-auto w-fit max-w-full">
+            {TICKET_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-[var(--primary-blue)] text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {isLoading ? (
-          <TableSkeleton rows={6} cols={6} />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={filteredData}
-            rowKey={(row) => row.id}
-            searchable={false}
-            emptyMessage="No tickets found"
-          />
-        )}
+        <div className="bg-white overflow-hidden">
+          {isLoading ? (
+            <TableSkeleton rows={6} cols={7} />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={filteredData}
+              rowKey={(row) => row.id}
+              searchable={false}
+              emptyMessage={hasActiveFilters ? 'No tickets match your filters' : 'No tickets found'}
+              persistKey="helpdesk"
+              exportFilename="helpdesk_tickets.csv"
+              logEntityType="helpdesk_ticket"
+              logFor={(row) => ({ id: row.id, label: row.ticket_no || row.subject })}
+              onRowClick={(row) => setDetailItem(row)}
+              bulkActions={[
+                {
+                  label: 'Mark Resolved',
+                  icon: CheckCircle2,
+                  variant: 'success',
+                  disabled: (selected) => selected.length === 0 || bulkStatusMutation.isPending,
+                  onAction: (selected) => bulkStatusMutation.mutate({
+                    ids: selected.map((t) => t.id),
+                    status: 'resolved',
+                  }),
+                },
+                {
+                  label: 'Close',
+                  icon: XCircle,
+                  variant: 'ghost',
+                  disabled: (selected) => selected.length === 0 || bulkStatusMutation.isPending,
+                  onAction: (selected) => bulkStatusMutation.mutate({
+                    ids: selected.map((t) => t.id),
+                    status: 'closed',
+                  }),
+                },
+              ]}
+              actions={(row) => (
+                <div className="flex items-center justify-end gap-1">
+                  <Tooltip id={`btn-view-ticket-${row.id}`} content="View details">
+                    <button
+                      onClick={() => setDetailItem(row)}
+                      className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip id={`btn-edit-ticket-${row.id}`} content="Edit">
+                    <button
+                      onClick={() => openEdit(row)}
+                      className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip id={`btn-delete-ticket-${row.id}`} content="Delete">
+                    <button
+                      onClick={() => setDeleteTarget(row)}
+                      className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+            />
+          )}
+        </div>
       </div>
 
       <Modal
         isOpen={showModal}
-        onClose={() => { setShowModal(false); setEditingItem(null); resetForm(); }}
+        onClose={() => { setShowModal(false); resetForm(); }}
         title={editingItem ? `Edit ${editingItem.ticket_no || 'Ticket'}` : 'Raise Ticket'}
         size="lg"
       >
@@ -414,7 +582,7 @@ const Helpdesk = () => {
               placeholder="Describe the issue in detail"
             />
           </FormField>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Category">
               <select
                 value={form.category}
@@ -439,27 +607,38 @@ const Helpdesk = () => {
             </FormField>
           </div>
           {editingItem && (
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Status">
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className={formInputClass}
-                >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="on_hold">On Hold</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </FormField>
-              <FormField label="Resolution Notes">
-                <input
-                  type="text"
+            <FormField label="Status">
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className={formInputClass}
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{formatStatus(s)}</option>
+                ))}
+              </select>
+            </FormField>
+          )}
+          {editingItem && !isResolving && (
+            <FormField label="Resolution Notes" help="Optional — filled when the ticket is resolved">
+              <input
+                type="text"
+                value={form.resolution_notes}
+                onChange={(e) => setForm({ ...form, resolution_notes: e.target.value })}
+                className={formInputClass}
+                placeholder="How was it resolved?"
+              />
+            </FormField>
+          )}
+          {isResolving && (
+            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/60 p-4">
+              <FormField label="Resolution Notes" required help="Describe how this ticket was resolved">
+                <textarea
                   value={form.resolution_notes}
                   onChange={(e) => setForm({ ...form, resolution_notes: e.target.value })}
-                  className={formInputClass}
-                  placeholder="How was it resolved?"
+                  className={formTextareaClass}
+                  rows={4}
+                  placeholder="e.g. Replaced faulty SSD and restored user data from backup"
                 />
               </FormField>
             </div>
@@ -467,7 +646,7 @@ const Helpdesk = () => {
           <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
-              onClick={() => { setShowModal(false); setEditingItem(null); resetForm(); }}
+              onClick={() => { setShowModal(false); resetForm(); }}
               className="px-4 py-2.5 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
             >
               Cancel
@@ -477,11 +656,103 @@ const Helpdesk = () => {
               disabled={createMutation.isPending || updateMutation.isPending}
               className="px-5 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-colors disabled:opacity-50 shadow-md shadow-black/10 flex items-center gap-2"
             >
-              {(createMutation.isPending || updateMutation.isPending) && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+              {(createMutation.isPending || updateMutation.isPending) && (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
               {editingItem ? 'Update' : 'Submit'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!detailItem}
+        onClose={() => setDetailItem(null)}
+        title={detailItem ? `${detailItem.ticket_no || `Ticket #${detailItem.id}`} — ${detailItem.subject}` : 'Ticket Details'}
+        size="lg"
+      >
+        {detailItem && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="px-2.5 py-1 text-xs font-medium rounded-full"
+                style={{
+                  backgroundColor: `${STATUS_COLORS[detailItem.status || 'open'] || '#64748B'}15`,
+                  color: STATUS_COLORS[detailItem.status || 'open'] || '#64748B',
+                }}
+              >
+                {formatStatus(detailItem.status)}
+              </span>
+              <span
+                className="px-2.5 py-1 text-xs font-semibold rounded-full capitalize"
+                style={{
+                  backgroundColor: `${PRIORITY_COLORS[detailItem.priority || 'medium'] || '#64748B'}15`,
+                  color: PRIORITY_COLORS[detailItem.priority || 'medium'] || '#64748B',
+                }}
+              >
+                {(detailItem.priority || 'medium')} priority
+              </span>
+              <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 capitalize">
+                {detailItem.category || 'general'}
+              </span>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Description</p>
+              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap bg-gray-50 rounded-xl p-4 border border-gray-100">
+                {detailItem.description || 'No description provided.'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Raised By</p>
+                <p className="text-[var(--text-primary)] font-medium">{detailItem.employeeName || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Assignee</p>
+                <p className="text-[var(--text-primary)] font-medium">{detailItem.assignedToName || 'Unassigned'}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Timeline</p>
+              <div className="space-y-2 border-l-2 border-gray-100 pl-4">
+                <div className="text-sm">
+                  <span className="font-medium text-[var(--text-primary)]">Raised</span>
+                  <span className="text-gray-500"> — {detailItem.createdAt ? formatAppDate(detailItem.createdAt) : '-'}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-[var(--text-primary)]">Last updated</span>
+                  <span className="text-gray-500"> — {detailItem.updatedAt ? formatAppDate(detailItem.updatedAt) : '-'}</span>
+                </div>
+                {detailItem.resolvedAt && (
+                  <div className="text-sm">
+                    <span className="font-medium text-emerald-600">Resolved</span>
+                    <span className="text-gray-500"> — {formatAppDate(detailItem.resolvedAt)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {detailItem.resolutionNotes && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-1">Resolution Notes</p>
+                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">{detailItem.resolutionNotes}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => { const t = detailItem; setDetailItem(null); openEdit(t); }}
+                className="px-4 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-colors flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edit Ticket
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <ConfirmDeleteModal

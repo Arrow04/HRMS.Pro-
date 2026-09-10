@@ -18,6 +18,15 @@ ADMIN_ROLES = ("superadmin", "hr_admin", "admin")
 GRIEVANCE_STATUSES = ("open", "in_progress", "resolved", "closed")
 
 
+def _user_name(db: Session, user_id) -> Optional[str]:
+    if not user_id:
+        return None
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        return None
+    return (u.full_name or u.email or f"User #{u.id}") or None
+
+
 def _serialize(grievance: Grievance, db: Session) -> dict:
     employee_name = None
     if grievance.employee_id:
@@ -30,9 +39,13 @@ def _serialize(grievance: Grievance, db: Session) -> dict:
         "description": grievance.description,
         "status": grievance.status,
         "type": grievance.type,
+        "priority": grievance.priority or "medium",
         "employeeId": grievance.employee_id,
         "employeeName": employee_name,
-        "resolutionNotes": None,
+        "assignedTo": grievance.assigned_to,
+        "assignedToName": _user_name(db, grievance.assigned_to),
+        "resolutionNotes": grievance.resolution_notes,
+        "resolvedAt": grievance.resolved_at.isoformat() if grievance.resolved_at else None,
         "createdAt": grievance.created_at.isoformat() if grievance.created_at else None,
         "updatedAt": grievance.updated_at.isoformat() if grievance.updated_at else None,
     }
@@ -70,11 +83,15 @@ def create_grievance(
         raise HTTPException(status_code=400, detail="Description is required")
     employee_id = _get_employee_id_for_user(db, current_user)
     employee = db.query(Employee).filter(Employee.id == employee_id).first() if employee_id else None
+    priority = (data.get("priority") or "medium").strip().lower()
+    if priority not in ("low", "medium", "high", "urgent"):
+        raise HTTPException(status_code=400, detail="Invalid priority")
     grievance = Grievance(
         subject=subject,
         description=description,
         type=(data.get("type") or "grievance").strip().lower() or "grievance",
         status="open",
+        priority=priority,
         employee_id=employee_id,
         organization_id=getattr(employee, "organization_id", None) or current_user.organization_id,
         company_id=getattr(employee, "company_id", None),
@@ -108,6 +125,15 @@ def update_grievance(
         grievance.description = str(data["description"])
     if "type" in data and data["type"]:
         grievance.type = str(data["type"])
+    if "priority" in data and data["priority"]:
+        priority = str(data["priority"]).strip().lower()
+        if priority not in ("low", "medium", "high", "urgent"):
+            raise HTTPException(status_code=400, detail="Invalid priority")
+        grievance.priority = priority
+    if "assigned_to" in data and is_admin:
+        grievance.assigned_to = data["assigned_to"]
+    if "resolution_notes" in data and is_admin:
+        grievance.resolution_notes = data["resolution_notes"]
     if "status" in data and data["status"]:
         status = str(data["status"]).strip().lower()
         if status not in GRIEVANCE_STATUSES:

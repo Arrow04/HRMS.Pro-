@@ -18,6 +18,15 @@ router = APIRouter(tags=["Announcements"])
 ADMIN_ROLES = ("superadmin", "hr_admin", "admin")
 
 
+def _extras(data: dict) -> dict:
+    return {
+        "category": (data.get("category") or "General"),
+        "pinned": bool(data.get("pinned", False)),
+        "audience": data.get("audience") or "all",
+        "expiresAt": data.get("expires_at"),
+    }
+
+
 def _serialize(n: Notification) -> dict:
     data = n.data if isinstance(n.data, dict) else {}
     return {
@@ -25,9 +34,9 @@ def _serialize(n: Notification) -> dict:
         "title": n.title,
         "body": n.body,
         "type": n.type or "announcement",
-        "category": data.get("category") or "General",
         "isRead": bool(n.is_read),
         "createdAt": n.created_at.isoformat() if n.created_at else None,
+        **_extras(data),
     }
 
 
@@ -78,7 +87,12 @@ def create_announcement(
         body=(data.get("body") or "").strip(),
         type=announcement_type,
         reference_id=data.get("referenceId"),
-        data={"category": (data.get("category") or "General").strip() or "General"},
+        data={
+            "category": (data.get("category") or "General").strip() or "General",
+            "pinned": bool(data.get("pinned", False)),
+            "audience": (data.get("audience") or "all").strip().lower() or "all",
+            "expires_at": data.get("expiresAt"),
+        },
         organization_id=current_user.organization_id,
         company_id=data.get("companyId"),
     )
@@ -113,10 +127,16 @@ def update_announcement(
         notification.type = announcement_type
     if data.get("referenceId") is not None:
         notification.reference_id = data["referenceId"]
+    payload = dict(notification.data) if isinstance(notification.data, dict) else {}
     if data.get("category") is not None:
-        payload = dict(notification.data) if isinstance(notification.data, dict) else {}
         payload["category"] = str(data["category"]).strip() or "General"
-        notification.data = payload
+    if "pinned" in data:
+        payload["pinned"] = bool(data["pinned"])
+    if data.get("audience") is not None:
+        payload["audience"] = str(data["audience"]).strip().lower() or "all"
+    if "expiresAt" in data:
+        payload["expires_at"] = data["expiresAt"]
+    notification.data = payload
     db.commit()
     return {"message": "Announcement updated", "id": notification.id}
 

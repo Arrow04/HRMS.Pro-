@@ -1,15 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCheck, Check, Search, RefreshCw, BellRing, MailOpen } from 'lucide-react';
+import {
+  AlertTriangle,
+  Banknote,
+  Bell,
+  BellRing,
+  CalendarCheck,
+  CalendarDays,
+  Check,
+  CheckCheck,
+  ClipboardCheck,
+  Clock,
+  ExternalLink,
+  Megaphone,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Settings,
+  Trash2,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import PageHero from '../components/PageHero';
 import StatsCard from '../components/StatsCard';
-import DataTable, { type DataTableColumn } from '../components/DataTable';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
+import Modal from '../components/Modal';
+import BulkDeleteModal from '../components/BulkDeleteModal';
 import type { Notification } from '../types';
+
+type RawNotification = Notification & {
+  is_read?: boolean | number;
+  created_at?: string;
+  user?: unknown;
+};
+
+interface NormalizedNotification {
+  id: number;
+  title: string;
+  body: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+}
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -17,22 +54,182 @@ const FILTER_TABS = [
   { id: 'read', label: 'Read' },
 ];
 
+const TYPE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  { value: 'approvals', label: 'Approvals (leave + expense)' },
+  { value: 'leave', label: 'Leave' },
+  { value: 'attendance', label: 'Attendance' },
+  { value: 'expense', label: 'Expense' },
+  { value: 'payroll', label: 'Payroll' },
+  { value: 'system', label: 'System' },
+  { value: 'announcement', label: 'Announcement' },
+  { value: 'grievance', label: 'Grievance' },
+];
+
+const PREF_CATEGORIES = [
+  { id: 'leave', label: 'Leave updates' },
+  { id: 'attendance', label: 'Attendance alerts' },
+  { id: 'expense', label: 'Expense updates' },
+  { id: 'payroll', label: 'Payroll alerts' },
+  { id: 'system', label: 'System notices' },
+  { id: 'announcement', label: 'Announcements' },
+  { id: 'grievance', label: 'Grievance updates' },
+];
+
+const PREF_STORAGE_KEY = 'notifications-muted-types';
+
+const TYPE_META: Record<string, { icon: LucideIcon; box: string; chip: string }> = {
+  leave: {
+    icon: CalendarCheck,
+    box: 'bg-blue-50 text-blue-600 border border-blue-100',
+    chip: 'bg-[#EBF5FF] text-[var(--primary-blue)] border border-[#1C64F2]/20',
+  },
+  attendance: {
+    icon: Clock,
+    box: 'bg-emerald-50 text-emerald-600 border border-emerald-100',
+    chip: 'bg-[#F0FDF4] text-[var(--success-green)] border border-[#057A55]/20',
+  },
+  expense: {
+    icon: Wallet,
+    box: 'bg-amber-50 text-amber-600 border border-amber-100',
+    chip: 'bg-[#FFF7ED] text-[#C2410C] border border-[#C2410C]/20',
+  },
+  payroll: {
+    icon: Banknote,
+    box: 'bg-violet-50 text-violet-600 border border-violet-100',
+    chip: 'bg-violet-50 text-violet-700 border border-violet-200',
+  },
+  system: {
+    icon: Settings,
+    box: 'bg-slate-100 text-slate-600 border border-slate-200',
+    chip: 'bg-slate-100 text-slate-700 border border-slate-200',
+  },
+  announcement: {
+    icon: Megaphone,
+    box: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
+    chip: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+  },
+  grievance: {
+    icon: AlertTriangle,
+    box: 'bg-rose-50 text-rose-600 border border-rose-100',
+    chip: 'bg-rose-50 text-rose-700 border border-rose-200',
+  },
+};
+
+const DEFAULT_META = {
+  icon: Bell,
+  box: 'bg-gray-100 text-gray-500 border border-gray-200',
+  chip: 'bg-gray-100 text-gray-700 border border-gray-200',
+};
+
+const normalizeNotification = (raw: RawNotification): NormalizedNotification => {
+  const read =
+    typeof raw.isRead === 'boolean' ? raw.isRead : raw.is_read === true || raw.is_read === 1;
+  return {
+    id: Number(raw.id),
+    title: String(raw.title ?? 'Notification'),
+    body: String(raw.body ?? ''),
+    type: String(raw.type ?? 'system').toLowerCase(),
+    isRead: read,
+    createdAt: String(raw.createdAt ?? raw.created_at ?? ''),
+  };
+};
+
+const timeAgo = (value: string): string => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) return 'just now';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+};
+
+const formatFullDate = (value: string): string => {
+  if (!value) return 'Unknown date';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const dayKey = (value: string): string => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+
+const viewTargetFor = (type: string): { path: string; label: string } | null => {
+  if (type === 'leave') return { path: '/leaves', label: 'View leave' };
+  if (type === 'expense') return { path: '/expenses', label: 'View expense' };
+  return null;
+};
+
+const loadMutedTypes = (): string[] => {
+  try {
+    const saved = localStorage.getItem(PREF_STORAGE_KEY);
+    if (!saved) return [];
+    const parsed: unknown = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
 const Notifications = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [todayOnly, setTodayOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [mutedTypes, setMutedTypes] = useState<string[]>(loadMutedTypes);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<NormalizedNotification | null>(null);
+  const [bulkTarget, setBulkTarget] = useState<{ ids: number[] } | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  const { data: notifications = [], isLoading } = useQuery<Notification[]>({
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREF_STORAGE_KEY, JSON.stringify(mutedTypes));
+    } catch {
+      /* storage unavailable — preferences stay in memory */
+    }
+  }, [mutedTypes]);
+
+  const { data: rawNotifications = [], isLoading } = useQuery<RawNotification[]>({
     queryKey: ['notifications'],
-    queryFn: () => api.get('/notifications', { params: { limit: 100 } }).then(r => r.data || []),
+    queryFn: () => api.get('/notifications', { params: { limit: 100 } }).then((r) => r.data || []),
     staleTime: 30_000,
   });
+
+  const notifications = useMemo(
+    () => (Array.isArray(rawNotifications) ? rawNotifications : []).map(normalizeNotification),
+    [rawNotifications],
+  );
 
   const markReadMutation = useMutation({
     mutationFn: (id: number) => api.put(`/notifications/${id}/read`),
@@ -53,28 +250,76 @@ const Notifications = () => {
     onError: () => toast.error('Failed to mark all as read'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/notifications/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+      toast.success('Notification deleted');
+    },
+    onError: () => toast.error('Failed to delete notification'),
+    onSettled: () => setDeleteTarget(null),
+  });
+
   const unreadCount = notifications.filter((n) => !n.isRead).length;
-  const readCount = notifications.filter((n) => n.isRead).length;
+  const todayKey = dayKey(new Date().toISOString());
+  const todayCount = notifications.filter((n) => dayKey(n.createdAt) === todayKey).length;
+  const approvalsCount = notifications.filter(
+    (n) => n.type === 'leave' || n.type === 'expense',
+  ).length;
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (activeTab === 'unread') return !n.isRead;
-    if (activeTab === 'read') return n.isRead;
-    return true;
-  });
+  const mutedSet = useMemo(() => new Set(mutedTypes), [mutedTypes]);
 
-  const searchedNotifications = filteredNotifications.filter((n) => {
-    if (!searchTerm.trim()) return true;
-    const q = searchTerm.toLowerCase();
-    return (
-      (n.title || '').toLowerCase().includes(q) ||
-      (n.body || '').toLowerCase().includes(q) ||
-      (n.type || '').toLowerCase().includes(q)
+  const filtered = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return notifications.filter((n) => {
+      if (mutedSet.has(n.type)) return false;
+      if (activeTab === 'unread' && n.isRead) return false;
+      if (activeTab === 'read' && !n.isRead) return false;
+      if (typeFilter === 'approvals' && n.type !== 'leave' && n.type !== 'expense') return false;
+      if (typeFilter !== 'all' && typeFilter !== 'approvals' && n.type !== typeFilter) return false;
+      if (todayOnly && dayKey(n.createdAt) !== todayKey) return false;
+      if (
+        q &&
+        !(n.title || '').toLowerCase().includes(q) &&
+        !(n.body || '').toLowerCase().includes(q) &&
+        !(n.type || '').toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey, searchTerm]);
+
+  const groups = useMemo(() => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
+    const buckets: { name: string; items: NormalizedNotification[] }[] = [
+      { name: 'Today', items: [] },
+      { name: 'Yesterday', items: [] },
+      { name: 'Earlier', items: [] },
+    ];
+    const sorted = [...filtered].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  });
+    for (const n of sorted) {
+      const k = dayKey(n.createdAt);
+      if (k === todayKey) buckets[0].items.push(n);
+      else if (k === yesterdayKey) buckets[1].items.push(n);
+      else buckets[2].items.push(n);
+    }
+    return buckets.filter((b) => b.items.length > 0);
+  }, [filtered, todayKey]);
 
-  const handleMarkRead = (id: number) => {
-    markReadMutation.mutate(id);
-  };
+  const visibleRead = useMemo(() => filtered.filter((n) => n.isRead), [filtered]);
+  const selectedReadIds = useMemo(
+    () => selectedIds.filter((id) => visibleRead.some((n) => n.id === id)),
+    [selectedIds, visibleRead],
+  );
+
+  const hasActiveFilters =
+    searchTerm.trim() !== '' || typeFilter !== 'all' || todayOnly || activeTab !== 'all';
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -82,78 +327,186 @@ const Notifications = () => {
     setRefreshing(false);
   };
 
-  const formatDate = (value: string) => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const handleRowClick = (n: NormalizedNotification) => {
+    if (!n.isRead) markReadMutation.mutate(n.id);
   };
 
-  const columns: DataTableColumn<Notification>[] = [
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  };
+
+  const toggleMute = (type: string) => {
+    setMutedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setTypeFilter('all');
+    setTodayOnly(false);
+    setActiveTab('all');
+  };
+
+  const handleBulkDelete = async () => {
+    if (!bulkTarget || bulkTarget.ids.length === 0) return;
+    setBulkDeleting(true);
+    const results = await Promise.allSettled(bulkTarget.ids.map((id) => api.delete(`/notifications/${id}`)));
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
+    setSelectedIds((prev) => prev.filter((id) => !bulkTarget.ids.includes(id)));
+    setBulkTarget(null);
+    setBulkDeleting(false);
+    if (failed === 0) toast.success(`${succeeded} notification${succeeded === 1 ? '' : 's'} deleted`);
+    else if (succeeded === 0) toast.error('Failed to delete notifications');
+    else toast.success(`${succeeded} deleted, ${failed} failed`);
+  };
+
+  const stats = [
     {
-      key: 'title',
-      header: 'Notification',
-      sortable: true,
-      render: (row) => (
-        <div className="flex items-start gap-3">
-          <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${row.isRead ? 'bg-transparent' : 'bg-[#14B8A6]'}`} />
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm font-medium truncate ${row.isRead ? 'text-[var(--text-secondary)]' : 'text-[var(--text-primary)]'}`}>
-              {row.title}
-            </p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{row.body}</p>
-          </div>
+      label: 'Total',
+      value: notifications.length,
+      icon: Bell,
+      iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5',
+      iconColor: 'text-[#4F46E5]',
+      onClick: () => {
+        setActiveTab('all');
+        setTypeFilter('all');
+        setTodayOnly(false);
+      },
+    },
+    {
+      label: 'Unread',
+      value: unreadCount,
+      icon: BellRing,
+      iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5',
+      iconColor: 'text-[#0D9488]',
+      onClick: () => setActiveTab('unread'),
+    },
+    {
+      label: 'Today',
+      value: todayCount,
+      icon: CalendarDays,
+      iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5',
+      iconColor: 'text-[#D97706]',
+      onClick: () => {
+        setTodayOnly((v) => !v);
+        setActiveTab('all');
+      },
+    },
+    {
+      label: 'Approvals',
+      value: approvalsCount,
+      icon: ClipboardCheck,
+      iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5',
+      iconColor: 'text-[#7C3AED]',
+      onClick: () => {
+        setTypeFilter('approvals');
+        setActiveTab('all');
+        setTodayOnly(false);
+      },
+    },
+  ];
+
+  if (!mounted) return <PageSkeleton />;
+
+  const renderRow = (n: NormalizedNotification) => {
+    const meta = TYPE_META[n.type] || DEFAULT_META;
+    const Icon = meta.icon;
+    const view = viewTargetFor(n.type);
+    const checked = selectedIds.includes(n.id);
+    return (
+      <div
+        key={n.id}
+        onClick={() => handleRowClick(n)}
+        className={`flex items-start gap-3 px-4 sm:px-5 py-3.5 border-b border-[var(--border-color)] last:border-b-0 transition-colors cursor-pointer ${
+          n.isRead ? 'bg-white hover:bg-gray-50' : 'bg-blue-50/40 hover:bg-blue-50/70'
+        }`}
+      >
+        <div className="pt-1 shrink-0 w-5 flex justify-center">
+          {n.isRead ? (
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggleSelect(n.id)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select notification ${n.id}`}
+              className="w-4 h-4 rounded border-[#CBD5E1] text-[#1C64F2] focus:ring-[#1C64F2]/30 cursor-pointer"
+            />
+          ) : (
+            <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6] mt-1" aria-label="Unread" />
+          )}
         </div>
-      ),
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      sortable: true,
-      render: (row) => (
-        <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 capitalize">
-          {row.type || 'system'}
-        </span>
-      ),
-    },
-    {
-      key: 'createdAt',
-      header: 'Received',
-      sortable: true,
-      render: (row) => (
-        <span className="text-sm text-[var(--text-secondary)] whitespace-nowrap">
-          {formatDate(row.createdAt)}
-        </span>
-      ),
-    },
-    {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          {!row.isRead && (
-            <Tooltip id={`mark-read-${row.id}`} content="Mark as read">
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.box}`}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-sm truncate ${
+              n.isRead
+                ? 'font-medium text-[var(--text-secondary)]'
+                : 'font-semibold text-[var(--text-primary)]'
+            }`}
+          >
+            {n.title}
+          </p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{n.body}</p>
+          {view && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!n.isRead) markReadMutation.mutate(n.id);
+                navigate(view.path);
+              }}
+              className="inline-flex items-center gap-1 mt-1.5 text-xs font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              {view.label}
+            </button>
+          )}
+        </div>
+        <div className="hidden sm:flex flex-col items-end gap-1.5 shrink-0">
+          <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
+            <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+              {timeAgo(n.createdAt)}
+            </span>
+          </Tooltip>
+          <span
+            className={`px-2.5 py-0.5 text-[11px] font-semibold rounded-full capitalize ${meta.chip}`}
+          >
+            {n.type}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {!n.isRead && (
+            <Tooltip id={`mark-read-${n.id}`} content="Mark as read">
               <button
-                onClick={() => handleMarkRead(row.id)}
+                type="button"
+                onClick={() => markReadMutation.mutate(n.id)}
                 className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
+                aria-label="Mark as read"
               >
                 <Check className="w-4 h-4" />
               </button>
             </Tooltip>
           )}
+          <Tooltip id={`delete-notif-${n.id}`} content="Delete">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(n)}
+              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#DC2626] hover:bg-red-50 transition-colors"
+              aria-label="Delete notification"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
-      ),
-    },
-  ];
-
-  const stats = [
-    { label: 'Total', value: notifications.length, iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5', iconColor: 'text-[#4F46E5]', icon: Bell, tab: 'all' },
-    { label: 'Unread', value: unreadCount, iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5', iconColor: 'text-[#0D9488]', icon: BellRing, tab: 'unread' },
-    { label: 'Read', value: readCount, iconBg: 'bg-gradient-to-br from-[#64748B]/20 via-[#94A3B8]/10 to-[#CBD5E1]/5', iconColor: 'text-[#475569]', icon: MailOpen, tab: 'read' },
-  ];
-
-  if (!mounted) return <PageSkeleton />;
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -168,7 +521,7 @@ const Notifications = () => {
             <button
               onClick={handleRefresh}
               disabled={refreshing || isLoading}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--text-primary)] text-sm font-semibold rounded-xl border border-[var(--border-color)] hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm font-semibold rounded-xl hover:bg-white/20 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
@@ -187,7 +540,7 @@ const Notifications = () => {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
           <StatsCard
             key={stat.label}
@@ -198,14 +551,14 @@ const Notifications = () => {
             iconColor={stat.iconColor}
             isLoading={isLoading}
             delay={i * 60}
-            onClick={() => setActiveTab(stat.tab)}
+            onClick={stat.onClick}
           />
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm">
-        <div className="p-4 border-b border-[var(--border-color)]">
-          <div className="flex flex-col sm:flex-row gap-3">
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[var(--border-color)] space-y-3">
+          <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -216,36 +569,206 @@ const Notifications = () => {
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
               />
             </div>
-            <div className="flex rounded-xl border border-gray-200 overflow-hidden">
-              {FILTER_TABS.map((tab) => (
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                aria-label="Filter by type"
+                className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-[#475569] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+              >
+                {TYPE_FILTER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+                {FILTER_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? 'bg-[var(--primary-blue)] text-white'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {todayOnly && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  Today only
+                  <button
+                    type="button"
+                    onClick={() => setTodayOnly(false)}
+                    className="hover:text-amber-900"
+                    aria-label="Clear today filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {hasActiveFilters && (
+                <Tooltip id="clear-notif-filters" content="Clear all filters">
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-xl transition-colors"
+                    aria-label="Clear all filters"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-[#64748B] px-3 py-1 rounded-full bg-[#F1F5F9]">
+              {filtered.length} notification{filtered.length === 1 ? '' : 's'}
+              {mutedTypes.length > 0 && ` · ${mutedTypes.length} categor${mutedTypes.length === 1 ? 'y' : 'ies'} muted`}
+            </span>
+            <div className="flex items-center gap-2">
+              {selectedReadIds.length > 0 && (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-[var(--primary-blue)] text-white'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  type="button"
+                  onClick={() => setBulkTarget({ ids: selectedReadIds })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FEE2E2] text-[#991B1B] hover:bg-[#FECACA] transition-colors"
                 >
-                  {tab.label}
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete selected ({selectedReadIds.length})
                 </button>
-              ))}
+              )}
+              {visibleRead.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBulkTarget({ ids: visibleRead.map((n) => n.id) })}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0] transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear read ({visibleRead.length})
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         {isLoading ? (
           <TableSkeleton rows={6} cols={4} />
+        ) : groups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+              <Bell className="w-6 h-6 text-[#CBD5E1]" />
+            </div>
+            <p className="text-sm font-semibold text-[#0F172A]">No notifications found</p>
+            <p className="text-xs text-[#94A3B8] mt-1">Try adjusting your search or filters</p>
+          </div>
         ) : (
-          <DataTable
-            columns={columns}
-            data={searchedNotifications}
-            rowKey={(row) => row.id}
-            searchable={false}
-            emptyMessage="No notifications found"
-          />
+          <div>
+            {groups.map((g) => (
+              <div key={g.name}>
+                <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)] flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                    {g.name}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#94A3B8]">
+                    {g.items.length} item{g.items.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                {g.items.map(renderRow)}
+              </div>
+            ))}
+          </div>
         )}
       </div>
+
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-bold text-[#0F172A]">Notification preferences</h2>
+          {mutedTypes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMutedTypes([])}
+              className="text-xs font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              Unmute all
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-[#64748B] mb-4">
+          Muted categories are hidden from this list. Preferences are stored on this device only.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {PREF_CATEGORIES.map((c) => {
+            const muted = mutedTypes.includes(c.id);
+            return (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
+              >
+                <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!muted}
+                  aria-label={`${muted ? 'Unmute' : 'Mute'} ${c.label}`}
+                  onClick={() => toggleMute(c.id)}
+                  className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
+                    muted ? 'bg-gray-300' : 'bg-[var(--primary-blue)]'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                      muted ? 'left-0.5' : 'left-[18px]'
+                    }`}
+                  />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete notification"
+        size="sm"
+      >
+        <p className="text-sm text-[#475569]">
+          Delete <span className="font-semibold text-[#0F172A]">“{deleteTarget?.title}”</span>? This
+          action cannot be undone.
+        </p>
+        <div className="flex gap-3 pt-5">
+          <button
+            type="button"
+            onClick={() => setDeleteTarget(null)}
+            className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            disabled={deleteMutation.isPending}
+            className="flex-1 px-4 py-2.5 bg-[#DC2626] text-white font-medium rounded-xl hover:bg-[#B91C1C] transition-colors text-sm disabled:opacity-50"
+          >
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </Modal>
+
+      <BulkDeleteModal
+        isOpen={!!bulkTarget}
+        onClose={() => setBulkTarget(null)}
+        onConfirm={handleBulkDelete}
+        count={bulkTarget?.ids.length ?? 0}
+        entityType="notification"
+        consequences={['Read notifications will be permanently removed from your list']}
+        isDeleting={bulkDeleting}
+      />
     </div>
   );
 };

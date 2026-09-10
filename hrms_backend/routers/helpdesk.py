@@ -21,6 +21,15 @@ TICKET_PRIORITIES = ("low", "medium", "high", "urgent")
 TICKET_STATUSES = ("open", "in_progress", "on_hold", "resolved", "closed")
 
 
+def _user_name(db: Session, user_id) -> Optional[str]:
+    if not user_id:
+        return None
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        return None
+    return (u.full_name or u.email or f"User #{u.id}") or None
+
+
 def _serialize(ticket: SupportTicket, db: Session) -> dict:
     employee_name = None
     if ticket.employee_id:
@@ -38,6 +47,7 @@ def _serialize(ticket: SupportTicket, db: Session) -> dict:
         "employeeId": ticket.employee_id,
         "employeeName": employee_name,
         "assignedTo": ticket.assigned_to,
+        "assignedToName": _user_name(db, ticket.assigned_to),
         "resolutionNotes": ticket.resolution_notes,
         "resolvedAt": ticket.resolved_at.isoformat() if ticket.resolved_at else None,
         "createdAt": ticket.created_at.isoformat() if ticket.created_at else None,
