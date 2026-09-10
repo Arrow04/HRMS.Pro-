@@ -22,7 +22,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import * as settingsApi from '../services/settingsService';
 import ConfigPanel from '../components/ConfigPanel';
-import ScopedConfigManager from '../components/ScopedConfigManager';
+import AttendanceConfig from '../components/AttendanceConfig';
 import { getCurrentUser } from '../services/authService';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { runAutomation } from '../services/aiAutomation';
@@ -160,6 +160,7 @@ const ATTENDANCE_FORM_TABS = [
 const Attendance = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabId>('records');
+  const [showAttendanceConfig, setShowAttendanceConfig] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; id: number } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: AttendanceRow[] } | null>(null);
   const [quickActionTarget, setQuickActionTarget] = useState<{ type: 'single'; record: AttendanceRow } | { type: 'bulk'; records: AttendanceRow[] } | null>(null);
@@ -1657,33 +1658,46 @@ const Attendance = () => {
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl">
-            <ScopedConfigManager
-              domain="attendance"
-              title="Attendance Configuration"
-              subtitle="Create company, branch or department-wise attendance rules — working days feed straight into payroll"
-              icon={Settings}
-              syncAttendancePolicy
-              fields={[
-                { key: 'workingDaysPerWeek', label: 'Working days per week', type: 'select', options: [{ value: '5', label: '5 days / week' }, { value: '6', label: '6 days / week' }, { value: '7', label: '7 days / week' }] },
-                { key: 'halfDayAsFullPaid', label: 'Half day = full paid', type: 'toggle' },
-                { key: 'paidLeaveAsPresent', label: 'Paid leave = present', type: 'toggle' },
-                { key: 'holidayAsPresent', label: 'Holiday = paid', type: 'toggle' },
-                { key: 'workStart', label: 'Work start time', type: 'time' },
-                { key: 'workEnd', label: 'Work end time', type: 'time' },
-                { key: 'gracePeriod', label: 'Grace period (minutes)', type: 'number' },
-                { key: 'halfDayCutoff', label: 'Half-day cut-off (hours)', type: 'number' },
-                { key: 'geoRadius', label: 'Geo-fence radius (meters)', type: 'number' },
-                { key: 'overtimeThresholdHours', label: 'Overtime threshold (hours)', type: 'number' },
-                { key: 'overtimeRate', label: 'Overtime rate (x)', type: 'number' },
-                { key: 'lateMarkThresholdMinutes', label: 'Late mark threshold (min)', type: 'number' },
-                { key: 'halfDayThresholdHours', label: 'Half-day threshold (hours)', type: 'number' },
-                { key: 'manualOverride', label: 'Allow manual override by manager', type: 'toggle' },
-                { key: 'weekendTracking', label: 'Weekend tracking', type: 'toggle' },
-              ]}
-              summary={(c: Record<string, unknown>) => `${c.workStart || ''}-${c.workEnd || ''} — grace ${c.gracePeriod || 0}min`}
-            />
+          <div className="max-w-4xl space-y-6">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-amber-600" />
+                    Attendance Configuration
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Configure work schedules, shifts, overtime rules, geofencing, and payroll integration settings.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAttendanceConfig(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-amber-200/50 flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Open Configuration
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Work Schedule</div>
+                <div className="text-xs text-gray-400 mt-1">Set working days, hours, grace periods</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Shifts & Overtime</div>
+                <div className="text-xs text-gray-400 mt-1">Manage shift templates and OT rules</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Geofencing & IP</div>
+                <div className="text-xs text-gray-400 mt-1">Configure location and network restrictions</div>
+              </div>
+            </div>
           </div>
+        )}
+
+        {showAttendanceConfig && (
+          <AttendanceConfig open={showAttendanceConfig} onClose={() => setShowAttendanceConfig(false)} />
         )}
       </div>
 

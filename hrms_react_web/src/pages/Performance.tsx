@@ -6,7 +6,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie } from 'recharts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
-import ScopedConfigManager from '../components/ScopedConfigManager';
+import PerformanceConfig from '../components/PerformanceConfig';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee, toEmployeeSelectOptions } from '../utils/employeePickerUtils';
@@ -728,6 +728,7 @@ const GoalFeedbackForm = ({ type, data, setData, companies }: {
 
 const Performance = () => {
 const [activeTab, setActiveTab] = useState('reviews');
+const [showPerformanceConfig, setShowPerformanceConfig] = useState(false);
 const [includeInactive, setIncludeInactive] = useState(false);
 
   const [companyFilter, setCompanyFilter] = useState('all');
@@ -2165,21 +2166,46 @@ const [includeInactive, setIncludeInactive] = useState(false);
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl">
-            <ScopedConfigManager
-              domain="performance"
-              title="Performance Configuration"
-              subtitle="Create company, branch or department-wise performance settings"
-              icon={Settings}
-              fields={[
-                { key: 'reviewCycle', label: 'Review cycle', type: 'select', categoryCode: 'PERFORMANCE_REVIEW_CYCLE' },
-                { key: 'ratingScale', label: 'Rating scale', type: 'select', categoryCode: 'RATING_SCALE' },
-                { key: 'peerFeedback', label: '360° feedback', type: 'toggle' },
-                { key: 'selfAppraisal', label: 'Self-appraisal', type: 'toggle' },
-              ]}
-              summary={(c: Record<string, unknown>) => `${c.reviewCycle || 'half-yearly'} — ${c.ratingScale || '1-5'}`}
-            />
+          <div className="max-w-4xl space-y-6">
+            <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-purple-600" />
+                    Performance Configuration
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Configure review cycles, rating scales, competency frameworks, goal templates, and feedback settings.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPerformanceConfig(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-purple-200/50 flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Open Configuration
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Review Cycles & Ratings</div>
+                <div className="text-xs text-gray-400 mt-1">Define review frequency and rating scales</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Competency & Goals</div>
+                <div className="text-xs text-gray-400 mt-1">Build competency frameworks and KRA templates</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Feedback Settings</div>
+                <div className="text-xs text-gray-400 mt-1">Configure 360° feedback and templates</div>
+              </div>
+            </div>
           </div>
+        )}
+
+        {showPerformanceConfig && (
+          <PerformanceConfig open={showPerformanceConfig} onClose={() => setShowPerformanceConfig(false)} />
         )}
       </div>
 

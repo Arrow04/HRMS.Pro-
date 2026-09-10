@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import * as settingsApi from '../services/settingsService';
 import ConfigPanel from '../components/ConfigPanel';
-import ScopedConfigManager from '../components/ScopedConfigManager';
+import LeaveConfig from '../components/LeaveConfig';
 import toast from 'react-hot-toast';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
@@ -102,6 +102,7 @@ interface ApprovalHistoryEntry {
 const LeaveManagement = () => {
   const queryClient = useQueryClient();
 const [activeTab, setActiveTab] = useState('requests');
+const [showLeaveConfig, setShowLeaveConfig] = useState(false);
 const [searchTerm, setSearchTerm] = useState('');
 const [leaveTypeStatusFilter, setLeaveTypeStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 const [leaveTypeCompanyFilter, setLeaveTypeCompanyFilter] = useState<string>('all');
@@ -1175,24 +1176,46 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         )}
 
         {activeTab === 'configuration' && (
-          <div className="max-w-4xl">
-            <ScopedConfigManager
-              domain="leave"
-              title="Leave Configuration"
-              subtitle="Create company, branch or department-wise leave policies"
-              icon={Settings}
-              syncLeavePolicy
-              fields={[
-                { key: 'casual', label: 'Casual leave days / year', type: 'number' },
-                { key: 'sick', label: 'Sick leave days / year', type: 'number' },
-                { key: 'earned', label: 'Earned leave days / year', type: 'number' },
-                { key: 'maternity', label: 'Maternity leave days', type: 'number' },
-                { key: 'carryForward', label: 'Carry forward unused leaves', type: 'toggle' },
-                { key: 'encashment', label: 'Leave encashment', type: 'toggle' },
-              ]}
-              summary={(c: Record<string, unknown>) => `CL ${c.casual || 0} — SL ${c.sick || 0} — EL ${c.earned || 0}`}
-            />
+          <div className="max-w-4xl space-y-6">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-blue-600" />
+                    Leave Configuration
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Configure leave types, policies, accrual rules, carry-forward, encashment, and holiday calendars.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowLeaveConfig(true)}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-blue-200/50 flex items-center gap-2"
+                >
+                  <Settings className="w-4 h-4" />
+                  Open Configuration
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Leave Types & Policies</div>
+                <div className="text-xs text-gray-400 mt-1">Define leave types and policy templates</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Accrual & Carry Forward</div>
+                <div className="text-xs text-gray-400 mt-1">Set accrual methods and carry-forward rules</div>
+              </div>
+              <div className="bg-white border border-[var(--border-color)] rounded-xl p-4">
+                <div className="text-sm font-medium text-gray-500">Holiday Calendar</div>
+                <div className="text-xs text-gray-400 mt-1">Manage company holidays and optional leaves</div>
+              </div>
+            </div>
           </div>
+        )}
+
+        {showLeaveConfig && (
+          <LeaveConfig open={showLeaveConfig} onClose={() => setShowLeaveConfig(false)} />
         )}
       </div>
 
