@@ -1232,8 +1232,10 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     read_at = Column(DateTime)
     data = Column(JSON)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     
     # Relationships
     user = relationship('User', backref='notifications')

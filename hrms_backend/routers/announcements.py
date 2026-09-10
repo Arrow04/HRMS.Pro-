@@ -1,24 +1,34 @@
-"""HRMS API announcements routes."""
+"""HRMS API announcements routes (notification-backed announcements & notices)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
 from core.cache import cached
-from core.schemas import NotificationCreate, NotificationSettingsUpdate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BulkDeleteRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationResponse, BonusCreate, BonusResponse
-from core.shared import RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user
-from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
-from database import Base, SessionLocal, engine, get_db, get_read_db
-from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
-from services.payroll_service import calculate_payroll, generate_payroll_record
-from utils.helpers import convert_camel_to_snake
+from core.tenant import validate_company_in_org, get_header_company_id
+from database import get_db, get_read_db
+from models import Company, Notification, User
 
 router = APIRouter(tags=["Announcements"])
+
+ADMIN_ROLES = ("superadmin", "hr_admin", "admin")
+
+
+def _serialize(n: Notification) -> dict:
+    data = n.data if isinstance(n.data, dict) else {}
+    return {
+        "id": n.id,
+        "title": n.title,
+        "body": n.body,
+        "type": n.type or "announcement",
+        "category": data.get("category") or "General",
+        "isRead": bool(n.is_read),
+        "createdAt": n.created_at.isoformat() if n.created_at else None,
+    }
 
 
 @cached(ttl=60)
@@ -32,7 +42,10 @@ def get_announcements(
 ):
     if companyId is None and request is not None:
         companyId = get_header_company_id(request)
-    query = db.query(Notification).filter(Notification.deleted_at.is_(None))
+    query = db.query(Notification).filter(
+        Notification.deleted_at.is_(None),
+        Notification.type.in_(["announcement", "notice"]),
+    )
     if current_user.role != "superadmin":
         query = query.filter(Notification.organization_id == current_user.organization_id)
         if companyId:
@@ -41,7 +54,8 @@ def get_announcements(
         query = query.filter(Notification.organization_id == organizationId)
     if companyId:
         query = query.filter(Notification.company_id == companyId)
-    return query.order_by(Notification.created_at.desc()).limit(200).all()
+    rows = query.order_by(Notification.created_at.desc()).limit(200).all()
+    return [_serialize(n) for n in rows]
 
 
 @router.post("/api/announcements", tags=["Announcements"])
@@ -50,15 +64,21 @@ def create_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+    if current_user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
+    title = (data.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    announcement_type = (data.get("type") or "announcement").strip().lower()
+    if announcement_type not in ("announcement", "notice"):
+        raise HTTPException(status_code=400, detail="Invalid type")
     notification = Notification(
         user_id=current_user.id,
-        title=data.get("title", ""),
-        body=data.get("body", ""),
-        type=data.get("type", "announcement"),
+        title=title,
+        body=(data.get("body") or "").strip(),
+        type=announcement_type,
         reference_id=data.get("referenceId"),
-        data=data.get("data"),
+        data={"category": (data.get("category") or "General").strip() or "General"},
         organization_id=current_user.organization_id,
         company_id=data.get("companyId"),
     )
@@ -75,16 +95,28 @@ def update_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+    if current_user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
-    notification = db.query(Notification).filter(Notification.id == announcement_id).first()
+    notification = db.query(Notification).filter(
+        Notification.id == announcement_id, Notification.deleted_at.is_(None)
+    ).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Announcement not found")
-    notification.title = data.get("title", notification.title)
-    notification.body = data.get("body", notification.body)
-    notification.type = data.get("type", notification.type)
-    notification.reference_id = data.get("referenceId", notification.reference_id)
-    notification.data = data.get("data", notification.data)
+    if data.get("title") is not None:
+        notification.title = str(data["title"]).strip() or notification.title
+    if data.get("body") is not None:
+        notification.body = str(data["body"])
+    if data.get("type"):
+        announcement_type = str(data["type"]).strip().lower()
+        if announcement_type not in ("announcement", "notice"):
+            raise HTTPException(status_code=400, detail="Invalid type")
+        notification.type = announcement_type
+    if data.get("referenceId") is not None:
+        notification.reference_id = data["referenceId"]
+    if data.get("category") is not None:
+        payload = dict(notification.data) if isinstance(notification.data, dict) else {}
+        payload["category"] = str(data["category"]).strip() or "General"
+        notification.data = payload
     db.commit()
     return {"message": "Announcement updated", "id": notification.id}
 
@@ -95,7 +127,7 @@ def delete_announcement(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in ("superadmin", "hr_admin", "admin"):
+    if current_user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
     notification = db.query(Notification).filter(Notification.id == announcement_id).first()
     if not notification:
