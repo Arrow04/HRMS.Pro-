@@ -737,12 +737,14 @@ def check_in(
                 radius = float(cfg.get("geoRadius"))
         except Exception:
             pass
-        # Locate the anchor from the employee's primary branch
+        # Locate the anchor from the employee's primary branch.
+        # Phone GPS drifts 10-50m, so sub-50m fences can never pass — floor it.
         anchor = None
         if emp.branches:
             primary = emp.branches[0]
             if primary.latitude and primary.longitude:
-                anchor = (primary.latitude, primary.longitude, primary.geofence_radius or radius)
+                fence_radius = max(float(primary.geofence_radius or radius), 50.0)
+                anchor = (primary.latitude, primary.longitude, fence_radius)
         if not anchor:
             # Fall back to the org geoRadius config without an anchor: accept
             # any provided coordinate but record whether it looks valid.
@@ -880,7 +882,9 @@ def check_out(
         if emp.branches:
             primary = emp.branches[0]
             if primary.latitude and primary.longitude:
-                anchor = (primary.latitude, primary.longitude, primary.geofence_radius or radius)
+                # Phone GPS drifts 10-50m, so sub-50m fences can never pass — floor it.
+                fence_radius = max(float(primary.geofence_radius or radius), 50.0)
+                anchor = (primary.latitude, primary.longitude, fence_radius)
         if anchor:
             lat0, lon0, rad = anchor
             dist = calculate_distance(lat0, lon0, request_data.latitude, request_data.longitude)
