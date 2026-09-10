@@ -2419,7 +2419,7 @@ const Settings = () => {
   // =============================================================================
 
   return (
-    <div className={`min-h-screen transition-all duration-300 ${mounted ? 'opacity-100' : 'opacity-0'}`}>
+    <div className={`min-h-screen transition-all duration-300 animate-page-enter ${mounted ? 'opacity-100' : 'opacity-0'}`}>
       <PageHero
         title="Settings"
         subtitle="Configure your HRMS application settings"

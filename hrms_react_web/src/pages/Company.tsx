@@ -32,6 +32,7 @@ import PageSkeleton from '../components/skeleton/PageSkeleton';
 import type { DataTableColumn } from '../components/DataTable';
 import type { LucideIcon } from 'lucide-react';
 import type { Company as CompanyType, Department, Designation, Branch } from '../types';
+import Modal from '../components/Modal';
 
 type TabId = 'companies' | 'branches' | 'departments' | 'designations';
 
@@ -129,29 +130,6 @@ interface EmployeeListItem {
 // COMPANY PAGE - FRESH REBUILD v6.0
 // Dashboard-style vibrant design with backend integration
 // =============================================================================
-
-// Modal Component
-const Modal = ({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="p-6">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'companies', label: 'Companies', icon: Building2 },
@@ -633,46 +611,54 @@ const Company = () => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatsCard
-            icon={Building2}
-            label="Total Companies"
-            value={statsData?.totalCompanies || 0}
-            trend={statsData?.trendCompanies ?? 0}
-            isLoading={isLoadingStats}
-            iconBg="bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5"
-            iconColor="text-[#3B82F6]"
-            onClick={() => setActiveTab('companies')}
-          />
-          <StatsCard
-            icon={MapPin}
-            label="Total Branches"
-            value={statsData?.totalBranches || 0}
-            trend={statsData?.trendBranches ?? 0}
-            isLoading={isLoadingStats}
-            iconBg="bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5"
-            iconColor="text-[#10B981]"
-            onClick={() => setActiveTab('branches')}
-          />
-          <StatsCard
-            icon={Briefcase}
-            label="Total Departments"
-            value={statsData?.totalDepartments || 0}
-            trend={statsData?.trendDepartments ?? 0}
-            isLoading={isLoadingStats}
-            iconBg="bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5"
-            iconColor="text-[#F59E0B]"
-            onClick={() => setActiveTab('departments')}
-          />
-          <StatsCard
-            icon={Users}
-            label="Total Designations"
-            value={statsData?.totalDesignations || 0}
-            trend={statsData?.trendDesignations ?? 0}
-            isLoading={isLoadingStats}
-            iconBg="bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5"
-            iconColor="text-[#8B5CF6]"
-            onClick={() => setActiveTab('designations')}
-          />
+          <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
+            <StatsCard
+              icon={Building2}
+              label="Total Companies"
+              value={statsData?.totalCompanies || 0}
+              trend={statsData?.trendCompanies ?? 0}
+              isLoading={isLoadingStats}
+              iconBg="bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5"
+              iconColor="text-[#3B82F6]"
+              onClick={() => setActiveTab('companies')}
+            />
+          </div>
+          <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
+            <StatsCard
+              icon={MapPin}
+              label="Total Branches"
+              value={statsData?.totalBranches || 0}
+              trend={statsData?.trendBranches ?? 0}
+              isLoading={isLoadingStats}
+              iconBg="bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5"
+              iconColor="text-[#10B981]"
+              onClick={() => setActiveTab('branches')}
+            />
+          </div>
+          <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
+            <StatsCard
+              icon={Briefcase}
+              label="Total Departments"
+              value={statsData?.totalDepartments || 0}
+              trend={statsData?.trendDepartments ?? 0}
+              isLoading={isLoadingStats}
+              iconBg="bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5"
+              iconColor="text-[#F59E0B]"
+              onClick={() => setActiveTab('departments')}
+            />
+          </div>
+          <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
+            <StatsCard
+              icon={Users}
+              label="Total Designations"
+              value={statsData?.totalDesignations || 0}
+              trend={statsData?.trendDesignations ?? 0}
+              isLoading={isLoadingStats}
+              iconBg="bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5"
+              iconColor="text-[#8B5CF6]"
+              onClick={() => setActiveTab('designations')}
+            />
+          </div>
         </div>
 
         {/* TABS - Pill Style */}

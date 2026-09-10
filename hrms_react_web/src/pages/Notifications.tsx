@@ -31,6 +31,7 @@ import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 import Modal from '../components/Modal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
+import EmptyState from '../components/EmptyState';
 import type { Notification } from '../types';
 
 type RawNotification = Notification & {
@@ -509,7 +510,7 @@ const Notifications = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-page-enter">
       <PageHero
         title="Notifications"
         subtitle="Stay updated with your latest alerts and messages"
@@ -658,13 +659,11 @@ const Notifications = () => {
         {isLoading ? (
           <TableSkeleton rows={6} cols={4} />
         ) : groups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
-              <Bell className="w-6 h-6 text-[#CBD5E1]" />
-            </div>
-            <p className="text-sm font-semibold text-[#0F172A]">No notifications found</p>
-            <p className="text-xs text-[#94A3B8] mt-1">Try adjusting your search or filters</p>
-          </div>
+          <EmptyState
+            icon={Bell}
+            title="No notifications found"
+            description="Try adjusting your search or filters"
+          />
         ) : (
           <div>
             {groups.map((g) => (

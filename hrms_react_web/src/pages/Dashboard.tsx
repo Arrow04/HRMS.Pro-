@@ -356,42 +356,50 @@ export default function Dashboard() {
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatsCard
-          icon={CalendarCheck}
-          label="Present Today"
-          value={stats.presentToday}
-          isLoading={summaryLoading}
-          iconBg="bg-gradient-to-br from-green-500/10 to-green-400/5"
-          iconColor="text-green-600"
-          onClick={() => navigate('/attendance')}
-        />
-        <StatsCard
-          icon={AlertCircle}
-          label="Absent Today"
-          value={stats.absentToday}
-          isLoading={summaryLoading}
-          iconBg="bg-gradient-to-br from-red-500/10 to-red-400/5"
-          iconColor="text-red-600"
-          onClick={() => navigate('/attendance')}
-        />
-        <StatsCard
-          icon={Coffee}
-          label="On Leave Today"
-          value={stats.onLeaveToday}
-          isLoading={summaryLoading}
-          iconBg="bg-gradient-to-br from-pink-500/10 to-pink-400/5"
-          iconColor="text-pink-600"
-          onClick={() => navigate('/leaves')}
-        />
-        <StatsCard
-          icon={Calendar}
-          label="Today's Interviews"
-          value={stats.totalInterviewScheduled}
-          isLoading={summaryLoading}
-          iconBg="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5"
-          iconColor="text-indigo-600"
-          onClick={() => navigate('/recruitment')}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
+          <StatsCard
+            icon={CalendarCheck}
+            label="Present Today"
+            value={stats.presentToday}
+            isLoading={summaryLoading}
+            iconBg="bg-gradient-to-br from-green-500/10 to-green-400/5"
+            iconColor="text-green-600"
+            onClick={() => navigate('/attendance')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
+          <StatsCard
+            icon={AlertCircle}
+            label="Absent Today"
+            value={stats.absentToday}
+            isLoading={summaryLoading}
+            iconBg="bg-gradient-to-br from-red-500/10 to-red-400/5"
+            iconColor="text-red-600"
+            onClick={() => navigate('/attendance')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
+          <StatsCard
+            icon={Coffee}
+            label="On Leave Today"
+            value={stats.onLeaveToday}
+            isLoading={summaryLoading}
+            iconBg="bg-gradient-to-br from-pink-500/10 to-pink-400/5"
+            iconColor="text-pink-600"
+            onClick={() => navigate('/leaves')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
+          <StatsCard
+            icon={Calendar}
+            label="Today's Interviews"
+            value={stats.totalInterviewScheduled}
+            isLoading={summaryLoading}
+            iconBg="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5"
+            iconColor="text-indigo-600"
+            onClick={() => navigate('/recruitment')}
+          />
+        </div>
       </div>
 
       {/* Secondary KPI Row */}

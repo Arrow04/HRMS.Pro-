@@ -567,7 +567,7 @@ const statCards = [
         {/* STATS CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {statCards.map((stat, i) => (
-            <div key={stat.label} className="transition-all duration-300" style={{ transitionDelay: `${i * 100}ms` }}>
+            <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 100}ms` }}>
               <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
             </div>
           ))}
@@ -898,23 +898,15 @@ const statCards = [
               />
             </div>
 
-            {/* FnF Result modal - Full Page */}
-            {fnfResult && (
-              <div className="fixed inset-0 z-50 flex">
-                <div className={`fixed inset-0 bg-black/50 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`} onClick={() => setFnfResult(null)} />
-                <div className={`fixed inset-0 bg-white shadow-2xl transform transition-all duration-300 ease-in-out ${isClosing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-                  <div className="h-full flex flex-col">
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#059669] to-[#059669bb] flex items-center justify-center text-white shadow-sm">
-                          <Calculator className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h2 className="text-base font-bold text-[#0F172A] leading-tight">FnF Settlement</h2>
-                          <p className="text-xs text-[#64748B]">{fnfResult.employeeName || selectedExit?.employeeName}{selectedExit?.departmentName ? ` — ${selectedExit.departmentName}` : ''}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
+            {/* FnF Result modal */}
+            <Modal
+              isOpen={!!fnfResult}
+              onClose={() => setFnfResult(null)}
+              title="FnF Settlement"
+              size="lg"
+            >
+              <p className="text-xs text-[#64748B] mb-4">{fnfResult?.employeeName || selectedExit?.employeeName}{selectedExit?.departmentName ? ` — ${selectedExit.departmentName}` : ''}</p>
+              <div className="flex items-center gap-2 mb-4">
                         <button
                           onClick={() => selectedExit && completeFnf.mutate(selectedExit.id)}
                           disabled={completeFnf.isPending}
@@ -933,18 +925,7 @@ const statCards = [
                             <Download className="w-4 h-4" /> PDF
                           </a>
                         )}
-                        <button onClick={() => setFnfResult(null)} className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="px-6 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)]">
-                      <p className="text-[11px] text-[#B45309]">
-                        <Info className="w-3.5 h-3.5 inline mr-1" />
-                        Review the FnF settlement details below. Click Confirm to complete the settlement.
-                      </p>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6">
+              </div>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Employee Info */}
                         <div className="bg-[#F8FAFC] rounded-xl p-5 border border-[#E2E8F0]">
@@ -1038,11 +1019,7 @@ const statCards = [
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            </Modal>
           </div>
         )}
 

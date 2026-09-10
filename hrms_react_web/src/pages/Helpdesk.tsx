@@ -397,7 +397,7 @@ const Helpdesk = () => {
   const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all' || searchTerm.trim() !== '';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-page-enter">
       <PageHero
         title="Helpdesk"
         subtitle="IT, HR and facility support tickets in one queue"
@@ -417,17 +417,17 @@ const Helpdesk = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat, i) => (
-          <StatsCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            icon={stat.icon}
-            iconBg={stat.iconBg}
-            iconColor={stat.iconColor}
-            isLoading={isLoading}
-            delay={i * 60}
-            onClick={() => setActiveTab(stat.tab)}
-          />
+          <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 60}ms` }}>
+            <StatsCard
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              iconBg={stat.iconBg}
+              iconColor={stat.iconColor}
+              isLoading={isLoading}
+              onClick={() => setActiveTab(stat.tab)}
+            />
+          </div>
         ))}
       </div>
 

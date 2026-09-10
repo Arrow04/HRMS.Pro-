@@ -2268,7 +2268,7 @@ const renderJobForm = () => {
         {/* Stats Section */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           {statCards.map((stat, index) => (
-            <div key={stat.label} className="transition-all duration-300" style={{ transitionDelay: `${index * 100}ms` }}>
+            <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
               <StatsCard icon={stat.icon} label={stat.label} value={stat.value} trend={stat.trend} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
             </div>
           ))}

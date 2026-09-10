@@ -492,7 +492,7 @@ const Announcements = () => {
   if (!mounted) return <PageSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-page-enter">
       <PageHero
         title="Announcements & Notices"
         subtitle="Manage company announcements and notices"
@@ -559,17 +559,17 @@ const Announcements = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
-          <StatsCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            icon={stat.icon}
-            iconBg={stat.iconBg}
-            iconColor={stat.iconColor}
-            isLoading={isLoading}
-            delay={i * 60}
-            onClick={() => handleStatClick(stat.filter, stat.tab)}
-          />
+          <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 100}ms` }}>
+            <StatsCard
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              iconBg={stat.iconBg}
+              iconColor={stat.iconColor}
+              isLoading={isLoading}
+              onClick={() => handleStatClick(stat.filter, stat.tab)}
+            />
+          </div>
         ))}
       </div>
 

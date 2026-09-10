@@ -81,7 +81,6 @@ export default function AssetManagement() {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [isClosing, setIsClosing] = useState(false);
   const [form, setForm] = useState<AssetFormState>({ ...EMPTY_ASSET_FORM });
   const [assetCompanyId, setAssetCompanyId] = useState('');
   const [assetBranchId, setAssetBranchId] = useState('');
@@ -275,7 +274,7 @@ export default function AssetManagement() {
     setEditingId(null);
   };
 
-  const openAddForm = () => { resetForm(); setIsClosing(false); setShowForm(true); };
+  const openAddForm = () => { resetForm(); setShowForm(true); };
 
   const openEditForm = (asset: Asset) => {
     setForm({
@@ -294,7 +293,6 @@ export default function AssetManagement() {
       notes: asset.notes || '',
     });
     setEditingId(asset.id);
-    setIsClosing(false);
     setShowForm(true);
   };
 
@@ -397,10 +395,18 @@ export default function AssetManagement() {
 
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard icon={Laptop} label="Total Assets" value={assets.length} color="blue" onClick={() => setActiveTab('all')} />
-        <StatsCard icon={User} label="Assigned" value={assignedAssets.length} color="purple" onClick={() => setActiveTab('assignments')} />
-        <StatsCard icon={CheckCircle} label="Available" value={availableAssets.length} color="green" onClick={() => setActiveTab('available')} />
-        <StatsCard icon={Wallet} label="Total Book Value (Rs.)" value={Math.round(totalBookValue)} color="orange" onClick={() => setActiveTab('analytics')} />
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
+          <StatsCard icon={Laptop} label="Total Assets" value={assets.length} color="blue" onClick={() => setActiveTab('all')} />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
+          <StatsCard icon={User} label="Assigned" value={assignedAssets.length} color="purple" onClick={() => setActiveTab('assignments')} />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
+          <StatsCard icon={CheckCircle} label="Available" value={availableAssets.length} color="green" onClick={() => setActiveTab('available')} />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
+          <StatsCard icon={Wallet} label="Total Book Value (Rs.)" value={Math.round(totalBookValue)} color="orange" onClick={() => setActiveTab('analytics')} />
+        </div>
       </div>
 
       {/* Sub-menu Tabs */}
@@ -610,67 +616,12 @@ export default function AssetManagement() {
           </div>
 
           {/* Add/Edit Asset Modal */}
-          {showForm && (
-            <div className="fixed inset-0 z-50 flex">
-              <div
-                className={`fixed inset-0 bg-black/50 transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
-                onClick={() => { setIsClosing(true); setTimeout(() => { setShowForm(false); setIsClosing(false); resetForm(); }, 300); }}
-              />
-              <div
-                className={`fixed inset-0 bg-white shadow-2xl transform transition-all duration-300 ease-in-out ${
-                  isClosing ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-                }`}
-              >
-                <div className="h-full flex flex-col">
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#F59E0Bbb] flex items-center justify-center text-white shadow-sm">
-                        <Monitor className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-bold text-[#0F172A] leading-tight">
-                          {editingId ? 'Edit Asset' : 'Add Asset'}
-                        </h2>
-                        <p className="text-xs text-[#64748B]">Manage asset details and assignment</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setIsClosing(true); setTimeout(() => { setShowForm(false); setIsClosing(false); resetForm(); }, 300); }}
-                        className="px-4 py-2 text-sm font-medium text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        form="assetForm"
-                        disabled={createMutation.isPending || updateMutation.isPending}
-                        className="px-5 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-colors disabled:opacity-50 shadow-md shadow-black/10 flex items-center gap-2"
-                      >
-                        {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {(createMutation.isPending || updateMutation.isPending) ? 'Saving...' : (editingId ? 'Update' : 'Create')}
-                      </button>
-                      <button
-                        onClick={() => { setIsClosing(true); setTimeout(() => { setShowForm(false); setIsClosing(false); resetForm(); }, 300); }}
-                        className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Help Bar */}
-                  <div className="px-6 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)]">
-                    <p className="text-[11px] text-[#B45309]">
-                      <Info className="w-3.5 h-3.5 inline mr-1" />
-                      Fill in the asset details below and click Create/Update to save.
-                    </p>
-                  </div>
-
-                  {/* Form Body */}
-                  <div className="flex-1 overflow-y-auto px-6 py-6">
+          <Modal
+            isOpen={showForm}
+            onClose={() => { setShowForm(false); resetForm(); }}
+            title={editingId ? 'Edit Asset' : 'Add Asset'}
+            size="lg"
+          >
                     <form id="assetForm" onSubmit={(e) => { e.preventDefault(); saveAsset(); }} className="space-y-6">
                       <section>
                         <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2 pt-2 border-t border-[var(--border-color)]">
@@ -860,14 +811,26 @@ export default function AssetManagement() {
                           />
                         </div>
                       </section>
+
+                      <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
+                        <button
+                          type="button"
+                          onClick={() => { setShowForm(false); resetForm(); }}
+                          className="px-4 py-2.5 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={createMutation.isPending || updateMutation.isPending}
+                          className="px-5 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-colors disabled:opacity-50 shadow-md shadow-black/10 flex items-center gap-2"
+                        >
+                          {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
+                          {(createMutation.isPending || updateMutation.isPending) ? 'Saving...' : (editingId ? 'Update' : 'Create')}
+                        </button>
+                      </div>
                     </form>
-                  </div>
-
-
-                </div>
-              </div>
-            </div>
-          )}
+          </Modal>
         </>
       )}
 

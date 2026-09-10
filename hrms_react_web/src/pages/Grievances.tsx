@@ -491,7 +491,7 @@ const Grievances = () => {
   if (!mounted) return <PageSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-page-enter">
       <PageHero
         title="Grievances"
         subtitle="Track and manage employee grievances"
@@ -511,17 +511,17 @@ const Grievances = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {statCards.map((stat, i) => (
-          <StatsCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            icon={stat.icon}
-            iconBg={stat.iconBg}
-            iconColor={stat.iconColor}
-            isLoading={isLoading}
-            delay={i * 60}
-            onClick={stat.onClick}
-          />
+          <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 60}ms` }}>
+            <StatsCard
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              iconBg={stat.iconBg}
+              iconColor={stat.iconColor}
+              isLoading={isLoading}
+              onClick={stat.onClick}
+            />
+          </div>
         ))}
       </div>
 
