@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   FileText, Search, Download, Printer, Copy, Check, X,
   Briefcase, ClipboardCheck, Award, TrendingUp, LogOut, FileBadge, Stamp,
+  ChevronDown, ChevronRight, Sparkles, ZoomIn, ZoomOut, Users, Building2,
+  ChevronLeft as ChevronLeftIcon, Eye,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import PageHero from '../components/PageHero';
 import FormField, { formInputClass, formTextareaClass } from '../components/FormField';
 import DatePicker from '../components/DatePicker';
 import SearchableSelect from '../components/SearchableSelect';
@@ -15,6 +16,10 @@ import CompactImageUpload from '../components/CompactImageUpload';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import type { Employee } from '../types';
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Types
+   ────────────────────────────────────────────────────────────────────────────── */
 
 type FieldDef = {
   key: string;
@@ -37,6 +42,10 @@ type Template = {
   context?: (f: Record<string, string>) => string[];
   fields: FieldDef[];
 };
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Template data — IDENTICAL to original (all business logic preserved)
+   ────────────────────────────────────────────────────────────────────────────── */
 
 const termsContext = (f: Record<string, string>) => {
   const rows: string[] = [];
@@ -622,6 +631,42 @@ const TEMPLATE_GROUPS: Array<{ title: string; ids: string[] }> = [
   { title: 'Certificates', ids: ['noc', 'salary_certificate', 'intern_completion'] },
 ];
 
+/* ──────────────────────────────────────────────────────────────────────────────
+   Category pill helpers
+   ────────────────────────────────────────────────────────────────────────────── */
+
+type CategoryKey = 'all' | 'onboarding' | 'discipline' | 'separation' | 'certificates';
+
+const CATEGORY_PILLS: Array<{ key: CategoryKey; label: string; groupTitles: string[] }> = [
+  { key: 'all', label: 'All Templates', groupTitles: [] },
+  { key: 'onboarding', label: 'Onboarding', groupTitles: ['Joining', 'Growth'] },
+  { key: 'discipline', label: 'Discipline', groupTitles: ['Discipline'] },
+  { key: 'separation', label: 'Separation', groupTitles: ['Separation'] },
+  { key: 'certificates', label: 'Certificates', groupTitles: ['Certificates'] },
+];
+
+function getTemplatesForCategory(cat: CategoryKey): Template[] {
+  if (cat === 'all') return TEMPLATES;
+  const pill = CATEGORY_PILLS.find((p) => p.key === cat);
+  if (!pill) return TEMPLATES;
+  const ids = TEMPLATE_GROUPS.filter((g) => pill.groupTitles.includes(g.title)).flatMap((g) => g.ids);
+  return TEMPLATES.filter((t) => ids.includes(t.id));
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Step definitions
+   ────────────────────────────────────────────────────────────────────────────── */
+
+const STEPS = ['Template', 'Letterhead', 'Employee', 'Details'] as const;
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Component
+   ────────────────────────────────────────────────────────────────────────────── */
+
 const Letters = () => {
   const [mounted, setMounted] = useState(false);
   const [templateId, setTemplateId] = useState('offer');
@@ -647,9 +692,9 @@ const Letters = () => {
       document.removeEventListener('keydown', onKey);
     };
   }, [showPicker]);
+
   const [fields, setFields] = useState<Record<string, string>>({ date: new Date().toISOString().slice(0, 10) });
   const [copied, setCopied] = useState(false);
-  // Letterhead lives in memory only — nothing is saved on this device.
   const [letterhead, setLetterhead] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -677,8 +722,6 @@ const Letters = () => {
     setLetterhead((lh) => ({ ...lh, ...patch }));
   };
 
-
-
   const { data: companies = [] } = useQuery({
     queryKey: ['companies', 'letters'],
     queryFn: async () => {
@@ -703,7 +746,6 @@ const Letters = () => {
     }
     if (id === '__other') {
       setCustomCompany(true);
-      // Clear the previously selected company's details so nothing stale remains.
       setLetterhead((lh) => ({
         ...lh,
         company_name: '',
@@ -853,7 +895,7 @@ const Letters = () => {
     return lines.join('\n');
   }, [template, merged, letterhead, contextRows, contactLine]);
 
-  const downloadPdf = () => {
+  const downloadPdf = useCallback(() => {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const margin = 20;
     const width = 170;
@@ -934,9 +976,9 @@ const Letters = () => {
     doc.text(letterhead.signatory || 'Authorised Signatory', margin, y + 4);
     doc.save(`${template.id}-letter-${(merged.employee_name || 'employee').replace(/\s+/g, '-').toLowerCase()}.pdf`);
     toast.success('Letter downloaded as PDF');
-  };
+  }, [template, merged, letterhead, contextRows, contactLine]);
 
-  const copyText = async () => {
+  const copyText = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(letterText);
       setCopied(true);
@@ -945,300 +987,670 @@ const Letters = () => {
     } catch {
       toast.error('Copy failed');
     }
+  }, [letterText]);
+
+  /* ── Zoom / preview font size ──────────────────────────────────────────────── */
+  const [zoomPct, setZoomPct] = useState(100);
+  const previewFontSize = Math.round((zoomPct / 100) * 15);
+
+  /* ── Category / search ─────────────────────────────────────────────────────── */
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>('all');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const filteredGroups = useMemo(() => {
+    const catTemplates = getTemplatesForCategory(activeCategory);
+    const query = templateSearch.trim().toLowerCase();
+    const visible = query ? catTemplates.filter((t) => t.label.toLowerCase().includes(query) || t.description.toLowerCase().includes(query)) : catTemplates;
+
+    return TEMPLATE_GROUPS
+      .map((g) => ({
+        ...g,
+        templates: g.ids
+          .map((id) => TEMPLATES.find((t) => t.id === id))
+          .filter((t): t is Template => !!t && visible.some((v) => v.id === t.id)),
+      }))
+      .filter((g) => g.templates.length > 0);
+  }, [activeCategory, templateSearch]);
+
+  const toggleGroup = (title: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
   };
 
-  if (!mounted) return <PageSkeleton />;
+  /* ── Step calculation ──────────────────────────────────────────────────────── */
+  const currentStep = useMemo(() => {
+    const hasLetterhead = !!(letterhead.company_name || letterhead.company_address || letterhead.company_logo);
+    const hasEmployee = !!selectedEmployee;
+    const hasFields = template.fields.some((fd) => fd.key !== 'ref_no' && fd.key !== 'date' && fields[fd.key]);
+    if (hasFields) return 3;
+    if (hasEmployee) return 2;
+    if (hasLetterhead) return 1;
+    return 0;
+  }, [template, fields, letterhead, selectedEmployee]);
 
-  return (
-    <div className="min-h-screen bg-[var(--background)] animate-page-enter">
-      <div className="space-y-6">
-      <PageHero
-        title="Letters"
-        subtitle="Offer, appointment, appraisal, relieving & more — generated in one click"
-        icon={FileText}
-        accent="indigo"
-        breadcrumbs={['Home', 'Employees', 'Letters']}
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={copyText}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/15 text-white text-sm font-semibold rounded-xl border border-white/25 hover:bg-white/25 transition-colors"
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied' : 'Copy text'}
-            </button>
-            <button
-              onClick={downloadPdf}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-indigo-900 text-sm font-bold rounded-xl hover:bg-indigo-50 transition-colors shadow-md"
-            >
-              <Download className="w-4 h-4" />
-              Download PDF
-            </button>
-          </div>
-        }
-      />
-
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div className="xl:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
-            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">1 · Choose template</h3>
-            <div className="space-y-4 max-h-[52vh] overflow-auto pr-1">
-              {TEMPLATE_GROUPS.map((g) => (
-                <div key={g.title}>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">{g.title}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {g.ids.map((id) => TEMPLATES.find((t) => t.id === id)).filter((t): t is Template => !!t).map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => setTemplateId(t.id)}
-                        className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-                          templateId === t.id
-                            ? 'border-[var(--primary-blue)] bg-blue-50/60 shadow-sm'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${templateId === t.id ? 'bg-[var(--primary-blue)] text-white' : 'bg-gray-100 text-gray-500'}`}>
-                          <t.icon className="w-4 h-4" />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-semibold text-[var(--text-primary)]">{t.label}</span>
-                          <span className="block text-xs text-gray-500 mt-0.5">{t.description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+  /* ── Loading state ─────────────────────────────────────────────────────────── */
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[var(--background)]">
+        <div className="p-6 space-y-6">
+          <div className="shimmer h-20 rounded-2xl" />
+          <div className="shimmer h-10 rounded-xl w-96" />
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+            <div className="xl:col-span-2 space-y-4">
+              <div className="shimmer h-64 rounded-2xl" />
+              <div className="shimmer h-80 rounded-2xl" />
             </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
-            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">2 · Letterhead</h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Company">
-                  <SearchableSelect
-                    value={companyId}
-                    onChange={(v) => pickCompany(String(v))}
-                    options={[
-                      ...(companies as Record<string, unknown>[]).map((c) => ({ id: c.id as number | string, name: String(c.name || 'Unnamed') })),
-                      { id: '__other', name: 'Other (type manually)…' },
-                    ]}
-                    placeholder="Search company…"
-                    showAllOption={false}
-                    clearable
-                    className="w-full"
-                  />
-                </FormField>
-                <div className="flex flex-col">
-                  <span className="block text-sm font-medium text-[var(--text-primary)] mb-1">Logo</span>
-                  <div className="h-[42px] flex items-center">
-                    <CompactImageUpload
-                      value={letterhead.company_logo || ''}
-                      onChange={(dataUrl) => setLh({ company_logo: dataUrl })}
-                      onClear={() => setLh({ company_logo: '' })}
-                      accept="image/png,image/jpeg,image/webp"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">&nbsp;</p>
-                </div>
-              </div>
-              {(customCompany || companyId === '') && (
-                <FormField label="Company name">
-                  <input value={letterhead.company_name || ''} onChange={(e) => setLh({ company_name: e.target.value })} className={formInputClass} placeholder="Acme Pvt. Ltd." />
-                </FormField>
-              )}
-              <FormField label="Company address">
-                <textarea value={letterhead.company_address || ''} onChange={(e) => setLh({ company_address: e.target.value })} className={formTextareaClass} rows={2} placeholder="Street, City, State — PIN" />
-              </FormField>
-              <FormField label="Signatory title">
-                <input value={letterhead.signatory || ''} onChange={(e) => setLh({ signatory: e.target.value })} className={formInputClass} placeholder="Authorised Signatory" />
-              </FormField>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField label="Company email">
-                  <input value={letterhead.company_email || ''} onChange={(e) => setLh({ company_email: e.target.value })} className={formInputClass} placeholder="hr@company.com" />
-                </FormField>
-                <FormField label="Website">
-                  <input value={letterhead.company_website || ''} onChange={(e) => setLh({ company_website: e.target.value })} className={formInputClass} placeholder="https://…" />
-                </FormField>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
-            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">3 · Pick employee</h3>
-            <div className="relative" ref={pickerRef}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name or code..."
-                value={selectedEmployee ? personDisplayName(selectedEmployee as never, '') : employeeSearch}
-                onChange={(e) => {
-                  setEmployeeSearch(e.target.value);
-                  if (selectedEmployee) clearEmployee();
-                  else setShowPicker(true);
-                }}
-                onFocus={() => { if (!selectedEmployee) setShowPicker(true); }}
-                readOnly={!!selectedEmployee}
-                className="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-              />
-              {selectedEmployee && (
-                <button
-                  type="button"
-                  onClick={clearEmployee}
-                  aria-label="Remove employee"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-600 flex items-center justify-center transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-              {showPicker && (
-                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-auto">
-                  {(employees as Employee[]).length === 0 && (
-                    <p className="px-4 py-3 text-sm text-gray-400">No matches — keep typing or fill fields manually.</p>
-                  )}
-                  {(employees as Employee[]).map((emp) => (
-                    <button
-                      key={emp.id}
-                      onClick={() => pickEmployee(emp)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center justify-between"
-                    >
-                      <span className="text-sm font-medium text-[var(--text-primary)]">{personDisplayName(emp as never, '')}</span>
-                      <span className="text-xs text-gray-400">{(emp as { employeeCode?: string }).employeeCode || `#${emp.id}`}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <FormField label="Designation">
-                <input value={fields.designation || ''} onChange={(e) => set('designation', e.target.value)} className={formInputClass} placeholder="e.g. Software Engineer" />
-              </FormField>
-              <FormField label="Department">
-                <input value={fields.department || ''} onChange={(e) => set('department', e.target.value)} className={formInputClass} placeholder="e.g. Engineering" />
-              </FormField>
-            </div>
-            {selectedEmployee && (
-              <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 p-3">
-                <p className="text-xs font-bold text-emerald-700 mb-2">✓ Auto-filled from employee record</p>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  {[
-                    ['Name', fields.employee_name],
-                    ['Code', fields.employee_code],
-                    ['Designation', fields.designation],
-                    ['Department', fields.department],
-                    ['Joining', fields.joining_date],
-                    ['CTC', fields.salary ? `Rs. ${fields.salary}` : ''],
-                    ['Location', fields.location],
-                    ['Phone', fields.phone],
-                  ].filter(([, v]) => v).map(([k, v]) => (
-                    <div key={k} className="flex gap-1.5">
-                      <dt className="text-emerald-600/80 shrink-0">{k}:</dt>
-                      <dd className="font-medium text-gray-800 truncate">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-4 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
-            <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3">4 · Letter details</h3>
-            <div className="space-y-3">
-              {template.fields.filter((fd) => fd.key !== 'designation' && fd.key !== 'department').map((fd) => (
-                <FormField key={fd.key} label={fd.label} required={fd.required}>
-                  {fd.type === 'textarea' ? (
-                    <textarea value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formTextareaClass} rows={2} placeholder={fd.placeholder} />
-                  ) : fd.type === 'date' ? (
-                    <DatePicker value={fields[fd.key] || ''} onChange={(v) => set(fd.key, v)} placeholder={fd.placeholder || 'Select date'} />
-                  ) : fd.key === 'ref_no' ? (
-                    <div className="flex gap-2">
-                      <input value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formInputClass} placeholder={fd.placeholder} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const yr = new Date().getFullYear();
-                          const code = template.id.replace(/[^a-z]/gi, '').slice(0, 5).toUpperCase() || 'HR';
-                          const seq = Date.now().toString(36).slice(-4).toUpperCase();
-                          set('ref_no', `HR/${yr}/${code}/${seq}`);
-                        }}
-                        className="shrink-0 px-3 py-2 text-xs font-bold text-white bg-[var(--primary-blue)] rounded-xl hover:opacity-90 transition-opacity"
-                      >
-                        Generate
-                      </button>
-                    </div>
-                  ) : (
-                    <input type={fd.type} value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formInputClass} placeholder={fd.placeholder} />
-                  )}
-                </FormField>
-              ))}
-            </div>
-          </div>
-
-        </div>
-
-        <div className="xl:col-span-3 animate-in fade-in slide-in-from-right-4" style={{ animationDelay: '200ms' }}>
-          <div className="sticky top-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-[var(--text-primary)]">Live preview</h3>
-              <span className="text-xs text-gray-400">A4 · Times · print-ready PDF</span>
-            </div>
-            <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-md overflow-hidden">
-              <div className="px-10 py-8 font-serif text-[15px] leading-relaxed text-gray-900 max-h-[70vh] overflow-auto">
-                {letterhead.company_logo && (
-                  <div className="flex justify-center mb-2">
-                    <img src={letterhead.company_logo} alt="Company logo" className="h-16 object-contain" />
-                  </div>
-                )}
-                <p className="text-center text-xl font-bold">{letterhead.company_name || 'Company Name'}</p>
-                {letterhead.company_address && <p className="text-center text-xs text-gray-500 mt-1">{letterhead.company_address}</p>}
-                {contactLine && <p className="text-center text-xs text-gray-500 mt-0.5">{contactLine}</p>}
-                <hr className="my-4 border-gray-300" />
-                <div className="flex justify-between text-sm">
-                  <span>Ref: {merged.ref_no || '-'}</span>
-                  <span>Date: {merged.date || '-'}</span>
-                </div>
-                <p className="font-bold mt-4">Subject: {template.subject(merged)}</p>
-                <p className="mt-4">{template.greeting(merged)}</p>
-                {template.body(merged).map((p, i) => (
-                  <p key={i} className="mt-3 text-justify">{p}</p>
-                ))}
-                {contextRows.length > 0 && (
-                  <div className="mt-5 rounded-lg bg-gray-50 border border-gray-200 p-4">
-                    <p className="text-sm font-bold uppercase tracking-wide text-gray-700">
-                      {template.contextTitle || 'Annexure'}
-                    </p>
-                    <ul className="mt-2 space-y-1.5">
-                      {contextRows.map((r, i) => (
-                        <li key={i} className="text-sm text-gray-700 flex gap-2">
-                          <span className="text-gray-400">•</span>
-                          <span>{r}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="mt-6">
-                  {template.closing(merged).map((c, i) => (
-                    <p key={i}>{c}</p>
-                  ))}
-                  <p className="mt-1">{letterhead.signatory || 'Authorised Signatory'}</p>
-                  <p className="font-bold">{letterhead.company_name || 'Company Name'}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2 mt-3">
-              <button onClick={downloadPdf} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-[var(--primary-blue)] text-white text-sm font-bold rounded-xl hover:opacity-90 shadow-md">
-                <Download className="w-4 h-4" /> Download PDF
-              </button>
-              <button onClick={() => window.print()} className="flex items-center justify-center gap-2 px-4 py-3 bg-white border border-[var(--border-color)] text-sm font-semibold rounded-xl hover:bg-gray-50">
-                <Printer className="w-4 h-4" /> Print
-              </button>
+            <div className="xl:col-span-3">
+              <div className="shimmer h-[60vh] rounded-2xl" />
             </div>
           </div>
         </div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/60 animate-page-enter">
+      <div className="max-w-[1600px] mx-auto space-y-5 px-4 sm:px-6 pb-12">
+
+        {/* ──────────────────── STEP PROGRESS INDICATOR ──────────────────── */}
+        <div className="flex items-center justify-center pt-5 pb-1">
+          <nav className="flex items-center gap-0">
+            {STEPS.map((step, idx) => {
+              const done = idx < currentStep;
+              const active = idx === currentStep;
+              return (
+                <div key={step} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`
+                        w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
+                        ${done ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200' : ''}
+                        ${active ? 'bg-[var(--primary-blue)] text-white shadow-lg shadow-blue-200 ring-4 ring-blue-100 animate-pulse-soft' : ''}
+                        ${!done && !active ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' : ''}
+                      `}
+                    >
+                      {done ? <Check className="w-4 h-4" /> : idx + 1}
+                    </div>
+                    <span className={`mt-1.5 text-[11px] font-semibold tracking-wide ${active ? 'text-[var(--primary-blue)]' : done ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      {step}
+                    </span>
+                  </div>
+                  {idx < STEPS.length - 1 && (
+                    <div className={`w-12 sm:w-20 h-0.5 mx-2 mt-[-18px] rounded-full transition-colors duration-500 ${idx < currentStep ? 'bg-emerald-400' : idx === currentStep ? 'bg-blue-300' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* ──────────────────── TOP CATEGORY PILLS ──────────────────── */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-1 min-w-0">
+            {CATEGORY_PILLS.map((pill) => (
+              <button
+                key={pill.key}
+                onClick={() => { setActiveCategory(pill.key); setTemplateSearch(''); }}
+                className={`
+                  relative shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200
+                  ${activeCategory === pill.key
+                    ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-blue-200'
+                    : 'bg-white/70 text-[var(--text-secondary)] border border-[var(--border-color)] hover:bg-white hover:border-blue-200'
+                  }
+                `}
+              >
+                {pill.label}
+                {activeCategory === pill.key && (
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-8 h-0.5 bg-[var(--primary-blue)] rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative shrink-0 w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search templates…"
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="w-full pl-10 pr-16 py-2.5 bg-white/80 backdrop-blur border border-[var(--border-color)] rounded-xl text-sm focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-transparent outline-none transition-all"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-gray-100 text-gray-500 text-[11px] font-bold rounded-md">
+              {filteredGroups.reduce((n, g) => n + g.templates.length, 0)}
+            </span>
+          </div>
+        </div>
+
+        {/* ──────────────────── MAIN GRID ──────────────────── */}
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start">
+
+          {/* ════════════════ LEFT COLUMN ════════════════ */}
+          <div className="xl:col-span-2 space-y-5">
+
+            {/* ── SECTION 1: Template Cards ── */}
+            <div
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden transition-all duration-300"
+              style={{ animationDelay: '0ms' }}
+            >
+              <div className="px-5 py-4 border-b border-[var(--border-color)]/50 bg-gradient-to-r from-indigo-50/50 to-blue-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Choose Template</h3>
+                    <p className="text-[11px] text-gray-400">{TEMPLATES.length} templates available</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 max-h-[48vh] overflow-y-auto custom-scrollbar space-y-4">
+                {filteredGroups.length === 0 && (
+                  <div className="py-12 text-center">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gray-100 flex items-center justify-center">
+                      <Search className="w-7 h-7 text-gray-300" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-400">No templates match your search</p>
+                    <p className="text-xs text-gray-300 mt-1">Try a different keyword</p>
+                  </div>
+                )}
+
+                {filteredGroups.map((g) => (
+                  <div key={g.title}>
+                    <button
+                      onClick={() => toggleGroup(g.title)}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-gray-50/80 transition-colors group"
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-gray-500">
+                        {g.title}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold text-gray-300 bg-gray-100 px-1.5 py-0.5 rounded">
+                          {g.templates.length}
+                        </span>
+                        {collapsedGroups.has(g.title)
+                          ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                        }
+                      </div>
+                    </button>
+
+                    {!collapsedGroups.has(g.title) && (
+                      <div className="space-y-1.5 mt-1">
+                        {g.templates.map((t, cardIdx) => {
+                          const selected = templateId === t.id;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => setTemplateId(t.id)}
+                              style={{ animationDelay: `${cardIdx * 50}ms` }}
+                              className={`
+                                w-full flex items-start gap-3 p-3.5 rounded-xl text-left transition-all duration-200 group/card
+                                ${selected
+                                  ? 'border-2 border-[var(--primary-blue)] bg-blue-50/70 shadow-md shadow-blue-100'
+                                  : 'border border-gray-100 hover:border-blue-200 hover:bg-white hover:shadow-md hover:scale-[1.015]'
+                                }
+                              `}
+                            >
+                              <span
+                                className={`
+                                  w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200
+                                  ${selected
+                                    ? 'bg-gradient-to-br from-[var(--primary-blue)] to-indigo-600 text-white shadow-lg shadow-blue-200'
+                                    : 'bg-gray-100 text-gray-500 group-hover/card:bg-indigo-50 group-hover/card:text-indigo-500'
+                                  }
+                                `}
+                              >
+                                <t.icon className="w-5 h-5" />
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-sm font-semibold text-[var(--text-primary)] leading-tight">
+                                  {t.label}
+                                </span>
+                                <span className="block text-xs text-gray-400 mt-0.5 leading-snug line-clamp-1">
+                                  {t.description}
+                                </span>
+                              </span>
+                              <span className="shrink-0 mt-1">
+                                {selected
+                                  ? (
+                                    <span className="w-5 h-5 rounded-full bg-[var(--primary-blue)] flex items-center justify-center">
+                                      <Check className="w-3 h-3 text-white" />
+                                    </span>
+                                  )
+                                  : (
+                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover/card:text-blue-400 group-hover/card:translate-x-0.5 transition-all" />
+                                  )
+                                }
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── SECTION 2: Letterhead ── */}
+            <div
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
+              style={{ animationDelay: '50ms' }}
+            >
+              <div className="px-5 py-4 border-b border-[var(--border-color)]/50 bg-gradient-to-r from-violet-50/50 to-purple-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Letterhead</h3>
+                    <p className="text-[11px] text-gray-400">Company details & branding</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Live mini preview */}
+                {(letterhead.company_name || letterhead.company_logo) && (
+                  <div className="p-3 rounded-xl bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-100 flex items-center gap-3 transition-all">
+                    {letterhead.company_logo ? (
+                      <img src={letterhead.company_logo} alt="" className="h-10 w-10 object-contain rounded-lg" />
+                    ) : (
+                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                        {(letterhead.company_name || 'C')[0]}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-[var(--text-primary)] truncate">{letterhead.company_name || 'Company Name'}</p>
+                      {letterhead.company_address && (
+                        <p className="text-[11px] text-gray-400 truncate">{letterhead.company_address}</p>
+                      )}
+                    </div>
+                    <Eye className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="Company">
+                    <SearchableSelect
+                      value={companyId}
+                      onChange={(v) => pickCompany(String(v))}
+                      options={[
+                        ...(companies as Record<string, unknown>[]).map((c) => ({ id: c.id as number | string, name: String(c.name || 'Unnamed') })),
+                        { id: '__other', name: 'Other (type manually)…' },
+                      ]}
+                      placeholder="Search company…"
+                      showAllOption={false}
+                      clearable
+                      className="w-full"
+                    />
+                  </FormField>
+                  <div className="flex flex-col">
+                    <span className="block text-sm font-medium text-[var(--text-primary)] mb-1">Logo</span>
+                    <div className="h-[42px] flex items-center border border-dashed border-gray-200 rounded-lg px-2 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                      <CompactImageUpload
+                        value={letterhead.company_logo || ''}
+                        onChange={(dataUrl) => setLh({ company_logo: dataUrl })}
+                        onClear={() => setLh({ company_logo: '' })}
+                        accept="image/png,image/jpeg,image/webp"
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-400 min-h-[16px] leading-4">Drag & drop or click</p>
+                  </div>
+                </div>
+
+                {(customCompany || companyId === '') && (
+                  <FormField label="Company name" required>
+                    <input value={letterhead.company_name || ''} onChange={(e) => setLh({ company_name: e.target.value })} className={formInputClass} placeholder="Acme Pvt. Ltd." />
+                  </FormField>
+                )}
+                <FormField label="Company address">
+                  <textarea value={letterhead.company_address || ''} onChange={(e) => setLh({ company_address: e.target.value })} className={formTextareaClass} rows={2} placeholder="Street, City, State — PIN" />
+                </FormField>
+                <FormField label="Signatory title">
+                  <input value={letterhead.signatory || ''} onChange={(e) => setLh({ signatory: e.target.value })} className={formInputClass} placeholder="Authorised Signatory" />
+                </FormField>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField label="Company email">
+                    <input value={letterhead.company_email || ''} onChange={(e) => setLh({ company_email: e.target.value })} className={formInputClass} placeholder="hr@company.com" />
+                  </FormField>
+                  <FormField label="Website">
+                    <input value={letterhead.company_website || ''} onChange={(e) => setLh({ company_website: e.target.value })} className={formInputClass} placeholder="https://…" />
+                  </FormField>
+                </div>
+              </div>
+            </div>
+
+            {/* ── SECTION 3: Employee Picker ── */}
+            <div
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
+              style={{ animationDelay: '100ms' }}
+            >
+              <div className="px-5 py-4 border-b border-[var(--border-color)]/50 bg-gradient-to-r from-emerald-50/50 to-teal-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                    <Users className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Employee</h3>
+                    <p className="text-[11px] text-gray-400">Auto-fill letter fields</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="relative" ref={pickerRef}>
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or code…"
+                    value={selectedEmployee ? personDisplayName(selectedEmployee as never, '') : employeeSearch}
+                    onChange={(e) => {
+                      setEmployeeSearch(e.target.value);
+                      if (selectedEmployee) clearEmployee();
+                      else setShowPicker(true);
+                    }}
+                    onFocus={() => { if (!selectedEmployee) setShowPicker(true); }}
+                    readOnly={!!selectedEmployee}
+                    className="w-full pl-10 pr-10 py-2.5 border border-[var(--border-color)] rounded-xl focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-transparent outline-none text-sm bg-white/60 transition-all"
+                  />
+                  {selectedEmployee && (
+                    <button
+                      type="button"
+                      onClick={clearEmployee}
+                      aria-label="Remove employee"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-red-50 hover:bg-red-100 text-red-400 hover:text-red-600 flex items-center justify-center transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {showPicker && (
+                    <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-56 overflow-auto">
+                      {(employees as Employee[]).length === 0 && (
+                        <p className="px-4 py-3 text-sm text-gray-400">No matches — keep typing or fill fields manually.</p>
+                      )}
+                      {(employees as Employee[]).map((emp) => (
+                        <button
+                          key={emp.id}
+                          onClick={() => pickEmployee(emp)}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50/60 flex items-center gap-3 transition-colors"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {getInitials(personDisplayName(emp as never, ''))}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{personDisplayName(emp as never, '')}</p>
+                            <p className="text-[11px] text-gray-400 truncate">
+                              {(emp as { employeeCode?: string }).employeeCode || `#${emp.id}`}
+                              {(emp as { department?: { name?: string } | string }).department && (
+                                <> · {typeof (emp as { department?: { name?: string } | string }).department === 'object'
+                                  ? ((emp as { department?: { name?: string } }).department as { name?: string })?.name
+                                  : String((emp as { department?: string }).department)}</>
+                              )}
+                            </p>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField label="Designation">
+                    <input value={fields.designation || ''} onChange={(e) => set('designation', e.target.value)} className={formInputClass} placeholder="e.g. Software Engineer" />
+                  </FormField>
+                  <FormField label="Department">
+                    <input value={fields.department || ''} onChange={(e) => set('department', e.target.value)} className={formInputClass} placeholder="e.g. Engineering" />
+                  </FormField>
+                </div>
+
+                {selectedEmployee && (
+                  <div className="rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50/50 border-2 border-emerald-200/70 p-4 transition-all animate-fade-in">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold">
+                        {getInitials(personDisplayName(selectedEmployee as never, ''))}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-emerald-800 truncate">{personDisplayName(selectedEmployee as never, '')}</p>
+                        <p className="text-[11px] text-emerald-600">{(selectedEmployee as { employeeCode?: string }).employeeCode}</p>
+                      </div>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full uppercase tracking-wider">Auto-filled</span>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      {[
+                        ['Name', fields.employee_name],
+                        ['Code', fields.employee_code],
+                        ['Designation', fields.designation],
+                        ['Department', fields.department],
+                        ['Joining', fields.joining_date],
+                        ['CTC', fields.salary ? `Rs. ${fields.salary}` : ''],
+                        ['Location', fields.location],
+                        ['Phone', fields.phone],
+                      ].filter(([, v]) => v).map(([k, v]) => (
+                        <div key={k} className="flex gap-1.5">
+                          <dt className="text-emerald-600/70 shrink-0 font-medium">{k}:</dt>
+                          <dd className="font-semibold text-gray-800 truncate">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+
+                {!selectedEmployee && (
+                  <p className="text-center text-xs text-gray-300 py-2">Search above to auto-fill employee details</p>
+                )}
+              </div>
+            </div>
+
+            {/* ── SECTION 4: Letter Details ── */}
+            <div
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
+              style={{ animationDelay: '150ms' }}
+            >
+              <div className="px-5 py-4 border-b border-[var(--border-color)]/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Letter Details</h3>
+                    <p className="text-[11px] text-gray-400">Fill template-specific fields</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {template.fields.filter((fd) => fd.key !== 'designation' && fd.key !== 'department').map((fd) => (
+                  <FormField key={fd.key} label={fd.label} required={fd.required}>
+                    {fd.type === 'textarea' ? (
+                      <textarea value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formTextareaClass} rows={2} placeholder={fd.placeholder} />
+                    ) : fd.type === 'date' ? (
+                      <DatePicker value={fields[fd.key] || ''} onChange={(v) => set(fd.key, v)} placeholder={fd.placeholder || 'Select date'} />
+                    ) : fd.key === 'ref_no' ? (
+                      <div className="flex gap-2">
+                        <input value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formInputClass} placeholder={fd.placeholder} />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const yr = new Date().getFullYear();
+                            const code = template.id.replace(/[^a-z]/gi, '').slice(0, 5).toUpperCase() || 'HR';
+                            const seq = Date.now().toString(36).slice(-4).toUpperCase();
+                            set('ref_no', `HR/${yr}/${code}/${seq}`);
+                          }}
+                          className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-[var(--primary-blue)] to-indigo-500 rounded-xl hover:shadow-lg hover:shadow-blue-200 hover:-translate-y-0.5 transition-all active:translate-y-0"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Generate
+                        </button>
+                      </div>
+                    ) : (
+                      <input type={fd.type} value={fields[fd.key] || ''} onChange={(e) => set(fd.key, e.target.value)} className={formInputClass} placeholder={fd.placeholder} />
+                    )}
+                  </FormField>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ════════════════ RIGHT COLUMN: LIVE PREVIEW ════════════════ */}
+          <div
+            className="xl:col-span-3 animate-slide-in-right"
+            style={{ animationDelay: '200ms' }}
+          >
+            <div className="sticky top-4">
+
+              {/* ── Preview floating toolbar ── */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-[var(--primary-blue)]" />
+                  Live Preview
+                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-white/80 backdrop-blur border border-[var(--border-color)] rounded-xl px-1 py-1">
+                    <button
+                      onClick={() => setZoomPct((z) => Math.max(70, z - 10))}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+                      title="Zoom out"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-12 text-center text-xs font-bold text-[var(--text-primary)] tabular-nums">{zoomPct}%</span>
+                    <button
+                      onClick={() => setZoomPct((z) => Math.min(150, z + 10))}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+                      title="Zoom in"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <span className="text-[11px] text-gray-400 font-medium hidden sm:block">Page 1 of 1</span>
+                  <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg hidden sm:block">
+                    A4 · Times · Print-ready
+                  </span>
+                </div>
+              </div>
+
+              {/* ── Preview paper ── */}
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden transition-all duration-300">
+                <div
+                  className="px-10 py-8 font-serif leading-relaxed text-gray-900 max-h-[68vh] overflow-y-auto custom-scrollbar"
+                  style={{ fontSize: `${previewFontSize}px`, lineHeight: 1.75 }}
+                >
+                  {/* Logo */}
+                  {letterhead.company_logo && (
+                    <div className="flex justify-center mb-3">
+                      <img src={letterhead.company_logo} alt="Company logo" className="h-16 object-contain" />
+                    </div>
+                  )}
+
+                  {/* Company header */}
+                  <p className="text-center font-bold" style={{ fontSize: `${Math.round(previewFontSize * 1.25)}px` }}>
+                    {letterhead.company_name || 'Company Name'}
+                  </p>
+                  {letterhead.company_address && (
+                    <p className="text-center text-gray-500 mt-1" style={{ fontSize: `${Math.round(previewFontSize * 0.8)}px` }}>
+                      {letterhead.company_address}
+                    </p>
+                  )}
+                  {contactLine && (
+                    <p className="text-center text-gray-500 mt-0.5" style={{ fontSize: `${Math.round(previewFontSize * 0.8)}px` }}>
+                      {contactLine}
+                    </p>
+                  )}
+
+                  {/* Separator */}
+                  <hr className="my-5 border-gray-300" />
+
+                  {/* Ref & Date */}
+                  <div className="flex justify-between" style={{ fontSize: `${Math.round(previewFontSize * 0.85)}px` }}>
+                    <span>Ref: {merged.ref_no || '-'}</span>
+                    <span>Date: {merged.date || '-'}</span>
+                  </div>
+
+                  {/* Subject */}
+                  <p className="font-bold mt-5" style={{ fontSize: `${Math.round(previewFontSize * 0.95)}px` }}>
+                    Subject: {template.subject(merged)}
+                  </p>
+
+                  {/* Greeting */}
+                  <p className="mt-5">{template.greeting(merged)}</p>
+
+                  {/* Body paragraphs */}
+                  {template.body(merged).map((p, i) => (
+                    <p key={i} className="mt-3 text-justify">{p}</p>
+                  ))}
+
+                  {/* Context / Annexure */}
+                  {contextRows.length > 0 && (
+                    <div className="mt-6 rounded-xl bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 p-5 transition-all">
+                      <p className="font-bold uppercase tracking-wide text-gray-700" style={{ fontSize: `${Math.round(previewFontSize * 0.85)}px` }}>
+                        {template.contextTitle || 'Annexure'}
+                      </p>
+                      <ul className="mt-2.5 space-y-1.5">
+                        {contextRows.map((r, i) => (
+                          <li key={i} className="text-gray-700 flex gap-2">
+                            <span className="text-gray-400 mt-0.5">•</span>
+                            <span>{r}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Closing */}
+                  <div className="mt-8">
+                    {template.closing(merged).map((c, i) => (
+                      <p key={i}>{c}</p>
+                    ))}
+                    <p className="mt-1 font-medium">{letterhead.signatory || 'Authorised Signatory'}</p>
+                    <p className="font-bold">{letterhead.company_name || 'Company Name'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Action bar ── */}
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={downloadPdf}
+                  className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3.5 bg-gradient-to-r from-[var(--primary-blue)] to-indigo-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-200 hover:shadow-xl hover:shadow-blue-300 hover:-translate-y-0.5 transition-all active:translate-y-0"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </button>
+                <button
+                  onClick={copyText}
+                  className={`
+                    flex items-center justify-center gap-2 px-4 py-3.5 text-sm font-semibold rounded-xl border transition-all
+                    ${copied
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : 'bg-white border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-50 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Copied' : 'Copy Text'}
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center justify-center gap-2 px-4 py-3.5 bg-white border border-[var(--border-color)] text-[var(--text-secondary)] text-sm font-semibold rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all"
+                >
+                  <Printer className="w-4 h-4" />
+                  Print
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
