@@ -26,6 +26,7 @@ import { formatAppDate } from '../services/appSettingsService';
 import Tooltip from '../components/Tooltip';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import ExpensesConfig from '../components/ExpensesConfig';
 import type { Expense, Employee, Company, Department, Branch } from '../types';
 
 type MasterDataOption = {
@@ -70,6 +71,7 @@ const Expenses = () => {
   const [endDate, setEndDate] = useState('');
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('records');
+  const [showExpensesConfig, setShowExpensesConfig] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: ExpenseRow[] } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
@@ -764,113 +766,70 @@ const Expenses = () => {
           {/* CONFIGURATION TAB */}
           {activeTab === 'config' && (
             <div className="space-y-6">
-              {/* Expense Categories */}
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)]">
-                  <div className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
-                      <Tags className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A]">Expense Categories</h3>
-                      <p className="text-xs text-[#94A3B8]">Manage the values from the Master Data page (Settings ? Master Data ? EXPENSE_CATEGORY)</p>
-                    </div>
+              <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <Settings className="w-5 h-5 text-purple-600" />
+                      Expenses Configuration
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Configure expense categories, approval workflows, spending limits, reimbursement rules, and submission policies.
+                    </p>
                   </div>
-                </div>
-                <div className="p-6">
-                  {expenseCategoryOptions.length === 0 ? (
-                    <p className="text-sm text-[#94A3B8] text-center py-8">No expense categories configured. Add them in Settings ? Master Data ? EXPENSE_CATEGORY.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      {expenseCategoryOptions.map((cat: MasterDataOption) => (
-                        <div key={String(cat.code || cat.value || cat.name || cat.label)} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]">
-                          <span className="w-9 h-9 rounded-lg bg-white border border-[var(--border-color)] flex items-center justify-center text-[#7C3AED]">
-                            <Tags className="w-4 h-4" />
-                          </span>
-                          <div>
-                            <p className="text-sm font-medium text-[#0F172A]">{cat.name || cat.label || cat.code}</p>
-                            <p className="text-xs text-[#94A3B8]">{cat.code}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <button
+                    onClick={() => setShowExpensesConfig(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-purple-200/50 flex items-center gap-2"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Open Configuration
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
+                      <Tags className="w-5 h-5" />
+                    </span>
+                    <h4 className="text-sm font-bold text-[#0F172A]">Expense Categories</h4>
+                  </div>
+                  <p className="text-xs text-[#94A3B8]">Categories with GL codes, spending limits, receipt rules</p>
+                </div>
+                <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+                  <div className="flex items-center gap-3 mb-3">
                     <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
-                      <CreditCard className="w-5 h-5" />
+                      <CheckCircle2 className="w-5 h-5" />
                     </span>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#0F172A]">Payment Methods</h4>
-                      <p className="text-xs text-[#94A3B8]">Manage the values from the Master Data page (EXPENSE_PAYMENT_METHOD)</p>
-                    </div>
+                    <h4 className="text-sm font-bold text-[#0F172A]">Approval Workflow</h4>
                   </div>
-                  <div className="space-y-2">
-                    {paymentMethodOptions.length === 0 ? (
-                      <p className="text-xs text-[#94A3B8]">No payment methods configured</p>
-                    ) : (
-                      paymentMethodOptions.map((opt: MasterDataOption) => (
-                        <div key={String(opt.code || opt.value)} className="flex items-center justify-between p-2.5 rounded-lg border border-[var(--border-color)]">
-                          <span className="text-sm text-[#0F172A]">{opt.name || opt.label || opt.code}</span>
-                          <span className="text-xs text-[#94A3B8]">{opt.code}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                  <p className="text-xs text-[#94A3B8]">Multi-level approval chains, auto-approve, escalation</p>
                 </div>
                 <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
                     <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
-                      <Clock className="w-5 h-5" />
+                      <Wallet className="w-5 h-5" />
                     </span>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#0F172A]">Expense Statuses</h4>
-                      <p className="text-xs text-[#94A3B8]">Manage the values from the Master Data page (EXPENSE_STATUS)</p>
-                    </div>
+                    <h4 className="text-sm font-bold text-[#0F172A]">Spending Limits</h4>
                   </div>
-                  <div className="space-y-2">
-                    {expenseStatusOptions.length === 0 ? (
-                      <p className="text-xs text-[#94A3B8]">No statuses configured</p>
-                    ) : (
-                      expenseStatusOptions.map((opt: MasterDataOption) => (
-                        <div key={String(opt.code || opt.value)} className="flex items-center justify-between p-2.5 rounded-lg border border-[var(--border-color)]">
-                          <span className="text-sm text-[#0F172A]">{opt.name || opt.label || opt.code}</span>
-                          <span className={`status-badge ${(String(opt.code || '')).toLowerCase()}`}>{opt.code}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                  <p className="text-xs text-[#94A3B8]">Global, grade-wise, and department-wise limits</p>
                 </div>
                 <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
                     <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
-                      <Settings className="w-5 h-5" />
+                      <Receipt className="w-5 h-5" />
                     </span>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#0F172A]">Reimbursable</h4>
-                      <p className="text-xs text-[#94A3B8]">Manage the values from the Master Data page (IS_BILLABLE)</p>
-                    </div>
+                    <h4 className="text-sm font-bold text-[#0F172A]">Submission Rules</h4>
                   </div>
-                  <div className="space-y-2">
-                    {isBillableOptions.length === 0 ? (
-                      <p className="text-xs text-[#94A3B8]">No billable options configured</p>
-                    ) : (
-                      isBillableOptions.map((opt: MasterDataOption) => (
-                        <div key={String(opt.code || opt.value)} className="flex items-center justify-between p-2.5 rounded-lg border border-[var(--border-color)]">
-                          <span className="text-sm text-[#0F172A]">{opt.name || opt.label || opt.code}</span>
-                          <span className="text-xs text-[#94A3B8]">{opt.code}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <p className="text-xs text-[#94A3B8] mt-4">Manage these options in Settings ? Master Data.</p>
+                  <p className="text-xs text-[#94A3B8]">Deadlines, duplicate detection, receipt requirements</p>
                 </div>
               </div>
             </div>
+          )}
+
+          {showExpensesConfig && (
+            <ExpensesConfig open={showExpensesConfig} onClose={() => setShowExpensesConfig(false)} />
           )}
 
       {/* Full Page Drawer Modal */}
