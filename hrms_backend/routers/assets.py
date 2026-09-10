@@ -141,14 +141,16 @@ def create_asset(
         snake["organization_id"] = data.organizationId or current_user.organization_id
     for date_key in ("purchase_date", "issue_date"):
         raw = snake.get(date_key)
-        if raw:
-            try:
-                parsed = dateparser.parse(str(raw))
-            except Exception:
-                parsed = None
-            if parsed is None:
-                raise HTTPException(status_code=400, detail=f"Invalid {date_key}: {raw}")
-            snake[date_key] = parsed.date()
+        if not raw or (isinstance(raw, str) and not raw.strip()):
+            snake[date_key] = None
+            continue
+        try:
+            parsed = dateparser.parse(str(raw))
+        except Exception:
+            parsed = None
+        if parsed is None:
+            raise HTTPException(status_code=400, detail=f"Invalid {date_key}: {raw}")
+        snake[date_key] = parsed.date()
     att = Asset(**snake)
     db.add(att)
     try:
@@ -174,10 +176,20 @@ def update_asset(
         org_owned(att, current_user.organization_id)
     update_data = data.model_dump(exclude_unset=True)
     snake = convert_camel_to_snake(update_data)
-    if snake.get("purchase_date"):
-        snake["purchase_date"] = dateparser.parse(snake["purchase_date"]).date()
-    if snake.get("issue_date"):
-        snake["issue_date"] = dateparser.parse(snake["issue_date"]).date()
+    for date_key in ("purchase_date", "issue_date"):
+        if date_key not in snake:
+            continue
+        raw = snake[date_key]
+        if not raw or (isinstance(raw, str) and not raw.strip()):
+            snake[date_key] = None
+            continue
+        try:
+            parsed = dateparser.parse(str(raw))
+        except Exception:
+            parsed = None
+        if parsed is None:
+            raise HTTPException(status_code=400, detail=f"Invalid {date_key}: {raw}")
+        snake[date_key] = parsed.date()
     if current_user.role != "superadmin" and snake.get("employee_id"):
         get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
     for key, val in snake.items():

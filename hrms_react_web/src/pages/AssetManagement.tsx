@@ -8,7 +8,7 @@ import {
   List, X, AlertTriangle, ClipboardList, Wrench, DollarSign, BarChart3, Loader2,
   TrendingDown, Calendar, Gauge, PieChart, ShieldCheck, Info, UserPlus, Undo2, Wallet
 } from 'lucide-react';
-import api from '../services/api';
+import api, { getErrorMessage } from '../services/api';
 import { formatAppDate } from '../services/appSettingsService';
 import DatePicker from '../components/DatePicker';
 import DateRangePicker from '../components/DateRangePicker';
@@ -160,18 +160,18 @@ export default function AssetManagement() {
   const createMutation = useMutation({
     mutationFn: (payload: AssetPayload) => api.post('/assets', payload),
     onSuccess: () => { toast.success('Asset created'); queryClient.invalidateQueries({ queryKey: ['assets'] }); setShowForm(false); resetForm(); },
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to create asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to create asset')),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: AssetPayload }) => api.put(`/assets/${id}`, payload),
     onSuccess: () => { toast.success('Asset updated'); queryClient.invalidateQueries({ queryKey: ['assets'] }); setShowForm(false); resetForm(); },
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to update asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to update asset')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/assets/${id}`),
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to delete asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to delete asset')),
   });
 
   const restoreAsset = async (a: Asset) => {
@@ -204,19 +204,19 @@ export default function AssetManagement() {
   const assignMutation = useMutation({
     mutationFn: ({ id, employeeId, issueDate }: { id: number; employeeId: number; issueDate?: string }) => api.put(`/assets/${id}`, { employeeId, status: 'assigned', issueDate: issueDate || new Date().toISOString().split('T')[0] }),
     onSuccess: () => { toast.success('Asset assigned'); queryClient.invalidateQueries({ queryKey: ['assets'] }); },
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to assign asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to assign asset')),
   });
 
   const returnMutation = useMutation({
     mutationFn: (id: number) => api.put(`/assets/${id}`, { employeeId: null, status: 'available' }),
     onSuccess: () => { toast.success('Asset returned'); queryClient.invalidateQueries({ queryKey: ['assets'] }); },
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to return asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to return asset')),
   });
 
   const maintenanceMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/assets/${id}`, { status }),
     onSuccess: () => { toast.success('Asset status updated'); queryClient.invalidateQueries({ queryKey: ['assets'] }); },
-    onError: (err: { response?: { data?: { detail?: string } } }) => toast.error(err.response?.data?.detail || 'Failed to update asset'),
+    onError: (err: unknown) => toast.error(getErrorMessage(err, 'Failed to update asset')),
   });
 
   const downloadTemplate = async () => {
@@ -927,8 +927,7 @@ export default function AssetManagement() {
                   setShowUploadModal(false);
                   setUploadFile(null);
                 } catch (err) {
-                  const apiErr = err as { response?: { data?: { detail?: string } } };
-                  toast.error(apiErr.response?.data?.detail || 'Failed to import assets');
+                  toast.error(getErrorMessage(err, 'Failed to import assets'));
                 } finally {
                   setUploading(false);
                 }

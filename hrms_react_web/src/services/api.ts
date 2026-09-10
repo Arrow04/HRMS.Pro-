@@ -13,6 +13,26 @@ export const updateApiBaseUrl = (newBaseUrl: string) => {
   api.defaults.baseURL = newBaseUrl;
 };
 
+/** Extracts a human-readable message from API errors.
+ *  Backend envelope is { error: { message } }; FastAPI validation is { detail }. */
+export const getErrorMessage = (err: unknown, fallback: string): string => {
+  const data = (err as { response?: { data?: unknown } })?.response?.data as
+    | { detail?: unknown; error?: { message?: unknown }; message?: unknown }
+    | undefined;
+  if (!data || typeof data !== 'object') {
+    return err instanceof Error && err.message ? err.message : fallback;
+  }
+  const detail = data.detail;
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: unknown; loc?: unknown };
+    if (typeof first?.msg === 'string') return first.msg;
+  }
+  if (typeof data.error?.message === 'string' && data.error.message) return data.error.message;
+  if (typeof data.message === 'string' && data.message) return data.message;
+  return fallback;
+};
+
 api.interceptors.request.use(
   (config) => {
     if (config.url && !config.url.startsWith('/api/')) {
