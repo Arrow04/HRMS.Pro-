@@ -635,11 +635,12 @@ const TEMPLATE_GROUPS: Array<{ title: string; ids: string[] }> = [
    Category pill helpers
    ────────────────────────────────────────────────────────────────────────────── */
 
-type CategoryKey = 'all' | 'onboarding' | 'discipline' | 'separation' | 'certificates';
+type CategoryKey = 'all' | 'joining' | 'growth' | 'discipline' | 'separation' | 'certificates';
 
 const CATEGORY_PILLS: Array<{ key: CategoryKey; label: string; groupTitles: string[] }> = [
   { key: 'all', label: 'All Templates', groupTitles: [] },
-  { key: 'onboarding', label: 'Onboarding', groupTitles: ['Joining', 'Growth'] },
+  { key: 'joining', label: 'Joining', groupTitles: ['Joining'] },
+  { key: 'growth', label: 'Growth', groupTitles: ['Growth'] },
   { key: 'discipline', label: 'Discipline', groupTitles: ['Discipline'] },
   { key: 'separation', label: 'Separation', groupTitles: ['Separation'] },
   { key: 'certificates', label: 'Certificates', groupTitles: ['Certificates'] },
