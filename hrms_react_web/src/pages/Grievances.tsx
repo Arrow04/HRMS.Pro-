@@ -131,10 +131,6 @@ const Grievances = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.subject.trim() || !form.description.trim()) {
-      toast.error('Subject and description are required');
-      return;
-    }
     const payload = {
       subject: form.subject.trim(),
       description: form.description.trim(),

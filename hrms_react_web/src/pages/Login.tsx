@@ -43,6 +43,7 @@ const Login = () => {
   const [showFpConfirmPassword, setShowFpConfirmPassword] = useState(false);
   const [fpError, setFpError] = useState<string | null>(null);
   const [fpLoading, setFpLoading] = useState(false);
+  const [, setFpResetToken] = useState('');
 
   // Redirect authenticated users
   useEffect(() => {
@@ -80,18 +81,9 @@ const Login = () => {
     return null;
   };
 
-  const isFormValid = (): boolean => {
-    return validateEmail(email) && validatePassword(password);
-  };
-
   const handleLogin = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-
-      if (!isFormValid()) {
-        setTouched({ email: true, password: true });
-        return;
-      }
 
       if (isLocked) return;
 
@@ -125,15 +117,6 @@ const Login = () => {
   const handlePasskeyLogin = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-
-      if (!passkeyId.trim()) {
-        toast.error('Please enter your email or phone number');
-        return;
-      }
-      if (passcode.length < 6) {
-        toast.error('Please enter your passkey');
-        return;
-      }
 
       if (isLocked) return;
 
@@ -174,14 +157,6 @@ const Login = () => {
 
   // Forgot Password Handlers (verify → emailed code → new password)
   const handleVerifyIdentity = async () => {
-    if (!fpEmail || !fpEmail.includes('@')) {
-      setFpError('Please enter a valid email address');
-      return;
-    }
-    if (!fpPhone || fpPhone.replace(/\D/g, '').length < 10) {
-      setFpError('Please enter a valid phone number');
-      return;
-    }
     setFpLoading(true);
     setFpError(null);
     try {
@@ -200,18 +175,6 @@ const Login = () => {
   };
 
   const handleResetPassword = async () => {
-    if (!fpCode || fpCode.replace(/\D/g, '').length !== 6) {
-      setFpError('Please enter the 6-digit code from your email');
-      return;
-    }
-    if (fpNewPassword.length < 8) {
-      setFpError('New password must be at least 8 characters');
-      return;
-    }
-    if (fpNewPassword !== fpConfirmPassword) {
-      setFpError('Passwords do not match');
-      return;
-    }
     setFpLoading(true);
     setFpError(null);
     try {
@@ -237,11 +200,6 @@ const Login = () => {
 
   // OTP Handlers
   const handleSendOTP = async () => {
-    if (!phone || phone.length < 10) {
-      toast.error('Please enter a valid phone number');
-      return;
-    }
-
     setOtpLoading(true);
 
     try {
@@ -257,11 +215,6 @@ const Login = () => {
   };
 
   const handleVerifyOTP = async () => {
-    if (!otp || otp.length !== 6) {
-      toast.error('Please enter a valid 6-digit OTP');
-      return;
-    }
-
     setOtpLoading(true);
 
     try {
@@ -498,7 +451,7 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isLoading || isLocked || !isFormValid()}
+                disabled={isLoading || isLocked}
                 className="group w-full relative overflow-hidden flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 active:scale-[0.98] disabled:from-white/10 disabled:via-white/10 disabled:to-white/10 disabled:hover:from-white/10 disabled:hover:to-white/10 disabled:text-white/40 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 shadow-lg shadow-indigo-900/50"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
@@ -580,7 +533,7 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isLoading || isLocked || !passkeyId.trim() || passcode.length < 6}
+                disabled={isLoading || isLocked}
                 className="group w-full relative overflow-hidden flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 active:scale-[0.98] disabled:from-white/10 disabled:via-white/10 disabled:to-white/10 disabled:hover:from-white/10 disabled:hover:to-white/10 disabled:text-white/40 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 shadow-lg shadow-indigo-900/50"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />

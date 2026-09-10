@@ -240,10 +240,6 @@ const Expenses = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newExpense.employeeId) {
-      toast.error('Please select an employee');
-      return;
-    }
     const payload = {
       ...newExpense,
       expenseDate: newExpense.date,

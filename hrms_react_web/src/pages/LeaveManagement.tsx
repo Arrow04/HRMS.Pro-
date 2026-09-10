@@ -478,7 +478,6 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   };
 
   const submitLeaveType = () => {
-    if (!leaveTypeForm.name.trim()) { toast.error('Name is required'); return; }
     saveLeaveTypeMutation.mutate({
       name: leaveTypeForm.name.trim(),
       code: leaveTypeForm.code || leaveTypeForm.name.toLowerCase().replace(/\s+/g, '_'),

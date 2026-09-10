@@ -26,10 +26,6 @@ const EmployeeLeaves = () => {
   }, []);
 
   const handleSubmit = async () => {
-    if (!employeeId || !form.leaveTypeId || !form.startDate || !form.endDate) {
-      toast.error('Please fill leave type and dates');
-      return;
-    }
     setSaving(true);
     try {
       await applyLeave({
@@ -43,7 +39,7 @@ const EmployeeLeaves = () => {
       toast.success('Leave applied');
       setShowForm(false);
       setForm({ leaveTypeId: '', startDate: '', endDate: '', reason: '' });
-      refresh(employeeId);
+      if (employeeId) refresh(employeeId);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
       toast.error(err.response?.data?.detail || 'Failed to apply leave');

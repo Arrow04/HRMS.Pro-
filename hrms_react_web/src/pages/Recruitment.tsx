@@ -481,10 +481,6 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
 
   const submitReasonAction = async () => {
     if (!reasonActionTargets || reasonActionTargets.length === 0) return;
-    if ((reasonActionType === 'select' || reasonActionType === 'reject' || reasonActionType === 'notjoined') && !reasonActionReason.trim()) {
-      toast.error('Please provide a reason');
-      return;
-    }
     const targets = reasonActionTargets;
     try {
       if (reasonActionType === 'delete') {
@@ -1687,7 +1683,7 @@ const renderJobForm = () => {
   };
 
   const handleParseResume = async () => {
-    if (!resumeFile) { toast.error('Please select a resume file first'); return; }
+    if (!resumeFile) return;
     setParsingResume(true);
     try {
       // 1. Upload the resume file so it's persisted on the candidate record

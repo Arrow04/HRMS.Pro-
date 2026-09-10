@@ -562,7 +562,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       .filter((p: PayslipRecord) => p.id != null)
       .map((p: PayslipRecord) => p.id);
     if (!ids.length) { toast.error('No payslips in the current view to email'); return; }
-    if (!window.confirm(`Email payslips to ${ids.length} employee(s) in the current view?`)) return;
     setIsRunning(true);
     try {
       const r = await api.post('/payroll/bulk-email', { payrollIds: ids });
@@ -1092,8 +1091,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   };
 
   const handleSubmitPayroll = () => {
-    if (!newPayroll.employeeId) { toast.error('Please select an employee'); return; }
-    if (!newPayroll.month || !newPayroll.year) { toast.error('Please set month and year'); return; }
     if (editingPayrollId) {
       const payload: Record<string, unknown> = {};
       for (const [camel, snake] of Object.entries(SNAKE_FIELDS)) {
@@ -2379,7 +2376,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 logFor={(b: BonusRecord) => ({ id: b.id ?? `${b.employeeName}-${b.month}/${b.year}`, label: b.employeeName })}
                 emptyMessage="No bonus records found"
                 onDelete={(rows) => {
-                  if (!window.confirm(`Delete ${rows.length} bonus record(s)?`)) return;
                   rows.forEach((r) => { if (r.id) deleteBonusMutation.mutate(r.id); });
                 }}
                 columns={[
@@ -2404,7 +2400,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 actions={(b: BonusRecord) => (
                   <div className="flex items-center justify-end gap-1.5">
                     <button onClick={() => { setBonusForm({ employeeId: '', month: b.month || 1, year: b.year || new Date().getFullYear(), amount: b.amount, reason: b.reason || '' }); setShowBonusForm(true); }} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit Bonus"><Edit3 className="w-4 h-4" /></button>
-                    <button onClick={() => { if (b.id && window.confirm('Delete this bonus record?')) deleteBonusMutation.mutate(b.id); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete Bonus"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => { if (b.id) deleteBonusMutation.mutate(b.id); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete Bonus"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
               />

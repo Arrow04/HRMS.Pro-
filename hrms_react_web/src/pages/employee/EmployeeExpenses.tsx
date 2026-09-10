@@ -24,10 +24,6 @@ const EmployeeExpenses = () => {
   }, []);
 
   const handleSubmit = async () => {
-    if (!employeeId || !form.category || !form.amount || !form.expenseDate) {
-      toast.error('Please fill category, amount and date');
-      return;
-    }
     setSaving(true);
     try {
       await submitExpense({
@@ -43,7 +39,7 @@ const EmployeeExpenses = () => {
       toast.success('Expense submitted');
       setShowForm(false);
       setForm({ category: '', amount: '', expenseDate: '', description: '', vendor: '' });
-      refresh(employeeId);
+      if (employeeId) refresh(employeeId);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
       toast.error(err.response?.data?.detail || 'Failed to submit expense');

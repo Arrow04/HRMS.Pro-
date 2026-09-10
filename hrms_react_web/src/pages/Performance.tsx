@@ -889,8 +889,6 @@ const [includeInactive, setIncludeInactive] = useState(false);
   });
 
   const handleSubmitReview = () => {
-    if (!newReview.employeeId) { toast.error('Please select an employee'); return; }
-    if (!newReview.reviewPeriod) { toast.error('Please select a review period'); return; }
     if (editingReview) {
       updateReviewMutation.mutate({ id: editingReview.id, data: newReview });
     } else {
@@ -1368,8 +1366,6 @@ const [includeInactive, setIncludeInactive] = useState(false);
   };
 
   const handleSubmitGoal = () => {
-    if (!newGoal.employeeId) { toast.error('Please select an employee'); return; }
-    if (!newGoal.title) { toast.error('Please enter a goal title'); return; }
     if (editingGoal) {
       updateGoalMutation.mutate({ id: editingGoal.id, data: newGoal });
     } else {
@@ -1378,12 +1374,6 @@ const [includeInactive, setIncludeInactive] = useState(false);
   };
 
   const handleSubmitFeedback = () => {
-    if (!newFeedback.employeeId) { toast.error('Please select an employee'); return; }
-    if (!newFeedback.feedbackType) { toast.error('Please select feedback type'); return; }
-    if (!newFeedback.overallRating || newFeedback.overallRating <= 0) {
-      toast.error('Please select an overall rating');
-      return;
-    }
     if (editingFeedback) {
       updateFeedbackMutation.mutate({ id: editingFeedback.id, data: newFeedback });
     } else {

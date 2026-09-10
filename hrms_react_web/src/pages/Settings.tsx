@@ -308,7 +308,6 @@ const HRPoliciesPanel = () => {
   const openEdit = (p: HRPolicy) => { setEditItem(p); setForm({ title: p.title, description: p.description, icon: p.icon, color: p.color, sortOrder: p.sortOrder, bullets: p.bullets?.length ? [...p.bullets] : [''] }); setShowForm(true); };
 
   const handleSave = async () => {
-    if (!form.title.trim()) { toast.error('Title is required'); return; }
     setSaving(true);
     try {
       const key = form.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -659,10 +658,6 @@ const UserManagementPanel = () => {
 
   const handleSaveUser = async () => {
     if (!selectedUser) return;
-    if (!selectedUser.role) { toast.error('Please select a role'); return; }
-    if (!(selectedUser.fullName || '').trim()) { toast.error('Please enter a user name'); return; }
-    if (!(selectedUser.email || '').trim()) { toast.error('Please enter an email address'); return; }
-    if (!(selectedUser.phone || '').trim()) { toast.error('Please enter a phone number'); return; }
     try {
       await api.put(`/api/users/${selectedUser.id}`, {
         fullName: selectedUser.fullName,
@@ -741,7 +736,6 @@ const UserManagementPanel = () => {
   };
 
   const handleProvisionOrphans = async () => {
-    if (!window.confirm('This will create login accounts for all employees without one. Continue?')) return;
     try {
       const res = await api.post('/api/users/provision-all');
       const data = res.data;
@@ -753,13 +747,6 @@ const UserManagementPanel = () => {
   };
 
   const handleAddUser = async () => {
-    if (!newUser.role) { toast.error('Please select a role'); return; }
-    if (!newUser.fullName.trim()) { toast.error('Please enter a user name'); return; }
-    if (!newUser.email.trim()) { toast.error('Please enter an email address'); return; }
-    if (!newUser.phone.trim()) { toast.error('Please enter a phone number'); return; }
-    if (!newUser.password) { toast.error('Please enter a password'); return; }
-    if (!newUser.passcode) { toast.error('Please enter a passcode'); return; }
-    if (newUser.isActive === null) { toast.error('Please select a status'); return; }
     try {
       const submittedAt = new Date();
       await api.post('/api/users', {

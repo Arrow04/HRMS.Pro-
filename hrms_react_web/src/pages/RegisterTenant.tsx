@@ -22,14 +22,6 @@ const RegisterTenant = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.companyName || !form.adminName || !form.adminEmail || !form.password) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-    if (form.password.length < 8) {
-      toast.error('Password must be at least 8 characters');
-      return;
-    }
     setLoading(true);
     try {
       await api.post('/auth/register-tenant', form);

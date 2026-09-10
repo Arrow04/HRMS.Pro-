@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, X, Trash2, Info } from 'lucide-react';
 import Modal from './Modal';
+import { DEMO_NO_GUARDS } from '../config/demo';
 
 interface BulkDeleteModalProps {
   isOpen: boolean;
@@ -21,6 +22,20 @@ const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({
   consequences = [],
   isDeleting = false,
 }) => {
+  // Demo mode: skip the dialog entirely — confirm the moment it opens.
+  const confirmRef = useRef(onConfirm);
+  useEffect(() => {
+    confirmRef.current = onConfirm;
+  });
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (DEMO_NO_GUARDS && isOpen && !firedRef.current && !isDeleting) {
+      firedRef.current = true;
+      confirmRef.current();
+    }
+    if (!isOpen) firedRef.current = false;
+  }, [isOpen, isDeleting]);
+  if (DEMO_NO_GUARDS) return null;
   const plural = count !== 1 ? 's' : '';
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Delete ${count} ${entityType}${plural}`}>

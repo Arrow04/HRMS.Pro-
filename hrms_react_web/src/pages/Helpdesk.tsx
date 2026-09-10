@@ -154,10 +154,6 @@ const Helpdesk = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.subject.trim()) {
-      toast.error('Subject is required');
-      return;
-    }
     const payload: Record<string, unknown> = {
       subject: form.subject.trim(),
       description: form.description.trim(),

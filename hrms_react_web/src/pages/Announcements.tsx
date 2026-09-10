@@ -123,10 +123,6 @@ const Announcements = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.body.trim()) {
-      toast.error('Title and body are required');
-      return;
-    }
     const payload = {
       title: form.title.trim(),
       body: form.body.trim(),

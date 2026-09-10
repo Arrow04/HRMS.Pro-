@@ -854,10 +854,6 @@ const Letters = () => {
   }, [template, merged, letterhead, contextRows, contactLine]);
 
   const downloadPdf = () => {
-    if (!letterhead.company_name?.trim()) {
-      toast.error('Please select a company first (step 2 · Letterhead)');
-      return;
-    }
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const margin = 20;
     const width = 170;

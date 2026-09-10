@@ -470,9 +470,8 @@ const MasterData = () => {
                     setEditingValue(null);
                     setValueForm({ code: '', name: '', description: '', is_active: true, sort_order: 0 });
                   }}
-                  disabled={!activeCategory}
-                  title={!activeCategory ? 'Please select a category first' : 'Add Value'}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] font-semibold rounded-xl shadow-lg shadow-black/20 transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add Value"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] font-semibold rounded-xl shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
                 >
                   <Plus className="w-4 h-4" />
                   Add Value

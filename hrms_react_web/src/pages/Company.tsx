@@ -532,10 +532,6 @@ const Company = () => {
 
   // Process form data before submission - converts empty strings to null for integer fields
   const getProcessedData = (): Record<string, unknown> | null => {
-    if (!formData.code || (activeTab !== 'designations' && !formData.name)) {
-      toast.error('Please fill in all required fields (*)');
-      return null;
-    }
     let dataToSubmit: Record<string, unknown> = { code: formData.code, description: formData.description, status: formData.status };
     if (activeTab !== 'designations') dataToSubmit.name = formData.name;
     

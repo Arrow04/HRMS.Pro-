@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, CheckCircle2, Ban, Trash2, X } from 'lucide-react';
+import { DEMO_NO_GUARDS } from '../config/demo';
 
 interface ConfirmActionModalProps {
   isOpen: boolean;
@@ -38,6 +39,20 @@ const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  // Demo mode: skip the dialog entirely — confirm the moment it opens.
+  const confirmRef = useRef(onConfirm);
+  useEffect(() => {
+    confirmRef.current = onConfirm;
+  });
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (DEMO_NO_GUARDS && isOpen && !firedRef.current && !isPending) {
+      firedRef.current = true;
+      confirmRef.current();
+    }
+    if (!isOpen) firedRef.current = false;
+  }, [isOpen, isPending]);
+  if (DEMO_NO_GUARDS) return null;
   if (!isOpen) return null;
   const c = CONFIG[variant] || CONFIG.default;
   return (

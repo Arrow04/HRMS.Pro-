@@ -1115,7 +1115,6 @@ export default function AssetManagement() {
               <button
                 type="button"
                 onClick={() => {
-                  if (!assignModal.employeeId) { toast.error('Please select an employee'); return; }
                   assignMutation.mutate({
                     id: assignModal.asset!.id,
                     employeeId: parseInt(assignModal.employeeId),

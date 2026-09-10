@@ -731,10 +731,6 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
 
   const handleSaveSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scheduleForm.report || !scheduleForm.email || !scheduleForm.runTime) {
-      toast.error('Please fill in all fields');
-      return;
-    }
 
     try {
       let response;
