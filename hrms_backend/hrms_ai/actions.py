@@ -677,12 +677,11 @@ class AIActionExecutor:
             expense = Expense(
                 employee_id=emp_id,
                 organization_id=context.organization_id,
-                expense_type=expense_type,
+                category=expense_type,
                 amount=amount,
-                date=date,
+                expense_date=date,
                 description=description,
                 status="pending",
-                request_source="ai_chatbot",
             )
             db.add(expense)
             db.commit()

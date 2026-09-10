@@ -275,9 +275,9 @@ class LocalNLPEngine:
         
         for intent, patterns in self.intent_patterns.items():
             for keywords, base_score in patterns:
-                matches = sum(1 for kw in keywords if kw in msg_lower)
+                matches = sum(1 for kw in keywords if re.search(r'\b' + re.escape(kw) + r'\b', msg_lower))
                 if matches > 0:
-                    score = base_score * min(matches / len(keywords), 1.0)
+                    score = base_score * (0.5 + 0.5 * min(matches / len(keywords), 1.0))
                     # Boost for exact phrase matches
                     for kw in keywords:
                         if kw in msg_lower:
