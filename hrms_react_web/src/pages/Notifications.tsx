@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { formatAppDate } from '../services/appSettingsService';
 import PageHero from '../components/PageHero';
 import StatsCard from '../components/StatsCard';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
