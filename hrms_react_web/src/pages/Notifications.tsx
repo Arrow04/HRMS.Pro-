@@ -31,6 +31,7 @@ import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 import Modal from '../components/Modal';
+import ToggleSwitch from '../components/ToggleSwitch';
 import BulkDeleteModal from '../components/BulkDeleteModal';
 import DataTable from '../components/DataTable';
 import type { DataTableColumn } from '../components/DataTable';
@@ -596,22 +597,11 @@ const Notifications = () => {
                 className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
               >
                 <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!muted}
-                  aria-label={`${muted ? 'Unmute' : 'Mute'} ${c.label}`}
-                  onClick={() => toggleMute(c.id)}
-                  className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
-                    muted ? 'bg-gray-300' : 'bg-[var(--primary-blue)]'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                      muted ? 'left-0.5' : 'left-[18px]'
-                    }`}
-                  />
-                </button>
+                <ToggleSwitch
+                  checked={!muted}
+                  onChange={() => toggleMute(c.id)}
+                  helpText={muted ? `Muted — click to unmute ${c.label}` : `Active — click to mute ${c.label}`}
+                />
               </div>
             );
           })}
