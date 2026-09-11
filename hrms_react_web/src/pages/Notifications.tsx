@@ -248,7 +248,7 @@ const Notifications = () => {
   const [deleteTarget, setDeleteTarget] = useState<NormalizedNotification | null>(null);
   const [bulkTarget, setBulkTarget] = useState<{ ids: number[] } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [showPreferences, setShowPreferences] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(true);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
