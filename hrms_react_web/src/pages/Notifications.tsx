@@ -454,8 +454,25 @@ const Notifications = () => {
   ];
 
   const tableActions = (n: NormalizedNotification) => {
+    const view = viewTargetFor(n.type);
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-end gap-1.5">
+        {view && (
+          <Tooltip id={`edit-notif-${n.id}`} content="View details">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!n.isRead) markReadMutation.mutate(n.id);
+                navigate(view.path);
+              }}
+              className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"
+              title="View details"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
         {!n.isRead && (
           <Tooltip id={`mark-read-${n.id}`} content="Mark as read">
             <button
@@ -464,8 +481,8 @@ const Notifications = () => {
                 e.stopPropagation();
                 markReadMutation.mutate(n.id);
               }}
-              className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
-              aria-label="Mark as read"
+              className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
+              title="Mark as read"
             >
               <Check className="w-4 h-4" />
             </button>
@@ -478,8 +495,8 @@ const Notifications = () => {
               e.stopPropagation();
               setDeleteTarget(n);
             }}
-            className="p-1.5 rounded-lg text-[#64748B] hover:text-[#DC2626] hover:bg-red-50 transition-colors"
-            aria-label="Delete notification"
+            className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors"
+            title="Delete"
           >
             <Trash2 className="w-4 h-4" />
           </button>
