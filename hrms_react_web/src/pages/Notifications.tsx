@@ -282,33 +282,6 @@ const Notifications = () => {
     });
   }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey]);
 
-  const flattenedForTable = useMemo(() => {
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
-    const buckets: { name: string; items: NormalizedNotification[] }[] = [
-      { name: 'Today', items: [] },
-      { name: 'Yesterday', items: [] },
-      { name: 'Earlier', items: [] },
-    ];
-    const sorted = [...filtered].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    for (const n of sorted) {
-      const k = dayKey(n.createdAt);
-      if (k === todayKey) buckets[0].items.push(n);
-      else if (k === yesterdayKey) buckets[1].items.push(n);
-      else buckets[2].items.push(n);
-    }
-    const result: (NormalizedNotification | { type: 'group-header'; name: string; count: number })[] = [];
-    for (const g of buckets.filter((b) => b.items.length > 0)) {
-      result.push({ type: 'group-header', name: g.name, count: g.items.length });
-      result.push(...g.items);
-    }
-    return result;
-  }, [filtered, todayKey]);
-
   const hasActiveFilters =
     typeFilter !== 'all' || todayOnly || activeTab !== 'all';
 
@@ -399,27 +372,12 @@ const Notifications = () => {
     setBulkTarget({ ids: rows.map((n) => n.id) });
   };
 
-  type TableRow = NormalizedNotification | { type: 'group-header'; name: string; count: number };
-
-  const tableColumns: DataTableColumn<TableRow>[] = [
+  const tableColumns: DataTableColumn<NormalizedNotification>[] = [
     {
-      key: 'group-header',
+      key: 'title',
       header: '',
       width: '100%',
-      render: (row) => {
-        if ('type' in row && row.type === 'group-header') {
-          return (
-            <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)] flex items-center justify-between -mx-5 -my-0.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">
-                {row.name}
-              </span>
-              <span className="text-[11px] font-semibold text-[#94A3B8]">
-                {row.count} item{row.count === 1 ? '' : 's'}
-              </span>
-            </div>
-          );
-        }
-        const n = row as NormalizedNotification;
+      render: (n) => {
         const meta = TYPE_META[n.type] || DEFAULT_META;
         const Icon = meta.icon;
         const view = viewTargetFor(n.type);
@@ -468,9 +426,7 @@ const Notifications = () => {
       key: 'type',
       header: 'Type',
       width: '120px',
-      render: (row) => {
-        if ('type' in row && row.type === 'group-header') return null;
-        const n = row as NormalizedNotification;
+      render: (n) => {
         const meta = TYPE_META[n.type] || DEFAULT_META;
         return (
           <span
@@ -486,27 +442,18 @@ const Notifications = () => {
       header: 'Date',
       width: '120px',
       sortable: true,
-      sortValue: (row) => {
-        if ('type' in row && row.type === 'group-header') return '';
-        return (row as NormalizedNotification).createdAt;
-      },
-      render: (row) => {
-        if ('type' in row && row.type === 'group-header') return null;
-        const n = row as NormalizedNotification;
-        return (
-          <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
-            <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
-              {timeAgo(n.createdAt)}
-            </span>
-          </Tooltip>
-        );
-      },
+      sortValue: (n) => n.createdAt,
+      render: (n) => (
+        <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
+          <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+            {timeAgo(n.createdAt)}
+          </span>
+        </Tooltip>
+      ),
     },
   ];
 
-  const tableActions = (row: TableRow) => {
-    if ('type' in row && row.type === 'group-header') return null;
-    const n = row as NormalizedNotification;
+  const tableActions = (n: NormalizedNotification) => {
     return (
       <div className="flex items-center gap-1">
         {!n.isRead && (
@@ -659,24 +606,16 @@ const Notifications = () => {
         {isLoading ? (
           <TableSkeleton rows={6} cols={4} />
         ) : (
-          <DataTable<TableRow>
+          <DataTable<NormalizedNotification>
             columns={tableColumns}
-            data={flattenedForTable}
-            rowKey={(row, i) => ('type' in row && row.type === 'group-header' ? `group-${row.name}` : `notif-${(row as NormalizedNotification).id}`)}
+            data={filtered}
+            rowKey={(n) => `notif-${n.id}`}
             searchable
-            searchKeys={(row) => {
-              if ('type' in row && row.type === 'group-header') return row.name;
-              const n = row as NormalizedNotification;
-              return `${n.title} ${n.body} ${n.type}`;
-            }}
+            searchKeys={(n) => `${n.title} ${n.body} ${n.type}`}
             searchPlaceholder="Search notifications..."
             emptyMessage="No notifications found"
             actions={tableActions}
-            onRowClick={(row) => {
-              if ('type' in row && row.type !== 'group-header') {
-                handleRowClick(row as NormalizedNotification);
-              }
-            }}
+            onRowClick={(n) => handleRowClick(n)}
             selectable
             bulkActions={[
               {
