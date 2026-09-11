@@ -568,47 +568,49 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Department Distribution */}
-          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200}>
-            <ResponsiveContainer width="100%" height={Math.max(200, stats.departmentDistribution.length * 36)}>
-              <BarChart
-                data={stats.departmentDistribution}
-                layout="vertical"
-                margin={{ top: 4, right: 30, left: 8, bottom: 4 }}
-              >
-                <defs>
-                  <linearGradient id="deptBar" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#A78BFA" stopOpacity={0.7} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F8FAFC" />
-                <XAxis type="number" {...AXIS_STYLE} allowDecimals={false} tickLine={false} axisLine={false} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  {...AXIS_STYLE}
-                  width={110}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number) => [`${value} employees`, '']}
-                />
-                <Bar
-                  dataKey="value"
-                  name="Employees"
-                  fill="url(#deptBar)"
-                  radius={[0, 8, 8, 0]}
-                  maxBarSize={24}
-                  label={{ position: 'right', fill: '#64748B', fontSize: 11, fontWeight: 600 }}
+          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200} height={Math.min(400, Math.max(200, stats.departmentDistribution.length * 32))}>
+            <div className="h-full overflow-y-auto pr-1 custom-scrollbar">
+              <ResponsiveContainer width="100%" height={Math.max(200, stats.departmentDistribution.length * 32)}>
+                <BarChart
+                  data={stats.departmentDistribution}
+                  layout="vertical"
+                  margin={{ top: 4, right: 30, left: 8, bottom: 4 }}
                 >
-                  {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <defs>
+                    <linearGradient id="deptBar" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#A78BFA" stopOpacity={0.7} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F8FAFC" />
+                  <XAxis type="number" {...AXIS_STYLE} allowDecimals={false} tickLine={false} axisLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    {...AXIS_STYLE}
+                    width={110}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(value: number) => [`${value} employees`, '']}
+                  />
+                  <Bar
+                    dataKey="value"
+                    name="Employees"
+                    fill="url(#deptBar)"
+                    radius={[0, 8, 8, 0]}
+                    maxBarSize={24}
+                    label={{ position: 'right', fill: '#64748B', fontSize: 11, fontWeight: 600 }}
+                  >
+                    {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </ChartCard>
 
           {/* Age Distribution */}
