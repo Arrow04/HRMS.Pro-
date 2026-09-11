@@ -1,4 +1,4 @@
-import { Ban, CheckCircle2, Edit2, Search, Trash2, Users, X, LogOut, RotateCcw } from 'lucide-react';import React, { memo, useState } from 'react';
+import { Ban, CheckCircle2, Edit2, Trash2, Users, X, LogOut, RotateCcw } from 'lucide-react';import React, { memo, useState } from 'react';
 import { joinEmployeeName, personDisplayName } from '../utils/employeeNameUtils';
 import SearchableSelect from './SearchableSelect';
 import ToggleSwitch from './ToggleSwitch';
@@ -152,17 +152,6 @@ const EmployeeSection = ({
             <RotateCcw className="w-4 h-4" />
           </button>
         )}
-
-        <div className="relative flex-1 min-w-[200px] max-w-sm ml-auto">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, code, email…"
-            className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#1C64F2]/30"
-          />
-        </div>
       </div>
     </div>
 
