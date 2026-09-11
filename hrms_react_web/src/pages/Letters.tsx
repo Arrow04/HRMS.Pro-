@@ -1170,6 +1170,10 @@ const Letters = () => {
     }
   }, [letterText]);
 
+  /* ── Zoom / preview font size ──────────────────────────────────────────────── */
+  const [zoomPct, setZoomPct] = useState(100);
+  const previewFontSize = Math.round((zoomPct / 100) * 15);
+
   useEffect(() => {
     if (!previewContentRef.current) return;
     const el = previewContentRef.current;
@@ -1182,10 +1186,6 @@ const Letters = () => {
     observer.observe(el);
     return () => observer.disconnect();
   }, [letterText, zoomPct, previewFontSize]);
-
-  /* ── Zoom / preview font size ──────────────────────────────────────────────── */
-  const [zoomPct, setZoomPct] = useState(100);
-  const previewFontSize = Math.round((zoomPct / 100) * 15);
 
   /* ── Category / search ─────────────────────────────────────────────────────── */
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('all');
