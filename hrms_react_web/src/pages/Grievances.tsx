@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  AlertTriangle, CheckCircle2, Clock, Edit2, Eye, Flag,
+  AlertTriangle, CheckCircle2, Clock, Edit2, FileText, Flag,
   MessageSquare, Plus, RotateCcw, Trash2, User, XCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -693,7 +693,7 @@ const Grievances = () => {
                       className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
                       title="View details"
                     >
-                      <Eye className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                     </button>
                   </Tooltip>
                   <Tooltip id={`btn-edit-grievance-${row.id}`} content="Edit">
