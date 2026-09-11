@@ -77,13 +77,13 @@ const StatsCard = ({ icon: Icon, label, value, trend, isLoading, color, iconBg, 
   const trendIsDown = typeof trend === 'number' && trend < 0;
   const trendColor = trendIsDown ? 'text-red-600' : 'text-emerald-600';
 
-  const cardClass = `group relative overflow-hidden rounded-2xl p-4 hover:shadow-md transition-all duration-300 border border-[#E2E8F0] bg-white shadow-sm min-w-0 ${onClick ? 'cursor-pointer hover:border-[#1C64F2]/40 hover:-translate-y-0.5' : ''}`;
+  const cardClass = `group relative overflow-hidden rounded-2xl p-4 hover:shadow-md transition-all duration-300 border border-white/40 backdrop-blur-md bg-white/80 shadow-sm min-w-0 ${onClick ? 'cursor-pointer hover:border-[#1C64F2]/40 hover:-translate-y-0.5' : ''}`;
 
   const inner = (
     <>
       <div className={`absolute inset-0 ${bgClass} opacity-100`} />
       <div className="relative flex items-start justify-between gap-2">
-        <div className={`w-11 h-11 rounded-xl bg-white shadow-sm border border-[#E2E8F0] flex items-center justify-center shrink-0 ${iconClass}`}>
+        <div className={`w-11 h-11 rounded-xl bg-white/80 backdrop-blur-sm shadow-sm border border-white/50 flex items-center justify-center shrink-0 ${iconClass}`}>
           <Icon className="w-5 h-5" />
         </div>
         {trend !== undefined && (

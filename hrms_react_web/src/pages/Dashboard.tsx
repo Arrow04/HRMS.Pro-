@@ -60,6 +60,7 @@ import PageHero from '../components/PageHero';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ModuleSummaryCard from '../components/ModuleSummaryCard';
 import QuickActionButton from '../components/QuickActionButton';
+import EmptyState from '../components/EmptyState';
 import type { Employee, Attendance, Holiday, LeaveApplication, Expense, Payroll } from '../types';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -766,7 +767,7 @@ export default function Dashboard() {
                 </div>
               ))
             ) : (
-              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No upcoming events</p>
+              <EmptyState icon={Calendar} title="No upcoming events" description="No events scheduled for the coming days" />
             )}
           </div>
         </div>
@@ -834,7 +835,7 @@ export default function Dashboard() {
               </div>
             ))}
             {recentReports.length === 0 && (
-              <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>No recent reports generated</p>
+              <EmptyState icon={FileBarChart} title="No recent reports" description="No reports have been generated yet" />
             )}
           </div>
         </div>

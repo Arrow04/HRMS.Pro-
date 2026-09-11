@@ -1666,7 +1666,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
         </div>
 
         {activeTab === 'reviews' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Row */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <div className="flex flex-wrap items-center gap-3">
@@ -1803,7 +1803,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
 
         {/* GOALS TAB */}
         {activeTab === 'goals' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* FILTERS */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <div className="flex flex-wrap items-center gap-3">
@@ -1942,7 +1942,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
 
         {/* FEEDBACK TAB */}
         {activeTab === 'feedback' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* FILTERS */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <div className="flex flex-wrap items-center gap-3">
@@ -2069,7 +2069,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
         )}
 
         {activeTab === 'analytics' && (
-          <div className="space-y-6">
+          <div className="animate-in fade-in duration-300 space-y-6">
             {/* Score Distribution Chart */}
             <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2 mb-4">
@@ -2166,7 +2166,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
         )}
 
         {activeTab === 'configuration' && (
-          <div className="space-y-6">
+          <div className="animate-in fade-in duration-300 space-y-6">
             <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>

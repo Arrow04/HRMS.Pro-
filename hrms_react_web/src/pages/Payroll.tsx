@@ -2,6 +2,7 @@
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee, toEmployeeSelectOptions, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning';
 import {
   Plus, Coins, CheckCircle2, XCircle, RotateCcw, Clock, Search, CloudCog, X,
   BookOpen, ClipboardCheck,
@@ -23,6 +24,7 @@ import PageHero from '../components/PageHero';
 import ExportButton from '../components/ExportButton';
 import IfscInput from '../components/IfscInput';
 import DataTable from '../components/DataTable';
+import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
 import AccountingPanel from '../components/AccountingPanel';
@@ -288,6 +290,10 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [bonusCompanyFilter, setBonusCompanyFilter] = useState('all');
   const [bonusBranchFilter, setBonusBranchFilter] = useState('all');
   const [bonusDeptFilter, setBonusDeptFilter] = useState('all');
+
+  const [isDirty, setIsDirty] = useState(false);
+  useUnsavedChangesWarning(isDirty, 'You have unsaved payroll changes. Leave anyway?');
+  const markDirty = () => { if (!isDirty) setIsDirty(true); };
 
   // Payslip preview modal
   const [payslipPreview, setPayslipPreview] = useState<PayslipPreview | null>(null);
@@ -972,6 +978,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       return r.data;
     },
     onSuccess: () => {
+      setIsDirty(false);
       toast.success('Payroll created');
       queryClient.invalidateQueries({ queryKey: ['payslips'] });
       queryClient.invalidateQueries({ queryKey: ['payroll-stats'] });
@@ -987,6 +994,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       return r.data;
     },
     onSuccess: () => {
+      setIsDirty(false);
       toast.success('Payroll updated');
       queryClient.invalidateQueries({ queryKey: ['payslips'] });
       queryClient.invalidateQueries({ queryKey: ['payroll-stats'] });
@@ -1686,7 +1694,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
         {/* Run Payroll Section */}
         {activeTab === 'run' && (
-        <div>
+        <div className="animate-in fade-in duration-300">
         <div className="bg-white rounded-2xl border border-[var(--border-color)] p-5 mb-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-4">
@@ -1853,8 +1861,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           </div>
           {payrollRuns.length === 0 ? (
             <div className="px-6 py-10 text-center">
-  <Clock className="w-10 h-10 mx-auto mb-3 text-[#94A3B8] opacity-40" />
-  <p className="text-sm text-[var(--text-tertiary)]">No payroll runs yet. Queue one above.</p>
+  <EmptyState icon={Clock} title="No payroll runs yet" description="Queue one above to get started" />
 </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1969,7 +1976,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         )}
 
         {activeTab === 'review' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <SearchableSelect
                 value={reviewCompanyId === 'all' ? 'all' : Number(reviewCompanyId)}
@@ -2108,7 +2115,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         )}
 
         {activeTab === 'payslips' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="px-6 pt-4 pb-0">
               {/* Form 16 / TRACES guidance */}
               <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-900">
@@ -2310,14 +2317,14 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
         {/* CONFIG TAB */}
         {activeTab === 'config' && (
-          <div className="space-y-6">
+          <div className="animate-in fade-in duration-300 space-y-6">
             <PayrollConfiguration />
           </div>
         )}
 
         {/* BONUSES TAB */}
         {activeTab === 'bonuses' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)] bg-gradient-to-r from-[#F8FAFC] to-white">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
@@ -2408,9 +2415,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           </div>
         )}
 
-        {activeTab === 'loans' && <LoansAndAdvancesPanel employees={employees} currency={currency} />}
+        {activeTab === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
 
-        {activeTab === 'accounting' && <AccountingPanel />}
+        {activeTab === 'accounting' && <div className="animate-in fade-in duration-300"><AccountingPanel /></div>}
 
       {/* Full Page Drawer Modal */}
       {showModal && (

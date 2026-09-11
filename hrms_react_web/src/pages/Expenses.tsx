@@ -491,7 +491,7 @@ const Expenses = () => {
           </div>
 
           {activeTab === 'records' && (
-          <div className="space-y-6">
+          <div className="animate-in fade-in duration-300 space-y-6">
           {/* TABLE */}
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* FILTERS */}
@@ -643,7 +643,7 @@ const Expenses = () => {
 
           {/* APPROVED TAB */}
           {activeTab === 'approved' && (
-            <div className="space-y-6">
+            <div className="animate-in fade-in duration-300 space-y-6">
               <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)]">
                   <div className="flex items-center gap-3">
@@ -704,7 +704,7 @@ const Expenses = () => {
 
           {/* REJECTED TAB */}
           {activeTab === 'rejected' && (
-            <div className="space-y-6">
+            <div className="animate-in fade-in duration-300 space-y-6">
               <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)]">
                   <div className="flex items-center gap-3">
@@ -765,7 +765,7 @@ const Expenses = () => {
 
           {/* CONFIGURATION TAB */}
           {activeTab === 'config' && (
-            <div className="space-y-6">
+            <div className="animate-in fade-in duration-300 space-y-6">
               <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
                 <div className="flex items-center justify-between">
                   <div>

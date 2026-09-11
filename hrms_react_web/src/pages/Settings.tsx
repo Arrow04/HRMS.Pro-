@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import * as settingsApi from '../services/settingsService';
 import { DEFAULT_NOTIFICATION_SETTINGS, normalizeNotificationSettings } from '../services/settingsService';
+import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning';
 import { syncAppSettings, formatAppDate, formatAppDateTime } from '../services/appSettingsService';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { getCurrentUser } from '../services/authService';
@@ -1970,6 +1971,10 @@ const Settings = () => {
   const [activePanel, setActivePanel] = useState('general');
   const [mounted, setMounted] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  useUnsavedChangesWarning(isDirty);
+
+  const markDirty = () => { if (!isDirty) setIsDirty(true); };
 
   // Master data for dropdowns
   const { data: timezoneOptions = [] } = useMasterData('TIMEZONE');
@@ -2104,6 +2109,7 @@ const Settings = () => {
     setSaving(label);
     try {
       await apiCall();
+      setIsDirty(false);
       toast.success(`${label} saved`);
       // Persist selected currency so all pages display amounts in it
       if (label === 'general') {
@@ -2123,6 +2129,7 @@ const Settings = () => {
   };
 
   const handleCountryChange = (country: string) => {
+    markDirty();
     const defaults = getCountryDefaults(country);
     setGeneral((prev) => ({
       ...prev,
@@ -2198,7 +2205,7 @@ const Settings = () => {
               <FormField label="Timezone">
                 <MasterSelect
                   value={general.timezone || 'all'}
-                  onChange={(code) => setGeneral({ ...general, timezone: code === 'all' ? 'UTC' : code })}
+                  onChange={(code) => { markDirty(); setGeneral({ ...general, timezone: code === 'all' ? 'UTC' : code }); }}
                   options={(timezoneOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
                   icon={Clock}
                   subtitle="Timezone"
@@ -2278,11 +2285,11 @@ const Settings = () => {
               <h4 className="font-semibold text-[#0F172A] mb-1">Feature toggles</h4>
               <p className="text-xs text-[#94A3B8] mb-3">Enable or disable optional features for your organisation</p>
               <div className="space-y-2">
-                <ToggleRow label="Geo-fence attendance" subtitle="Require employees to be within office radius" checked={general.geoFence} onChange={() => setGeneral({...general, geoFence: !general.geoFence})} />
-                <ToggleRow label="Self-service portal" subtitle="Allow employees to update their own information" checked={general.selfService} onChange={() => setGeneral({...general, selfService: !general.selfService})} />
-                <ToggleRow label="Document uploads" subtitle="Enable document upload for employees" checked={general.docUploads} onChange={() => setGeneral({...general, docUploads: !general.docUploads})} />
-                <ToggleRow label="Multi-company payroll" subtitle="Handle payroll separately for each company" checked={general.multiCompany} onChange={() => setGeneral({...general, multiCompany: !general.multiCompany})} />
-                <ToggleRow label="Auto-emails on onboarding" subtitle="Send welcome emails with credentials when employees are added (uses your email quota)" checked={general.autoEmails} onChange={() => setGeneral({...general, autoEmails: !general.autoEmails})} />
+                <ToggleRow label="Geo-fence attendance" subtitle="Require employees to be within office radius" checked={general.geoFence} onChange={() => { markDirty(); setGeneral({...general, geoFence: !general.geoFence}); }} />
+                <ToggleRow label="Self-service portal" subtitle="Allow employees to update their own information" checked={general.selfService} onChange={() => { markDirty(); setGeneral({...general, selfService: !general.selfService}); }} />
+                <ToggleRow label="Document uploads" subtitle="Enable document upload for employees" checked={general.docUploads} onChange={() => { markDirty(); setGeneral({...general, docUploads: !general.docUploads}); }} />
+                <ToggleRow label="Multi-company payroll" subtitle="Handle payroll separately for each company" checked={general.multiCompany} onChange={() => { markDirty(); setGeneral({...general, multiCompany: !general.multiCompany}); }} />
+                <ToggleRow label="Auto-emails on onboarding" subtitle="Send welcome emails with credentials when employees are added (uses your email quota)" checked={general.autoEmails} onChange={() => { markDirty(); setGeneral({...general, autoEmails: !general.autoEmails}); }} />
               </div>
             </div>
             <div className="flex gap-3">

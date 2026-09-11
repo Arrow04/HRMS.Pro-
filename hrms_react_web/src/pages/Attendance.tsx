@@ -1102,7 +1102,7 @@ const Attendance = () => {
                   </div>
 
             {activeTab === 'records' && (
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden mb-6">
+              <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden mb-6">
                 <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
                   <div className="flex flex-wrap items-center gap-3">
                     <SearchableSelect
@@ -1368,7 +1368,7 @@ const Attendance = () => {
         )}
 
         {activeTab === 'duty-shift' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden mb-6">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden mb-6">
             <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
@@ -1499,7 +1499,7 @@ const Attendance = () => {
           </div>
         )}
         {activeTab === 'duty-roster' && (
-          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex flex-col md:flex-row gap-4 px-6 py-5 border-b border-[var(--border-color)] bg-white">
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" />
@@ -1658,7 +1658,7 @@ const Attendance = () => {
         )}
 
         {activeTab === 'configuration' && (
-          <div className="space-y-6">
+          <div className="animate-in fade-in duration-300 space-y-6">
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
               <div className="flex items-center justify-between">
                 <div>
