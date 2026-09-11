@@ -12,6 +12,7 @@ import {
   CheckCheck,
   ClipboardCheck,
   Clock,
+  Edit2,
   ExternalLink,
   Megaphone,
   RefreshCw,
