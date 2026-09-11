@@ -430,7 +430,7 @@ const Notifications = () => {
   const tableColumns: DataTableColumn<NormalizedNotification>[] = [
     {
       key: 'title',
-      header: '',
+      header: 'Notification',
       width: '100%',
       render: (n) => {
         const meta = TYPE_META[n.type] || DEFAULT_META;
@@ -499,9 +499,9 @@ const Notifications = () => {
       sortable: true,
       sortValue: (n) => n.createdAt,
       render: (n) => (
-        <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
+        <Tooltip id={`notif-date-${n.id}`} content={timeAgo(n.createdAt)}>
           <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
-            {timeAgo(n.createdAt)}
+            {formatAppDate(n.createdAt)}
           </span>
         </Tooltip>
       ),
