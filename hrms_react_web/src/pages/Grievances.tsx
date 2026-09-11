@@ -456,6 +456,22 @@ const Grievances = () => {
       ),
     },
     {
+      key: 'description',
+      header: 'Description',
+      render: (row) => (
+        <span className="text-sm text-[#64748B] truncate max-w-xs block">{row.description || '-'}</span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Submit Date',
+      sortable: true,
+      sortValue: (row) => row.createdAt || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B] whitespace-nowrap">{row.createdAt ? formatAppDate(row.createdAt) : '-'}</span>
+      ),
+    },
+    {
       key: 'priority',
       header: 'Priority',
       sortable: true,
