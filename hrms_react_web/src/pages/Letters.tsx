@@ -814,19 +814,6 @@ const Letters = () => {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  useEffect(() => {
-    if (!previewContentRef.current) return;
-    const el = previewContentRef.current;
-    const observer = new ResizeObserver(() => {
-      const contentHeight = el.scrollHeight;
-      const PAGE_HEIGHT_PX = 1059;
-      const pages = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT_PX));
-      setPageCount(pages);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [letterText, zoomPct, previewFontSize]);
-
   const template = useMemo(() => TEMPLATES.find((t) => t.id === templateId) || TEMPLATES[0], [templateId]);
 
   const [companyId, setCompanyId] = useState<string>('');
@@ -1182,6 +1169,19 @@ const Letters = () => {
       toast.error('Copy failed');
     }
   }, [letterText]);
+
+  useEffect(() => {
+    if (!previewContentRef.current) return;
+    const el = previewContentRef.current;
+    const observer = new ResizeObserver(() => {
+      const contentHeight = el.scrollHeight;
+      const PAGE_HEIGHT_PX = 1059;
+      const pages = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT_PX));
+      setPageCount(pages);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [letterText, zoomPct, previewFontSize]);
 
   /* ── Zoom / preview font size ──────────────────────────────────────────────── */
   const [zoomPct, setZoomPct] = useState(100);
