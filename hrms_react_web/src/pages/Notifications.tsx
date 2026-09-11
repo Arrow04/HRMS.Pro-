@@ -14,6 +14,7 @@ import {
   Clock,
   Edit2,
   ExternalLink,
+  Eye,
   Megaphone,
   RefreshCw,
   RotateCcw,
@@ -459,20 +460,36 @@ const Notifications = () => {
     return (
       <div className="flex items-center justify-end gap-1.5">
         {view && (
-          <Tooltip id={`edit-notif-${n.id}`} content="View details">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!n.isRead) markReadMutation.mutate(n.id);
-                navigate(view.path);
-              }}
-              className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"
-              title="View details"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
+          <>
+            <Tooltip id={`view-notif-${n.id}`} content="View">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!n.isRead) markReadMutation.mutate(n.id);
+                  navigate(view.path);
+                }}
+                className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
+                title="View"
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip id={`edit-notif-${n.id}`} content="Edit">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!n.isRead) markReadMutation.mutate(n.id);
+                  navigate(view.path);
+                }}
+                className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"
+                title="Edit"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </>
         )}
         {!n.isRead && (
           <Tooltip id={`mark-read-${n.id}`} content="Mark as read">
