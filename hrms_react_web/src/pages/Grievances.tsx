@@ -16,6 +16,7 @@ import FormField, { formInputClass, formTextareaClass } from '../components/Form
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
+import DateRangePicker from '../components/DateRangePicker';
 import ExportButton from '../components/ExportButton';
 
 type GrievanceRow = {
@@ -132,6 +133,8 @@ const Grievances = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [mounted, setMounted] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<GrievanceRow | null>(null);
@@ -357,16 +360,27 @@ const Grievances = () => {
     if (overdueOnly) {
       items = items.filter(isOverdue);
     }
+    if (startDate || endDate) {
+      items = items.filter((item) => {
+        const created = item.createdAt ? item.createdAt.split('T')[0] : '';
+        if (!created) return false;
+        if (startDate && created < startDate) return false;
+        if (endDate && created > endDate) return false;
+        return true;
+      });
+    }
     return items;
-  }, [grievances, activeTab, priorityFilter, overdueOnly]);
+  }, [grievances, activeTab, priorityFilter, overdueOnly, startDate, endDate]);
 
   const hasActiveFilters =
-    priorityFilter !== 'all' || overdueOnly || activeTab !== 'all';
+    priorityFilter !== 'all' || overdueOnly || activeTab !== 'all' || startDate !== '' || endDate !== '';
 
   const clearFilters = () => {
     setPriorityFilter('all');
     setOverdueOnly(false);
     setActiveTab('all');
+    setStartDate('');
+    setEndDate('');
   };
 
   const columns: DataTableColumn<GrievanceRow>[] = [
@@ -532,6 +546,12 @@ const Grievances = () => {
                   </option>
                 ))}
               </select>
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onDateChange={(start, end) => { setStartDate(start); setEndDate(end); }}
+                placeholder="Filter by date"
+              />
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
