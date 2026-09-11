@@ -371,41 +371,39 @@ const Grievances = () => {
 
   const columns: DataTableColumn<GrievanceRow>[] = [
     {
-      key: 'subject',
-      header: 'Subject',
-      sortable: true,
-      sortValue: (row) => row.subject,
-      render: (row) => {
-        return (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
-              <MessageSquare className="w-4 h-4 text-white" />
-            </div>
-            <div className="min-w-0">
-              <button
-                type="button"
-                onClick={() => setDetailItem(row)}
-                className="block font-medium text-[var(--text-primary)] text-sm truncate hover:text-[var(--primary-blue)] transition-colors text-left"
-              >
-                {row.subject}
-              </button>
-              <span className="text-xs text-[#94A3B8] font-mono">{ticketNo(row.id)}</span>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
       key: 'employeeName',
       header: 'Employee',
       sortable: true,
       sortValue: (row) => row.employeeName || '',
       render: (row) => (
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-[#0F172A] truncate">{row.employeeName || '-'}</div>
+            {row.assignedToName && (
+              <div className="text-xs text-[#94A3B8] truncate">→ {row.assignedToName}</div>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'subject',
+      header: 'Subject',
+      sortable: true,
+      sortValue: (row) => row.subject,
+      render: (row) => (
         <div className="min-w-0">
-          <div className="text-sm text-[var(--text-primary)] truncate">{row.employeeName || '-'}</div>
-          {row.assignedToName && (
-            <div className="text-xs text-[#94A3B8] truncate">→ {row.assignedToName}</div>
-          )}
+          <button
+            type="button"
+            onClick={() => setDetailItem(row)}
+            className="block font-medium text-[var(--text-primary)] text-sm truncate hover:text-[var(--primary-blue)] transition-colors text-left"
+          >
+            {row.subject}
+          </button>
+          <span className="text-xs text-[#94A3B8] font-mono">{ticketNo(row.id)}</span>
         </div>
       ),
     },
