@@ -636,6 +636,7 @@ const Expenses = () => {
                 ) : undefined
               )}
             />
+            </div>
             )}
           </div>
         </div>

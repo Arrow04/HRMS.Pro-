@@ -1137,7 +1137,6 @@ const EmployeeManagement = () => {
               )}
             </div>
             <div className="overflow-x-auto">
-            <div className="overflow-x-auto">
             <DataTable
               data={filteredArchivedEmployees}
               rowKey={(a: ArchivedEmployee) => a.id}
