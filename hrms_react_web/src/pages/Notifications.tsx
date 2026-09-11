@@ -37,6 +37,8 @@ import Tooltip from '../components/Tooltip';
 import Modal from '../components/Modal';
 import ToggleSwitch from '../components/ToggleSwitch';
 import BulkDeleteModal from '../components/BulkDeleteModal';
+import SearchableSelect from '../components/SearchableSelect';
+import DateRangePicker from '../components/DateRangePicker';
 import DataTable from '../components/DataTable';
 import type { DataTableColumn } from '../components/DataTable';
 import type { Notification } from '../types';
@@ -243,6 +245,8 @@ const Notifications = () => {
   // searchTerm is handled internally by DataTable
   const [typeFilter, setTypeFilter] = useState('all');
   const [todayOnly, setTodayOnly] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [mutedTypes, setMutedTypes] = useState<string[]>(loadMutedTypes);
   const [deleteTarget, setDeleteTarget] = useState<NormalizedNotification | null>(null);
@@ -321,12 +325,18 @@ const Notifications = () => {
       if (typeFilter === 'approvals' && n.type !== 'leave' && n.type !== 'expense') return false;
       if (typeFilter !== 'all' && typeFilter !== 'approvals' && n.type !== typeFilter) return false;
       if (todayOnly && dayKey(n.createdAt) !== todayKey) return false;
+      if (startDate || endDate) {
+        const created = n.createdAt ? n.createdAt.split('T')[0] : '';
+        if (!created) return false;
+        if (startDate && created < startDate) return false;
+        if (endDate && created > endDate) return false;
+      }
       return true;
     });
-  }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey]);
+  }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey, startDate, endDate]);
 
   const hasActiveFilters =
-    typeFilter !== 'all' || todayOnly || activeTab !== 'all';
+    typeFilter !== 'all' || todayOnly || activeTab !== 'all' || startDate !== '' || endDate !== '';
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -346,6 +356,8 @@ const Notifications = () => {
     setTypeFilter('all');
     setTodayOnly(false);
     setActiveTab('all');
+    setStartDate('');
+    setEndDate('');
   };
 
   const handleBulkDelete = async () => {
@@ -690,18 +702,20 @@ const Notifications = () => {
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex flex-wrap items-center gap-2 flex-1">
-              <select
+              <SearchableSelect
                 value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                aria-label="Filter by type"
-                className="px-3 py-2 border border-gray-200 rounded-xl text-xs font-medium text-[#475569] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              >
-                {TYPE_FILTER_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setTypeFilter(val.toString())}
+                options={TYPE_FILTER_OPTIONS.map((o) => ({ id: o.value, name: o.label }))}
+                placeholder="All types"
+                allOption="All types"
+                className="w-44"
+              />
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onDateChange={(start, end) => { setStartDate(start); setEndDate(end); }}
+                placeholder="Filter by date"
+              />
               <div className="flex rounded-xl border border-gray-200 overflow-hidden">
                 {FILTER_TABS.map((tab) => (
                   <button
