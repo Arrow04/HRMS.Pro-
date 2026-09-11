@@ -433,7 +433,7 @@ const Helpdesk = () => {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">

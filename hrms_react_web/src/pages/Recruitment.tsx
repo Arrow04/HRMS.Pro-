@@ -948,7 +948,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   // =============================================================================
 
   const renderJobsTable = () => (
-    <div className="overflow-hidden">
+    <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       {loadingJobs ? (
         <div className="animate-page-enter"><PageSkeleton /></div>
       ) : (
@@ -1050,7 +1050,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   );
 
   const renderCandidatesTable = () => (
-    <div className="overflow-hidden">
+    <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       {loadingCandidates ? (
         <div className="flex justify-center p-8">null</div>
       ) : (
@@ -1415,7 +1415,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const renderOfferedTable = () => {
     const offeredCandidates = filteredOffered;
     return (
-    <div className="overflow-hidden">
+    <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       {loadingCandidates ? (
         <div className="flex justify-center p-8">null</div>
       ) : (

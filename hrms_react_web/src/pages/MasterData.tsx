@@ -555,9 +555,9 @@ const MasterData = () => {
           {/* VALUES TABLE */}
           <div className="lg:col-span-3 space-y-4">
             {/* TABLE */}
-            <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+            <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
               {/* FILTERS */}
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-4 border-b border-[var(--border-color)]">
                 <div className="relative w-full sm:w-80">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
                   <input

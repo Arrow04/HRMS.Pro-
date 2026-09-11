@@ -431,7 +431,7 @@ export default function AssetManagement() {
           {/* Assets Card (filters + table in one) */}
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#F1F5F9]">
+            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
                   value={filterCompanyId === 'all' ? 'all' : filterCompanyId}
@@ -914,9 +914,9 @@ export default function AssetManagement() {
       {/* ───────────── ASSIGNMENTS TAB ───────────── */}
       {activeTab === 'assignments' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#F1F5F9]">
+            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
                   value={filterCompanyId === 'all' ? 'all' : filterCompanyId}
@@ -1098,9 +1098,9 @@ export default function AssetManagement() {
       {/* ───────────── AVAILABLE ASSETS TAB ───────────── */}
       {activeTab === 'available' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#F1F5F9]">
+            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
                   value={filterCompanyId === 'all' ? 'all' : filterCompanyId}
@@ -1208,9 +1208,9 @@ export default function AssetManagement() {
       {/* ───────────── MAINTENANCE TAB ───────────── */}
       {activeTab === 'maintenance' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#F1F5F9]">
+            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
                   value={filterCompanyId === 'all' ? 'all' : filterCompanyId}
@@ -1322,9 +1322,9 @@ export default function AssetManagement() {
       {/* ───────────── SCRAP TAB ───────────── */}
       {activeTab === 'scrap' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#F1F5F9]">
+            <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SearchableSelect
                   value={filterCompanyId === 'all' ? 'all' : filterCompanyId}

@@ -143,33 +143,32 @@ const ActivityLog = () => {
           })}
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-xl border border-[var(--border-color)] p-4 flex flex-col lg:flex-row gap-4 items-center">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-            <input
-              type="text"
-              placeholder="Search by user, entity, or action..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[var(--text-tertiary)]" />
-            <SearchableSelect
-              value={actionFilter}
-              onChange={(val) => setActionFilter(val.toString())}
-              options={actionOptions.map((a: { code: string; name: string }) => ({ id: a.code, name: a.name }))}
-              placeholder="All Actions"
-              allOption="All Actions"
-              className="w-44"
-            />
-          </div>
-        </div>
-
         {/* Activity Logs Table */}
-        <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          {/* Filters */}
+          <div className="p-4 border-b border-[var(--border-color)] bg-white flex flex-col lg:flex-row gap-4 items-center">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
+              <input
+                type="text"
+                placeholder="Search by user, entity, or action..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-[var(--text-tertiary)]" />
+              <SearchableSelect
+                value={actionFilter}
+                onChange={(val) => setActionFilter(val.toString())}
+                options={actionOptions.map((a: { code: string; name: string }) => ({ id: a.code, name: a.name }))}
+                placeholder="All Actions"
+                allOption="All Actions"
+                className="w-44"
+              />
+            </div>
+          </div>
           {isLoading ? (
             <div className="py-4 px-2">
               null

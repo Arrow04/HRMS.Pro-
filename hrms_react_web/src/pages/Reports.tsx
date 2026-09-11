@@ -985,7 +985,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
           {activeSection === 'scheduler' && (
             <div className="space-y-6">
               {/* Scheduled Reports List */}
-              <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
                 <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
                   <h3 className="font-semibold text-[var(--text-primary)]">Active Scheduled Reports</h3>
                   <div className="flex items-center gap-3">
@@ -1422,7 +1422,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
           {/* REPORT LOG SECTION */}
           {activeSection === 'report-log' && (
             <div className="space-y-6">
-              <div className="bg-white rounded-xl border border-[var(--border-color)] overflow-hidden">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
                 <div className="px-5 py-4 border-b border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4">
                   <h3 className="font-semibold text-[var(--text-primary)]">System Activity & Execution Logs</h3>
                   <div className="flex items-center gap-3">

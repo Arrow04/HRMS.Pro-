@@ -106,7 +106,7 @@ const EmployeeSection = ({
 
   return (
   <>
-  <div className="flex flex-col h-full">
+  <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden flex flex-col h-full">
     {/* FILTERS */}
     <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[#E2E8F0] bg-white">
       <div className="flex flex-wrap items-center gap-3">
@@ -167,7 +167,6 @@ const EmployeeSection = ({
     </div>
 
     {/* Table */}
-    <div className="bg-white overflow-hidden">
       <div className="overflow-x-auto">
       {loadingEmployees ? (
         null
@@ -306,7 +305,6 @@ const EmployeeSection = ({
         />
       )}
       </div>
-    </div>
   </div>
 
     {/* Confirm Action Modal */}

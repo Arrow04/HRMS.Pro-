@@ -896,35 +896,6 @@ const UserManagementPanel = () => {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <SearchableSelect
-          value={roleFilter === 'all' ? 'all' : roleFilter}
-          onChange={(val) => setRoleFilter(val.toString())}
-          options={rolesOptions.map((opt: { code: string; name: string }) => ({ id: opt.code, name: opt.name }))}
-          placeholder="All Roles"
-          allOption="All Roles"
-          className="w-44"
-        />
-        <SearchableSelect
-          value={statusFilter === 'all' ? 'all' : statusFilter}
-          onChange={(val) => setStatusFilter(val.toString())}
-          options={[{ id: 'active', name: 'Active' }, { id: 'inactive', name: 'Inactive' }]}
-          placeholder="All Status"
-          allOption="All Status"
-          className="w-44"
-        />
-        {(roleFilter !== 'all' || statusFilter !== 'all') && (
-          <button
-            onClick={() => { setRoleFilter('all'); setStatusFilter('all'); }}
-            className="px-3 py-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors text-sm font-medium"
-            title="Clear Filters"
-          >
-            Clear Filters
-          </button>
-        )}
-      </div>
-
       {/* User Table */}
       {filteredUsers.length === 0 ? (
         <EmptyState
@@ -933,7 +904,37 @@ const UserManagementPanel = () => {
           description="Try adjusting your search or add a new user"
         />
       ) : (
-        <div className="bg-[var(--card)] border border-[var(--border-color)] rounded-2xl overflow-auto w-full">
+        <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          {/* Filters */}
+          <div className="p-4 border-b border-[var(--border-color)] bg-white flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchableSelect
+                value={roleFilter === 'all' ? 'all' : roleFilter}
+                onChange={(val) => setRoleFilter(val.toString())}
+                options={rolesOptions.map((opt: { code: string; name: string }) => ({ id: opt.code, name: opt.name }))}
+                placeholder="All Roles"
+                allOption="All Roles"
+                className="w-44"
+              />
+              <SearchableSelect
+                value={statusFilter === 'all' ? 'all' : statusFilter}
+                onChange={(val) => setStatusFilter(val.toString())}
+                options={[{ id: 'active', name: 'Active' }, { id: 'inactive', name: 'Inactive' }]}
+                placeholder="All Status"
+                allOption="All Status"
+                className="w-44"
+              />
+              {(roleFilter !== 'all' || statusFilter !== 'all') && (
+                <button
+                  onClick={() => { setRoleFilter('all'); setStatusFilter('all'); }}
+                  className="px-3 py-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors text-sm font-medium"
+                  title="Clear Filters"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
           <div className="overflow-x-auto">
           <DataTable
             data={Array.isArray(filteredUsers) ? filteredUsers : []}
@@ -1915,7 +1916,7 @@ const DeviceSettings = () => {
           <p className="text-[var(--text-disabled)]">No devices registered yet. Devices will be automatically registered when you login.</p>
         </div>
       ) : (
-        <div className="bg-[var(--background)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
           <div className="overflow-x-auto">
           <DataTable
             data={devices}
@@ -2315,7 +2316,7 @@ const Settings = () => {
         return (
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-disabled)]">Choose how you want to be notified for each event</p>
-            <div className="bg-[var(--background)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+            <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
               <div className="overflow-x-auto">
               <DataTable
                 data={notifications}
