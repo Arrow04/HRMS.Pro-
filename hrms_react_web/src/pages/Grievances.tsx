@@ -19,6 +19,7 @@ import Tooltip from '../components/Tooltip';
 import SearchableSelect from '../components/SearchableSelect';
 import DateRangePicker from '../components/DateRangePicker';
 import ExportButton from '../components/ExportButton';
+import type { Company, Branch, Department } from '../types';
 
 type GrievanceRow = {
   id: number;
@@ -29,6 +30,8 @@ type GrievanceRow = {
   priority?: string;
   employeeId?: number;
   employeeName?: string;
+  companyId?: number;
+  companyName?: string;
   assignedTo?: number | string;
   assignedToName?: string;
   resolutionNotes?: string;
@@ -133,6 +136,9 @@ const Grievances = () => {
 
   const [activeTab, setActiveTab] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [filterCompanyId, setFilterCompanyId] = useState<string | number>('all');
+  const [filterBranchId, setFilterBranchId] = useState<string | number>('all');
+  const [filterDepartmentId, setFilterDepartmentId] = useState<string | number>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -405,21 +411,27 @@ const Grievances = () => {
       ),
     },
     {
+      key: 'ticketId',
+      header: 'Ticket ID',
+      sortable: true,
+      sortValue: (row) => ticketNo(row.id),
+      render: (row) => (
+        <span className="text-sm text-[#64748B] font-mono">{ticketNo(row.id)}</span>
+      ),
+    },
+    {
       key: 'subject',
       header: 'Subject',
       sortable: true,
       sortValue: (row) => row.subject,
       render: (row) => (
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => setDetailItem(row)}
-            className="block font-medium text-[var(--text-primary)] text-sm truncate hover:text-[var(--primary-blue)] transition-colors text-left"
-          >
-            {row.subject}
-          </button>
-          <span className="text-xs text-[#94A3B8] font-mono">{ticketNo(row.id)}</span>
-        </div>
+        <button
+          type="button"
+          onClick={() => setDetailItem(row)}
+          className="font-medium text-[var(--text-primary)] text-sm truncate hover:text-[var(--primary-blue)] transition-colors text-left"
+        >
+          {row.subject}
+        </button>
       ),
     },
     {
