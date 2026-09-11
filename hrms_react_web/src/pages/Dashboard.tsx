@@ -543,7 +543,7 @@ export default function Dashboard() {
                   data={[
                     { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
                     { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
-                  ].filter((s) => s.value > 0)}
+                  ]}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -558,7 +558,7 @@ export default function Dashboard() {
                   {[
                     { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
                     { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
-                  ].filter((s) => s.value > 0).map((entry: ChartSlice, index: number) => (
+                  ].map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
