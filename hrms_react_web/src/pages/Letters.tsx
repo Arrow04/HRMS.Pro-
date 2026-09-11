@@ -799,6 +799,8 @@ const Letters = () => {
   const [fields, setFields] = useState<Record<string, string>>({ date: new Date().toISOString().slice(0, 10) });
   const [copied, setCopied] = useState(false);
   const [letterhead, setLetterhead] = useState<Record<string, string>>({});
+  const [customTerms, setCustomTerms] = useState<Record<string, string[]>>({});
+  const [newTermInput, setNewTermInput] = useState('');
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
@@ -934,6 +936,23 @@ const Letters = () => {
 
   const set = (k: string, v: string) => setFields((f) => ({ ...f, [k]: v }));
 
+  const addCustomTerm = () => {
+    const term = newTermInput.trim();
+    if (!term) return;
+    setCustomTerms((prev) => ({
+      ...prev,
+      [templateId]: [...(prev[templateId] || []), term],
+    }));
+    setNewTermInput('');
+  };
+
+  const removeCustomTerm = (idx: number) => {
+    setCustomTerms((prev) => ({
+      ...prev,
+      [templateId]: (prev[templateId] || []).filter((_, i) => i !== idx),
+    }));
+  };
+
   const clearEmployee = () => {
     setSelectedEmployee(null);
     setEmployeeSearch('');
@@ -961,10 +980,11 @@ const Letters = () => {
     return f;
   }, [fields, selectedEmployee]);
 
-  const contextRows = useMemo(
-    () => (template.context ? template.context(merged) : []),
-    [template, merged]
-  );
+  const contextRows = useMemo(() => {
+    const defaultRows = template.context ? template.context(merged) : [];
+    const extra = customTerms[template.id] || [];
+    return [...defaultRows, ...extra];
+  }, [template, merged, customTerms]);
 
   const contactLine = useMemo(() => {
     const parts = [letterhead.company_email, letterhead.company_website]
@@ -1602,6 +1622,88 @@ const Letters = () => {
                 ))}
               </div>
             </div>
+
+            {/* ── SECTION 5: Custom Terms ── */}
+            <div
+              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
+              style={{ animationDelay: '200ms' }}
+            >
+              <div className="px-5 py-4 border-b border-[var(--border-color)]/50 bg-gradient-to-r from-violet-50/50 to-purple-50/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Custom Terms</h3>
+                    <p className="text-[11px] text-gray-400">Add or remove annexure items</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {/* Default terms (read-only, from template) */}
+                {template.context && template.context(merged).length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Default Terms</p>
+                    <div className="space-y-1.5">
+                      {template.context(merged).map((row, i) => (
+                        <div key={`default-${i}`} className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                          <span className="text-gray-400 mt-0.5 shrink-0">•</span>
+                          <span className="flex-1 leading-relaxed">{row}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom terms (editable) */}
+                {customTerms[templateId] && customTerms[templateId].length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-violet-500 uppercase tracking-wider mb-2">Your Custom Terms</p>
+                    <div className="space-y-1.5">
+                      {customTerms[templateId].map((row, i) => (
+                        <div key={`custom-${i}`} className="flex items-start gap-2 text-xs bg-violet-50 border border-violet-200 text-violet-800 rounded-lg px-3 py-2 group">
+                          <span className="text-violet-400 mt-0.5 shrink-0">•</span>
+                          <span className="flex-1 leading-relaxed">{row}</span>
+                          <button
+                            onClick={() => removeCustomTerm(i)}
+                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                            aria-label="Remove term"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add new term */}
+                <div className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newTermInput}
+                    onChange={(e) => setNewTermInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTerm(); } }}
+                    placeholder="Add a custom term…"
+                    className="flex-1 px-3 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomTerm}
+                    disabled={!newTermInput.trim()}
+                    className="shrink-0 px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-violet-500 to-purple-500 rounded-xl hover:shadow-lg hover:shadow-violet-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {(customTerms[templateId] || []).length === 0 && (!template.context || template.context(merged).length === 0) && (
+                  <p className="text-xs text-gray-400 text-center py-2">No terms yet. Add custom terms above.</p>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* ════════════════ RIGHT COLUMN: LIVE PREVIEW ════════════════ */}
