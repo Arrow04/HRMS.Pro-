@@ -571,6 +571,53 @@ const Notifications = () => {
         ))}
       </div>
 
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-bold text-[#0F172A]">Notification preferences</h2>
+          {mutedTypes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setMutedTypes([])}
+              className="text-xs font-semibold text-[var(--primary-blue)] hover:underline"
+            >
+              Unmute all
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-[#64748B] mb-4">
+          Muted categories are hidden from this list. Preferences are stored on this device only.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {PREF_CATEGORIES.map((c) => {
+            const muted = mutedTypes.includes(c.id);
+            return (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
+              >
+                <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!muted}
+                  aria-label={`${muted ? 'Unmute' : 'Mute'} ${c.label}`}
+                  onClick={() => toggleMute(c.id)}
+                  className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
+                    muted ? 'bg-gray-300' : 'bg-[var(--primary-blue)]'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                      muted ? 'left-0.5' : 'left-[18px]'
+                    }`}
+                  />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
@@ -665,53 +712,6 @@ const Notifications = () => {
             defaultDensity="comfortable"
           />
         )}
-      </div>
-
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm font-bold text-[#0F172A]">Notification preferences</h2>
-          {mutedTypes.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setMutedTypes([])}
-              className="text-xs font-semibold text-[var(--primary-blue)] hover:underline"
-            >
-              Unmute all
-            </button>
-          )}
-        </div>
-        <p className="text-xs text-[#64748B] mb-4">
-          Muted categories are hidden from this list. Preferences are stored on this device only.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {PREF_CATEGORIES.map((c) => {
-            const muted = mutedTypes.includes(c.id);
-            return (
-              <div
-                key={c.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
-              >
-                <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!muted}
-                  aria-label={`${muted ? 'Unmute' : 'Mute'} ${c.label}`}
-                  onClick={() => toggleMute(c.id)}
-                  className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
-                    muted ? 'bg-gray-300' : 'bg-[var(--primary-blue)]'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                      muted ? 'left-0.5' : 'left-[18px]'
-                    }`}
-                  />
-                </button>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       <Modal
