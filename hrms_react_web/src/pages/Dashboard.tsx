@@ -520,11 +520,11 @@ export default function Dashboard() {
                     const radius = 95 + 20;
                     const x = 50 + radius * Math.cos(-midAngle * RADIAN);
                     const y = 45 + radius * Math.sin(-midAngle * RADIAN);
-                    return percent && percent > 0.05 ? (
+                    return (
                       <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
-                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                        {`${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                       </text>
-                    ) : null;
+                    );
                   }}
                   stroke="white"
                   strokeWidth={1.5}
@@ -561,11 +561,11 @@ export default function Dashboard() {
                     const radius = 95 + 20;
                     const x = 50 + radius * Math.cos(-midAngle * RADIAN);
                     const y = 45 + radius * Math.sin(-midAngle * RADIAN);
-                    return percent && percent > 0.05 ? (
+                    return (
                       <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
-                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                        {`${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                       </text>
-                    ) : null;
+                    );
                   }}
                   stroke="white"
                   strokeWidth={1.5}
@@ -671,11 +671,11 @@ export default function Dashboard() {
                     const radius = 95 + 20;
                     const x = 50 + radius * Math.cos(-midAngle * RADIAN);
                     const y = 45 + radius * Math.sin(-midAngle * RADIAN);
-                    return percent && percent > 0.05 ? (
+                    return (
                       <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
-                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                        {`${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
                       </text>
-                    ) : null;
+                    );
                   }}
                   stroke="white"
                   strokeWidth={1.5}
