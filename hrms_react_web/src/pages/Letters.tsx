@@ -1334,7 +1334,7 @@ const Letters = () => {
         </div>
 
         {/* ──────────────────── MAIN GRID ──────────────────── */}
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-stretch">
 
           {/* ════════════════ LEFT COLUMN ════════════════ */}
           <div className="xl:col-span-2 space-y-5">
@@ -1834,7 +1834,7 @@ const Letters = () => {
             className="xl:col-span-3 animate-slide-in-right"
             style={{ animationDelay: '200ms' }}
           >
-            <div className="sticky top-4">
+            <div className="sticky top-4 flex flex-col h-full">
 
               {/* ── Preview floating toolbar ── */}
               <div className="flex items-center justify-between mb-3 px-1">
@@ -1868,9 +1868,9 @@ const Letters = () => {
               </div>
 
               {/* ── Preview paper ── */}
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden transition-all duration-300">
+              <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden transition-all duration-300 flex-1 flex flex-col">
                 <div
-                  className="px-10 py-8 font-serif leading-relaxed text-gray-900 max-h-[68vh] overflow-y-auto custom-scrollbar"
+                  className="px-10 py-8 font-serif leading-relaxed text-gray-900 flex-1"
                   style={{ fontSize: `${previewFontSize}px`, lineHeight: 1.75 }}
                 >
                   {/* Logo */}
