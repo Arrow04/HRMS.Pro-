@@ -549,8 +549,9 @@ export default function Dashboard() {
                   innerRadius={60}
                   outerRadius={90}
                   paddingAngle={3}
+                  minAngle={15}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}`}
                   labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
                   stroke="white"
                   strokeWidth={2}
@@ -586,8 +587,9 @@ export default function Dashboard() {
                   innerRadius={60}
                   outerRadius={90}
                   paddingAngle={3}
+                  minAngle={15}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}`}
                   labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
                   stroke="white"
                   strokeWidth={2}
@@ -682,8 +684,9 @@ export default function Dashboard() {
                   innerRadius={60}
                   outerRadius={90}
                   paddingAngle={3}
+                  minAngle={15}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}`}
                   labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
                   stroke="white"
                   strokeWidth={2}
