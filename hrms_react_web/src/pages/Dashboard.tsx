@@ -502,8 +502,81 @@ export default function Dashboard() {
         </div>
         {analyticsTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Organization Structure Chart */}
+          <ChartCard title="Organization Structure" subtitle="Companies, branches, departments & designations" icon={Building} accent="pink" delay={0}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={[
+                { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
+                { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
+                { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
+                { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
+              ]} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="pinkBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#EC4899" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#D946EF" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={44}>
+                  {[
+                    { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
+                    { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
+                    { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
+                    { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
+                  ].map((entry: ChartSlice, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Employee Status Distribution */}
+          <ChartCard title="Employee Status" subtitle="Active vs inactive" icon={Users} accent="rose" delay={100}>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
+                    { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
+                  ].filter((s) => s.value > 0)}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={90}
+                  paddingAngle={3}
+                  dataKey="value"
+                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
+                  stroke="white"
+                  strokeWidth={2}
+                >
+                  {[
+                    { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
+                    { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
+                  ].filter((s) => s.value > 0).map((entry: ChartSlice, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
           {/* Gender Ratio Chart */}
-          <ChartCard title="Gender Ratio" subtitle="Male vs Female" icon={Users} accent="indigo" delay={0}>
+          <ChartCard title="Gender Ratio" subtitle="Male vs Female" icon={Users} accent="indigo" delay={200}>
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
@@ -533,42 +606,27 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* Join/Attrition Ratio Chart */}
-          <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald" delay={100}>
+          {/* Age Distribution */}
+          <ChartCard title="Age Distribution" subtitle="Workforce by age group" icon={Users} accent="purple" delay={300}>
             <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={stats.joinAttritionRatio}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={3}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
-                  stroke="white"
-                  strokeWidth={2}
-                >
-                  {stats.joinAttritionRatio.map((entry: ChartSlice, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value}`, props.payload?.name || '']}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
-                />
-              </PieChart>
+              <BarChart data={stats.ageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Bar dataKey="value" fill="url(#purpleBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
+              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Department Distribution */}
-          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200} height={Math.min(400, Math.max(200, stats.departmentDistribution.length * 32))}>
+          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={400} height={Math.min(400, Math.max(200, stats.departmentDistribution.length * 32))}>
             <div className="h-full overflow-y-auto pr-1 custom-scrollbar">
               <ResponsiveContainer width="100%" height={Math.max(200, stats.departmentDistribution.length * 32)}>
                 <BarChart
@@ -613,34 +671,12 @@ export default function Dashboard() {
             </div>
           </ChartCard>
 
-          {/* Age Distribution */}
-          <ChartCard title="Age Distribution" subtitle="Workforce by age group" icon={Users} accent="purple" delay={300}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={stats.ageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.6} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" fill="url(#purpleBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Employee Status Distribution */}
-          <ChartCard title="Employee Status" subtitle="Active vs inactive" icon={Users} accent="rose" delay={400}>
+          {/* Join/Attrition Ratio Chart */}
+          <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald" delay={500}>
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
-                  data={[
-                    { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
-                    { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
-                  ].filter((s) => s.value > 0)}
+                  data={stats.joinAttritionRatio}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -652,16 +688,13 @@ export default function Dashboard() {
                   stroke="white"
                   strokeWidth={2}
                 >
-                  {[
-                    { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
-                    { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
-                  ].filter((s) => s.value > 0).map((entry: ChartSlice, index: number) => (
+                  {stats.joinAttritionRatio.map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value}`, props.payload?.name || '']}
                 />
                 <Legend
                   verticalAlign="bottom"
@@ -669,39 +702,6 @@ export default function Dashboard() {
                   formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
                 />
               </PieChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Organization Structure Chart */}
-          <ChartCard title="Organization Structure" subtitle="Companies, branches, departments & designations" icon={Building} accent="pink" delay={500}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={[
-                { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
-                { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
-                { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
-                { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
-              ]} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="pinkBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#EC4899" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#D946EF" stopOpacity={0.6} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={44}>
-                  {[
-                    { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
-                    { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
-                    { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
-                    { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
-                  ].map((entry: ChartSlice, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>
