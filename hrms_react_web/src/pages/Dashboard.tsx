@@ -87,11 +87,17 @@ const formatCompact = (value: number | string): string => {
 
 // Shared tooltip style for every chart
 const TOOLTIP_STYLE = {
-  backgroundColor: '#FFFFFF',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  color: 'black',
+  backgroundColor: 'rgba(255,255,255,0.95)',
+  border: '1px solid rgba(226,232,240,0.6)',
+  borderRadius: '12px',
+  color: '#0F172A',
+  boxShadow: '0 8px 32px -4px rgba(0,0,0,0.1), 0 4px 16px -2px rgba(0,0,0,0.06)',
+  backdropFilter: 'blur(12px)',
+  fontSize: '12px',
+  padding: '8px 12px',
 };
+
+const AXIS_STYLE = { stroke: '#CBD5E1', fontSize: 11, fontWeight: 500 as const };
 
 interface ChartSlice {
   name: string;
@@ -464,44 +470,40 @@ export default function Dashboard() {
 
       {/* Charts Section */}
       <div className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <h2 className="text-xl font-semibold" style={{ color: 'var(--text-heading)' }}>Analytics</h2>
-          <div className="inline-flex items-center gap-1 rounded-xl border p-1 self-start"
-            style={{ backgroundColor: 'var(--hover-bg)', borderColor: 'var(--border-color)' }}>
+          <div className="inline-flex items-center gap-1 rounded-2xl border border-white/60 backdrop-blur-xl bg-white/70 p-1 self-start shadow-sm">
             <button
               onClick={() => setAnalyticsTab('overview')}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: analyticsTab === 'overview' ? 'var(--card)' : 'transparent',
-                color: analyticsTab === 'overview' ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                boxShadow: analyticsTab === 'overview' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                analyticsTab === 'overview'
+                  ? 'bg-gradient-to-r from-[var(--primary-blue)] to-indigo-600 text-white shadow-md shadow-blue-200'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-white/60'
+              }`}
             >
               <LayoutDashboard className="w-4 h-4" />
               Overview
             </button>
             <button
               onClick={() => setAnalyticsTab('trends')}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: analyticsTab === 'trends' ? 'var(--card)' : 'transparent',
-                color: analyticsTab === 'trends' ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                boxShadow: analyticsTab === 'trends' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                analyticsTab === 'trends'
+                  ? 'bg-gradient-to-r from-[var(--primary-blue)] to-indigo-600 text-white shadow-md shadow-blue-200'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-white/60'
+              }`}
             >
               <Activity className="w-4 h-4" />
               Trends
             </button>
-            <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border ml-1"
-              style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}>
+            <span className="hidden md:inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-medium text-gray-400 ml-1">
               Jan–Dec {new Date().getFullYear()}
             </span>
           </div>
         </div>
         {analyticsTab === 'overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Gender Ratio Chart */}
-          <ChartCard title="Gender Ratio" subtitle="Male vs Female" icon={Users} accent="indigo">
+          <ChartCard title="Gender Ratio" subtitle="Male vs Female" icon={Users} accent="indigo" delay={0}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -510,30 +512,31 @@ export default function Dashboard() {
                   cy="50%"
                   labelLine={false}
                   label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  outerRadius={80}
-                  innerRadius={60}
+                  outerRadius={85}
+                  innerRadius={55}
+                  paddingAngle={2}
                   fill="#8884d8"
                   dataKey="value"
                 >
                   {stats.genderRatio.map((entry: ChartSlice, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="white" strokeWidth={2} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span style={{ color: 'black' }}>{value}</span>} />
+                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Join/Attrition Ratio Chart */}
-          <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald">
+          <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald" delay={100}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.joinAttritionRatio}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="name" stroke="black" fontSize={12} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {stats.joinAttritionRatio.map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
@@ -543,15 +546,15 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Department Distribution */}
-          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet">
+          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200}>
             <div className="max-h-[400px] overflow-y-auto">
               <ResponsiveContainer width="100%" height={Math.max(220, stats.departmentDistribution.length * 22)}>
                 <BarChart data={stats.departmentDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
-                  <XAxis type="number" stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
-                  <YAxis type="category" dataKey="name" stroke="black" fontSize={11} width={110} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                  <XAxis type="number" {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" {...AXIS_STYLE} width={110} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                  <Bar dataKey="value" name="Employees" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="value" name="Employees" radius={[0, 6, 6, 0]} maxBarSize={20}>
                     {stats.departmentDistribution.map((entry: { name: string; employees: number; value: number }, index: number) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -562,20 +565,20 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Age Distribution */}
-          <ChartCard title="Age Distribution" subtitle="Workforce by age group" icon={Users} accent="purple">
+          <ChartCard title="Age Distribution" subtitle="Workforce by age group" icon={Users} accent="purple" delay={300}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.ageDistribution}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="name" stroke="black" fontSize={12} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#8B5CF6" radius={[6, 6, 0, 0]} maxBarSize={48} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Employee Status Distribution */}
-          <ChartCard title="Employee Status" subtitle="Active vs inactive" icon={Users} accent="rose">
+          <ChartCard title="Employee Status" subtitle="Active vs inactive" icon={Users} accent="rose" delay={400}>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -600,13 +603,13 @@ export default function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span style={{ color: 'black' }}>{value}</span>} />
+                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Organization Structure Chart */}
-          <ChartCard title="Organization Structure" subtitle="Companies, branches, departments & designations" icon={Building} accent="pink">
+          <ChartCard title="Organization Structure" subtitle="Companies, branches, departments & designations" icon={Building} accent="pink" delay={500}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={[
                 { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
@@ -614,11 +617,11 @@ export default function Dashboard() {
                 { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
                 { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
               ]}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="name" stroke="black" fontSize={12} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {[
                     { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
                     { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
@@ -634,83 +637,95 @@ export default function Dashboard() {
         </div>
         )}
         {analyticsTab === 'trends' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Performance Trend */}
-          <ChartCard title="Performance Trend" subtitle={`Average rating · ${yearLabel}`} icon={TrendingUp} accent="emerald">
+          <ChartCard title="Performance Trend" subtitle={`Average rating · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={0}>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={performanceTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} domain={[0, 5]} tickFormatter={formatCompact} />
+                <defs>
+                  <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.3} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} fill={ACCENT_COLORS.emerald} fillOpacity={0.3} />
+                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldGrad)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Attendance Trend */}
-          <ChartCard title="Attendance Trend" subtitle={`Check-ins · ${yearLabel}`} icon={Clock} accent="cyan">
+          <ChartCard title="Attendance Trend" subtitle={`Check-ins · ${yearLabel}`} icon={Clock} accent="cyan" delay={100}>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={attendanceTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={3} dot={{ fill: ACCENT_COLORS.cyan, r: 4 }} />
+                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Payroll Trend */}
-          <ChartCard title="Payroll Trend" subtitle={`Net payout · ${yearLabel}`} icon={Coins} accent="amber">
+          <ChartCard title="Payroll Trend" subtitle={`Net payout · ${yearLabel}`} icon={Coins} accent="amber" delay={200}>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={payrollTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <defs>
+                  <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.3} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} fill={ACCENT_COLORS.amber} fillOpacity={0.3} />
+                <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberGrad)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Recruitment Trend */}
-          <ChartCard title="Recruitment Pipeline" subtitle={`Candidates · ${yearLabel}`} icon={Briefcase} accent="violet">
+          <ChartCard title="Recruitment Pipeline" subtitle={`Candidates · ${yearLabel}`} icon={Briefcase} accent="violet" delay={300}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span style={{ color: 'black' }}>{value}</span>} />
-                <Bar dataKey="candidates" name="Candidates" fill={ACCENT_COLORS.violet} radius={[4, 4, 0, 0]} />
+                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
+                <Bar dataKey="candidates" name="Candidates" fill={ACCENT_COLORS.violet} radius={[6, 6, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Expenses Trend */}
-          <ChartCard title="Expenses Trend" subtitle={`Spend · ${yearLabel}`} icon={CreditCard} accent="rose">
+          <ChartCard title="Expenses Trend" subtitle={`Spend · ${yearLabel}`} icon={CreditCard} accent="rose" delay={400}>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={expensesTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={3} dot={{ fill: ACCENT_COLORS.rose, r: 4 }} />
+                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Leave Trend */}
-          <ChartCard title="Leave Trend" subtitle={`Leave requests · ${yearLabel}`} icon={CalendarCheck} accent="emerald">
+          <ChartCard title="Leave Trend" subtitle={`Leave requests · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={500}>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={leaveTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="month" stroke="black" fontSize={12} interval={0} />
-                <YAxis stroke="black" fontSize={12} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span style={{ color: 'black' }}>{value}</span>} />
-                <Bar dataKey="leaves" name="Leaves" fill={ACCENT_COLORS.emerald} radius={[4, 4, 0, 0]} />
+                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
+                <Bar dataKey="leaves" name="Leaves" fill={ACCENT_COLORS.emerald} radius={[6, 6, 0, 0]} maxBarSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
