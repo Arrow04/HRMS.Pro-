@@ -488,13 +488,16 @@ const Grievances = () => {
         accent="amber"
         breadcrumbs={['Home', 'Grievances']}
         actions={
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
-          >
-            <Plus className="w-4 h-4" />
-            New Grievance
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportButton rows={filteredData} filename="grievances_export.csv" label="Export" />
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              New Grievance
+            </button>
+          </div>
         }
       />
 
@@ -548,7 +551,6 @@ const Grievances = () => {
               </option>
             ))}
           </select>
-          <ExportButton rows={filteredData} filename="grievances_export.csv" variant="toolbar" label="Export" />
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
