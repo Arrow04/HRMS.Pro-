@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  FileText, Search, Download, Printer, Copy, Check, X,
+  FileText, Search, Download, Printer, Copy, Check, X, Pencil,
   Briefcase, ClipboardCheck, Award, TrendingUp, LogOut, FileBadge, Stamp,
   ChevronDown, ChevronRight, Sparkles, ZoomIn, ZoomOut, Users, Building2,
   ChevronLeft as ChevronLeftIcon, Eye,
@@ -9,6 +9,7 @@ import { jsPDF } from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import PageHero from '../components/PageHero';
 import FormField, { formInputClass, formTextareaClass } from '../components/FormField';
 import DatePicker from '../components/DatePicker';
 import SearchableSelect from '../components/SearchableSelect';
@@ -801,6 +802,8 @@ const Letters = () => {
   const [letterhead, setLetterhead] = useState<Record<string, string>>({});
   const [customTerms, setCustomTerms] = useState<Record<string, string[]>>({});
   const [newTermInput, setNewTermInput] = useState('');
+  const [editingTermIdx, setEditingTermIdx] = useState<number | null>(null);
+  const [editingTermValue, setEditingTermValue] = useState('');
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
@@ -951,6 +954,25 @@ const Letters = () => {
       ...prev,
       [templateId]: (prev[templateId] || []).filter((_, i) => i !== idx),
     }));
+    if (editingTermIdx === idx) {
+      setEditingTermIdx(null);
+      setEditingTermValue('');
+    }
+  };
+
+  const startEditTerm = (idx: number, value: string) => {
+    setEditingTermIdx(idx);
+    setEditingTermValue(value);
+  };
+
+  const saveEditTerm = () => {
+    if (editingTermIdx === null || !editingTermValue.trim()) return;
+    setCustomTerms((prev) => ({
+      ...prev,
+      [templateId]: (prev[templateId] || []).map((t, i) => i === editingTermIdx ? editingTermValue.trim() : t),
+    }));
+    setEditingTermIdx(null);
+    setEditingTermValue('');
   };
 
   const clearEmployee = () => {
@@ -1180,6 +1202,32 @@ const Letters = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/60 animate-page-enter">
       <div className="max-w-[1600px] mx-auto space-y-5 px-4 sm:px-6 pb-12">
+
+        <PageHero
+          title="Letters"
+          subtitle="Generate professional HR letters — offer, appointment, appraisal, relieving and more — in one click"
+          icon={FileText}
+          accent="indigo"
+          breadcrumbs={['Home', 'Employees', 'Letters']}
+          actions={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={copyText}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/15 text-white text-sm font-semibold rounded-xl border border-white/25 hover:bg-white/25 transition-colors"
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copied ? 'Copied' : 'Copy text'}
+              </button>
+              <button
+                onClick={downloadPdf}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white text-indigo-900 text-sm font-bold rounded-xl hover:bg-indigo-50 transition-colors shadow-md"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF
+              </button>
+            </div>
+          }
+        />
 
         {/* ──────────────────── STEP PROGRESS INDICATOR ──────────────────── */}
         <div className="flex items-center justify-center pt-5 pb-1">
@@ -1664,14 +1712,54 @@ const Letters = () => {
                       {customTerms[templateId].map((row, i) => (
                         <div key={`custom-${i}`} className="flex items-start gap-2 text-xs bg-violet-50 border border-violet-200 text-violet-800 rounded-lg px-3 py-2 group">
                           <span className="text-violet-400 mt-0.5 shrink-0">•</span>
-                          <span className="flex-1 leading-relaxed">{row}</span>
-                          <button
-                            onClick={() => removeCustomTerm(i)}
-                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-red-100 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
-                            aria-label="Remove term"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
+                          {editingTermIdx === i ? (
+                            <input
+                              type="text"
+                              value={editingTermValue}
+                              onChange={(e) => setEditingTermValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') { e.preventDefault(); saveEditTerm(); }
+                                if (e.key === 'Escape') { setEditingTermIdx(null); setEditingTermValue(''); }
+                              }}
+                              onBlur={saveEditTerm}
+                              autoFocus
+                              className="flex-1 text-xs bg-white border border-violet-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                            />
+                          ) : (
+                            <span
+                              className="flex-1 leading-relaxed cursor-pointer hover:text-violet-600 hover:underline decoration-dotted underline-offset-2"
+                              onClick={() => startEditTerm(i, row)}
+                              title="Click to edit"
+                            >
+                              {row}
+                            </span>
+                          )}
+                          <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                            {editingTermIdx === i ? (
+                              <button
+                                onClick={saveEditTerm}
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-emerald-500 hover:bg-emerald-100 transition-colors"
+                                aria-label="Save term"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => startEditTerm(i, row)}
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-violet-100 hover:text-violet-700 transition-colors"
+                                aria-label="Edit term"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeCustomTerm(i)}
+                              className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                              aria-label="Remove term"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
