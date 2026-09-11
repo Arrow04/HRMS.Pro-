@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, Edit2, Eye, Flag,
-  MessageSquare, Plus, RotateCcw, Trash2, XCircle,
+  MessageSquare, Plus, RotateCcw, Trash2, User, XCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -378,7 +378,7 @@ const Grievances = () => {
       render: (row) => (
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
-            <MessageSquare className="w-4 h-4 text-white" />
+            <User className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium text-[#0F172A] truncate">{row.employeeName || '-'}</div>
