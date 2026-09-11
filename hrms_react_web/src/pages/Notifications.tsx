@@ -648,9 +648,22 @@ const Notifications = () => {
         </button>
         {showPreferences && (
           <div className="px-5 pb-5 border-t border-[var(--border-color)]">
-            <p className="text-xs text-[#64748B] mt-4 mb-4">
-              Muted categories are hidden from this list. Preferences are stored on this device only.
-            </p>
+            <div className="mt-4 mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-xs text-blue-700">
+                  <p className="font-semibold mb-1">How notification preferences work</p>
+                  <ul className="space-y-0.5 text-blue-600">
+                    <li>• <strong>ON</strong> = You will receive notifications for this category</li>
+                    <li>• <strong>OFF</strong> = Notifications for this category will be hidden</li>
+                    <li>• Changes apply immediately to your notification list</li>
+                    <li>• Preferences are saved on this device only</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {PREF_CATEGORIES.map((c) => {
                 const muted = mutedTypes.includes(c.id);
