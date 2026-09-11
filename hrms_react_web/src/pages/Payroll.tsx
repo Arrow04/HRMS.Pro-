@@ -23,7 +23,7 @@ import StatsCard from '../components/StatsCard';
 import PageHero from '../components/PageHero';
 import ExportButton from '../components/ExportButton';
 import IfscInput from '../components/IfscInput';
-import DataTable from '../components/DataTable';
+import DataTable, { type DataTableColumn } from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
@@ -2914,6 +2914,50 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
     onError: () => toast.error('Failed to delete loan'),
   });
 
+  const columns: DataTableColumn<Record<string, any>>[] = [
+    ...(empId === '' ? [{
+      key: 'employeeName', header: 'Employee', sortable: true,
+      render: (l: Record<string, any>) => (
+        <span className="text-sm font-medium text-[#0F172A]">{l.employeeName || `#${l.employeeId}`}</span>
+      ),
+      sortValue: (l: Record<string, any>) => l.employeeName || '',
+    }] : []),
+    {
+      key: 'loanType', header: 'Type', sortable: true,
+      render: (l: Record<string, any>) => <span className="text-sm capitalize font-medium text-[#0F172A]">{l.loanType}</span>,
+      sortValue: (l: Record<string, any>) => l.loanType,
+    },
+    {
+      key: 'principalAmount', header: 'Principal', sortable: true, align: 'right',
+      render: (l: Record<string, any>) => <span className="text-sm text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</span>,
+      sortValue: (l: Record<string, any>) => l.principalAmount,
+    },
+    {
+      key: 'monthlyDeduction', header: 'Monthly Deduction', sortable: true, align: 'right',
+      render: (l: Record<string, any>) => <span className="text-sm text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</span>,
+      sortValue: (l: Record<string, any>) => l.monthlyDeduction,
+    },
+    {
+      key: 'remainingMonths', header: 'Months Left', sortable: true, align: 'center',
+      render: (l: Record<string, any>) => <span className="text-sm text-[#64748B]">{l.remainingMonths}</span>,
+      sortValue: (l: Record<string, any>) => l.remainingMonths,
+    },
+    {
+      key: 'start', header: 'Start', sortable: true, align: 'center',
+      render: (l: Record<string, any>) => <span className="text-sm text-[#64748B]">{l.startMonth}/{l.startYear}</span>,
+      sortValue: (l: Record<string, any>) => `${l.startYear}-${String(l.startMonth).padStart(2, '0')}`,
+    },
+    {
+      key: 'status', header: 'Status', sortable: true, align: 'center',
+      render: (l: Record<string, any>) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${l.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          {capitalizeStatus(l.status)}
+        </span>
+      ),
+      sortValue: (l: Record<string, any>) => l.status,
+    },
+  ];
+
   return (
     <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
@@ -2935,51 +2979,40 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
 
       {isLoading ? (
         <PayrollLoading />
-      ) : loans.length === 0 ? (
-        <div className="p-12 text-center text-sm text-[var(--text-disabled)]">
-          <HandCoins className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          {empId === '' ? 'No loans or advances yet.' : 'No loans or advances for this employee.'}
-        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border-color)] bg-gray-50/50 text-left text-xs font-semibold text-gray-500 uppercase">
-                {empId === '' && <th className="px-6 py-3">Employee</th>}
-                <th className="px-6 py-3">Type</th>
-                <th className="px-6 py-3 text-right">Principal</th>
-                <th className="px-6 py-3 text-right">Monthly Deduction</th>
-                <th className="px-6 py-3 text-center">Months Left</th>
-                <th className="px-6 py-3 text-center">Start</th>
-                <th className="px-6 py-3 text-center">Status</th>
-                <th className="px-6 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {loans.map((l: Record<string, any>) => (
-                <tr key={l.id} className="hover:bg-gray-50/50">
-                  {empId === '' && <td className="px-6 py-3 font-medium text-[#0F172A]">{l.employeeName || `#${l.employeeId}`}</td>}
-                  <td className="px-6 py-3 capitalize font-medium text-[#0F172A]">{l.loanType}</td>
-                  <td className="px-6 py-3 text-right text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</td>
-                  <td className="px-6 py-3 text-right text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</td>
-                  <td className="px-6 py-3 text-center text-[#64748B]">{l.remainingMonths}</td>
-                  <td className="px-6 py-3 text-center text-[#64748B]">{l.startMonth}/{l.startYear}</td>
-                  <td className="px-6 py-3 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${l.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{capitalizeStatus(l.status)}</span>
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {l.status === 'active' && (
-                        <button onClick={() => closeMut.mutate(l.id)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded" title="Close loan"><RotateCcw className="w-4 h-4" /></button>
-                      )}
-                      <button onClick={() => { if (confirm('Delete this loan?')) deleteMut.mutate(l.id); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={loans}
+          columns={columns}
+          rowKey={(l: Record<string, any>) => l.id}
+          searchable
+          searchKeys={(l: Record<string, any>) => `${l.employeeName || ''} ${l.loanType || ''} ${l.status || ''}`}
+          searchPlaceholder="Search loans..."
+          emptyMessage={empId === '' ? 'No loans or advances yet.' : 'No loans or advances for this employee.'}
+          logEntityType="loan"
+          logFor={(l: Record<string, any>) => ({ id: l.id, label: `${l.loanType} loan` })}
+          bulkActions={[
+            {
+              label: 'Delete',
+              icon: Trash2,
+              variant: 'danger',
+              onAction: (items) => {
+                items.forEach((l: Record<string, any>) => deleteMut.mutate(l.id));
+              },
+            },
+          ]}
+          actions={(l: Record<string, any>) => (
+            <div className="flex items-center justify-end gap-1.5">
+              {l.status === 'active' && (
+                <button onClick={() => closeMut.mutate(l.id)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Close loan">
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+              <button onClick={() => deleteMut.mutate(l.id)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        />
       )}
 
       {showForm && (
