@@ -517,49 +517,49 @@ const Grievances = () => {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {GRIEVANCE_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-[#1C64F2]/20'
-                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--background)]'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-        <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-primary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-            title="Filter by priority"
-          >
-            <option value="all">All Priorities</option>
-            {PRIORITY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors"
-              title="Clear filters"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          )}
+        <div className="p-4 border-b border-[var(--border-color)]">
+          <div className="flex flex-col lg:flex-row items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-primary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                title="Filter by priority"
+              >
+                <option value="all">All Priorities</option>
+                {PRIORITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors"
+                  title="Clear filters"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit max-w-full lg:ml-auto">
+              {GRIEVANCE_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-[var(--primary-blue)] text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="bg-white overflow-hidden">
