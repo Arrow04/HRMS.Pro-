@@ -398,13 +398,16 @@ const Helpdesk = () => {
         accent="cyan"
         breadcrumbs={['Home', 'Helpdesk']}
         actions={
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
-          >
-            <Plus className="w-4 h-4" />
-            Raise Ticket
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportButton rows={filteredData} filename="helpdesk_tickets.csv" label="Export" />
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              Raise Ticket
+            </button>
+          </div>
         }
       />
 
@@ -450,7 +453,6 @@ const Helpdesk = () => {
                   <option key={p} value={p} className="capitalize">{p}</option>
                 ))}
               </select>
-              <ExportButton rows={filteredData} filename="helpdesk_tickets.csv" variant="toolbar" />
             </div>
           </div>
           <div className="flex rounded-xl border border-gray-200 overflow-x-auto w-fit max-w-full">
