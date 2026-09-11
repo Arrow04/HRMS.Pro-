@@ -16,6 +16,7 @@ import FormField, { formInputClass, formTextareaClass } from '../components/Form
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
+import SearchableSelect from '../components/SearchableSelect';
 import DateRangePicker from '../components/DateRangePicker';
 import ExportButton from '../components/ExportButton';
 
@@ -533,19 +534,14 @@ const Grievances = () => {
         <div className="p-4 border-b border-[var(--border-color)]">
           <div className="flex flex-col lg:flex-row items-center gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <select
+              <SearchableSelect
                 value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-primary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                title="Filter by priority"
-              >
-                <option value="all">All Priorities</option>
-                {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setPriorityFilter(val.toString())}
+                options={PRIORITY_OPTIONS.map((o) => ({ id: o.value, name: o.label }))}
+                placeholder="All Priorities"
+                allOption="All Priorities"
+                className="w-44"
+              />
               <DateRangePicker
                 startDate={startDate}
                 endDate={endDate}
