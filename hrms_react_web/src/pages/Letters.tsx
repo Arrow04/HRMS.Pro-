@@ -81,10 +81,17 @@ const TEMPLATES: Template[] = [
     context: (f) => {
       const rows: string[] = [];
       if (f.reporting_to) rows.push(`Reporting to: ${f.reporting_to}`);
-      if (f.probation_months) rows.push(`Probation period: ${f.probation_months} months from the date of joining`);
-      if (f.notice_period) rows.push(`Notice period: ${f.notice_period} on either side post confirmation`);
+      if (f.probation_months) rows.push(`Probation period: ${f.probation_months} months from the date of joining, extendable by up to ${f.probation_months} months at management's discretion`);
+      if (f.notice_period) rows.push(`Notice period: ${f.notice_period} on either side post confirmation; ${Math.round(Number(f.notice_period) / 2) || 30} days during probation`);
       if (f.salary) rows.push(`Annual CTC: Rs. ${f.salary} per annum (detailed breakup enclosed in the annexure)`);
-      rows.push(`Non-compete and confidentiality obligations survive termination of employment`);
+      rows.push(`Working hours: Monday to Friday, 9:30 AM – 6:30 PM IST (45 hours weekly), with one-hour lunch break`);
+      rows.push(`Leave entitlement: 15 days paid leave per annum, 10 days sick leave, 10 days casual leave, plus national and company-declared holidays`);
+      rows.push(`Statutory benefits: Provident fund and gratuity contributions as per applicable law; group personal accident insurance and group medical insurance from date of joining`);
+      rows.push(`Intellectual property: All work product, inventions, and discoveries made during employment shall belong exclusively to the company`);
+      rows.push(`Confidentiality: Employee shall not disclose, publish, or use any confidential information during or after employment without written consent`);
+      rows.push(`Non-solicitation: For a period of twelve (12) months post-separation, employee shall not solicit or recruit any employee or client of the company`);
+      rows.push(`Dispute resolution: Any dispute arising out of or in connection with this employment shall be referred to arbitration in accordance with the Arbitration and Conciliation Act, 1996`);
+      rows.push(`Governing law: This offer and the employment relationship shall be governed by the laws of India, subject to the jurisdiction of courts in ${f.location || '[City]'}`);
       return rows;
     },
     fields: [
