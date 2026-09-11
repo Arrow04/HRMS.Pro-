@@ -806,11 +806,26 @@ const Letters = () => {
   const [editingTermValue, setEditingTermValue] = useState('');
   const [removedDefaults, setRemovedDefaults] = useState<Record<string, number[]>>({});
   const [editedDefaults, setEditedDefaults] = useState<Record<string, Record<number, string>>>({});
+  const previewContentRef = useRef<HTMLDivElement>(null);
+  const [pageCount, setPageCount] = useState(1);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (!previewContentRef.current) return;
+    const el = previewContentRef.current;
+    const observer = new ResizeObserver(() => {
+      const contentHeight = el.scrollHeight;
+      const PAGE_HEIGHT_PX = 1059;
+      const pages = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT_PX));
+      setPageCount(pages);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [letterText, zoomPct, previewFontSize]);
 
   const template = useMemo(() => TEMPLATES.find((t) => t.id === templateId) || TEMPLATES[0], [templateId]);
 
@@ -1860,7 +1875,7 @@ const Letters = () => {
                       <ZoomIn className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <span className="text-[11px] text-gray-400 font-medium hidden sm:block">Page 1 of 1</span>
+                  <span className={`text-[11px] font-medium hidden sm:block px-2 py-0.5 rounded-lg ${pageCount > 1 ? 'text-amber-700 bg-amber-50 border border-amber-200' : 'text-gray-400'}`}>Page 1 of {pageCount}</span>
                   <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg hidden sm:block">
                     A4 · Times · Print-ready
                   </span>
@@ -1870,7 +1885,8 @@ const Letters = () => {
               {/* ── Preview paper ── */}
               <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden transition-all duration-300 flex-1 flex flex-col">
                 <div
-                  className="px-10 py-8 font-serif leading-relaxed text-gray-900 flex-1"
+                  className="px-10 py-8 font-serif leading-relaxed text-gray-900"
+                  ref={previewContentRef}
                   style={{ fontSize: `${previewFontSize}px`, lineHeight: 1.75 }}
                 >
                   {/* Logo */}
@@ -1916,6 +1932,15 @@ const Letters = () => {
                   {template.body(merged).map((p, i) => (
                     <p key={i} className="mt-3 text-justify">{p}</p>
                   ))}
+
+                  {/* Page break indicator */}
+                  {pageCount > 1 && (
+                    <div className="my-6 flex items-center gap-3" style={{ fontSize: `${Math.round(previewFontSize * 0.75)}px` }}>
+                      <div className="flex-1 border-t-2 border-dashed border-gray-300" />
+                      <span className="text-gray-400 font-medium whitespace-nowrap">— Page 2 —</span>
+                      <div className="flex-1 border-t-2 border-dashed border-gray-300" />
+                    </div>
+                  )}
 
                   {/* Context / Annexure */}
                   {contextRows.length > 0 && (
