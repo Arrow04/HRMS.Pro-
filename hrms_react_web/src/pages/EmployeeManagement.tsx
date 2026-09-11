@@ -219,7 +219,6 @@ const EmployeeManagement = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('active');
   const [search, setSearch] = useState('');
-  const [archivedSearch, setArchivedSearch] = useState('');
   const [archivedCompany, setArchivedCompany] = useState<number | 'all'>('all');
   const [archivedBranch, setArchivedBranch] = useState<number | 'all'>('all');
   const [archivedDepartment, setArchivedDepartment] = useState<number | 'all'>('all');
@@ -613,11 +612,6 @@ const EmployeeManagement = () => {
 
   const filteredArchivedEmployees = useMemo(() => {
     return (archivedEmployees || []).filter((a: ArchivedEmployee) => {
-      const matchSearch = !archivedSearch || (a.name || '').toLowerCase().includes(archivedSearch.toLowerCase())
-        || (a.employeeCode || '').toLowerCase().includes(archivedSearch.toLowerCase())
-        || (a.email || '').toLowerCase().includes(archivedSearch.toLowerCase())
-        || (a.designation || '').toLowerCase().includes(archivedSearch.toLowerCase())
-        || (a.companyName || '').toLowerCase().includes(archivedSearch.toLowerCase());
       const matchCompany = archivedCompany === 'all' || String(a.companyId ?? '') === String(archivedCompany);
       const matchBranch = archivedBranch === 'all' || (a.branchIds || []).includes(Number(archivedBranch));
       const matchDepartment = archivedDepartment === 'all' || String(a.departmentId ?? '') === String(archivedDepartment);
@@ -626,9 +620,9 @@ const EmployeeManagement = () => {
         || (archivedStartDate && archivedEndDate && aDate >= archivedStartDate && aDate <= archivedEndDate)
         || (archivedStartDate && !archivedEndDate && aDate >= archivedStartDate)
         || (!archivedStartDate && archivedEndDate && aDate <= archivedEndDate);
-      return matchSearch && matchCompany && matchBranch && matchDepartment && matchDate;
+      return matchCompany && matchBranch && matchDepartment && matchDate;
     });
-  }, [archivedEmployees, archivedSearch, archivedCompany, archivedBranch, archivedDepartment, archivedStartDate, archivedEndDate]);
+  }, [archivedEmployees, archivedCompany, archivedBranch, archivedDepartment, archivedStartDate, archivedEndDate]);
 
   // Mutations
   const createMutation = useMutation({
@@ -1090,12 +1084,6 @@ const EmployeeManagement = () => {
         ) : activeTab === 'archived' ? (
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex flex-wrap items-center gap-3 p-4 border-b border-[var(--border-color)]">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#94A3B8]" />
-                <input value={archivedSearch} onChange={e => setArchivedSearch(e.target.value)}
-                  placeholder="Search archived employees..."
-                  className="w-full pl-9 pr-4 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--primary-blue)] focus:border-transparent outline-none text-[var(--text-primary)] placeholder-[#94A3B8]" />
-              </div>
               <SearchableSelect
                 value={archivedCompany === 'all' ? 'all' : archivedCompany}
                 onChange={(val) => { setArchivedCompany(val === 'all' ? 'all' : Number(val)); setArchivedBranch('all'); setArchivedDepartment('all'); }}
@@ -1126,9 +1114,9 @@ const EmployeeManagement = () => {
                 onDateChange={(start, end) => { setArchivedStartDate(start); setArchivedEndDate(end); }}
                 placeholder="Filter by Archive Date"
               />
-              {(archivedSearch || archivedCompany !== 'all' || archivedBranch !== 'all' || archivedDepartment !== 'all' || archivedStartDate || archivedEndDate) && (
+              {(archivedCompany !== 'all' || archivedBranch !== 'all' || archivedDepartment !== 'all' || archivedStartDate || archivedEndDate) && (
                 <button
-                  onClick={() => { setArchivedSearch(''); setArchivedCompany('all'); setArchivedBranch('all'); setArchivedDepartment('all'); setArchivedStartDate(''); setArchivedEndDate(''); }}
+                  onClick={() => { setArchivedCompany('all'); setArchivedBranch('all'); setArchivedDepartment('all'); setArchivedStartDate(''); setArchivedEndDate(''); }}
                   className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors"
                   title="Clear Filters"
                 >
@@ -1140,6 +1128,9 @@ const EmployeeManagement = () => {
             <DataTable
               data={filteredArchivedEmployees}
               rowKey={(a: ArchivedEmployee) => a.id}
+              searchable
+              searchKeys={(a: ArchivedEmployee) => `${a.name} ${a.employeeCode || ''} ${a.designation || ''}`}
+              searchPlaceholder="Search archived employees..."
               logEntityType="employee"
               logFor={(a: ArchivedEmployee) => ({ id: a.originalId || a.id, label: a.name })}
               emptyMessage="No archived employees"

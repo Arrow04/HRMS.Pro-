@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  History, Search, Building2, Users, Calendar, Briefcase, Database,
+  History, Building2, Users, Calendar, Briefcase, Database,
   Clock, DollarSign, Receipt, Settings, FileBarChart, Filter, ChevronDown,
   Monitor, Smartphone, Globe, MapPin, FileText, User
 } from 'lucide-react';
@@ -30,7 +30,7 @@ interface ActivityLogEntry {
 
 const ActivityLog = () => {
   const [activeModule, setActiveModule] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+
   const [actionFilter, setActionFilter] = useState('all');
   const { data: actionOptions = [] } = useMasterData('AUDIT_ACTION');
 
@@ -66,11 +66,7 @@ const ActivityLog = () => {
     },
   });
 
-  const filteredLogs = (activityLogs || []).filter((log) =>
-    log.user_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    log.entity_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    log.action?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLogs = activityLogs || [];
 
   const getActionBadgeColor = (action: string) => {
     switch (action) {
@@ -147,16 +143,6 @@ const ActivityLog = () => {
         <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
           {/* Filters */}
           <div className="p-4 border-b border-[var(--border-color)] bg-white flex flex-col lg:flex-row gap-4 items-center">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-              <input
-                type="text"
-                placeholder="Search by user, entity, or action..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
-              />
-            </div>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-[var(--text-tertiary)]" />
               <SearchableSelect
@@ -178,6 +164,9 @@ const ActivityLog = () => {
               <DataTable
                 data={filteredLogs}
                 rowKey={(log) => log.id}
+                searchable
+                searchKeys={(log: ActivityLogEntry) => `${log.user_name || ''} ${log.entity_name || ''} ${log.entity_type || ''} ${log.action || ''}`}
+                searchPlaceholder="Search by user, entity, or action..."
                 logEntityType="audit_log"
                 logFor={(log: ActivityLogEntry) => ({ id: log.id, label: log.entity_name || `#${log.id}` })}
                 emptyMessage="No activity logs found"

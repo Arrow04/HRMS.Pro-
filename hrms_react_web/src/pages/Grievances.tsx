@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, Edit2, Eye, Flag,
-  MessageSquare, Plus, RotateCcw, Search, Trash2, XCircle,
+  MessageSquare, Plus, RotateCcw, Trash2, XCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -128,7 +128,7 @@ const pillStyle = (color: string) => ({
 
 const Grievances = () => {
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState('');
+
   const [activeTab, setActiveTab] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -357,25 +357,13 @@ const Grievances = () => {
     if (overdueOnly) {
       items = items.filter(isOverdue);
     }
-    const q = searchTerm.trim().toLowerCase();
-    if (q) {
-      items = items.filter(
-        (item) =>
-          item.subject.toLowerCase().includes(q) ||
-          (item.description || '').toLowerCase().includes(q) ||
-          (item.employeeName || '').toLowerCase().includes(q) ||
-          (item.assignedToName || '').toLowerCase().includes(q) ||
-          ticketNo(item.id).toLowerCase().includes(q)
-      );
-    }
     return items;
-  }, [grievances, activeTab, priorityFilter, overdueOnly, searchTerm]);
+  }, [grievances, activeTab, priorityFilter, overdueOnly]);
 
   const hasActiveFilters =
-    searchTerm.trim() !== '' || priorityFilter !== 'all' || overdueOnly || activeTab !== 'all';
+    priorityFilter !== 'all' || overdueOnly || activeTab !== 'all';
 
   const clearFilters = () => {
-    setSearchTerm('');
     setPriorityFilter('all');
     setOverdueOnly(false);
     setActiveTab('all');
@@ -547,16 +535,6 @@ const Grievances = () => {
 
       <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)] bg-white">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search subject, description, employee, ticket no..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
-            />
-          </div>
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
@@ -591,7 +569,9 @@ const Grievances = () => {
               columns={columns}
               data={filteredData}
               rowKey={(row) => row.id}
-              searchable={false}
+              searchable
+              searchKeys={(row: GrievanceRow) => `${row.subject} ${row.description || ''} ${row.employeeName || ''} ${row.assignedToName || ''} ${ticketNo(row.id)}`}
+              searchPlaceholder="Search subject, description, employee, ticket no..."
               emptyMessage="No grievances found"
               persistKey="grievances"
               exportFilename="grievances_export.csv"

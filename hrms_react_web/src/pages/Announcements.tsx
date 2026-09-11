@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import {
-  Megaphone, Plus, Search, Edit2, Trash2,
+  Megaphone, Plus, Edit2, Trash2,
   Calendar, FileText, Pin, Clock, Eye, Copy,
   LayoutGrid, List, Users, X,
 } from 'lucide-react';
@@ -102,7 +102,7 @@ const getTypeBadgeClass = (type: string): string =>
 
 const Announcements = () => {
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState('');
+
   const [activeTab, setActiveTab] = useState('all');
   const [statFilter, setStatFilter] = useState<StatFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -303,23 +303,13 @@ const Announcements = () => {
     if (categoryFilter !== 'all') {
       items = items.filter((item) => (item.category || 'General') === categoryFilter);
     }
-    if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      items = items.filter(
-        (item) =>
-          item.title.toLowerCase().includes(q) ||
-          item.body.toLowerCase().includes(q) ||
-          (item.category || '').toLowerCase().includes(q) ||
-          (item.audience || '').toLowerCase().includes(q)
-      );
-    }
     items.sort((a, b) => {
       const pinDiff = Number(!!b.pinned) - Number(!!a.pinned);
       if (pinDiff !== 0) return pinDiff;
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
     return items;
-  }, [announcements, activeTab, statFilter, categoryFilter, searchTerm]);
+  }, [announcements, activeTab, statFilter, categoryFilter]);
 
   const exportRows = useMemo(
     () =>
@@ -336,10 +326,9 @@ const Announcements = () => {
   );
 
   const hasActiveFilters =
-    searchTerm.trim() !== '' || activeTab !== 'all' || statFilter !== 'all' || categoryFilter !== 'all';
+    activeTab !== 'all' || statFilter !== 'all' || categoryFilter !== 'all';
 
   const clearFilters = () => {
-    setSearchTerm('');
     setActiveTab('all');
     setStatFilter('all');
     setCategoryFilter('all');
@@ -576,16 +565,6 @@ const Announcements = () => {
       <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search announcements..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
-              />
-            </div>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={categoryFilter}
@@ -712,7 +691,9 @@ const Announcements = () => {
               columns={columns}
               data={filteredData}
               rowKey={(row) => row.id}
-              searchable={false}
+              searchable
+              searchKeys={(row: Announcement) => `${row.title} ${row.body} ${row.category || ''} ${row.audience || ''}`}
+              searchPlaceholder="Search announcements..."
               emptyMessage="No announcements found"
               persistKey="announcements"
               exportFilename="announcements.csv"

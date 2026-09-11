@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import {
-  Database, Plus, Edit2, X, Search, CheckCircle2,
+  Database, Plus, Edit2, X, CheckCircle2,
   Users, Building2, Calendar, Clock, Receipt, Briefcase, Heart, Droplet, GraduationCap,
   Tag, Settings, Filter, TrendingUp, Star, Info,
   Loader2, Sun, CloudRain, CloudLightning, CloudFog, CloudSun, Cloud, RefreshCw,
@@ -112,7 +112,7 @@ const MasterData = () => {
   const queryClient = useQueryClient();
   const [activePage, setActivePage] = useState(() => pageTabs[0].key);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+
   const [showValueModal, setShowValueModal] = useState(false);
   const [editingValue, setEditingValue] = useState<MasterDataValue | null>(null);
   const [confirm, setConfirm] = useState<{
@@ -389,10 +389,7 @@ const MasterData = () => {
 
   const values = categoryWithValues?.values || [];
   const uniqueValues = Array.from(new Map(values.map((v: MasterDataValue) => [v.id, v] as const)).values());
-  const filteredValues = uniqueValues.filter((v: MasterDataValue) =>
-    v.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.code?.toLowerCase().includes(searchTerm.toLowerCase())
-  ).sort((a: MasterDataValue, b: MasterDataValue) => {
+  const filteredValues = uniqueValues.sort((a: MasterDataValue, b: MasterDataValue) => {
     const aIsActive = a.is_active !== false;
     const bIsActive = b.is_active !== false;
     if (aIsActive === bIsActive) return 0;
@@ -558,16 +555,6 @@ const MasterData = () => {
             <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
               {/* FILTERS */}
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-4 border-b border-[var(--border-color)]">
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-                  <input
-                    type="text"
-                    placeholder={`Search values...`}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--background)] border border-[var(--border-color)] rounded-xl text-sm font-medium text-[var(--text-primary)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
-                  />
-                </div>
               </div>
 
               {isSystemCategory && (

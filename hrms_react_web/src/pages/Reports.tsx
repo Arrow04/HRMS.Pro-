@@ -299,7 +299,6 @@ const Reports = () => {
   const [showAiInsights, setShowAiInsights] = useState(false);
     
   const [searchQuery, setSearchQuery] = useState('');
-  const [scheduleSearchQuery, setScheduleSearchQuery] = useState('');
   const [reportSearchQuery, setReportSearchQuery] = useState('');
   const [showReportDropdown, setShowReportDropdown] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
@@ -376,11 +375,6 @@ const Reports = () => {
     }
     
     const filteredLogs = executionLogs.filter((log: ActivityLogEntry) => {
-      const matchesSearch = log.action?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-        log.entity_name?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-        log.user_name?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-        log.module?.toLowerCase().includes(scheduleSearchQuery.toLowerCase());
-        
       let matchesDate = true;
       if (exportDateRange.start && exportDateRange.end && log.created_at) {
         const logDate = new Date(log.created_at);
@@ -390,7 +384,7 @@ const Reports = () => {
         end.setHours(23, 59, 59, 999);
         matchesDate = logDate >= start && logDate <= end;
       }
-      return matchesSearch && matchesDate;
+      return matchesDate;
     });
 
     if (filteredLogs.length === 0) {
@@ -989,24 +983,6 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                 <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
                   <h3 className="font-semibold text-[var(--text-primary)]">Active Scheduled Reports</h3>
                   <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search schedules..."
-                        value={scheduleSearchQuery}
-                        onChange={(e) => setScheduleSearchQuery(e.target.value)}
-                        className="w-64 px-3 py-2 pl-9 border border-[var(--border-color)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
-                      />
-                      <Search className="w-4 h-4 text-[var(--text-tertiary)] absolute left-3 top-1/2 -translate-y-1/2" />
-                      {scheduleSearchQuery && (
-                        <button
-                          onClick={() => setScheduleSearchQuery('')}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-[var(--background)] rounded-full transition-colors"
-                        >
-                          <X className="w-4 h-4 text-red-500" />
-                        </button>
-                      )}
-                    </div>
                     <button
                       onClick={() => {
                         setShowCreateSchedule(true);
@@ -1035,12 +1011,11 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                 </div>
                 <div className="overflow-x-auto">
                 <DataTable
-                  data={(scheduledReports || []).filter((report: ScheduleEntry) =>
-                    report.name.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-                    report.frequency.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-                    (report.recipients?.join(', ') || '').toLowerCase().includes(scheduleSearchQuery.toLowerCase())
-                  )}
+                  data={scheduledReports || []}
                   rowKey={(report: ScheduleEntry) => report.id}
+                  searchable
+                  searchKeys={(report: ScheduleEntry) => `${report.name} ${report.frequency} ${(report.recipients?.join(', ') || '')}`}
+                  searchPlaceholder="Search schedules..."
                   logEntityType="report"
                   logFor={(report: ScheduleEntry) => ({ id: report.id, label: report.name })}
                   emptyMessage="No scheduled reports found"
@@ -1418,7 +1393,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
             </div>
           )}
 
-          {/* TODO: Extract to components/ActivityLogPanel.tsx — 132 lines, depends on selectedLogModule/scheduleSearchQuery/executionLogs/exportLogs/showLogExportModal/exportDateRange/exportFormat */}
+          {/* TODO: Extract to components/ActivityLogPanel.tsx — 132 lines, depends on selectedLogModule/executionLogs/exportLogs/showLogExportModal/exportDateRange/exportFormat */}
           {/* REPORT LOG SECTION */}
           {activeSection === 'report-log' && (
             <div className="space-y-6">
@@ -1444,27 +1419,15 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                         <Download className="w-4 h-4" /> Export Report
                       </button>
                     </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Search logs..."
-                        value={scheduleSearchQuery}
-                        onChange={(e) => setScheduleSearchQuery(e.target.value)}
-                        className="w-64 px-3 py-2 pl-9 border border-[var(--border-color)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
-                      />
-                      <Search className="w-4 h-4 text-[var(--text-tertiary)] absolute left-3 top-1/2 -translate-y-1/2" />
-                    </div>
                   </div>
                 </div>
                 <div className="overflow-x-auto">
                   <DataTable
-                    data={(executionLogs || []).filter((log: ActivityLogEntry) =>
-                      log.action?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-                      log.entity_name?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-                      log.user_name?.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
-                      log.module?.toLowerCase().includes(scheduleSearchQuery.toLowerCase())
-                    )}
+                    data={executionLogs || []}
                     rowKey={(log: ActivityLogEntry) => log.id}
+                    searchable
+                    searchKeys={(log: ActivityLogEntry) => `${log.action} ${log.entity_name} ${log.user_name} ${log.module}`}
+                    searchPlaceholder="Search logs..."
                     logEntityType="report_execution"
                     logFor={(log: ActivityLogEntry) => ({ id: log.id, label: log.entity_name || `#${log.id}` })}
                     emptyMessage={`No activity logs found for ${selectedLogModule === 'All' ? 'all modules' : selectedLogModule}`}

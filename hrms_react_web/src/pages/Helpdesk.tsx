@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Headset, Plus, Search, Eye, Edit2, Trash2,
+  Headset, Plus, Eye, Edit2, Trash2,
   MessageSquare, CheckCircle2, Clock, PauseCircle, AlertTriangle, XCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -86,7 +86,7 @@ const formatStatus = (status?: string): string =>
 
 const Helpdesk = () => {
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState('');
+
   const [activeTab, setActiveTab] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -240,17 +240,8 @@ const Helpdesk = () => {
     if (priorityFilter !== 'all') {
       items = items.filter((item) => (item.priority || 'medium') === priorityFilter);
     }
-    if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      items = items.filter(
-        (item) =>
-          item.subject.toLowerCase().includes(q) ||
-          (item.ticket_no || '').toLowerCase().includes(q) ||
-          (item.employeeName || '').toLowerCase().includes(q)
-      );
-    }
     return items;
-  }, [tickets, activeTab, categoryFilter, priorityFilter, searchTerm]);
+  }, [tickets, activeTab, categoryFilter, priorityFilter]);
 
   const stats = useMemo(() => {
     const list = tickets as TicketRow[];
@@ -396,7 +387,7 @@ const Helpdesk = () => {
 
   if (!mounted) return <PageSkeleton />;
 
-  const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all' || searchTerm.trim() !== '';
+  const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all';
 
   return (
     <div className="space-y-6 animate-page-enter">
@@ -436,16 +427,6 @@ const Helpdesk = () => {
       <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by subject, ticket no. or employee..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
-              />
-            </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <select
                 value={categoryFilter}
@@ -498,7 +479,9 @@ const Helpdesk = () => {
               columns={columns}
               data={filteredData}
               rowKey={(row) => row.id}
-              searchable={false}
+              searchable
+              searchKeys={(row: TicketRow) => `${row.subject} ${row.ticket_no || ''} ${row.employeeName || ''}`}
+              searchPlaceholder="Search by subject, ticket no. or employee..."
               emptyMessage={hasActiveFilters ? 'No tickets match your filters' : 'No tickets found'}
               persistKey="helpdesk"
               exportFilename="helpdesk_tickets.csv"

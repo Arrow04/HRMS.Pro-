@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import type { LeaveApplication, LeaveBalance, Employee, Company, Department, Branch } from '../types';
 import {
-  Plus, CheckCircle2, XCircle, RotateCcw, Clock, CalendarDays, CalendarCheck, Edit2, Trash2, Search, X,
+  Plus, CheckCircle2, XCircle, RotateCcw, Clock, CalendarDays, CalendarCheck, Edit2, Trash2, X,
   CloudCog, Calendar, TrendingUp, Filter, User, Users, Download, Upload, Loader2, Info, CreditCard, MapPin, Phone, Sparkles, Settings, RefreshCw, Award
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
@@ -221,9 +221,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
       try { const r = await api.get('/leave-balances', { params: { year: filterYear || undefined, limit: 500, page: 1 } }); return r.data?.data ?? r.data ?? []; } catch { return []; }
     },
   });
-  const filteredBalances = balances.filter((b: BalanceRow) =>
-    !searchTerm || b.employeeName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredBalances = balances;
 
     const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -271,13 +269,12 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const { data: leaveStatusOptions = [] } = useMasterData('LEAVE_STATUS');
 
   const filteredLeaveTypes = leaveTypes.filter((type: LeaveTypeRow) => {
-    const matchesSearch = !searchTerm || (type.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (type.code || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = leaveTypeStatusFilter === 'all'
       ? true
       : leaveTypeStatusFilter === 'active'
         ? type.status !== 'inactive'
         : type.status === 'inactive';
-    return matchesSearch && matchesStatus;
+    return matchesStatus;
   });
 
   const { data: stats = { pending: 0, approved: 0, rejected: 0, total: 0, approvedToday: 0, rejectedToday: 0, totalMonth: 0 } } = useQuery({
@@ -1024,16 +1021,6 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             {/* FILTERS */}
             <div className="flex flex-col md:flex-row gap-4 px-6 py-5 border-b border-[var(--border-color)] bg-white">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" />
-                <input
-                  type="text"
-                  placeholder="Search leave types..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2.5 bg-[var(--background)] border border-[var(--border-color)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2] transition-shadow"
-                />
-              </div>
               <SearchableSelect
                 value={leaveTypeCompanyFilter === 'all' ? 'all' : Number(leaveTypeCompanyFilter)}
                 onChange={(val) => setLeaveTypeCompanyFilter(val === 'all' ? 'all' : String(val))}
@@ -1059,6 +1046,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
               <DataTable
                 data={filteredLeaveTypes}
                 rowKey={(type: LeaveTypeRow) => type.id}
+                searchable
+                searchKeys={(type: LeaveTypeRow) => `${type.name} ${type.code || ''}`}
+                searchPlaceholder="Search leave types..."
                 logEntityType="leave_type"
                 logFor={(type: LeaveTypeRow) => ({ id: type.id, label: type.name })}
                 emptyMessage={leaveTypes.length === 0 ? 'No leave types configured' : 'No leave types match the current filter'}
@@ -1117,16 +1107,6 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         {activeTab === 'balance' && (
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex flex-col md:flex-row gap-4 px-6 py-5 border-b border-[var(--border-color)] bg-white">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" />
-                <input
-                  type="text"
-                  placeholder="Search employee..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2.5 bg-[var(--background)] border border-[var(--border-color)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2] transition-shadow"
-                />
-              </div>
               <SearchableSelect
                 value={filterYear === '' ? 'all' : filterYear}
                 onChange={(val) => setFilterYear(val === 'all' ? '' : val.toString())}
@@ -1152,6 +1132,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                 <DataTable
                   data={filteredBalances}
                   rowKey={(b: BalanceRow) => b.id}
+                  searchable
+                  searchKeys={(b: BalanceRow) => `${b.employeeName} ${b.employeeCode || ''}`}
+                  searchPlaceholder="Search by employee name or code..."
                   logEntityType="leave"
                   logFor={(b: BalanceRow) => ({ id: b.id, label: b.employeeName })}
                   emptyMessage="No leave balances found"

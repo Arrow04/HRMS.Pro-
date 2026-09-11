@@ -285,7 +285,6 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   // Bonuses state
   const [showBonusForm, setShowBonusForm] = useState(false);
   const [bonusForm, setBonusForm] = useState<BonusForm>({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '' });
-  const [bonusSearch, setBonusSearch] = useState('');
   const [bonusYearFilter, setBonusYearFilter] = useState(new Date().getFullYear());
   const [bonusCompanyFilter, setBonusCompanyFilter] = useState('all');
   const [bonusBranchFilter, setBonusBranchFilter] = useState('all');
@@ -954,11 +953,10 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   });
 
   const filteredBonuses = bonuses.filter((b: BonusRecord) => {
-    const matchSearch = !bonusSearch || b.employeeName?.toLowerCase().includes(bonusSearch.toLowerCase());
     const matchCompany = bonusCompanyFilter === 'all' || b.companyId?.toString() === bonusCompanyFilter;
     const matchBranch = bonusBranchFilter === 'all' || b.branchId?.toString() === bonusBranchFilter;
     const matchDept = bonusDeptFilter === 'all' || b.departmentId?.toString() === bonusDeptFilter;
-    return matchSearch && matchCompany && matchBranch && matchDept;
+    return matchCompany && matchBranch && matchDept;
   });
 
   const createBonusMutation = useMutation({
@@ -2341,12 +2339,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
               </button>
             </div>
             <div className="flex flex-col md:flex-row gap-4 px-6 py-4 border-b border-[var(--border-color)]">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" />
-                <input type="text" placeholder="Search employee..." value={bonusSearch}
-                  onChange={(e) => setBonusSearch(e.target.value)}
-                  className="w-full pl-11 pr-4 py-2 bg-[var(--background)] border border-[var(--border-color)] rounded-xl text-sm" />
-              </div>
               <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
                 options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
                 placeholder="Select Year" allOption="Select Year" className="w-36" />
@@ -2379,6 +2371,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
               <DataTable
                 data={filteredBonuses}
                 rowKey={(b: BonusRecord, i) => b.id ?? i}
+                searchable
+                searchKeys={(b: BonusRecord) => `${b.employeeName}`}
+                searchPlaceholder="Search by employee name..."
                 logEntityType="payroll"
                 logFor={(b: BonusRecord) => ({ id: b.id ?? `${b.employeeName}-${b.month}/${b.year}`, label: b.employeeName })}
                 emptyMessage="No bonus records found"
