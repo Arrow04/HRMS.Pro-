@@ -248,6 +248,7 @@ const Notifications = () => {
   const [deleteTarget, setDeleteTarget] = useState<NormalizedNotification | null>(null);
   const [bulkTarget, setBulkTarget] = useState<{ ids: number[] } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
@@ -611,40 +612,65 @@ const Notifications = () => {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-sm font-bold text-[#0F172A]">Notification preferences</h2>
-          {mutedTypes.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setMutedTypes([])}
-              className="text-xs font-semibold text-[var(--primary-blue)] hover:underline"
-            >
-              Unmute all
-            </button>
-          )}
-        </div>
-        <p className="text-xs text-[#64748B] mb-4">
-          Muted categories are hidden from this list. Preferences are stored on this device only.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {PREF_CATEGORIES.map((c) => {
-            const muted = mutedTypes.includes(c.id);
-            return (
-              <div
-                key={c.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm">
+        <button
+          type="button"
+          onClick={() => setShowPreferences(!showPreferences)}
+          className="w-full flex items-center justify-between p-5 text-left"
+        >
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-bold text-[#0F172A]">Notification preferences</h2>
+            {mutedTypes.length > 0 && (
+              <span className="text-[10px] font-semibold text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 rounded-full">
+                {mutedTypes.length} muted
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {mutedTypes.length > 0 && (
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); setMutedTypes([]); }}
+                className="text-xs font-semibold text-[var(--primary-blue)] hover:underline"
               >
-                <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
-                <ToggleSwitch
-                  checked={!muted}
-                  onChange={() => toggleMute(c.id)}
-                  helpText={muted ? `Muted — click to unmute ${c.label}` : `Active — click to mute ${c.label}`}
-                />
-              </div>
-            );
-          })}
-        </div>
+                Unmute all
+              </span>
+            )}
+            <svg
+              className={`w-4 h-4 text-[#64748B] transition-transform ${showPreferences ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+        {showPreferences && (
+          <div className="px-5 pb-5 border-t border-[var(--border-color)]">
+            <p className="text-xs text-[#64748B] mt-4 mb-4">
+              Muted categories are hidden from this list. Preferences are stored on this device only.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {PREF_CATEGORIES.map((c) => {
+                const muted = mutedTypes.includes(c.id);
+                return (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[var(--border-color)] bg-[#F8FAFC]"
+                  >
+                    <span className="text-sm font-medium text-[#0F172A]">{c.label}</span>
+                    <ToggleSwitch
+                      checked={!muted}
+                      onChange={() => toggleMute(c.id)}
+                      helpText={muted ? `Muted — click to unmute ${c.label}` : `Active — click to mute ${c.label}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm overflow-hidden">
