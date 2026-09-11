@@ -428,9 +428,9 @@ const Helpdesk = () => {
       </div>
 
       <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-        <div className="p-4 border-b border-[var(--border-color)] space-y-3">
-          <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex flex-col sm:flex-row gap-3">
+        <div className="p-4 border-b border-[var(--border-color)]">
+          <div className="flex flex-col lg:flex-row items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
@@ -454,21 +454,21 @@ const Helpdesk = () => {
                 ))}
               </select>
             </div>
-          </div>
-          <div className="flex rounded-xl border border-gray-200 overflow-x-auto w-fit max-w-full">
-            {TICKET_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-[var(--primary-blue)] text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            <div className="flex rounded-xl border border-gray-200 overflow-x-auto w-fit max-w-full lg:ml-auto">
+              {TICKET_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-[var(--primary-blue)] text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
