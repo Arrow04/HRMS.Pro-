@@ -569,35 +569,45 @@ export default function Dashboard() {
 
           {/* Department Distribution */}
           <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200}>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={stats.departmentDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={85}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, percent }) => percent && percent > 0.06 ? `${name} ${(percent * 100).toFixed(0)}%` : ''}
-                  labelLine={{ stroke: '#94A3B8', strokeWidth: 1, strokeDasharray: '3 3' }}
-                  stroke="white"
-                  strokeWidth={2}
-                >
-                  {stats.departmentDistribution.map((entry: { name: string; employees: number; value: number }, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
+            <ResponsiveContainer width="100%" height={Math.max(200, stats.departmentDistribution.length * 36)}>
+              <BarChart
+                data={stats.departmentDistribution}
+                layout="vertical"
+                margin={{ top: 4, right: 30, left: 8, bottom: 4 }}
+              >
+                <defs>
+                  <linearGradient id="deptBar" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#A78BFA" stopOpacity={0.7} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F8FAFC" />
+                <XAxis type="number" {...AXIS_STYLE} allowDecimals={false} tickLine={false} axisLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  {...AXIS_STYLE}
+                  width={110}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                  formatter={(value: number) => [`${value} employees`, '']}
                 />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
-                />
-              </PieChart>
+                <Bar
+                  dataKey="value"
+                  name="Employees"
+                  fill="url(#deptBar)"
+                  radius={[0, 8, 8, 0]}
+                  maxBarSize={24}
+                  label={{ position: 'right', fill: '#64748B', fontSize: 11, fontWeight: 600 }}
+                >
+                  {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
