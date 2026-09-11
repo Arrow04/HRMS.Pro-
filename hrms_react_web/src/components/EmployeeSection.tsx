@@ -163,7 +163,7 @@ const EmployeeSection = ({
         <DataTable
           data={filteredData}
           rowKey={(item: EmployeeRow) => item.id}
-          searchable={!serverPagination}
+          searchable
           serverPagination={serverPagination}
           searchKeys={(item: EmployeeRow) => `${personDisplayName(item)} ${item.employeeCode || ''} ${item.email || ''} ${item.company?.name || ''} ${item.department?.name || ''}`}
           searchPlaceholder="Search employees..."
