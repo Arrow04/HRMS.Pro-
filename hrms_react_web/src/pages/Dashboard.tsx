@@ -613,7 +613,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={stats.ageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <defs>
-                  <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="ageBar" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
                     <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.6} />
                   </linearGradient>
@@ -622,33 +622,52 @@ export default function Dashboard() {
                 <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" fill="url(#purpleBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
+                <Bar dataKey="value" fill="url(#ageBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Department Distribution */}
-          <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={400}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
-                    <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.6} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" name="Employees" fill="url(#purpleBar)" radius={[8, 8, 0, 0]} maxBarSize={44}>
-                  {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          {(() => {
+            const deptCount = stats.departmentDistribution.length;
+            const chartHeight = Math.max(280, Math.min(600, deptCount * 36));
+            const rotateLabels = deptCount > 10;
+            return (
+              <ChartCard title="Department Distribution" subtitle={`${deptCount} departments`} icon={Building} accent="violet" delay={400}>
+                <div className="h-full overflow-y-auto custom-scrollbar" style={{ maxHeight: 480 }}>
+                  <ResponsiveContainer width="100%" height={chartHeight}>
+                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: rotateLabels ? 60 : 5 }}>
+                      <defs>
+                        <linearGradient id="deptDistBar" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                          <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.5} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                      <XAxis
+                        dataKey="name"
+                        {...AXIS_STYLE}
+                        tickLine={false}
+                        axisLine={false}
+                        interval={0}
+                        angle={rotateLabels ? -45 : 0}
+                        textAnchor={rotateLabels ? 'end' : 'middle'}
+                        height={rotateLabels ? 70 : 30}
+                        tick={rotateLabels ? { fontSize: 10, fill: '#94A3B8' } : undefined}
+                      />
+                      <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                      <Bar dataKey="value" name="Employees" fill="url(#deptDistBar)" radius={[8, 8, 0, 0]} maxBarSize={40}>
+                        {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+            );
+          })()}
 
           {/* Join/Attrition Ratio Chart */}
           <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald" delay={500}>
