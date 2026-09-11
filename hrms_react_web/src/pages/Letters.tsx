@@ -804,6 +804,8 @@ const Letters = () => {
   const [newTermInput, setNewTermInput] = useState('');
   const [editingTermIdx, setEditingTermIdx] = useState<number | null>(null);
   const [editingTermValue, setEditingTermValue] = useState('');
+  const [removedDefaults, setRemovedDefaults] = useState<Record<string, number[]>>({});
+  const [editedDefaults, setEditedDefaults] = useState<Record<string, Record<number, string>>>({});
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setMounted(true));
@@ -954,7 +956,7 @@ const Letters = () => {
       ...prev,
       [templateId]: (prev[templateId] || []).filter((_, i) => i !== idx),
     }));
-    if (editingTermIdx === idx) {
+    if (editingTermIdx === -(idx + 1)) {
       setEditingTermIdx(null);
       setEditingTermValue('');
     }
@@ -967,12 +969,39 @@ const Letters = () => {
 
   const saveEditTerm = () => {
     if (editingTermIdx === null || !editingTermValue.trim()) return;
-    setCustomTerms((prev) => ({
-      ...prev,
-      [templateId]: (prev[templateId] || []).map((t, i) => i === editingTermIdx ? editingTermValue.trim() : t),
-    }));
+    if (editingTermIdx >= 0) {
+      setEditedDefaults((prev) => ({
+        ...prev,
+        [templateId]: { ...(prev[templateId] || {}), [editingTermIdx]: editingTermValue.trim() },
+      }));
+    } else {
+      const customIdx = -(editingTermIdx + 1);
+      setCustomTerms((prev) => ({
+        ...prev,
+        [templateId]: (prev[templateId] || []).map((t, i) => i === customIdx ? editingTermValue.trim() : t),
+      }));
+    }
     setEditingTermIdx(null);
     setEditingTermValue('');
+  };
+
+  const removeDefaultTerm = (idx: number) => {
+    setRemovedDefaults((prev) => ({
+      ...prev,
+      [templateId]: [...(prev[templateId] || []), idx],
+    }));
+    setEditedDefaults((prev) => {
+      const copy = { ...(prev[templateId] || {}) };
+      delete copy[idx];
+      return { ...prev, [templateId]: copy };
+    });
+  };
+
+  const restoreDefaultTerm = (idx: number) => {
+    setRemovedDefaults((prev) => ({
+      ...prev,
+      [templateId]: (prev[templateId] || []).filter((i) => i !== idx),
+    }));
   };
 
   const clearEmployee = () => {
@@ -1003,10 +1032,15 @@ const Letters = () => {
   }, [fields, selectedEmployee]);
 
   const contextRows = useMemo(() => {
-    const defaultRows = template.context ? template.context(merged) : [];
-    const extra = customTerms[template.id] || [];
-    return [...defaultRows, ...extra];
-  }, [template, merged, customTerms]);
+    const allDefaultRows = template.context ? template.context(merged) : [];
+    const edited = editedDefaults[templateId] || {};
+    const removed = removedDefaults[templateId] || [];
+    const keptDefaults = allDefaultRows
+      .map((row, i) => edited[i] ?? row)
+      .filter((_, i) => !removed.includes(i));
+    const extra = customTerms[templateId] || [];
+    return [...keptDefaults, ...extra];
+  }, [template, merged, customTerms, removedDefaults, editedDefaults, templateId]);
 
   const contactLine = useMemo(() => {
     const parts = [letterhead.company_email, letterhead.company_website]
@@ -1200,7 +1234,7 @@ const Letters = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/60 animate-page-enter">
+    <div className="min-h-screen bg-[var(--background)] animate-page-enter">
       <div className="max-w-[1600px] mx-auto space-y-5 px-4 sm:px-6 pb-12">
 
         <PageHero
@@ -1671,7 +1705,7 @@ const Letters = () => {
               </div>
             </div>
 
-            {/* ── SECTION 5: Custom Terms ── */}
+            {/* ── SECTION 5: Terms & Annexure ── */}
             <div
               className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
               style={{ animationDelay: '200ms' }}
@@ -1682,98 +1716,99 @@ const Letters = () => {
                     <FileText className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Custom Terms</h3>
-                    <p className="text-[11px] text-gray-400">Add or remove annexure items</p>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">Terms & Annexure</h3>
+                    <p className="text-[11px] text-gray-400">Edit, delete or add terms — all are customizable</p>
                   </div>
                 </div>
               </div>
 
-              <div className="p-5 space-y-3">
-                {/* Default terms (read-only, from template) */}
-                {template.context && template.context(merged).length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Default Terms</p>
-                    <div className="space-y-1.5">
-                      {template.context(merged).map((row, i) => (
-                        <div key={`default-${i}`} className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                          <span className="text-gray-400 mt-0.5 shrink-0">•</span>
-                          <span className="flex-1 leading-relaxed">{row}</span>
-                        </div>
-                      ))}
+              <div className="p-5 space-y-2">
+                {/* All visible terms (defaults + custom) */}
+                {contextRows.map((row, i) => {
+                  const isCustom = i >= (template.context ? template.context(merged).length - (removedDefaults[templateId] || []).length : 0);
+                  const origIdx = isCustom ? -1 : i;
+                  return (
+                    <div
+                      key={`term-${i}`}
+                      className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 group transition-colors ${
+                        isCustom
+                          ? 'bg-violet-50 border border-violet-200 text-violet-800'
+                          : 'bg-gray-50 border border-gray-100 text-gray-700'
+                      }`}
+                    >
+                      <span className={`mt-0.5 shrink-0 ${isCustom ? 'text-violet-400' : 'text-gray-400'}`}>•</span>
+                      {editingTermIdx === i ? (
+                        <input
+                          type="text"
+                          value={editingTermValue}
+                          onChange={(e) => setEditingTermValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); saveEditTerm(); }
+                            if (e.key === 'Escape') { setEditingTermIdx(null); setEditingTermValue(''); }
+                          }}
+                          onBlur={saveEditTerm}
+                          autoFocus
+                          className="flex-1 text-xs bg-white border border-violet-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                        />
+                      ) : (
+                        <span
+                          className="flex-1 leading-relaxed cursor-pointer hover:underline decoration-dotted underline-offset-2"
+                          onClick={() => startEditTerm(i, row)}
+                          title="Click to edit"
+                        >
+                          {row}
+                        </span>
+                      )}
+                      <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                        {editingTermIdx === i ? (
+                          <button
+                            onClick={saveEditTerm}
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-emerald-500 hover:bg-emerald-100 transition-colors"
+                            aria-label="Save"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => startEditTerm(i, row)}
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-violet-100 hover:text-violet-700 transition-colors"
+                            aria-label="Edit"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => isCustom ? removeCustomTerm(i - (contextRows.length - (customTerms[templateId] || []).length)) : removeDefaultTerm(origIdx)}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                          aria-label="Delete"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })}
 
-                {/* Custom terms (editable) */}
-                {customTerms[templateId] && customTerms[templateId].length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold text-violet-500 uppercase tracking-wider mb-2">Your Custom Terms</p>
-                    <div className="space-y-1.5">
-                      {customTerms[templateId].map((row, i) => (
-                        <div key={`custom-${i}`} className="flex items-start gap-2 text-xs bg-violet-50 border border-violet-200 text-violet-800 rounded-lg px-3 py-2 group">
-                          <span className="text-violet-400 mt-0.5 shrink-0">•</span>
-                          {editingTermIdx === i ? (
-                            <input
-                              type="text"
-                              value={editingTermValue}
-                              onChange={(e) => setEditingTermValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') { e.preventDefault(); saveEditTerm(); }
-                                if (e.key === 'Escape') { setEditingTermIdx(null); setEditingTermValue(''); }
-                              }}
-                              onBlur={saveEditTerm}
-                              autoFocus
-                              className="flex-1 text-xs bg-white border border-violet-300 rounded-lg px-2 py-1 focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                            />
-                          ) : (
-                            <span
-                              className="flex-1 leading-relaxed cursor-pointer hover:text-violet-600 hover:underline decoration-dotted underline-offset-2"
-                              onClick={() => startEditTerm(i, row)}
-                              title="Click to edit"
-                            >
-                              {row}
-                            </span>
-                          )}
-                          <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
-                            {editingTermIdx === i ? (
-                              <button
-                                onClick={saveEditTerm}
-                                className="w-5 h-5 rounded-full flex items-center justify-center text-emerald-500 hover:bg-emerald-100 transition-colors"
-                                aria-label="Save term"
-                              >
-                                <Check className="w-3 h-3" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => startEditTerm(i, row)}
-                                className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-violet-100 hover:text-violet-700 transition-colors"
-                                aria-label="Edit term"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => removeCustomTerm(i)}
-                              className="w-5 h-5 rounded-full flex items-center justify-center text-violet-400 hover:bg-red-100 hover:text-red-600 transition-colors"
-                              aria-label="Remove term"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {/* Restore removed defaults */}
+                {(removedDefaults[templateId] || []).length > 0 && (
+                  <div className="pt-1">
+                    <button
+                      onClick={() => setRemovedDefaults((prev) => ({ ...prev, [templateId]: [] }))}
+                      className="text-[11px] text-gray-400 hover:text-violet-600 underline transition-colors"
+                    >
+                      Restore {removedDefaults[templateId].length} removed default term{(removedDefaults[templateId].length) > 1 ? 's' : ''}
+                    </button>
                   </div>
                 )}
 
                 {/* Add new term */}
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-2 border-t border-gray-100">
                   <input
                     type="text"
                     value={newTermInput}
                     onChange={(e) => setNewTermInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTerm(); } }}
-                    placeholder="Add a custom term…"
+                    placeholder="Add a new term…"
                     className="flex-1 px-3 py-2 text-xs border border-gray-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-all"
                   />
                   <button
@@ -1786,8 +1821,8 @@ const Letters = () => {
                   </button>
                 </div>
 
-                {(customTerms[templateId] || []).length === 0 && (!template.context || template.context(merged).length === 0) && (
-                  <p className="text-xs text-gray-400 text-center py-2">No terms yet. Add custom terms above.</p>
+                {contextRows.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">No terms yet. Add terms above.</p>
                 )}
               </div>
             </div>
