@@ -3,7 +3,7 @@ import {
   FileText, Search, Download, Printer, Copy, Check, X, Pencil,
   Briefcase, ClipboardCheck, Award, TrendingUp, LogOut, FileBadge, Stamp,
   ChevronDown, ChevronRight, Sparkles, ZoomIn, ZoomOut, Users, Building2,
-  ChevronLeft as ChevronLeftIcon, Eye,
+  ChevronLeft as ChevronLeftIcon, Eye, HelpCircle,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +35,7 @@ type Template = {
   label: string;
   description: string;
   icon: React.ElementType;
+  helpText: string;
   subject: (f: Record<string, string>) => string;
   greeting: (f: Record<string, string>) => string;
   body: (f: Record<string, string>) => string[];
@@ -68,6 +69,7 @@ const TEMPLATES: Template[] = [
     label: 'Offer Letter',
     description: 'Job offer with role, salary and joining date',
     icon: Briefcase,
+    helpText: 'Use this when extending a formal job offer to a selected candidate. Fill in the designation, salary (annual CTC), joining date, and reporting manager. The letter includes probation, notice period, and acceptance deadline terms. Send within 24-48 hours of the verbal offer to secure the candidate.',
     subject: (f) => `Offer of Employment — ${f.designation || 'Position'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Candidate'},`,
     body: (f) => [
@@ -111,6 +113,7 @@ const TEMPLATES: Template[] = [
     label: 'Appointment Letter',
     description: 'Formal appointment with terms of employment',
     icon: ClipboardCheck,
+    helpText: 'Issue this after the candidate accepts the offer and before their joining date. This is the legally binding employment contract — it confirms role, CTC, probation, notice period, and all statutory terms. Ensure all fields are accurate as this document has legal standing.',
     subject: (f) => `Letter of Appointment — ${f.employee_name || 'Employee'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -151,6 +154,7 @@ const TEMPLATES: Template[] = [
     label: 'Probation Confirmation',
     description: 'Confirm employment after probation',
     icon: FileBadge,
+    helpText: 'Issue when an employee successfully completes their probation period. Fill in the review period, confirmation date, and reviewer remarks. This letter activates enhanced benefits (gratuity eligibility, higher leave, etc.) and extends the notice period to full terms.',
     subject: () => 'Confirmation of Employment',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -182,6 +186,7 @@ const TEMPLATES: Template[] = [
     label: 'Appraisal Letter',
     description: 'Salary revision after performance review',
     icon: TrendingUp,
+    helpText: 'Issue after completing the annual or semi-annual performance review cycle. Enter the increment percentage, revised CTC, effective date, and rating. The letter serves as official record of the salary revision and should reference the review period.',
     subject: (f) => `Salary Revision — FY ${f.financial_year || '2025-26'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -217,6 +222,7 @@ const TEMPLATES: Template[] = [
     label: 'Relieving Letter',
     description: 'Confirm separation and last working day',
     icon: LogOut,
+    helpText: 'Issue on or after the employee\'s last working day, once all exit formalities (asset return, clearance, FnF) are complete. This is a critical document for the employee\'s next employer. Include clearance notes and notice period served.',
     subject: () => 'Relieving Letter',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -248,6 +254,7 @@ const TEMPLATES: Template[] = [
     label: 'Experience Letter',
     description: 'Service certificate with tenure and conduct',
     icon: Award,
+    helpText: 'Issue upon request for visa applications, background verification, or new employment. Certifies the employee\'s tenure, designation, and conduct. Include key responsibilities and department for a comprehensive service record.',
     subject: () => 'To Whom It May Concern — Service Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
@@ -278,6 +285,7 @@ const TEMPLATES: Template[] = [
     label: 'No Objection Certificate',
     description: 'NOC for visa, loan or higher studies',
     icon: Stamp,
+    helpText: 'Issue when an employee needs company clearance for a visa application, bank loan, or higher education. Specify the exact purpose and validity period. The NOC is purpose-specific — a separate certificate is needed for each different purpose.',
     subject: () => 'No Objection Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
@@ -309,6 +317,7 @@ const TEMPLATES: Template[] = [
     label: 'Show Cause Notice',
     description: 'Seek written explanation for misconduct',
     icon: FileText,
+    helpText: 'Issue before initiating any disciplinary action — this is a mandatory step under natural justice. Describe the misconduct factually, set a reply deadline (typically 24-72 hours), and warn that non-response equals no defence. Keep the tone neutral — this is not a finding of guilt.',
     subject: (f) => `Show Cause Notice — ${f.misconduct || 'Misconduct'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -341,6 +350,7 @@ const TEMPLATES: Template[] = [
     label: 'Warning Letter',
     description: 'First or final written warning',
     icon: FileText,
+    helpText: 'Issue after reviewing the employee\'s response to a show cause notice (or after an enquiry). Specify the warning level (First / Second / Final) and the improvement area. A final warning should explicitly state consequences. Retain a copy in the personnel file.',
     subject: (f) => `${f.warning_level || 'Written'} Warning — ${f.misconduct || 'Conduct'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -375,6 +385,7 @@ const TEMPLATES: Template[] = [
     label: 'Performance Improvement Plan',
     description: 'Structured PIP with goals and review',
     icon: FileText,
+    helpText: 'Issue when an employee\'s performance consistently falls below expectations. Define clear, measurable goals and a realistic duration (typically 4-12 weeks). Specify review frequency. The PIP should be developmental in intent — document the support you will provide.',
     subject: () => 'Performance Improvement Plan (PIP)',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -407,6 +418,7 @@ const TEMPLATES: Template[] = [
     label: 'Suspension Letter',
     description: 'Pending-enquiry suspension order',
     icon: FileText,
+    helpText: 'Issue when an employee needs to be suspended pending a domestic enquiry (typically for serious misconduct). Specify the suspension duration, restrict access to premises and colleagues, and mention subsistence allowance. This is a severe step — ensure legal review.',
     subject: () => 'Order of Suspension Pending Enquiry',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -442,6 +454,7 @@ const TEMPLATES: Template[] = [
     label: 'Termination Letter',
     description: 'End employment for cause or restructuring',
     icon: FileText,
+    helpText: 'Issue as the final step in disciplinary proceedings or for restructuring/downsizing. Specify the reason, notice pay details, and settlement timeline. Ensure due process has been followed (show cause → enquiry → opportunity of hearing). Legal review is strongly recommended.',
     subject: () => 'Termination of Employment',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -476,6 +489,7 @@ const TEMPLATES: Template[] = [
     label: 'Absconding Notice',
     description: 'Unauthorised absence / job abandonment',
     icon: FileText,
+    helpText: 'Issue when an employee has been absent without leave or communication for an extended period. Send via registered post / email with read receipt. Set a final deadline (typically 7-15 days) and warn that non-response will be treated as job abandonment. Document all contact attempts.',
     subject: () => 'Notice Regarding Unauthorised Absence',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -507,6 +521,7 @@ const TEMPLATES: Template[] = [
     label: 'Promotion Letter',
     description: 'Elevation with revised role and pay',
     icon: FileText,
+    helpText: 'Issue when promoting an employee to a higher role. Include current and new designation, revised CTC, effective date, and new department (if applicable). Mention the key achievements that led to the promotion. This is a morale-boosting document — make it celebratory.',
     subject: (f) => `Promotion — ${f.new_designation || 'New Role'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -540,6 +555,7 @@ const TEMPLATES: Template[] = [
     label: 'Transfer Letter',
     description: 'Location or department transfer order',
     icon: FileText,
+    helpText: 'Issue when transferring an employee to a different location or department. Include current and new location, new department (if changing), reporting manager, and handover deadline. Mention relocation assistance if applicable. Employee must acknowledge receipt within 3 working days.',
     subject: () => 'Order of Transfer',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -576,6 +592,7 @@ const TEMPLATES: Template[] = [
     label: 'Resignation Acceptance',
     description: 'Accept resignation and confirm exit terms',
     icon: FileText,
+    helpText: 'Issue after receiving an employee\'s resignation letter. Confirm the last working day, settlement timeline, and exit formalities required (knowledge transfer, asset return, clearance). Include a reminder of surviving obligations (confidentiality, non-solicitation).',
     subject: () => 'Acceptance of Resignation',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -607,6 +624,7 @@ const TEMPLATES: Template[] = [
     label: 'Full & Final Settlement',
     description: 'Dues statement on separation',
     icon: FileText,
+    helpText: 'Issue after computing all dues on separation. List earnings (leave encashment, bonus, salary arrears) and deductions (notice shortfall, asset recovery, advances). Specify the net payable amount and credit timeline. Employee must sign the duplicate copy to acknowledge.',
     subject: () => 'Full and Final Settlement Statement',
     greeting: (f) => `Dear ${f.employee_name || 'Employee'},`,
     body: (f) => [
@@ -642,6 +660,7 @@ const TEMPLATES: Template[] = [
     label: 'Salary Certificate',
     description: 'Proof of employment and pay',
     icon: FileText,
+    helpText: 'Issue when an employee needs proof of employment and income — typically for home loan, personal loan, visa, or rental agreement. Include gross monthly, annual CTC, and purpose. This is a third-party document — keep it factual and concise.',
     subject: () => 'Salary Certificate',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
@@ -665,6 +684,7 @@ const TEMPLATES: Template[] = [
     label: 'Internship Offer',
     description: 'Offer letter for interns with stipend',
     icon: FileText,
+    helpText: 'Use when offering an internship position. Include role, department, duration, stipend, and start date. Clarify that this is not an employment offer and IP vests in the company. Specify weekly commitment and leave entitlement.',
     subject: (f) => `Internship Offer — ${f.designation || 'Intern'}`,
     greeting: (f) => `Dear ${f.employee_name || 'Candidate'},`,
     body: (f) => [
@@ -699,6 +719,7 @@ const TEMPLATES: Template[] = [
     label: 'Internship Completion',
     description: 'Certificate on successful internship',
     icon: FileText,
+    helpText: 'Issue at the end of a successful internship period. Include the intern\'s role, department, duration, key contributions, and performance assessment. This certificate serves as a professional reference for the intern\'s future opportunities.',
     subject: () => 'Certificate of Internship',
     greeting: () => 'To Whom It May Concern,',
     body: (f) => [
@@ -1190,6 +1211,7 @@ const Letters = () => {
   /* ── Category / search ─────────────────────────────────────────────────────── */
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('all');
   const [templateSearch, setTemplateSearch] = useState('');
+  const [showHelp, setShowHelp] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const filteredGroups = useMemo(() => {
@@ -1459,6 +1481,35 @@ const Letters = () => {
                 ))}
               </div>
             </div>
+
+            {/* ── Help Panel (collapsible) ── */}
+            {template && (
+              <div
+                className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 backdrop-blur-xl rounded-2xl border border-amber-200/60 shadow-lg overflow-hidden transition-all duration-300"
+                style={{ animationDelay: '25ms' }}
+              >
+                <button
+                  onClick={() => setShowHelp((h) => !h)}
+                  className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-amber-100/30 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shrink-0">
+                    <HelpCircle className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="flex-1">
+                    <span className="text-sm font-bold text-amber-900">How to create this letter</span>
+                    <span className="block text-[11px] text-amber-600/80 mt-0.5">Tips and guidance for {template.label}</span>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-amber-500 transition-transform duration-200 ${showHelp ? 'rotate-180' : ''}`} />
+                </button>
+                {showHelp && (
+                  <div className="px-5 pb-4 pt-0">
+                    <p className="text-xs text-amber-800 leading-relaxed bg-white/60 rounded-xl px-4 py-3 border border-amber-200/40">
+                      {template.helpText}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── SECTION 2: Letterhead ── */}
             <div
