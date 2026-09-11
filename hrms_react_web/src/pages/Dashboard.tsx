@@ -504,82 +504,119 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Gender Ratio Chart */}
           <ChartCard title="Gender Ratio" subtitle="Male vs Female" icon={Users} accent="indigo" delay={0}>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={stats.genderRatio}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  outerRadius={85}
-                  innerRadius={55}
-                  paddingAngle={2}
-                  fill="#8884d8"
+                  innerRadius={65}
+                  outerRadius={100}
+                  paddingAngle={4}
                   dataKey="value"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  stroke="white"
+                  strokeWidth={2}
                 >
                   {stats.genderRatio.map((entry: ChartSlice, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="white" strokeWidth={2} />
+                    <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
+                />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Join/Attrition Ratio Chart */}
           <ChartCard title="Join/Attrition Ratio" subtitle="Hires vs exits this month" icon={TrendingUp} accent="emerald" delay={100}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.joinAttritionRatio}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={stats.joinAttritionRatio}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={65}
+                  outerRadius={100}
+                  paddingAngle={4}
+                  dataKey="value"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  stroke="white"
+                  strokeWidth={2}
+                >
                   {stats.joinAttritionRatio.map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
-                </Bar>
-              </BarChart>
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
+                />
+              </PieChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Department Distribution */}
           <ChartCard title="Department Distribution" subtitle="Employees by department" icon={Building} accent="violet" delay={200}>
-            <div className="max-h-[400px] overflow-y-auto">
-              <ResponsiveContainer width="100%" height={Math.max(220, stats.departmentDistribution.length * 22)}>
-                <BarChart data={stats.departmentDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                  <XAxis type="number" {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="name" {...AXIS_STYLE} width={110} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                  <Bar dataKey="value" name="Employees" radius={[0, 6, 6, 0]} maxBarSize={20}>
-                    {stats.departmentDistribution.map((entry: { name: string; employees: number; value: number }, index: number) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={stats.departmentDistribution}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={95}
+                  paddingAngle={3}
+                  dataKey="value"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  stroke="white"
+                  strokeWidth={2}
+                >
+                  {stats.departmentDistribution.map((entry: { name: string; employees: number; value: number }, index: number) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </ChartCard>
 
           {/* Age Distribution */}
           <ChartCard title="Age Distribution" subtitle="Workforce by age group" icon={Users} accent="purple" delay={300}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.ageDistribution}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={stats.ageDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" fill="#8B5CF6" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="value" fill="url(#purpleBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Employee Status Distribution */}
           <ChartCard title="Employee Status" subtitle="Active vs inactive" icon={Users} accent="rose" delay={400}>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={[
@@ -588,12 +625,14 @@ export default function Dashboard() {
                   ].filter((s) => s.value > 0)}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${percent ? (percent * 100).toFixed(0) : 0}%`}
-                  outerRadius={80}
-                  innerRadius={60}
-                  fill="#8884d8"
+                  innerRadius={65}
+                  outerRadius={100}
+                  paddingAngle={4}
                   dataKey="value"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  stroke="white"
+                  strokeWidth={2}
                 >
                   {[
                     { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
@@ -603,32 +642,42 @@ export default function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value) => <span className="text-xs font-semibold text-gray-600">{value}</span>}
+                />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Organization Structure Chart */}
           <ChartCard title="Organization Structure" subtitle="Companies, branches, departments & designations" icon={Building} accent="pink" delay={500}>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <BarChart data={[
                 { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
                 { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
                 { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
                 { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
-              ]}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+              ]} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="pinkBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#EC4899" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#D946EF" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={44}>
                   {[
                     { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
                     { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
                     { name: 'Departments', value: stats.totalDepartments, color: '#D946EF' },
                     { name: 'Designations', value: stats.totalDesignations, color: '#EC4899' },
                   ].map((entry: ChartSlice, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.85} />
                   ))}
                 </Bar>
               </BarChart>
@@ -640,92 +689,102 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Performance Trend */}
           <ChartCard title="Performance Trend" subtitle={`Average rating · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={0}>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                 <defs>
-                  <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.02} />
+                  <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldGrad)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Attendance Trend */}
           <ChartCard title="Attendance Trend" subtitle={`Check-ins · ${yearLabel}`} icon={Clock} accent="cyan" delay={100}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Payroll Trend */}
           <ChartCard title="Payroll Trend" subtitle={`Net payout · ${yearLabel}`} icon={Coins} accent="amber" delay={200}>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={payrollTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                 <defs>
-                  <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.02} />
+                  <linearGradient id="amberArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberGrad)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberArea)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Recruitment Trend */}
           <ChartCard title="Recruitment Pipeline" subtitle={`Candidates · ${yearLabel}`} icon={Briefcase} accent="violet" delay={300}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="violetBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
-                <Bar dataKey="candidates" name="Candidates" fill={ACCENT_COLORS.violet} radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="candidates" name="Candidates" fill="url(#violetBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Expenses Trend */}
           <ChartCard title="Expenses Trend" subtitle={`Spend · ${yearLabel}`} icon={CreditCard} accent="rose" delay={400}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={expensesTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }} />
+                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
 
           {/* Leave Trend */}
           <ChartCard title="Leave Trend" subtitle={`Leave requests · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={500}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={leaveTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={leaveTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                 <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Legend formatter={(value) => <span className="text-xs font-medium text-gray-600">{value}</span>} />
-                <Bar dataKey="leaves" name="Leaves" fill={ACCENT_COLORS.emerald} radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>

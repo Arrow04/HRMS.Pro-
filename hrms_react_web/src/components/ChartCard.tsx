@@ -10,23 +10,21 @@ export interface ChartCardProps {
   delay?: number;
 }
 
-const ACCENTS: Record<string, { icon: string; bar: string; glow: string; headerBg: string; borderHover: string }> = {
-  blue:    { icon: 'text-blue-600 bg-blue-50 border-blue-100',    bar: 'from-blue-500 to-blue-400',    glow: 'from-blue-500/10',    headerBg: 'from-blue-50/60 to-transparent',  borderHover: 'hover:border-blue-300/50' },
-  emerald: { icon: 'text-emerald-600 bg-emerald-50 border-emerald-100', bar: 'from-emerald-500 to-emerald-400', glow: 'from-emerald-500/10', headerBg: 'from-emerald-50/60 to-transparent', borderHover: 'hover:border-emerald-300/50' },
-  amber:   { icon: 'text-amber-600 bg-amber-50 border-amber-100', bar: 'from-amber-500 to-amber-400',   glow: 'from-amber-500/10',   headerBg: 'from-amber-50/60 to-transparent',   borderHover: 'hover:border-amber-300/50' },
-  rose:    { icon: 'text-rose-600 bg-rose-50 border-rose-100',    bar: 'from-rose-500 to-rose-400',    glow: 'from-rose-500/10',    headerBg: 'from-rose-50/60 to-transparent',    borderHover: 'hover:border-rose-300/50' },
-  violet:  { icon: 'text-violet-600 bg-violet-50 border-violet-100', bar: 'from-violet-500 to-violet-400', glow: 'from-violet-500/10', headerBg: 'from-violet-50/60 to-transparent',  borderHover: 'hover:border-violet-300/50' },
-  indigo:  { icon: 'text-indigo-600 bg-indigo-50 border-indigo-100', bar: 'from-indigo-500 to-indigo-400', glow: 'from-indigo-500/10', headerBg: 'from-indigo-50/60 to-transparent',  borderHover: 'hover:border-indigo-300/50' },
-  teal:    { icon: 'text-teal-600 bg-teal-50 border-teal-100',    bar: 'from-teal-500 to-teal-400',    glow: 'from-teal-500/10',    headerBg: 'from-teal-50/60 to-transparent',    borderHover: 'hover:border-teal-300/50' },
-  cyan:    { icon: 'text-cyan-600 bg-cyan-50 border-cyan-100',    bar: 'from-cyan-500 to-cyan-400',    glow: 'from-cyan-500/10',    headerBg: 'from-cyan-50/60 to-transparent',    borderHover: 'hover:border-cyan-300/50' },
-  pink:    { icon: 'text-pink-600 bg-pink-50 border-pink-100',    bar: 'from-pink-500 to-pink-400',    glow: 'from-pink-500/10',    headerBg: 'from-pink-50/60 to-transparent',    borderHover: 'hover:border-pink-300/50' },
-  purple:  { icon: 'text-purple-600 bg-purple-50 border-purple-100', bar: 'from-purple-500 to-purple-400', glow: 'from-purple-500/10', headerBg: 'from-purple-50/60 to-transparent',  borderHover: 'hover:border-purple-300/50' },
-  slate:   { icon: 'text-slate-600 bg-slate-50 border-slate-100',  bar: 'from-slate-500 to-slate-400',  glow: 'from-slate-500/10',  headerBg: 'from-slate-50/60 to-transparent',   borderHover: 'hover:border-slate-300/50' },
-  orange:  { icon: 'text-orange-600 bg-orange-50 border-orange-100', bar: 'from-orange-500 to-orange-400', glow: 'from-orange-500/10', headerBg: 'from-orange-50/60 to-transparent',  borderHover: 'hover:border-orange-300/50' },
+const ACCENTS: Record<string, { icon: string; iconBg: string; bar: string; glow: string; ring: string }> = {
+  blue:    { icon: 'text-blue-600',    iconBg: 'bg-gradient-to-br from-blue-50 to-blue-100/80 border-blue-200/60',    bar: 'from-blue-500 via-blue-400 to-blue-300',    glow: 'from-blue-500/8',    ring: 'ring-blue-500/20' },
+  emerald: { icon: 'text-emerald-600', iconBg: 'bg-gradient-to-br from-emerald-50 to-emerald-100/80 border-emerald-200/60', bar: 'from-emerald-500 via-emerald-400 to-emerald-300', glow: 'from-emerald-500/8', ring: 'ring-emerald-500/20' },
+  amber:   { icon: 'text-amber-600',   iconBg: 'bg-gradient-to-br from-amber-50 to-amber-100/80 border-amber-200/60',   bar: 'from-amber-500 via-amber-400 to-amber-300',   glow: 'from-amber-500/8',   ring: 'ring-amber-500/20' },
+  rose:    { icon: 'text-rose-600',    iconBg: 'bg-gradient-to-br from-rose-50 to-rose-100/80 border-rose-200/60',    bar: 'from-rose-500 via-rose-400 to-rose-300',    glow: 'from-rose-500/8',    ring: 'ring-rose-500/20' },
+  violet:  { icon: 'text-violet-600',  iconBg: 'bg-gradient-to-br from-violet-50 to-violet-100/80 border-violet-200/60',  bar: 'from-violet-500 via-violet-400 to-violet-300',  glow: 'from-violet-500/8',  ring: 'ring-violet-500/20' },
+  indigo:  { icon: 'text-indigo-600',  iconBg: 'bg-gradient-to-br from-indigo-50 to-indigo-100/80 border-indigo-200/60',  bar: 'from-indigo-500 via-indigo-400 to-indigo-300',  glow: 'from-indigo-500/8',  ring: 'ring-indigo-500/20' },
+  teal:    { icon: 'text-teal-600',    iconBg: 'bg-gradient-to-br from-teal-50 to-teal-100/80 border-teal-200/60',    bar: 'from-teal-500 via-teal-400 to-teal-300',    glow: 'from-teal-500/8',    ring: 'ring-teal-500/20' },
+  cyan:    { icon: 'text-cyan-600',    iconBg: 'bg-gradient-to-br from-cyan-50 to-cyan-100/80 border-cyan-200/60',    bar: 'from-cyan-500 via-cyan-400 to-cyan-300',    glow: 'from-cyan-500/8',    ring: 'ring-cyan-500/20' },
+  pink:    { icon: 'text-pink-600',    iconBg: 'bg-gradient-to-br from-pink-50 to-pink-100/80 border-pink-200/60',    bar: 'from-pink-500 via-pink-400 to-pink-300',    glow: 'from-pink-500/8',    ring: 'ring-pink-500/20' },
+  purple:  { icon: 'text-purple-600',  iconBg: 'bg-gradient-to-br from-purple-50 to-purple-100/80 border-purple-200/60',  bar: 'from-purple-500 via-purple-400 to-purple-300',  glow: 'from-purple-500/8',  ring: 'ring-purple-500/20' },
+  slate:   { icon: 'text-slate-600',   iconBg: 'bg-gradient-to-br from-slate-50 to-slate-100/80 border-slate-200/60',   bar: 'from-slate-500 via-slate-400 to-slate-300',   glow: 'from-slate-500/8',   ring: 'ring-slate-500/20' },
+  orange:  { icon: 'text-orange-600',  iconBg: 'bg-gradient-to-br from-orange-50 to-orange-100/80 border-orange-200/60',  bar: 'from-orange-500 via-orange-400 to-orange-300',  glow: 'from-orange-500/8',  ring: 'ring-orange-500/20' },
 };
 
-// Single source of truth: accent -> series hex colour, used by ChartCard visuals
-// AND by charts so the plotted series always matches the card's accent.
 export const ACCENT_COLORS: Record<string, string> = {
   blue: '#3B82F6',
   emerald: '#10B981',
@@ -46,34 +44,37 @@ const ChartCard: React.FC<ChartCardProps> = ({ title, subtitle, icon: Icon, acce
   const a = ACCENTS[accent] || ACCENTS.blue;
   return (
     <div
-      className={`group relative min-w-0 overflow-hidden rounded-2xl border border-white/60 backdrop-blur-xl bg-white/70 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_-8px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.1),0_16px_48px_-12px_rgba(0,0,0,0.12)] hover:border-white/80 hover:-translate-y-0.5 transition-all duration-500 animate-in fade-in slide-in-from-bottom-4`}
+      className={`group relative min-w-0 rounded-[20px] border border-gray-200/60 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_16px_-4px_rgba(0,0,0,0.06)] hover:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.12),0_2px_8px_-2px_rgba(0,0,0,0.04)] hover:border-gray-300/60 hover:-translate-y-[2px] transition-all duration-500 ease-out animate-in fade-in slide-in-from-bottom-4 overflow-hidden`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      {/* Top accent gradient bar — thicker, more vibrant */}
-      <div className={`h-[3px] w-full bg-gradient-to-r ${a.bar}`} />
+      {/* Top gradient accent bar */}
+      <div className={`h-[3px] w-full bg-gradient-to-r ${a.bar} opacity-90`} />
 
-      {/* Soft corner glow — larger, more diffuse */}
-      <div className={`absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br ${a.glow} to-transparent blur-3xl pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity duration-500`} />
+      {/* Background decorative elements */}
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-gradient-to-br opacity-[0.04] pointer-events-none transition-opacity duration-700 group-hover:opacity-[0.08]" style={{ backgroundImage: `linear-gradient(135deg, var(--tw-gradient-stops))` }}>
+        <div className={`w-full h-full rounded-full bg-gradient-to-br ${a.glow} to-transparent`} />
+      </div>
+      <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full bg-gradient-to-tr opacity-[0.03] pointer-events-none">
+        <div className={`w-full h-full rounded-full bg-gradient-to-tr ${a.glow} to-transparent`} />
+      </div>
 
-      {/* Subtle background gradient overlay */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${a.headerBg} opacity-40 pointer-events-none`} />
-
-      <div className="p-5 relative flex flex-col">
+      {/* Content */}
+      <div className="p-5 pb-4 relative">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-start gap-3 mb-4">
           {Icon && (
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${a.icon} shadow-sm group-hover:scale-105 transition-transform duration-300`}>
-              <Icon className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center border ${a.iconBg} shadow-sm ring-1 ${a.ring} group-hover:scale-105 group-hover:shadow-md transition-all duration-300`}>
+              <Icon className={`w-[18px] h-[18px] ${a.icon}`} />
             </div>
           )}
-          <div className="min-w-0 flex-1">
-            <h3 className="text-[15px] font-bold text-[#0F172A] leading-tight truncate">{title}</h3>
-            {subtitle && <p className="text-[11px] text-[#94A3B8] mt-0.5 truncate font-medium">{subtitle}</p>}
+          <div className="min-w-0 flex-1 pt-0.5">
+            <h3 className="text-[14px] font-bold text-gray-900 leading-snug truncate">{title}</h3>
+            {subtitle && <p className="text-[11px] text-gray-400 mt-0.5 truncate font-medium">{subtitle}</p>}
           </div>
         </div>
 
         {/* Chart area */}
-        <div className="min-w-0 w-full flex-1" style={height ? { height } : { minHeight: 280 }}>
+        <div className="min-w-0 w-full" style={height ? { height } : { minHeight: 260 }}>
           {children}
         </div>
       </div>
