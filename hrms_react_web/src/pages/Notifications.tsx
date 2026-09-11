@@ -16,6 +16,7 @@ import {
   Edit2,
   ExternalLink,
   Eye,
+  LogIn,
   Megaphone,
   Palmtree,
   RefreshCw,
@@ -69,9 +70,11 @@ const TYPE_FILTER_OPTIONS = [
   { value: 'payroll', label: 'Payroll' },
   { value: 'holiday', label: 'Holiday' },
   { value: 'recruitment', label: 'Recruitment' },
-  { value: 'system', label: 'System' },
+  { value: 'onboarding', label: 'Onboarding' },
   { value: 'announcement', label: 'Announcement' },
+  { value: 'notice', label: 'Notice' },
   { value: 'grievance', label: 'Grievance' },
+  { value: 'system', label: 'System' },
 ];
 
 const PREF_CATEGORIES = [
@@ -81,9 +84,11 @@ const PREF_CATEGORIES = [
   { id: 'payroll', label: 'Payroll alerts' },
   { id: 'holiday', label: 'Holiday updates' },
   { id: 'recruitment', label: 'Recruitment updates' },
-  { id: 'system', label: 'System notices' },
+  { id: 'onboarding', label: 'Onboarding updates' },
   { id: 'announcement', label: 'Announcements' },
+  { id: 'notice', label: 'Notices' },
   { id: 'grievance', label: 'Grievance updates' },
+  { id: 'system', label: 'System notices' },
 ];
 
 const PREF_STORAGE_KEY = 'notifications-muted-types';
@@ -118,6 +123,16 @@ const TYPE_META: Record<string, { icon: LucideIcon; box: string; chip: string }>
     icon: Megaphone,
     box: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
     chip: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+  },
+  notice: {
+    icon: Megaphone,
+    box: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
+    chip: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+  },
+  onboarding: {
+    icon: LogIn,
+    box: 'bg-teal-50 text-teal-600 border border-teal-100',
+    chip: 'bg-teal-50 text-teal-700 border border-teal-200',
   },
   holiday: {
     icon: Palmtree,
