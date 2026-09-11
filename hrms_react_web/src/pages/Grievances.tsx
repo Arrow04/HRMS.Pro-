@@ -164,6 +164,14 @@ const Grievances = () => {
     staleTime: 2 * 60 * 1000,
   });
 
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ['companies-dropdown'],
+    queryFn: async () => {
+      const res = await api.get('/companies', { params: { active_only: true } });
+      return (res.data?.items || res.data || []) as Company[];
+    },
+  });
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['grievances'] });
 
   const createMutation = useMutation({
@@ -376,11 +384,14 @@ const Grievances = () => {
         return true;
       });
     }
+    if (filterCompanyId !== 'all') {
+      items = items.filter((item) => String(item.companyId) === String(filterCompanyId));
+    }
     return items;
-  }, [grievances, activeTab, priorityFilter, overdueOnly, startDate, endDate]);
+  }, [grievances, activeTab, priorityFilter, overdueOnly, startDate, endDate, filterCompanyId]);
 
   const hasActiveFilters =
-    priorityFilter !== 'all' || overdueOnly || activeTab !== 'all' || startDate !== '' || endDate !== '';
+    priorityFilter !== 'all' || overdueOnly || activeTab !== 'all' || startDate !== '' || endDate !== '' || filterCompanyId !== 'all';
 
   const clearFilters = () => {
     setPriorityFilter('all');
@@ -388,6 +399,7 @@ const Grievances = () => {
     setActiveTab('all');
     setStartDate('');
     setEndDate('');
+    setFilterCompanyId('all');
   };
 
   const columns: DataTableColumn<GrievanceRow>[] = [
@@ -432,6 +444,15 @@ const Grievances = () => {
         >
           {row.subject}
         </button>
+      ),
+    },
+    {
+      key: 'companyName',
+      header: 'Company',
+      sortable: true,
+      sortValue: (row) => row.companyName || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B]">{row.companyName || '-'}</span>
       ),
     },
     {
@@ -546,6 +567,14 @@ const Grievances = () => {
         <div className="p-4 border-b border-[var(--border-color)]">
           <div className="flex flex-col lg:flex-row items-center gap-3">
             <div className="flex flex-wrap items-center gap-3">
+              <SearchableSelect
+                value={filterCompanyId}
+                onChange={(val) => setFilterCompanyId(val)}
+                options={companies.map((c) => ({ id: c.id, name: c.name }))}
+                placeholder="All Companies"
+                allOption="All Companies"
+                className="w-44"
+              />
               <SearchableSelect
                 value={priorityFilter}
                 onChange={(val) => setPriorityFilter(val.toString())}
