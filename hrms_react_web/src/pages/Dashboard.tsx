@@ -711,27 +711,8 @@ export default function Dashboard() {
         )}
         {analyticsTab === 'trends' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Performance Trend */}
-          <ChartCard title="Performance Trend" subtitle={`Average rating · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={0}>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
-                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
           {/* Attendance Trend */}
-          <ChartCard title="Attendance Trend" subtitle={`Check-ins · ${yearLabel}`} icon={Clock} accent="cyan" delay={100}>
+          <ChartCard title="Attendance Trend" subtitle={`Check-ins · ${yearLabel}`} icon={Clock} accent="cyan" delay={0}>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
@@ -743,8 +724,40 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </ChartCard>
 
+          {/* Leave Trend */}
+          <ChartCard title="Leave Trend" subtitle={`Leave requests · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={100}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={leaveTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Expenses Trend */}
+          <ChartCard title="Expenses Trend" subtitle={`Spend · ${yearLabel}`} icon={CreditCard} accent="rose" delay={200}>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
           {/* Payroll Trend */}
-          <ChartCard title="Payroll Trend" subtitle={`Net payout · ${yearLabel}`} icon={Coins} accent="amber" delay={200}>
+          <ChartCard title="Payroll Trend" subtitle={`Net payout · ${yearLabel}`} icon={Coins} accent="amber" delay={300}>
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                 <defs>
@@ -762,8 +775,27 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* Recruitment Trend */}
-          <ChartCard title="Recruitment Pipeline" subtitle={`Candidates · ${yearLabel}`} icon={Briefcase} accent="violet" delay={300}>
+          {/* Performance Trend */}
+          <ChartCard title="Performance Trend" subtitle={`Average rating · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={400}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Recruitment Pipeline */}
+          <ChartCard title="Recruitment Pipeline" subtitle={`Candidates · ${yearLabel}`} icon={Briefcase} accent="violet" delay={500}>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
                 <defs>
@@ -777,38 +809,6 @@ export default function Dashboard() {
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                 <Bar dataKey="candidates" name="Candidates" fill="url(#violetBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Expenses Trend */}
-          <ChartCard title="Expenses Trend" subtitle={`Spend · ${yearLabel}`} icon={CreditCard} accent="rose" delay={400}>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Leave Trend */}
-          <ChartCard title="Leave Trend" subtitle={`Leave requests · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={500}>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={leaveTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.9} />
-                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.5} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
