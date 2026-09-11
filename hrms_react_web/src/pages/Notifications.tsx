@@ -16,7 +16,6 @@ import {
   Megaphone,
   RefreshCw,
   RotateCcw,
-  Search,
   Settings,
   Trash2,
   Wallet,
@@ -31,7 +30,8 @@ import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 import Modal from '../components/Modal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
-import EmptyState from '../components/EmptyState';
+import DataTable from '../components/DataTable';
+import type { DataTableColumn } from '../components/DataTable';
 import type { Notification } from '../types';
 
 type RawNotification = Notification & {
@@ -198,12 +198,11 @@ const Notifications = () => {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  // searchTerm is handled internally by DataTable
   const [typeFilter, setTypeFilter] = useState('all');
   const [todayOnly, setTodayOnly] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [mutedTypes, setMutedTypes] = useState<string[]>(loadMutedTypes);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<NormalizedNotification | null>(null);
   const [bulkTarget, setBulkTarget] = useState<{ ids: number[] } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -272,7 +271,6 @@ const Notifications = () => {
   const mutedSet = useMemo(() => new Set(mutedTypes), [mutedTypes]);
 
   const filtered = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
     return notifications.filter((n) => {
       if (mutedSet.has(n.type)) return false;
       if (activeTab === 'unread' && n.isRead) return false;
@@ -280,18 +278,11 @@ const Notifications = () => {
       if (typeFilter === 'approvals' && n.type !== 'leave' && n.type !== 'expense') return false;
       if (typeFilter !== 'all' && typeFilter !== 'approvals' && n.type !== typeFilter) return false;
       if (todayOnly && dayKey(n.createdAt) !== todayKey) return false;
-      if (
-        q &&
-        !(n.title || '').toLowerCase().includes(q) &&
-        !(n.body || '').toLowerCase().includes(q) &&
-        !(n.type || '').toLowerCase().includes(q)
-      )
-        return false;
       return true;
     });
-  }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey, searchTerm]);
+  }, [notifications, mutedSet, activeTab, typeFilter, todayOnly, todayKey]);
 
-  const groups = useMemo(() => {
+  const flattenedForTable = useMemo(() => {
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
@@ -310,17 +301,16 @@ const Notifications = () => {
       else if (k === yesterdayKey) buckets[1].items.push(n);
       else buckets[2].items.push(n);
     }
-    return buckets.filter((b) => b.items.length > 0);
+    const result: (NormalizedNotification | { type: 'group-header'; name: string; count: number })[] = [];
+    for (const g of buckets.filter((b) => b.items.length > 0)) {
+      result.push({ type: 'group-header', name: g.name, count: g.items.length });
+      result.push(...g.items);
+    }
+    return result;
   }, [filtered, todayKey]);
 
-  const visibleRead = useMemo(() => filtered.filter((n) => n.isRead), [filtered]);
-  const selectedReadIds = useMemo(
-    () => selectedIds.filter((id) => visibleRead.some((n) => n.id === id)),
-    [selectedIds, visibleRead],
-  );
-
   const hasActiveFilters =
-    searchTerm.trim() !== '' || typeFilter !== 'all' || todayOnly || activeTab !== 'all';
+    typeFilter !== 'all' || todayOnly || activeTab !== 'all';
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -332,16 +322,11 @@ const Notifications = () => {
     if (!n.isRead) markReadMutation.mutate(n.id);
   };
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
-  };
-
   const toggleMute = (type: string) => {
     setMutedTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
   };
 
   const clearFilters = () => {
-    setSearchTerm('');
     setTypeFilter('all');
     setTodayOnly(false);
     setActiveTab('all');
@@ -355,7 +340,6 @@ const Notifications = () => {
     const failed = results.length - succeeded;
     queryClient.invalidateQueries({ queryKey: ['notifications'] });
     queryClient.invalidateQueries({ queryKey: ['notifications-unread-count'] });
-    setSelectedIds((prev) => prev.filter((id) => !bulkTarget.ids.includes(id)));
     setBulkTarget(null);
     setBulkDeleting(false);
     if (failed === 0) toast.success(`${succeeded} notification${succeeded === 1 ? '' : 's'} deleted`);
@@ -411,100 +395,148 @@ const Notifications = () => {
 
   if (!mounted) return <PageSkeleton />;
 
-  const renderRow = (n: NormalizedNotification) => {
-    const meta = TYPE_META[n.type] || DEFAULT_META;
-    const Icon = meta.icon;
-    const view = viewTargetFor(n.type);
-    const checked = selectedIds.includes(n.id);
-    return (
-      <div
-        key={n.id}
-        onClick={() => handleRowClick(n)}
-        className={`flex items-start gap-3 px-4 sm:px-5 py-3.5 border-b border-[var(--border-color)] last:border-b-0 transition-colors cursor-pointer ${
-          n.isRead ? 'bg-white hover:bg-gray-50' : 'bg-blue-50/40 hover:bg-blue-50/70'
-        }`}
-      >
-        <div className="pt-1 shrink-0 w-5 flex justify-center">
-          {n.isRead ? (
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() => toggleSelect(n.id)}
-              onClick={(e) => e.stopPropagation()}
-              aria-label={`Select notification ${n.id}`}
-              className="w-4 h-4 rounded border-[#CBD5E1] text-[#1C64F2] focus:ring-[#1C64F2]/30 cursor-pointer"
-            />
-          ) : (
-            <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6] mt-1" aria-label="Unread" />
-          )}
-        </div>
-        <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.box}`}
-        >
-          <Icon className="w-5 h-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p
-            className={`text-sm truncate ${
-              n.isRead
-                ? 'font-medium text-[var(--text-secondary)]'
-                : 'font-semibold text-[var(--text-primary)]'
+  const handleBulkDeleteSelected = (rows: NormalizedNotification[]) => {
+    setBulkTarget({ ids: rows.map((n) => n.id) });
+  };
+
+  type TableRow = NormalizedNotification | { type: 'group-header'; name: string; count: number };
+
+  const tableColumns: DataTableColumn<TableRow>[] = [
+    {
+      key: 'group-header',
+      header: '',
+      width: '100%',
+      render: (row) => {
+        if ('type' in row && row.type === 'group-header') {
+          return (
+            <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)] flex items-center justify-between -mx-5 -my-0.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                {row.name}
+              </span>
+              <span className="text-[11px] font-semibold text-[#94A3B8]">
+                {row.count} item{row.count === 1 ? '' : 's'}
+              </span>
+            </div>
+          );
+        }
+        const n = row as NormalizedNotification;
+        const meta = TYPE_META[n.type] || DEFAULT_META;
+        const Icon = meta.icon;
+        const view = viewTargetFor(n.type);
+        return (
+          <div
+            className={`flex items-start gap-3 px-4 sm:px-5 py-3.5 transition-colors ${
+              n.isRead ? 'bg-white' : 'bg-blue-50/40'
             }`}
           >
-            {n.title}
-          </p>
-          <p className="text-xs text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{n.body}</p>
-          {view && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!n.isRead) markReadMutation.mutate(n.id);
-                navigate(view.path);
-              }}
-              className="inline-flex items-center gap-1 mt-1.5 text-xs font-semibold text-[var(--primary-blue)] hover:underline"
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.box}`}
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              {view.label}
-            </button>
-          )}
-        </div>
-        <div className="hidden sm:flex flex-col items-end gap-1.5 shrink-0">
-          <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
-            <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
-              {timeAgo(n.createdAt)}
-            </span>
-          </Tooltip>
+              <Icon className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-sm truncate ${
+                  n.isRead
+                    ? 'font-medium text-[var(--text-secondary)]'
+                    : 'font-semibold text-[var(--text-primary)]'
+                }`}
+              >
+                {n.title}
+              </p>
+              <p className="text-xs text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{n.body}</p>
+              {view && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!n.isRead) markReadMutation.mutate(n.id);
+                    navigate(view.path);
+                  }}
+                  className="inline-flex items-center gap-1 mt-1.5 text-xs font-semibold text-[var(--primary-blue)] hover:underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {view.label}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      width: '120px',
+      render: (row) => {
+        if ('type' in row && row.type === 'group-header') return null;
+        const n = row as NormalizedNotification;
+        const meta = TYPE_META[n.type] || DEFAULT_META;
+        return (
           <span
             className={`px-2.5 py-0.5 text-[11px] font-semibold rounded-full capitalize ${meta.chip}`}
           >
             {n.type}
           </span>
-        </div>
-        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {!n.isRead && (
-            <Tooltip id={`mark-read-${n.id}`} content="Mark as read">
-              <button
-                type="button"
-                onClick={() => markReadMutation.mutate(n.id)}
-                className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
-                aria-label="Mark as read"
-              >
-                <Check className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          )}
-          <Tooltip id={`delete-notif-${n.id}`} content="Delete">
+        );
+      },
+    },
+    {
+      key: 'date',
+      header: 'Date',
+      width: '120px',
+      sortable: true,
+      sortValue: (row) => {
+        if ('type' in row && row.type === 'group-header') return '';
+        return (row as NormalizedNotification).createdAt;
+      },
+      render: (row) => {
+        if ('type' in row && row.type === 'group-header') return null;
+        const n = row as NormalizedNotification;
+        return (
+          <Tooltip id={`notif-date-${n.id}`} content={formatFullDate(n.createdAt)}>
+            <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+              {timeAgo(n.createdAt)}
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+  ];
+
+  const tableActions = (row: TableRow) => {
+    if ('type' in row && row.type === 'group-header') return null;
+    const n = row as NormalizedNotification;
+    return (
+      <div className="flex items-center gap-1">
+        {!n.isRead && (
+          <Tooltip id={`mark-read-${n.id}`} content="Mark as read">
             <button
               type="button"
-              onClick={() => setDeleteTarget(n)}
-              className="p-1.5 rounded-lg text-[#64748B] hover:text-[#DC2626] hover:bg-red-50 transition-colors"
-              aria-label="Delete notification"
+              onClick={(e) => {
+                e.stopPropagation();
+                markReadMutation.mutate(n.id);
+              }}
+              className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
+              aria-label="Mark as read"
             >
-              <Trash2 className="w-4 h-4" />
+              <Check className="w-4 h-4" />
             </button>
           </Tooltip>
-        </div>
+        )}
+        <Tooltip id={`delete-notif-${n.id}`} content="Delete">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteTarget(n);
+            }}
+            className="p-1.5 rounded-lg text-[#64748B] hover:text-[#DC2626] hover:bg-red-50 transition-colors"
+            aria-label="Delete notification"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </Tooltip>
       </div>
     );
   };
@@ -560,17 +592,7 @@ const Notifications = () => {
       <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search notifications..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-[var(--text-primary)]"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 flex-1">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -631,55 +653,43 @@ const Notifications = () => {
               {filtered.length} notification{filtered.length === 1 ? '' : 's'}
               {mutedTypes.length > 0 && ` · ${mutedTypes.length} categor${mutedTypes.length === 1 ? 'y' : 'ies'} muted`}
             </span>
-            <div className="flex items-center gap-2">
-              {selectedReadIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setBulkTarget({ ids: selectedReadIds })}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#FEE2E2] text-[#991B1B] hover:bg-[#FECACA] transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete selected ({selectedReadIds.length})
-                </button>
-              )}
-              {visibleRead.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setBulkTarget({ ids: visibleRead.map((n) => n.id) })}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0] transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Clear read ({visibleRead.length})
-                </button>
-              )}
-            </div>
           </div>
         </div>
 
         {isLoading ? (
           <TableSkeleton rows={6} cols={4} />
-        ) : groups.length === 0 ? (
-          <EmptyState
-            icon={Bell}
-            title="No notifications found"
-            description="Try adjusting your search or filters"
-          />
         ) : (
-          <div>
-            {groups.map((g) => (
-              <div key={g.name}>
-                <div className="px-4 sm:px-5 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)] flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">
-                    {g.name}
-                  </span>
-                  <span className="text-[11px] font-semibold text-[#94A3B8]">
-                    {g.items.length} item{g.items.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-                {g.items.map(renderRow)}
-              </div>
-            ))}
-          </div>
+          <DataTable<TableRow>
+            columns={tableColumns}
+            data={flattenedForTable}
+            rowKey={(row, i) => ('type' in row && row.type === 'group-header' ? `group-${row.name}` : `notif-${(row as NormalizedNotification).id}`)}
+            searchable
+            searchKeys={(row) => {
+              if ('type' in row && row.type === 'group-header') return row.name;
+              const n = row as NormalizedNotification;
+              return `${n.title} ${n.body} ${n.type}`;
+            }}
+            searchPlaceholder="Search notifications..."
+            emptyMessage="No notifications found"
+            actions={tableActions}
+            onRowClick={(row) => {
+              if ('type' in row && row.type !== 'group-header') {
+                handleRowClick(row as NormalizedNotification);
+              }
+            }}
+            selectable
+            bulkActions={[
+              {
+                label: 'Delete selected',
+                icon: Trash2,
+                variant: 'danger',
+                onAction: handleBulkDeleteSelected,
+              },
+            ]}
+            exportable={false}
+            persistKey="notifications-table"
+            defaultDensity="comfortable"
+          />
         )}
       </div>
 
