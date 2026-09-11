@@ -934,6 +934,7 @@ const UserManagementPanel = () => {
         />
       ) : (
         <div className="bg-[var(--card)] border border-[var(--border-color)] rounded-2xl overflow-auto w-full">
+          <div className="overflow-x-auto">
           <DataTable
             data={Array.isArray(filteredUsers) ? filteredUsers : []}
             rowKey={(user: UserRow) => user.id}
@@ -976,9 +977,9 @@ const UserManagementPanel = () => {
               },
             ]}
             columns={[
-              { key: 'name', header: 'Name', sortable: true, render: (user: UserRow) => <span className="text-sm font-medium text-[#0F172A]">{user.email?.split('@')[0] || user.name || 'Unknown'}</span>, sortValue: (user: UserRow) => user.email?.split('@')[0] || user.name || '' },
-              { key: 'email', header: 'Email', sortable: true, render: (user: UserRow) => <span className="text-sm text-[#475569]">{user.email}</span>, sortValue: (user: UserRow) => user.email },
-              { key: 'phone', header: 'Phone', render: (user: UserRow) => <span className="text-sm text-[#475569]">{user.phone || '-'}</span> },
+              { key: 'name', header: 'Name', sortable: true, render: (user: UserRow) => <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0"><Users className="w-4 h-4 text-white" /></div><span className="text-sm font-medium text-[#0F172A]">{user.email?.split('@')[0] || user.name || 'Unknown'}</span></div>, sortValue: (user: UserRow) => user.email?.split('@')[0] || user.name || '' },
+              { key: 'email', header: 'Email', sortable: true, render: (user: UserRow) => <span className="text-sm text-[#64748B]">{user.email}</span>, sortValue: (user: UserRow) => user.email },
+              { key: 'phone', header: 'Phone', render: (user: UserRow) => <span className="text-sm text-[#64748B]">{user.phone || '-'}</span> },
               {
                 key: 'role', header: 'Role', sortable: true,
                 render: (user: UserRow) => <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getRoleBadgeColor(user.role)}`}>{user.role.replace('_', ' ').toUpperCase()}</span>,
@@ -1000,13 +1001,14 @@ const UserManagementPanel = () => {
               },
             ]}
             actions={(user: UserRow) => (
-              <div className="flex items-center justify-end gap-1">
-                <button onClick={() => handleOpenPermissions(user)} className="p-2 text-[#475569] hover:bg-[#F1F5F9] rounded" title="Permissions"><Shield className="w-4 h-4" /></button>
-                <button onClick={() => handleEditUser(user)} className="p-2 text-[#475569] hover:bg-[#F1F5F9] rounded" title="Edit User"><Edit2 className="w-4 h-4" /></button>
-                <button onClick={() => { setUserToDelete(user); setShowDeleteModal(true); }} className="p-2 text-red-600 hover:bg-red-50 rounded" title="Delete User"><Trash2 className="w-4 h-4" /></button>
+              <div className="flex items-center justify-end gap-1.5">
+                <button onClick={() => handleOpenPermissions(user)} className="p-2 text-[#475569] hover:bg-[#F1F5F9] rounded-lg transition-colors" title="Permissions"><Shield className="w-4 h-4" /></button>
+                <button onClick={() => handleEditUser(user)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit User"><Edit2 className="w-4 h-4" /></button>
+                <button onClick={() => { setUserToDelete(user); setShowDeleteModal(true); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete User"><Trash2 className="w-4 h-4" /></button>
               </div>
             )}
           />
+          </div>
         </div>
       )}
 
@@ -1914,6 +1916,7 @@ const DeviceSettings = () => {
         </div>
       ) : (
         <div className="bg-[var(--background)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+          <div className="overflow-x-auto">
           <DataTable
             data={devices}
             rowKey={(device) => device.id}
@@ -1927,7 +1930,10 @@ const DeviceSettings = () => {
               {
                 key: 'device_name', header: 'Device', sortable: true,
                 render: (device) => (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                      <Monitor className="w-4 h-4 text-white" />
+                    </div>
                     {device.is_current && <span className="px-2 py-0.5 bg-[#059669] text-white text-xs rounded-full">Current</span>}
                     {editingId === device.id ? (
                       <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="px-2 py-1 border border-[#E2E8F0] rounded text-sm w-40" autoFocus />
@@ -1938,28 +1944,29 @@ const DeviceSettings = () => {
                 ),
                 sortValue: (device) => device.device_name,
               },
-              { key: 'device_type', header: 'Type', render: (device) => <span className="text-sm text-[#475569] capitalize">{device.device_type}</span> },
-              { key: 'ip_address', header: 'IP Address', render: (device) => <span className="text-sm text-[#475569]">{device.ip_address}</span> },
-              { key: 'last_used', header: 'Last Used', render: (device) => <span className="text-sm text-[#475569]">{device.last_used ? formatAppDate(device.last_used) : 'Never'}</span> },
+              { key: 'device_type', header: 'Type', render: (device) => <span className="text-sm text-[#64748B] capitalize">{device.device_type}</span> },
+              { key: 'ip_address', header: 'IP Address', render: (device) => <span className="text-sm text-[#64748B]">{device.ip_address}</span> },
+              { key: 'last_used', header: 'Last Used', render: (device) => <span className="text-sm text-[#64748B]">{device.last_used ? formatAppDate(device.last_used) : 'Never'}</span> },
             ]}
             actions={(device) => (
               <div className="flex items-center justify-end gap-1.5">
                 {editingId === device.id ? (
                   <>
-                    <button onClick={() => handleRename(device.id)} className="p-1.5 text-[#059669] hover:bg-[#059669]/10 rounded"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => { setEditingId(null); setEditName(''); }} className="p-1.5 text-[#94A3B8] hover:bg-[#F1F5F9] rounded"><RotateCcw className="w-4 h-4" /></button>
+                    <button onClick={() => handleRename(device.id)} className="p-2 text-[#059669] hover:bg-[#059669]/10 rounded-lg transition-colors"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditingId(null); setEditName(''); }} className="p-2 text-[#94A3B8] hover:bg-[#F1F5F9] rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /></button>
                   </>
                 ) : (
                   <>
-                    <button onClick={() => { setEditingId(device.id); setEditName(device.device_name); }} className="p-1.5 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditingId(device.id); setEditName(device.device_name); }} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
                     {!device.is_current && (
-                      <button onClick={() => handleRevoke(device.id)} className="p-1.5 text-[#DC2626] hover:bg-[#DC2626]/10 rounded"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleRevoke(device.id)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                     )}
                   </>
                 )}
               </div>
             )}
           />
+          </div>
         </div>
       )}
     </div>
@@ -2309,6 +2316,7 @@ const Settings = () => {
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-disabled)]">Choose how you want to be notified for each event</p>
             <div className="bg-[var(--background)] rounded-lg border border-[var(--border-color)] overflow-hidden">
+              <div className="overflow-x-auto">
               <DataTable
                 data={notifications}
                 rowKey={(notif: NotificationRow) => notif.event}
@@ -2340,6 +2348,7 @@ const Settings = () => {
                   },
                 ]}
               />
+              </div>
             </div>
             <SaveButton onSave={() => handleSave(() => settingsApi.saveNotifications(notifications), 'notifications')} saving={saving === 'notifications'} />
           </div>

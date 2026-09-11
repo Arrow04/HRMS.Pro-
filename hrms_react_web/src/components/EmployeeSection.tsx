@@ -168,6 +168,7 @@ const EmployeeSection = ({
 
     {/* Table */}
     <div className="bg-white overflow-hidden">
+      <div className="overflow-x-auto">
       {loadingEmployees ? (
         null
       ) : (
@@ -278,7 +279,7 @@ const EmployeeSection = ({
             },
           ]}
           actions={(item: EmployeeRow) => (
-            <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
               {item.status === 'inactive' && (
                 <button onClick={() => setConfirmTarget({ type: 'activate', items: [item] })} className="px-2.5 py-1.5 bg-[#10B981] text-white rounded-lg text-xs font-semibold hover:bg-[#059669] transition-colors flex items-center gap-1 whitespace-nowrap" title="Activate">
                   <CheckCircle2 className="w-3 h-3" /> Activate
@@ -304,6 +305,7 @@ const EmployeeSection = ({
           )}
         />
       )}
+      </div>
     </div>
   </div>
 

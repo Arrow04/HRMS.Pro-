@@ -611,7 +611,7 @@ const MasterData = () => {
                         key: 'code', header: 'Code', sortable: true,
                         render: (value: MasterDataValue) => (
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center shrink-0">
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                               <Tag className="w-4 h-4 text-white" />
                             </div>
                             <div className="font-semibold text-[#0F172A] text-sm">{value.code}</div>
@@ -619,7 +619,7 @@ const MasterData = () => {
                         ),
                         sortValue: (value: MasterDataValue) => value.code,
                       },
-                      { key: 'name', header: 'Name', sortable: true, render: (value: MasterDataValue) => <span className="text-sm text-[#334155]">{value.name}</span>, sortValue: (value: MasterDataValue) => value.name },
+                      { key: 'name', header: 'Name', sortable: true, render: (value: MasterDataValue) => <span className="text-sm text-[#64748B]">{value.name}</span>, sortValue: (value: MasterDataValue) => value.name },
                       { key: 'description', header: 'Description', render: (value: MasterDataValue) => <span className="text-sm text-[#64748B]">{value.description || '-'}</span> },
                       {
                         key: 'status', header: 'Status', align: 'center',

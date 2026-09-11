@@ -282,7 +282,9 @@ const Helpdesk = () => {
       sortValue: (row) => row.ticket_no || row.subject,
       render: (row) => (
         <button type="button" onClick={() => setDetailItem(row)} className="flex items-center gap-2 text-left min-w-0 group">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[row.status || 'open'] || '#64748B' }} />
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+            <Headset className="w-4 h-4 text-white" />
+          </div>
           <span className="min-w-0">
             <span className="font-semibold text-[var(--text-primary)] text-sm block truncate group-hover:text-[var(--primary-blue)]">
               {row.subject}
@@ -298,7 +300,7 @@ const Helpdesk = () => {
       sortable: true,
       sortValue: (row) => row.employeeName || '',
       render: (row) => (
-        <span className="text-sm text-[var(--text-secondary)]">{row.employeeName || '-'}</span>
+        <span className="text-sm text-[#64748B]">{row.employeeName || '-'}</span>
       ),
     },
     {
@@ -488,6 +490,7 @@ const Helpdesk = () => {
         </div>
 
         <div className="bg-white overflow-hidden">
+          <div className="overflow-x-auto">
           {isLoading ? (
             <TableSkeleton rows={6} cols={7} />
           ) : (
@@ -525,7 +528,7 @@ const Helpdesk = () => {
                 },
               ]}
               actions={(row) => (
-                <div className="flex items-center justify-end gap-1">
+                <div className="flex items-center justify-end gap-1.5">
                   <Tooltip id={`btn-view-ticket-${row.id}`} content="View details">
                     <button
                       onClick={() => setDetailItem(row)}
@@ -554,6 +557,7 @@ const Helpdesk = () => {
               )}
             />
           )}
+          </div>
         </div>
       </div>
 

@@ -44,6 +44,7 @@ import ExportButton from '../components/ExportButton';
 import { getAttendanceStatusBadge, getAttendanceStatusColor, capitalizeStatus, getStatusBadgeClass } from '../utils/statusUtils';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
+import Tooltip from '../components/Tooltip';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import { formatEmployeeLabel } from '../utils/employeePickerUtils';
 import { personDisplayName } from '../utils/employeeNameUtils';
@@ -1435,9 +1436,14 @@ const Attendance = () => {
                     {
                       key: 'name', header: 'Shift', sortable: true,
                       render: (shift: ShiftRecord) => (
-                        <div>
-                          <div className="font-semibold text-[#0F172A] text-sm">{shift.name}</div>
-                          <div className="text-xs text-[#94A3B8] font-mono">{shift.code}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                            <Clock className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-[#0F172A] text-sm">{shift.name}</div>
+                            <div className="text-xs text-[#94A3B8] font-mono">{shift.code}</div>
+                          </div>
                         </div>
                       ),
                       sortValue: (shift: ShiftRecord) => shift.name,
@@ -1475,22 +1481,26 @@ const Attendance = () => {
                   ]}
                   actions={(shift: ShiftRecord) => (
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => {
-                          setEditingShift(shift);
-                          setShiftForm({ name: shift.name, code: shift.code, shift_type: shift.shift_type, start_time: shift.start_time, end_time: shift.end_time, grace_minutes: shift.grace_minutes, break_duration: shift.break_duration, working_days: shift.working_days, color: shift.color || '#3B82F6', description: shift.description || '', organization_id: shift.organization_id, company_id: shift.company_id, branch_id: shift.branch_id, department_id: shift.department_id, status: shift.status });
-                          setShowShiftModal(true);
-                        }}
-                        className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setConfirmTarget({ type: 'deactivate-shift', id: shift.id, name: shift.name })}
-                        className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Deactivate"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <Tooltip id={`btn-edit-shift-${shift.id}`} content="Edit">
+                        <button
+                          onClick={() => {
+                            setEditingShift(shift);
+                            setShiftForm({ name: shift.name, code: shift.code, shift_type: shift.shift_type, start_time: shift.start_time, end_time: shift.end_time, grace_minutes: shift.grace_minutes, break_duration: shift.break_duration, working_days: shift.working_days, color: shift.color || '#3B82F6', description: shift.description || '', organization_id: shift.organization_id, company_id: shift.company_id, branch_id: shift.branch_id, department_id: shift.department_id, status: shift.status });
+                            setShowShiftModal(true);
+                          }}
+                          className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip id={`btn-delete-shift-${shift.id}`} content="Deactivate">
+                        <button
+                          onClick={() => setConfirmTarget({ type: 'deactivate-shift', id: shift.id, name: shift.name })}
+                          className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Deactivate"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
                     </div>
                   )}
                 />

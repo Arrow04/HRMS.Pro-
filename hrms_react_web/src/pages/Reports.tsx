@@ -1033,6 +1033,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                     </button>
                   </div>
                 </div>
+                <div className="overflow-x-auto">
                 <DataTable
                   data={(scheduledReports || []).filter((report: ScheduleEntry) =>
                     report.name.toLowerCase().includes(scheduleSearchQuery.toLowerCase()) ||
@@ -1044,7 +1045,14 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                   logFor={(report: ScheduleEntry) => ({ id: report.id, label: report.name })}
                   emptyMessage="No scheduled reports found"
                   columns={[
-                    { key: 'name', header: 'Report Name', sortable: true, render: (report: ScheduleEntry) => <span className="font-medium text-[#0F172A]">{report.name}</span>, sortValue: (report: ScheduleEntry) => report.name },
+                    { key: 'name', header: 'Report Name', sortable: true, render: (report: ScheduleEntry) => (
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                          <FileBarChart className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="font-medium text-[#0F172A]">{report.name}</span>
+                      </div>
+                    ), sortValue: (report: ScheduleEntry) => report.name },
                     { key: 'frequency', header: 'Frequency', render: (report: ScheduleEntry) => <span className="text-sm text-[#64748B]">{report.frequency}</span> },
                     { key: 'recipients', header: 'Recipients', render: (report: ScheduleEntry) => <span className="text-sm text-[#64748B]">{report.recipients?.join(', ') || '-'}</span> },
                     { key: 'nextRun', header: 'Next Run', render: (report: ScheduleEntry) => <span className="text-sm text-[#64748B]">{report.nextRun}</span> },
@@ -1061,13 +1069,14 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                     },
                   ]}
                   actions={(report: ScheduleEntry) => (
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button onClick={() => handleEditSchedule(report)} className="p-2 hover:bg-blue-50 rounded-lg text-blue-500" title="Edit"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => handleRunSchedule(report.id)} className="p-2 hover:bg-green-50 rounded-lg text-green-500" title="Run Now"><Play className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteSchedule(report.id)} className="p-2 hover:bg-red-50 rounded-lg text-red-500" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button onClick={() => handleEditSchedule(report)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleRunSchedule(report.id)} className="p-2 text-[#059669] hover:bg-[#059669]/10 rounded-lg transition-colors" title="Run Now"><Play className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteSchedule(report.id)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )}
                 />
+                </div>
               </div>
 
               {/* Create Schedule Form - Modal */}

@@ -351,7 +351,8 @@ export default function AnomalyDetection() {
               <p className="text-xs text-[#94A3B8] mt-1">Run a scan to check for buddy punching, payroll drift, and more.</p>
             </div>
           ) : (
-            <DataTable
+            <div className="overflow-x-auto">
+              <DataTable
               data={filteredAlerts}
               rowKey={(a: AnomalyAlert) => a.id}
               searchable
@@ -377,7 +378,7 @@ export default function AnomalyDetection() {
                         <div className={`w-9 h-9 rounded-lg ${sev.bg} flex items-center justify-center shrink-0`}>
                           <TypeIcon className={`w-4 h-4 ${sev.color}`} />
                         </div>
-                        <span className="text-sm text-[#0F172A]">{names.join(', ') || '—'}</span>
+                        <span className="text-sm font-medium text-[#0F172A]">{names.join(', ') || '—'}</span>
                       </div>
                     );
                   },
@@ -414,7 +415,8 @@ export default function AnomalyDetection() {
                   )}
                 </div>
               )}
-            />
+              />
+            </div>
           )}
         </div>
       </div>

@@ -1005,7 +1005,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                         <button onClick={() => setEditingLeave(leave)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-delete-leave-${leave.id}`} content="Delete">
-                        <button onClick={() => handleDelete(leave.id, leave.employeeName || leave.employee || `Leave #${leave.id}`)} className="p-2 text-[#EF4444] hover:bg-[#EF4444]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(leave.id, leave.employeeName || leave.employee || `Leave #${leave.id}`)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-history-leave-${leave.id}`} content="Approval History">
                         <button onClick={() => { setHistoryLeaveId(leave.id); setShowHistoryModal(true); }} className="p-2 text-[#64748B] hover:bg-[#F1F5F9] rounded-lg transition-colors" title="Approval History"><Clock className="w-4 h-4" /></button>
@@ -1055,6 +1055,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
               </div>
             </div>
             <div className="bg-white overflow-hidden">
+              <div className="overflow-x-auto">
               <DataTable
                 data={filteredLeaveTypes}
                 rowKey={(type: LeaveTypeRow) => type.id}
@@ -1066,7 +1067,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                     key: 'name', header: 'Type Name', sortable: true,
                     render: (type: LeaveTypeRow) => (
                       <div className="flex items-center gap-3">
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ background: type.color || '#1C64F2' }} />
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                          <Calendar className="w-4 h-4 text-white" />
+                        </div>
                         <div className="font-semibold text-[#0F172A] text-sm">{type.name}</div>
                       </div>
                     ),
@@ -1105,6 +1108,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                   </div>
                 )}
               />
+              </div>
             </div>
           </div>
         )}
@@ -1154,12 +1158,17 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                   columns={[
                     { key: 'employeeName', header: 'Employee', sortable: true,
                       render: (b: BalanceRow) => (
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 whitespace-nowrap">
-                            <span className="text-sm font-medium text-[#0F172A]">{b.employeeName}</span>
-                            {b.employeeCode && <span className="inline-flex px-1.5 py-0.5 bg-[#F1F5F9] text-[#64748B] text-[10px] font-medium rounded">{b.employeeCode}</span>}
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                            <User className="w-4 h-4 text-white" />
                           </div>
-                          <div className="text-xs text-[#64748B] truncate max-w-[220px]">{b.email || ''}</div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <span className="text-sm font-medium text-[#0F172A]">{b.employeeName}</span>
+                              {b.employeeCode && <span className="inline-flex px-1.5 py-0.5 bg-[#F1F5F9] text-[#64748B] text-[10px] font-medium rounded">{b.employeeCode}</span>}
+                            </div>
+                            <div className="text-xs text-[#64748B] truncate max-w-[220px]">{b.email || ''}</div>
+                          </div>
                         </div>
                       ),
                       sortValue: (b: BalanceRow) => b.employeeName },

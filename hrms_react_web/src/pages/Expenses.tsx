@@ -562,7 +562,8 @@ const Expenses = () => {
           {isLoading ? (
             <div className="animate-page-enter"><PageSkeleton /></div>
           ) : (
-            <DataTable
+            <div className="overflow-x-auto">
+              <DataTable
               data={filteredExpenses}
               rowKey={(exp: ExpenseRow) => exp.id}
               searchable
@@ -608,9 +609,9 @@ const Expenses = () => {
                   ),
                   sortValue: (exp: ExpenseRow) => exp.employeeName,
                 },
-                { key: 'companyName', header: 'Company', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(exp.company_id)}</span>, sortValue: (exp: ExpenseRow) => getCompanyName(exp.company_id) },
-                { key: 'branchName', header: 'Branch', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getBranchName(exp.branch_id)}</span>, sortValue: (exp: ExpenseRow) => getBranchName(exp.branch_id) },
-                { key: 'departmentName', header: 'Department', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getDeptName(exp.department_id)}</span>, sortValue: (exp: ExpenseRow) => getDeptName(exp.department_id) },
+                { key: 'companyName', header: 'Company', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B]">{getCompanyName(exp.company_id)}</span>, sortValue: (exp: ExpenseRow) => getCompanyName(exp.company_id) },
+                { key: 'branchName', header: 'Branch', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B]">{getBranchName(exp.branch_id)}</span>, sortValue: (exp: ExpenseRow) => getBranchName(exp.branch_id) },
+                { key: 'departmentName', header: 'Department', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B]">{getDeptName(exp.department_id)}</span>, sortValue: (exp: ExpenseRow) => getDeptName(exp.department_id) },
                 { key: 'createdAt', header: 'Submitted', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B] whitespace-nowrap">{formatAppDate(exp.createdAt)}</span>, sortValue: (exp: ExpenseRow) => exp.createdAt || '' },
                 { key: 'category', header: 'Category', sortable: true, render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B] capitalize">{exp.category}</span>, sortValue: (exp: ExpenseRow) => exp.category },
                 { key: 'description', header: 'Description', render: (exp: ExpenseRow) => <span className="text-sm text-[#64748B] truncate max-w-xs block">{exp.description}</span> },
@@ -659,6 +660,7 @@ const Expenses = () => {
                     {approvedExpenses.length} approved
                   </span>
                 </div>
+                <div className="overflow-x-auto">
                 <DataTable
                   data={approvedExpenses}
                   rowKey={(e: ExpenseRow) => e.id}
@@ -673,7 +675,7 @@ const Expenses = () => {
                       key: 'employeeName', header: 'Employee', sortable: true,
                       render: (e: ExpenseRow) => (
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
                             {(e.employeeName || 'E')[0]?.toUpperCase()}
                           </div>
                           <div className="min-w-0">
@@ -687,9 +689,9 @@ const Expenses = () => {
                       ),
                       sortValue: (e: ExpenseRow) => e.employeeName,
                     },
-                    { key: 'companyName', header: 'Company', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(e.company_id)}</span>, sortValue: (e: ExpenseRow) => getCompanyName(e.company_id) },
-                    { key: 'branchName', header: 'Branch', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getBranchName(e.branch_id)}</span>, sortValue: (e: ExpenseRow) => getBranchName(e.branch_id) },
-                    { key: 'departmentName', header: 'Department', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getDeptName(e.department_id)}</span>, sortValue: (e: ExpenseRow) => getDeptName(e.department_id) },
+                    { key: 'companyName', header: 'Company', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getCompanyName(e.company_id)}</span>, sortValue: (e: ExpenseRow) => getCompanyName(e.company_id) },
+                    { key: 'branchName', header: 'Branch', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getBranchName(e.branch_id)}</span>, sortValue: (e: ExpenseRow) => getBranchName(e.branch_id) },
+                    { key: 'departmentName', header: 'Department', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getDeptName(e.department_id)}</span>, sortValue: (e: ExpenseRow) => getDeptName(e.department_id) },
                     { key: 'createdAt', header: 'Submitted', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] whitespace-nowrap">{formatAppDate(e.createdAt)}</span>, sortValue: (e: ExpenseRow) => e.createdAt || '' },
                     { key: 'category', header: 'Category', render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] capitalize">{e.category}</span> },
                     { key: 'description', header: 'Description', render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] truncate max-w-xs block">{e.description}</span> },
@@ -698,6 +700,7 @@ const Expenses = () => {
                     { key: 'status', header: 'Status', render: (e: ExpenseRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadgeClass(e.status || '')}`}>{capitalizeStatus(e.status)}</span> },
                   ]}
                 />
+                </div>
               </div>
             </div>
           )}
@@ -720,6 +723,7 @@ const Expenses = () => {
                     {rejectedExpenses.length} rejected
                   </span>
                 </div>
+                <div className="overflow-x-auto">
                 <DataTable
                   data={rejectedExpenses}
                   rowKey={(e: ExpenseRow) => e.id}
@@ -734,7 +738,7 @@ const Expenses = () => {
                       key: 'employeeName', header: 'Employee', sortable: true,
                       render: (e: ExpenseRow) => (
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-400 to-red-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
+                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-rose-400 to-red-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
                             {(e.employeeName || 'E')[0]?.toUpperCase()}
                           </div>
                           <div className="min-w-0">
@@ -748,9 +752,9 @@ const Expenses = () => {
                       ),
                       sortValue: (e: ExpenseRow) => e.employeeName,
                     },
-                    { key: 'companyName', header: 'Company', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(e.company_id)}</span>, sortValue: (e: ExpenseRow) => getCompanyName(e.company_id) },
-                    { key: 'branchName', header: 'Branch', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getBranchName(e.branch_id)}</span>, sortValue: (e: ExpenseRow) => getBranchName(e.branch_id) },
-                    { key: 'departmentName', header: 'Department', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#0F172A]">{getDeptName(e.department_id)}</span>, sortValue: (e: ExpenseRow) => getDeptName(e.department_id) },
+                    { key: 'companyName', header: 'Company', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getCompanyName(e.company_id)}</span>, sortValue: (e: ExpenseRow) => getCompanyName(e.company_id) },
+                    { key: 'branchName', header: 'Branch', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getBranchName(e.branch_id)}</span>, sortValue: (e: ExpenseRow) => getBranchName(e.branch_id) },
+                    { key: 'departmentName', header: 'Department', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{getDeptName(e.department_id)}</span>, sortValue: (e: ExpenseRow) => getDeptName(e.department_id) },
                     { key: 'createdAt', header: 'Submitted', sortable: true, render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] whitespace-nowrap">{formatAppDate(e.createdAt)}</span>, sortValue: (e: ExpenseRow) => e.createdAt || '' },
                     { key: 'category', header: 'Category', render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] capitalize">{e.category}</span> },
                     { key: 'description', header: 'Description', render: (e: ExpenseRow) => <span className="text-sm text-[#64748B] truncate max-w-xs block">{e.description}</span> },
@@ -758,7 +762,8 @@ const Expenses = () => {
                     { key: 'date', header: 'Date', render: (e: ExpenseRow) => <span className="text-sm text-[#64748B]">{e.date || e.expenseDate ? String(e.date || e.expenseDate).split('T')[0] : '-'}</span> },
                     { key: 'status', header: 'Status', render: (e: ExpenseRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadgeClass(e.status || '')}`}>{capitalizeStatus(e.status)}</span> },
                   ]}
-                />
+                    />
+                </div>
               </div>
             </div>
           )}

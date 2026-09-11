@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   Sparkles, Plus, TrendingUp, Target, Star, X, Pencil,
-  CheckCircle2, Users, BarChart3, Info, XCircle, RotateCcw, Loader2, Download, Upload, Settings
+  CheckCircle2, Users, BarChart3, Info, XCircle, RotateCcw, Loader2, Download, Upload, Settings, Trash2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie } from 'recharts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -1751,7 +1751,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                       key: 'employeeName', header: 'Employee', sortable: true,
                       render: (r: ReviewRow) => (
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                             <Users className="w-4 h-4 text-white" />
                           </div>
                           <div className="min-w-0">
@@ -1765,11 +1765,11 @@ const [includeInactive, setIncludeInactive] = useState(false);
                       ),
                       sortValue: (r: ReviewRow) => r.employeeName,
                     },
-                    { key: 'companyName', header: 'Company', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(r.company_id)}</span>, sortValue: (r: ReviewRow) => getCompanyName(r.company_id) },
-                    { key: 'branchName', header: 'Branch', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{getBranchName(r.branch_id)}</span>, sortValue: (r: ReviewRow) => getBranchName(r.branch_id) },
-                    { key: 'departmentName', header: 'Department', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{getDeptName(r.department_id)}</span>, sortValue: (r: ReviewRow) => getDeptName(r.department_id) },
-                    { key: 'reviewerName', header: 'Reviewer', render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{r.reviewerName}</span> },
-                    { key: 'reviewPeriod', header: 'Period', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{r.reviewPeriod}</span>, sortValue: (r: ReviewRow) => r.reviewPeriod },
+                    { key: 'companyName', header: 'Company', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{getCompanyName(r.company_id)}</span>, sortValue: (r: ReviewRow) => getCompanyName(r.company_id) },
+                    { key: 'branchName', header: 'Branch', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{getBranchName(r.branch_id)}</span>, sortValue: (r: ReviewRow) => getBranchName(r.branch_id) },
+                    { key: 'departmentName', header: 'Department', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{getDeptName(r.department_id)}</span>, sortValue: (r: ReviewRow) => getDeptName(r.department_id) },
+                    { key: 'reviewerName', header: 'Reviewer', render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{r.reviewerName}</span> },
+                    { key: 'reviewPeriod', header: 'Period', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{r.reviewPeriod}</span>, sortValue: (r: ReviewRow) => r.reviewPeriod },
                     {
                       key: 'rating', header: 'Rating', align: 'center', sortable: true,
                       render: (r: ReviewRow) => (
@@ -1786,12 +1786,12 @@ const [includeInactive, setIncludeInactive] = useState(false);
                       sortValue: (r: ReviewRow) => r.status,
                     },
                     { key: 'promotionEligible', header: 'Promotion Eligible', align: 'center', sortable: true, render: (r: ReviewRow) => <span className={`inline-flex items-center gap-1 text-sm ${r.promotionEligible ? 'text-[#059669] font-medium' : 'text-[#64748B]'}`}>{r.promotionEligible ? 'Yes' : 'No'}</span>, sortValue: (r: ReviewRow) => r.promotionEligible ? 'Yes' : 'No' },
-                    { key: 'salaryRecommendation', header: 'Salary Recommendation', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#0F172A]">{r.salaryRecommendation || '-'}</span>, sortValue: (r: ReviewRow) => r.salaryRecommendation || '' },
+                    { key: 'salaryRecommendation', header: 'Salary Recommendation', sortable: true, render: (r: ReviewRow) => <span className="text-sm text-[#64748B]">{r.salaryRecommendation || '-'}</span>, sortValue: (r: ReviewRow) => r.salaryRecommendation || '' },
                   ]}
                   actions={(r: ReviewRow) => (
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => handleOpenReviewDrawer(r)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => setDeleteConfirm({ type: 'review', id: r.id, name: r.employeeName || 'this review' })} className="p-2 text-[#C81E1E] hover:bg-[#C81E1E]/10 rounded-lg transition-colors" title="Delete"><XCircle className="w-4 h-4" /></button>
+                      <button onClick={() => setDeleteConfirm({ type: 'review', id: r.id, name: r.employeeName || 'this review' })} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )}
                 />
@@ -1883,7 +1883,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                   columns={[
                     { key: 'employeeName', header: 'Employee', sortable: true, render: (g: GoalRow) => (
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                           <Users className="w-4 h-4 text-white" />
                         </div>
                         <div className="min-w-0">
@@ -1895,9 +1895,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
                         </div>
                       </div>
                     ), sortValue: (g: GoalRow) => g.employeeName },
-                    { key: 'companyName', header: 'Company', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(g.company_id)}</span>, sortValue: (g: GoalRow) => getCompanyName(g.company_id) },
-                    { key: 'branchName', header: 'Branch', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#0F172A]">{getBranchName(g.branch_id)}</span>, sortValue: (g: GoalRow) => getBranchName(g.branch_id) },
-                    { key: 'departmentName', header: 'Department', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#0F172A]">{getDeptName(g.department_id)}</span>, sortValue: (g: GoalRow) => getDeptName(g.department_id) },
+                    { key: 'companyName', header: 'Company', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#64748B]">{getCompanyName(g.company_id)}</span>, sortValue: (g: GoalRow) => getCompanyName(g.company_id) },
+                    { key: 'branchName', header: 'Branch', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#64748B]">{getBranchName(g.branch_id)}</span>, sortValue: (g: GoalRow) => getBranchName(g.branch_id) },
+                    { key: 'departmentName', header: 'Department', sortable: true, render: (g: GoalRow) => <span className="text-sm text-[#64748B]">{getDeptName(g.department_id)}</span>, sortValue: (g: GoalRow) => getDeptName(g.department_id) },
                     {
                       key: 'title', header: 'Goal Title', sortable: true,
                       render: (g: GoalRow) => (
@@ -1908,7 +1908,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                       ),
                       sortValue: (g: GoalRow) => g.title,
                     },
-                    { key: 'goalType', header: 'Goal Type', render: (g: GoalRow) => <span className="text-sm text-[#0F172A]">{g.goalType || '-'}</span> },
+                    { key: 'goalType', header: 'Goal Type', render: (g: GoalRow) => <span className="text-sm text-[#64748B]">{g.goalType || '-'}</span> },
                     {
                       key: 'progress', header: 'Progress', align: 'center', sortable: true,
                       render: (g: GoalRow) => (
@@ -1928,9 +1928,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
                     },
                   ]}
                   actions={(g: GoalRow) => (
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => handleOpenGoalModal(g)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => setDeleteConfirm({ type: 'goal', id: g.id, name: g.title || 'this goal' })} className="p-2 text-[#C81E1E] hover:bg-[#C81E1E]/10 rounded-lg transition-colors" title="Delete"><XCircle className="w-4 h-4" /></button>
+                      <button onClick={() => setDeleteConfirm({ type: 'goal', id: g.id, name: g.title || 'this goal' })} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )}
                 />
@@ -2022,7 +2022,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                   columns={[
                     { key: 'employeeName', header: 'Employee', sortable: true, render: (f: FeedbackRow) => (
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                           <Users className="w-4 h-4 text-white" />
                         </div>
                         <div className="min-w-0">
@@ -2034,11 +2034,11 @@ const [includeInactive, setIncludeInactive] = useState(false);
                         </div>
                       </div>
                     ), sortValue: (f: FeedbackRow) => f.employeeName },
-                    { key: 'companyName', header: 'Company', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(f.company_id)}</span>, sortValue: (f: FeedbackRow) => getCompanyName(f.company_id) },
-                    { key: 'branchName', header: 'Branch', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#0F172A]">{getBranchName(f.branch_id)}</span>, sortValue: (f: FeedbackRow) => getBranchName(f.branch_id) },
-                    { key: 'departmentName', header: 'Department', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#0F172A]">{getDeptName(f.department_id)}</span>, sortValue: (f: FeedbackRow) => getDeptName(f.department_id) },
-                    { key: 'reviewerName', header: 'Reviewer', render: (f: FeedbackRow) => <span className="text-sm text-[#0F172A]">{f.reviewerName}</span> },
-                    { key: 'feedbackType', header: 'Feedback Type', render: (f: FeedbackRow) => <span className="text-sm text-[#0F172A]">{f.feedbackType || '-'}</span> },
+                    { key: 'companyName', header: 'Company', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#64748B]">{getCompanyName(f.company_id)}</span>, sortValue: (f: FeedbackRow) => getCompanyName(f.company_id) },
+                    { key: 'branchName', header: 'Branch', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#64748B]">{getBranchName(f.branch_id)}</span>, sortValue: (f: FeedbackRow) => getBranchName(f.branch_id) },
+                    { key: 'departmentName', header: 'Department', sortable: true, render: (f: FeedbackRow) => <span className="text-sm text-[#64748B]">{getDeptName(f.department_id)}</span>, sortValue: (f: FeedbackRow) => getDeptName(f.department_id) },
+                    { key: 'reviewerName', header: 'Reviewer', render: (f: FeedbackRow) => <span className="text-sm text-[#64748B]">{f.reviewerName}</span> },
+                    { key: 'feedbackType', header: 'Feedback Type', render: (f: FeedbackRow) => <span className="text-sm text-[#64748B]">{f.feedbackType || '-'}</span> },
                     {
                       key: 'overallRating', header: 'Rating', align: 'center', sortable: true,
                       render: (f: FeedbackRow) => (
@@ -2056,9 +2056,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
                     },
                   ]}
                   actions={(f: FeedbackRow) => (
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => handleOpenFeedbackModal(f)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => setDeleteConfirm({ type: 'feedback', id: f.id, name: f.employeeName || 'this feedback' })} className="p-2 text-[#C81E1E] hover:bg-[#C81E1E]/10 rounded-lg transition-colors" title="Delete"><XCircle className="w-4 h-4" /></button>
+                      <button onClick={() => setDeleteConfirm({ type: 'feedback', id: f.id, name: f.employeeName || 'this feedback' })} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )}
                 />

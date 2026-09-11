@@ -1136,6 +1136,8 @@ const EmployeeManagement = () => {
                 </button>
               )}
             </div>
+            <div className="overflow-x-auto">
+            <div className="overflow-x-auto">
             <DataTable
               data={filteredArchivedEmployees}
               rowKey={(a: ArchivedEmployee) => a.id}
@@ -1147,7 +1149,7 @@ const EmployeeManagement = () => {
                   key: 'name', header: 'Employee', sortable: true,
                   render: (a: ArchivedEmployee) => (
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                         <User className="w-4 h-4 text-white" />
                       </div>
                       <div className="min-w-0">
@@ -1192,6 +1194,7 @@ const EmployeeManagement = () => {
                 </div>
               )}
             />
+            </div>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">

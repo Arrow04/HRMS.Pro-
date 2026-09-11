@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   History, Search, Building2, Users, Calendar, Briefcase, Database,
   Clock, DollarSign, Receipt, Settings, FileBarChart, Filter, ChevronDown,
-  Monitor, Smartphone, Globe, MapPin, FileText
+  Monitor, Smartphone, Globe, MapPin, FileText, User
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
@@ -175,14 +175,26 @@ const ActivityLog = () => {
               null
             </div>
           ) : (
-            <DataTable
-              data={filteredLogs}
-              rowKey={(log) => log.id}
-              logEntityType="audit_log"
-              logFor={(log: ActivityLogEntry) => ({ id: log.id, label: log.entity_name || `#${log.id}` })}
-              emptyMessage="No activity logs found"
-              columns={[
-                { key: 'user_name', header: 'User', sortable: true, render: (log) => <span className="font-medium text-[#0F172A]">{log.user_name}</span>, sortValue: (log) => log.user_name },
+            <div className="overflow-x-auto">
+              <DataTable
+                data={filteredLogs}
+                rowKey={(log) => log.id}
+                logEntityType="audit_log"
+                logFor={(log: ActivityLogEntry) => ({ id: log.id, label: log.entity_name || `#${log.id}` })}
+                emptyMessage="No activity logs found"
+                columns={[
+                  {
+                    key: 'user_name', header: 'User', sortable: true,
+                    render: (log) => (
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="font-medium text-[#0F172A]">{log.user_name}</span>
+                      </div>
+                    ),
+                    sortValue: (log) => log.user_name,
+                  },
                 { key: 'module', header: 'Module', render: (log) => <span className="text-sm text-[#64748B]">{log.module}</span> },
                 {
                   key: 'action', header: 'Action', sortable: true,
@@ -221,7 +233,8 @@ const ActivityLog = () => {
                 { key: 'ip_address', header: 'IP Address', render: (log) => <span className="text-sm text-[#64748B]">{log.ip_address || '-'}</span> },
                 { key: 'created_at', header: 'Timestamp', sortable: true, render: (log) => <span className="text-sm text-[#64748B]">{log.created_at}</span>, sortValue: (log) => log.created_at },
               ]}
-            />
+              />
+            </div>
           )}
         </div>
       </div>

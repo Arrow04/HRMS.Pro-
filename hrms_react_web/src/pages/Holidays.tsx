@@ -627,6 +627,7 @@ const Holidays = () => {
             </div>
           </div>
           <div className="bg-white overflow-hidden">
+            <div className="overflow-x-auto">
             {loadingHolidays ? (
             <div className="animate-page-enter"><PageSkeleton /></div>
           ) : (
@@ -646,8 +647,8 @@ const Holidays = () => {
                   key: 'name', header: 'Holiday', sortable: true,
                   render: (h: HolidayRow) => (
                     <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${h.type === 'public' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
-                        <Palmtree className="w-4 h-4" />
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                        <Palmtree className="w-4 h-4 text-white" />
                       </div>
                       <div>
                         <div className="font-semibold text-[#0F172A] text-sm">{h.name}</div>
@@ -659,7 +660,7 @@ const Holidays = () => {
                 {
                   key: 'date', header: 'Date', sortable: true,
                   render: (h: HolidayRow) => (
-                    <div className="flex items-center gap-1.5 text-sm text-[#475569]">
+                    <div className="flex items-center gap-1.5 text-sm text-[#64748B]">
                       <Calendar className="w-3.5 h-3.5 text-[#94A3B8]" />
                       {formatAppDate(h.date)}
                     </div>
@@ -682,12 +683,12 @@ const Holidays = () => {
                   ),
                 },
                 { key: 'description', header: 'Description', render: (h: HolidayRow) => <span className="text-sm text-[#64748B]">{h.description || '-'}</span> },
-                { key: 'companyName', header: 'Company', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#0F172A]">{getCompanyName(h.company_id)}</span>, sortValue: (h: HolidayRow) => getCompanyName(h.company_id) },
-                { key: 'branchName', header: 'Branch', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#0F172A]">{getBranchName(h.branch_id)}</span>, sortValue: (h: HolidayRow) => getBranchName(h.branch_id) },
-                { key: 'departmentName', header: 'Department', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#0F172A]">{getDeptName(h.department_id)}</span>, sortValue: (h: HolidayRow) => getDeptName(h.department_id) },
+                { key: 'companyName', header: 'Company', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#64748B]">{getCompanyName(h.company_id)}</span>, sortValue: (h: HolidayRow) => getCompanyName(h.company_id) },
+                { key: 'branchName', header: 'Branch', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#64748B]">{getBranchName(h.branch_id)}</span>, sortValue: (h: HolidayRow) => getBranchName(h.branch_id) },
+                { key: 'departmentName', header: 'Department', sortable: true, render: (h: HolidayRow) => <span className="text-sm text-[#64748B]">{getDeptName(h.department_id)}</span>, sortValue: (h: HolidayRow) => getDeptName(h.department_id) },
               ]}
               actions={(h: HolidayRow) => (
-                <div className="flex items-center justify-end gap-1">
+                <div className="flex items-center justify-end gap-1.5">
                   <Tooltip id={`btn-edit-holiday-${h.id}`} content="Edit">
                     <button onClick={() => handleEdit(h)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
                   </Tooltip>
@@ -698,6 +699,7 @@ const Holidays = () => {
               )}
             />
           )}
+          </div>
           </div>
         </div>
       </div>

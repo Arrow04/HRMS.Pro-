@@ -388,10 +388,11 @@ const Grievances = () => {
       sortable: true,
       sortValue: (row) => row.subject,
       render: (row) => {
-        const dot = STATUS_COLORS[normalizedStatus(row)] || '#64748B';
         return (
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dot }} />
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4 h-4 text-white" />
+            </div>
             <div className="min-w-0">
               <button
                 type="button"
@@ -461,7 +462,7 @@ const Grievances = () => {
       sortValue: (row) => daysSince(row.createdAt) ?? -1,
       render: (row) => {
         const age = daysSince(row.createdAt);
-        if (age === null) return <span className="text-sm text-[var(--text-secondary)]">-</span>;
+        if (age === null) return <span className="text-sm text-[#64748B]">-</span>;
         const breached = isOverdue(row);
         return (
           <div className="whitespace-nowrap">
@@ -481,7 +482,7 @@ const Grievances = () => {
       sortable: true,
       sortValue: (row) => row.updatedAt || '',
       render: (row) => (
-        <span className="text-sm text-[var(--text-secondary)] whitespace-nowrap">
+        <span className="text-sm text-[#64748B] whitespace-nowrap">
           {row.updatedAt ? formatAppDate(row.updatedAt) : '-'}
         </span>
       ),
@@ -582,6 +583,7 @@ const Grievances = () => {
         </div>
 
         <div className="bg-white overflow-hidden">
+          <div className="overflow-x-auto">
           {isLoading ? (
             <TableSkeleton rows={6} cols={6} />
           ) : (
@@ -631,7 +633,7 @@ const Grievances = () => {
                 },
               ]}
               actions={(row) => (
-                <div className="flex items-center justify-end gap-1">
+                <div className="flex items-center justify-end gap-1.5">
                   <Tooltip id={`btn-view-grievance-${row.id}`} content="View details">
                     <button
                       onClick={() => setDetailItem(row)}
@@ -663,6 +665,7 @@ const Grievances = () => {
               )}
             />
           )}
+          </div>
         </div>
       </div>
 

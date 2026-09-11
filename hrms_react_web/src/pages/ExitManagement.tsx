@@ -625,6 +625,7 @@ const statCards = [
                 )}
               </div>
             </div>
+            <div className="overflow-x-auto">
             <DataTable
               data={filteredRecords}
               rowKey={(rec: ExitRecord) => rec.id}
@@ -663,7 +664,7 @@ const statCards = [
                   key: 'employeeName', header: 'Employee', sortable: true,
                   render: (rec: ExitRecord) => (
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shrink-0">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                         <User className="w-4 h-4 text-white" />
                       </div>
                       <div className="min-w-0">
@@ -755,13 +756,14 @@ const statCards = [
                 </div>
               )}
               />
+            </div>
           </div>
         )}
 
         {/* === F&F TAB === */}
         {activeTab === 'fnf' && (
           <div className="space-y-5">
-            <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
               <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">Full & Final Settlement</h2>
                 <span className="text-xs text-[#94A3B8]">Click "Calculate" on a record to run its FnF settlement</span>

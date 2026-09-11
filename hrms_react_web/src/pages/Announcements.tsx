@@ -707,20 +707,22 @@ const Announcements = () => {
             </div>
           )
         ) : (
-          <DataTable
-            columns={columns}
-            data={filteredData}
-            rowKey={(row) => row.id}
-            searchable={false}
-            emptyMessage="No announcements found"
-            persistKey="announcements"
-            exportFilename="announcements.csv"
-            logEntityType="announcement"
-            logFor={(row) => ({ id: row.id, label: row.title })}
-            onEdit={(row) => openEdit(row)}
-            onDelete={(rows) => setDeleteTargets(rows as Announcement[])}
-            actions={(row) => <div className="flex items-center justify-end">{renderCardActions(row, 'row')}</div>}
-          />
+          <div className="overflow-x-auto">
+            <DataTable
+              columns={columns}
+              data={filteredData}
+              rowKey={(row) => row.id}
+              searchable={false}
+              emptyMessage="No announcements found"
+              persistKey="announcements"
+              exportFilename="announcements.csv"
+              logEntityType="announcement"
+              logFor={(row) => ({ id: row.id, label: row.title })}
+              onEdit={(row) => openEdit(row)}
+              onDelete={(rows) => setDeleteTargets(rows as Announcement[])}
+              actions={(row) => <div className="flex items-center justify-end gap-1.5">{renderCardActions(row, 'row')}</div>}
+            />
+          </div>
         )}
       </div>
 
