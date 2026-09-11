@@ -509,15 +509,25 @@ export default function Dashboard() {
                 <Pie
                   data={stats.genderRatio}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={65}
-                  outerRadius={100}
-                  paddingAngle={4}
+                  cy="45%"
+                  innerRadius={60}
+                  outerRadius={95}
+                  paddingAngle={2}
                   dataKey="value"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={true}
+                  label={({ name, percent, midAngle }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = 95 + 20;
+                    const x = 50 + radius * Math.cos(-midAngle * RADIAN);
+                    const y = 45 + radius * Math.sin(-midAngle * RADIAN);
+                    return percent && percent > 0.05 ? (
+                      <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
+                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    ) : null;
+                  }}
                   stroke="white"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                 >
                   {stats.genderRatio.map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -540,21 +550,34 @@ export default function Dashboard() {
                 <Pie
                   data={stats.joinAttritionRatio}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={65}
-                  outerRadius={100}
-                  paddingAngle={4}
+                  cy="45%"
+                  innerRadius={60}
+                  outerRadius={95}
+                  paddingAngle={2}
                   dataKey="value"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={true}
+                  label={({ name, percent, midAngle }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = 95 + 20;
+                    const x = 50 + radius * Math.cos(-midAngle * RADIAN);
+                    const y = 45 + radius * Math.sin(-midAngle * RADIAN);
+                    return percent && percent > 0.05 ? (
+                      <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
+                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    ) : null;
+                  }}
                   stroke="white"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                 >
                   {stats.joinAttritionRatio.map((entry: ChartSlice, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value}`, props.payload?.name || '']}
+                />
                 <Legend
                   verticalAlign="bottom"
                   height={36}
@@ -571,21 +594,34 @@ export default function Dashboard() {
                 <Pie
                   data={stats.departmentDistribution}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={95}
-                  paddingAngle={3}
+                  cy="45%"
+                  innerRadius={50}
+                  outerRadius={90}
+                  paddingAngle={1}
                   dataKey="value"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={true}
+                  label={({ name, percent, midAngle }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = 90 + 20;
+                    const x = 50 + radius * Math.cos(-midAngle * RADIAN);
+                    const y = 45 + radius * Math.sin(-midAngle * RADIAN);
+                    return percent && percent > 0.05 ? (
+                      <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
+                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    ) : null;
+                  }}
                   stroke="white"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                 >
                   {stats.departmentDistribution.map((entry: { name: string; employees: number; value: number }, index: number) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                />
                 <Legend
                   verticalAlign="bottom"
                   height={36}
@@ -624,15 +660,25 @@ export default function Dashboard() {
                     { name: 'Inactive', value: stats.terminatedEmployees, color: '#EF4444' },
                   ].filter((s) => s.value > 0)}
                   cx="50%"
-                  cy="50%"
-                  innerRadius={65}
-                  outerRadius={100}
-                  paddingAngle={4}
+                  cy="45%"
+                  innerRadius={60}
+                  outerRadius={95}
+                  paddingAngle={2}
                   dataKey="value"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${percent ? (percent * 100).toFixed(0) : 0}%`}
+                  labelLine={true}
+                  label={({ name, percent, midAngle }) => {
+                    const RADIAN = Math.PI / 180;
+                    const radius = 95 + 20;
+                    const x = 50 + radius * Math.cos(-midAngle * RADIAN);
+                    const y = 45 + radius * Math.sin(-midAngle * RADIAN);
+                    return percent && percent > 0.05 ? (
+                      <text x={x} y={y} fill="#475569" textAnchor={x > 50 ? 'start' : 'end'} dominantBaseline="central" fontSize={11} fontWeight={600}>
+                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    ) : null;
+                  }}
                   stroke="white"
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                 >
                   {[
                     { name: 'Active', value: stats.activeEmployees, color: '#10B981' },
@@ -641,7 +687,10 @@ export default function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                />
                 <Legend
                   verticalAlign="bottom"
                   height={36}
