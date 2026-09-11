@@ -1250,7 +1250,7 @@ const Letters = () => {
 
   return (
     <div className="min-h-screen bg-[var(--background)] animate-page-enter">
-      <div className="max-w-[1600px] mx-auto space-y-5 px-4 sm:px-6 pb-12">
+      <div className="w-full mx-auto space-y-6">
 
         <PageHero
           title="Letters"
