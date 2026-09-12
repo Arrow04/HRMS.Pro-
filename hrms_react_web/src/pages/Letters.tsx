@@ -748,7 +748,7 @@ const TEMPLATES: Template[] = [
 ];
 
 const TEMPLATE_GROUPS: Array<{ title: string; ids: string[] }> = [
-  { title: 'Joining', ids: ['offer', 'appointment', 'intern_offer'] },
+  { title: 'Joining', ids: ['intern_offer', 'offer', 'appointment'] },
   { title: 'Growth', ids: ['confirmation', 'appraisal', 'promotion', 'transfer', 'pip'] },
   { title: 'Discipline', ids: ['showcause', 'warning', 'suspension', 'absconding', 'termination'] },
   { title: 'Separation', ids: ['resignation_acceptance', 'relieving', 'experience', 'fnf'] },
@@ -761,13 +761,13 @@ const TEMPLATE_GROUPS: Array<{ title: string; ids: string[] }> = [
 
 type CategoryKey = 'all' | 'joining' | 'growth' | 'discipline' | 'separation' | 'certificates';
 
-const CATEGORY_PILLS: Array<{ key: CategoryKey; label: string; groupTitles: string[] }> = [
-  { key: 'all', label: 'All Templates', groupTitles: [] },
-  { key: 'joining', label: 'Joining', groupTitles: ['Joining'] },
-  { key: 'growth', label: 'Growth', groupTitles: ['Growth'] },
-  { key: 'discipline', label: 'Discipline', groupTitles: ['Discipline'] },
-  { key: 'separation', label: 'Separation', groupTitles: ['Separation'] },
-  { key: 'certificates', label: 'Certificates', groupTitles: ['Certificates'] },
+const CATEGORY_PILLS: Array<{ key: CategoryKey; label: string; groupTitles: string[]; icon: string }> = [
+  { key: 'all', label: 'All Templates', groupTitles: [], icon: '📄' },
+  { key: 'joining', label: 'Joining', groupTitles: ['Joining'], icon: '📄' },
+  { key: 'growth', label: 'Growth', groupTitles: ['Growth'], icon: '📄' },
+  { key: 'discipline', label: 'Discipline', groupTitles: ['Discipline'], icon: '📄' },
+  { key: 'separation', label: 'Separation', groupTitles: ['Separation'], icon: '📄' },
+  { key: 'certificates', label: 'Certificates', groupTitles: ['Certificates'], icon: '📄' },
 ];
 
 function getTemplatesForCategory(cat: CategoryKey): Template[] {
@@ -794,7 +794,7 @@ const STEPS = ['Template', 'Letterhead', 'Employee', 'Details'] as const;
 
 const Letters = () => {
   const [mounted, setMounted] = useState(false);
-  const [templateId, setTemplateId] = useState('offer');
+  const [templateId, setTemplateId] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -1198,14 +1198,26 @@ const Letters = () => {
   useEffect(() => {
     if (!previewContentRef.current) return;
     const el = previewContentRef.current;
-    const observer = new ResizeObserver(() => {
+    const calculatePages = () => {
       const contentHeight = el.scrollHeight;
       const PAGE_HEIGHT_PX = 1059;
       const pages = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT_PX));
       setPageCount(pages);
+    };
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(() => requestAnimationFrame(calculatePages));
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    // Calculate after delays to handle initial render and template switches
+    const timer1 = setTimeout(calculatePages, 50);
+    const timer2 = setTimeout(calculatePages, 200);
+    const timer3 = setTimeout(calculatePages, 500);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
   }, [letterText, zoomPct, previewFontSize]);
 
   /* ── Category / search ─────────────────────────────────────────────────────── */
@@ -1340,17 +1352,15 @@ const Letters = () => {
                 key={pill.key}
                 onClick={() => { setActiveCategory(pill.key); setTemplateSearch(''); }}
                 className={`
-                  relative shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200
+                  relative shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center gap-2
                   ${activeCategory === pill.key
-                    ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-blue-200'
-                    : 'bg-white/70 text-[var(--text-secondary)] border border-[var(--border-color)] hover:bg-white hover:border-blue-200'
+                    ? 'bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] text-white shadow-lg shadow-blue-500/25 scale-[1.02]'
+                    : 'bg-white text-[#64748B] border border-[#E2E8F0] hover:bg-[#F8FAFC] hover:border-[#CBD5E1] hover:shadow-md hover:shadow-gray-100'
                   }
                 `}
               >
+                <span className="text-base">{pill.icon}</span>
                 {pill.label}
-                {activeCategory === pill.key && (
-                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-8 h-0.5 bg-[var(--primary-blue)] rounded-full" />
-                )}
               </button>
             ))}
           </div>
@@ -1483,7 +1493,7 @@ const Letters = () => {
             </div>
 
             {/* ── Help Panel (collapsible) ── */}
-            {template && (
+            {templateId && (
               <div
                 className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 backdrop-blur-xl rounded-2xl border border-amber-200/60 shadow-lg overflow-hidden transition-all duration-300"
                 style={{ animationDelay: '25ms' }}
@@ -1512,6 +1522,7 @@ const Letters = () => {
             )}
 
             {/* ── SECTION 2: Letterhead ── */}
+            {templateId && (
             <div
               className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
               style={{ animationDelay: '50ms' }}
@@ -1599,8 +1610,10 @@ const Letters = () => {
                 </div>
               </div>
             </div>
+            )}
 
             {/* ── SECTION 3: Employee Picker ── */}
+            {templateId && (
             <div
               className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
               style={{ animationDelay: '100ms' }}
@@ -1721,8 +1734,10 @@ const Letters = () => {
                 )}
               </div>
             </div>
+            )}
 
             {/* ── SECTION 4: Letter Details ── */}
+            {templateId && (
             <div
               className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
               style={{ animationDelay: '150ms' }}
@@ -1770,8 +1785,10 @@ const Letters = () => {
                 ))}
               </div>
             </div>
+            )}
 
             {/* ── SECTION 5: Terms & Annexure ── */}
+            {templateId && (
             <div
               className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/40 shadow-xl overflow-hidden"
               style={{ animationDelay: '200ms' }}
@@ -1892,6 +1909,7 @@ const Letters = () => {
                 )}
               </div>
             </div>
+            )}
 
           </div>
 
@@ -1935,6 +1953,7 @@ const Letters = () => {
 
               {/* ── Preview paper ── */}
               <div className="bg-white rounded-2xl border border-[var(--border-color)] shadow-2xl overflow-hidden transition-all duration-300 flex-1 flex flex-col">
+                {templateId ? (
                 <div
                   className="px-10 py-8 font-serif leading-relaxed text-gray-900"
                   ref={previewContentRef}
@@ -2019,9 +2038,32 @@ const Letters = () => {
                     <p className="font-bold">{letterhead.company_name || 'Company Name'}</p>
                   </div>
                 </div>
+                ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-blue-50 flex items-center justify-center mb-4">
+                    <FileText className="w-8 h-8 text-indigo-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">How to create a letter</h3>
+                  <div className="space-y-3 text-sm text-[#64748B] max-w-sm">
+                    <div className="flex items-start gap-3 text-left">
+                      <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">1</span>
+                      <p>Select a letter template from the left panel</p>
+                    </div>
+                    <div className="flex items-start gap-3 text-left">
+                      <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">2</span>
+                      <p>Choose an employee and fill in the required fields</p>
+                    </div>
+                    <div className="flex items-start gap-3 text-left">
+                      <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">3</span>
+                      <p>Preview your letter here and download as PDF</p>
+                    </div>
+                  </div>
+                </div>
+                )}
               </div>
 
               {/* ── Action bar ── */}
+              {templateId && (
               <div className="flex gap-3 mt-4">
                 <button
                   onClick={downloadPdf}
@@ -2051,6 +2093,7 @@ const Letters = () => {
                   Print
                 </button>
               </div>
+              )}
             </div>
           </div>
         </div>

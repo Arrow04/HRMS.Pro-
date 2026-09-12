@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { useScrollTopBar } from '../hooks/useScrollTopBar';
@@ -79,6 +80,17 @@ const NotificationsScreen = ({ navigation }) => {
     }
   }, []);
 
+  const sendTestNotification = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'HRMS Pro Test',
+        body: 'Push notifications are working! You will receive leave, expense, and payroll updates here.',
+        data: { screen: 'Dashboard' },
+      },
+      trigger: null,
+    });
+  };
+
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   const markRead = async (id) => {
@@ -115,6 +127,13 @@ const NotificationsScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.body}>
+          <TouchableOpacity
+            onPress={sendTestNotification}
+            style={{ backgroundColor: '#14B8A6', padding: 12, borderRadius: 12, marginBottom: 16, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Send Test Notification</Text>
+          </TouchableOpacity>
+
           {loading ? (
             <>
               <View style={styles.skeleton} />

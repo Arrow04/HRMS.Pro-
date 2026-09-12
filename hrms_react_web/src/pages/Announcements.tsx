@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import {
   Megaphone, Plus, Edit2, Trash2,
-  Calendar, FileText, Pin, Clock, Eye, Copy,
-  LayoutGrid, List, Users, X,
+  Calendar, FileText, Pin, Clock, Copy,
+  Users, X,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -18,6 +18,9 @@ import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 import ExportButton from '../components/ExportButton';
+import SearchableSelect from '../components/SearchableSelect';
+import DateRangePicker from '../components/DateRangePicker';
+import type { Company } from '../types';
 
 type AnnouncementType = 'announcement' | 'notice';
 
@@ -29,6 +32,8 @@ type Announcement = {
   category?: string;
   pinned?: boolean;
   audience?: string;
+  companyId?: number;
+  companyName?: string;
   expiresAt?: string | null;
   isRead?: boolean;
   createdAt?: string;
@@ -106,7 +111,9 @@ const Announcements = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [statFilter, setStatFilter] = useState<StatFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [companyFilter, setCompanyFilter] = useState<string | number>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [mounted, setMounted] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<Announcement | null>(null);
@@ -130,6 +137,14 @@ const Announcements = () => {
       }));
     },
     staleTime: 2 * 60 * 1000,
+  });
+
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ['companies-dropdown'],
+    queryFn: async () => {
+      const res = await api.get('/companies', { params: { active_only: true } });
+      return (res.data?.items || res.data || []) as Company[];
+    },
   });
 
   const createMutation = useMutation({
@@ -303,13 +318,25 @@ const Announcements = () => {
     if (categoryFilter !== 'all') {
       items = items.filter((item) => (item.category || 'General') === categoryFilter);
     }
+    if (companyFilter !== 'all') {
+      items = items.filter((item) => String(item.companyId) === String(companyFilter));
+    }
+    if (startDate || endDate) {
+      items = items.filter((item) => {
+        const created = item.createdAt ? item.createdAt.split('T')[0] : '';
+        if (!created) return false;
+        if (startDate && created < startDate) return false;
+        if (endDate && created > endDate) return false;
+        return true;
+      });
+    }
     items.sort((a, b) => {
       const pinDiff = Number(!!b.pinned) - Number(!!a.pinned);
       if (pinDiff !== 0) return pinDiff;
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
     return items;
-  }, [announcements, activeTab, statFilter, categoryFilter]);
+  }, [announcements, activeTab, statFilter, categoryFilter, companyFilter, startDate, endDate]);
 
   const exportRows = useMemo(
     () =>
@@ -317,6 +344,7 @@ const Announcements = () => {
         Title: a.title,
         Type: a.type,
         Category: a.category || 'General',
+        Company: a.companyName || '-',
         Audience: audienceLabel(a.audience),
         Pinned: a.pinned ? 'Yes' : 'No',
         Expires: a.expiresAt ? new Date(a.expiresAt).toLocaleDateString() : 'No expiry',
@@ -326,12 +354,15 @@ const Announcements = () => {
   );
 
   const hasActiveFilters =
-    activeTab !== 'all' || statFilter !== 'all' || categoryFilter !== 'all';
+    activeTab !== 'all' || statFilter !== 'all' || categoryFilter !== 'all' || companyFilter !== 'all' || startDate !== '' || endDate !== '';
 
   const clearFilters = () => {
     setActiveTab('all');
     setStatFilter('all');
     setCategoryFilter('all');
+    setCompanyFilter('all');
+    setStartDate('');
+    setEndDate('');
   };
 
   const renderExpiryBadge = (item: Announcement) => {
@@ -364,7 +395,7 @@ const Announcements = () => {
           onClick={() => setPreviewItem(item)}
           className="p-1.5 rounded-lg text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 transition-colors"
         >
-          <Eye className="w-4 h-4" />
+          <FileText className="w-4 h-4" />
         </button>
       </Tooltip>
       <Tooltip id={`${prefix}-edit-${item.id}`} content="Edit">
@@ -401,15 +432,25 @@ const Announcements = () => {
       sortable: true,
       sortValue: (row) => row.title,
       render: (row) => (
-        <div className="flex items-center gap-2 min-w-0">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${row.type === 'notice' ? 'bg-pink-500' : 'bg-blue-500'}`} />
-          {row.pinned && <Pin className="w-3.5 h-3.5 text-[#D97706] shrink-0" />}
-          <button
-            onClick={() => setPreviewItem(row)}
-            className="font-medium text-[var(--text-primary)] hover:text-[var(--primary-blue)] truncate text-left"
-          >
-            {row.title}
-          </button>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+            row.type === 'notice'
+              ? 'bg-gradient-to-br from-pink-500 to-rose-600'
+              : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+          }`}>
+            <Megaphone className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {row.pinned && <Pin className="w-3.5 h-3.5 text-[#D97706] shrink-0" />}
+              <button
+                onClick={() => setPreviewItem(row)}
+                className="font-medium text-[#0F172A] text-sm hover:text-[#1C64F2] truncate text-left"
+              >
+                {row.title}
+              </button>
+            </div>
+          </div>
         </div>
       ),
     },
@@ -422,6 +463,15 @@ const Announcements = () => {
         <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700 whitespace-nowrap">
           {row.category || 'General'}
         </span>
+      ),
+    },
+    {
+      key: 'companyName',
+      header: 'Company',
+      sortable: true,
+      sortValue: (row) => row.companyName || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B]">{row.companyName || '-'}</span>
       ),
     },
     {
@@ -489,13 +539,16 @@ const Announcements = () => {
         accent="violet"
         breadcrumbs={['Home', 'Announcements']}
         actions={
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
-          >
-            <Plus className="w-4 h-4" />
-            New Announcement
-          </button>
+          <div className="flex items-center gap-2">
+            <ExportButton rows={exportRows} filename="announcements_export.csv" label="Export" />
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-[var(--primary-blue)] rounded-xl font-semibold text-sm shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              Add New
+            </button>
+          </div>
         }
       />
 
@@ -566,35 +619,39 @@ const Announcements = () => {
         <div className="p-4 border-b border-[var(--border-color)] space-y-3">
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <SearchableSelect
+                value={companyFilter}
+                onChange={(val) => setCompanyFilter(val)}
+                options={companies.map((c) => ({ id: c.id, name: c.name }))}
+                placeholder="All Companies"
+                allOption="All Companies"
+                className="w-44"
+              />
+              <SearchableSelect
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="all">All Categories</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-              <ExportButton rows={exportRows} filename="announcements_export.csv" variant="toolbar" label="Export" />
-              <div className="flex rounded-xl border border-gray-200 overflow-hidden">
-                <button
-                  onClick={() => setViewMode('cards')}
-                  title="Cards view"
-                  className={`p-2 transition-colors ${viewMode === 'cards' ? 'bg-[var(--primary-blue)] text-white' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('table')}
-                  title="Table view"
-                  className={`p-2 transition-colors ${viewMode === 'table' ? 'bg-[var(--primary-blue)] text-white' : 'text-gray-500 hover:bg-gray-50'}`}
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
+                onChange={(val) => setCategoryFilter(val.toString())}
+                options={[
+                  { id: 'General', name: 'General' },
+                  { id: 'Policy', name: 'Policy' },
+                  { id: 'Update', name: 'Update' },
+                  { id: 'Event', name: 'Event' },
+                  { id: 'Holiday', name: 'Holiday' },
+                  { id: 'Training', name: 'Training' },
+                  { id: 'Wellness', name: 'Wellness' },
+                  { id: 'Compliance', name: 'Compliance' },
+                  { id: 'Team', name: 'Team' },
+                  { id: 'Other', name: 'Other' },
+                ]}
+                placeholder="All Categories"
+                allOption="All Categories"
+                className="w-44"
+              />
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onDateChange={(start, end) => { setStartDate(start); setEndDate(end); }}
+                placeholder="Filter by date"
+              />
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
@@ -605,86 +662,26 @@ const Announcements = () => {
                 </button>
               )}
             </div>
-          </div>
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit">
-            {ANNOUNCEMENT_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-[var(--primary-blue)] text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit max-w-full lg:ml-auto">
+              {ANNOUNCEMENT_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-[var(--primary-blue)] text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {reloading ? (
           <TableSkeleton rows={6} cols={5} />
-        ) : viewMode === 'cards' ? (
-          filteredData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
-              <Megaphone className="w-10 h-10 text-[#CBD5E1] mb-4" />
-              <p className="text-sm font-semibold text-[#0F172A]">No announcements found</p>
-              <p className="text-xs text-[#94A3B8] mt-1">Try adjusting your search or filters</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
-              {filteredData.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-2xl border border-[var(--border-color)] shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          item.type === 'notice'
-                            ? 'bg-gradient-to-br from-[#EC4899]/20 via-[#F472B6]/10 to-[#F9A8D4]/5 text-[#DB2777]'
-                            : 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5 text-[var(--primary-blue)]'
-                        }`}
-                      >
-                        <Megaphone className="w-4 h-4" />
-                      </div>
-                      <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full ${getTypeBadgeClass(item.type)}`}>
-                        {item.type === 'notice' ? 'Notice' : 'Announcement'}
-                      </span>
-                      {item.pinned && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                          <Pin className="w-3 h-3" />
-                          Pinned
-                        </span>
-                      )}
-                    </div>
-                    {renderCardActions(item, 'card')}
-                  </div>
-                  <button onClick={() => setPreviewItem(item)} className="mt-3 text-left">
-                    <h3 className="font-bold text-[var(--text-primary)] hover:text-[var(--primary-blue)] line-clamp-1">
-                      {item.title}
-                    </h3>
-                  </button>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)] line-clamp-3 flex-1">{excerpt(item.body, 160)}</p>
-                  <div className="mt-3 pt-3 border-t border-[var(--border-color)] flex flex-wrap items-center gap-2">
-                    <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-gray-100 text-gray-700">
-                      {item.category || 'General'}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-                      <Users className="w-3.5 h-3.5 text-gray-400" />
-                      {audienceLabel(item.audience)}
-                    </span>
-                    <span className="ml-auto">{renderExpiryBadge(item)}</span>
-                  </div>
-                  <div className="mt-2 text-xs text-gray-400">
-                    {item.createdAt ? formatAppDate(item.createdAt) : ''}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )
         ) : (
           <div className="overflow-x-auto">
             <DataTable
@@ -746,13 +743,22 @@ const Announcements = () => {
               </select>
             </FormField>
             <FormField label="Category">
-              <input
-                type="text"
+              <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className={formInputClass}
-                placeholder="General"
-              />
+              >
+                <option value="General">General</option>
+                <option value="Policy">Policy</option>
+                <option value="Update">Update</option>
+                <option value="Event">Event</option>
+                <option value="Holiday">Holiday</option>
+                <option value="Training">Training</option>
+                <option value="Wellness">Wellness</option>
+                <option value="Compliance">Compliance</option>
+                <option value="Team">Team</option>
+                <option value="Other">Other</option>
+              </select>
             </FormField>
             <FormField label="Audience">
               <select

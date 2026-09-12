@@ -174,22 +174,15 @@ interface EmployeeFormModalProps {
 }
 
 const TABS: { id: string; label: string; icon: React.ElementType; color: string; activeColor: string }[] = [
-  { id: 'personal', label: 'Personal', icon: UserCircle, color: 'text-pink-500', activeColor: 'border-pink-500' },
-  { id: 'family', label: 'Family', icon: Heart, color: 'text-rose-500', activeColor: 'border-rose-500' },
-  { id: 'address', label: 'Address', icon: MapPin, color: 'text-emerald-500', activeColor: 'border-emerald-500' },
-  { id: 'identity', label: 'Identity', icon: IdCard, color: 'text-violet-500', activeColor: 'border-violet-500' },
-  { id: 'education', label: 'Education', icon: GraduationCap, color: 'text-indigo-500', activeColor: 'border-indigo-500' },
-  { id: 'skills', label: 'Skills', icon: Award, color: 'text-yellow-500', activeColor: 'border-yellow-500' },
-  { id: 'experience', label: 'Experience', icon: Briefcase, color: 'text-sky-500', activeColor: 'border-sky-500' },
-  { id: 'achievements', label: 'Achievements', icon: Trophy, color: 'text-orange-500', activeColor: 'border-orange-500' },
-  { id: 'activities', label: 'Activities', icon: Sparkles, color: 'text-fuchsia-500', activeColor: 'border-fuchsia-500' },
+  { id: 'personal', label: 'Personal & Family', icon: UserCircle, color: 'text-pink-500', activeColor: 'border-pink-500' },
+  { id: 'address', label: 'Address & Identity', icon: MapPin, color: 'text-emerald-500', activeColor: 'border-emerald-500' },
+  { id: 'education', label: 'Education & Skills', icon: GraduationCap, color: 'text-indigo-500', activeColor: 'border-indigo-500' },
+  { id: 'experience', label: 'Experience & More', icon: Briefcase, color: 'text-sky-500', activeColor: 'border-sky-500' },
   { id: 'employment', label: 'Employment', icon: Building, color: 'text-cyan-600', activeColor: 'border-cyan-600' },
-  { id: 'benefits', label: 'Benefits', icon: Briefcase, color: 'text-lime-600', activeColor: 'border-lime-600' },
-  { id: 'tax', label: 'Tax', icon: Landmark, color: 'text-emerald-600', activeColor: 'border-emerald-600' },
+  { id: 'benefits', label: 'Benefits & Tax', icon: Briefcase, color: 'text-lime-600', activeColor: 'border-lime-600' },
   { id: 'bank', label: 'Bank', icon: Building2, color: 'text-teal-500', activeColor: 'border-teal-500' },
   { id: 'salary', label: 'Salary', icon: Banknote, color: 'text-amber-500', activeColor: 'border-amber-500' },
-  { id: 'login', label: 'Login Info', icon: Lock, color: 'text-slate-500', activeColor: 'border-slate-500' },
-  { id: 'device', label: 'Device', icon: Smartphone, color: 'text-red-500', activeColor: 'border-red-500' },
+  { id: 'login', label: 'Login & Device', icon: Lock, color: 'text-slate-500', activeColor: 'border-slate-500' },
   { id: 'it_setup', label: 'IT Setup', icon: Settings, color: 'text-green-600', activeColor: 'border-green-600' },
   { id: 'review', label: 'Review', icon: CheckCircle, color: 'text-purple-600', activeColor: 'border-purple-600' },
 ];
@@ -266,21 +259,14 @@ const ROSTER_DAYS: { key: string; label: string }[] = [
 
 const TAB_HELP: Record<string, string> = {
   employment: 'Select the company, department, designation, and branches this employee belongs to.',
-  login: 'The email and phone number the employee uses to sign in. Both are required \u2014 they\u2019re used to verify identity for password resets.',
-  personal: 'Enter the employee\u2019s name, code, join date, and personal details such as gender, date of birth, blood group, and emergency contact.',
-  address: 'Record the employee\u2019s current and permanent residential addresses, plus a nearby landmark for reference.',
-  identity: 'Provide government-issued identity documents (Aadhaar, PAN, Voter ID, Driving License, Passport) and upload scans. The uploaded documents are stored and previewed here.',
-  education: 'Add the employee\u2019s educational qualifications and certifications. You can add multiple education entries.',
-  skills: 'List technical and soft skills along with languages the employee is proficient in.',
-  benefits: 'Enter statutory benefit numbers \u2014 PF, UAN, ESIC, and mediclaim details.',
-  tax: 'Enter tax declaration details \u2014 80C, 80D, HRA, NPS, and other deductions.',
-  family: 'Record family information including parents, spouse, children, and insurance nominee details.',
+  login: 'Sign-in credentials (email, phone, password, passcode) plus work device and access setup.',
+  personal: 'Enter the employee\u2019s name, code, join date, personal details, and family information (parents, spouse, children, nominee).',
+  address: 'Record current and permanent addresses, plus identity documents (Aadhaar, PAN, Voter ID, DL, Passport) with upload options.',
+  education: 'Add educational qualifications, certifications, skills, and languages. Multiple entries allowed.',
+  benefits: 'Statutory benefits (PF, UAN, ESIC, mediclaim) plus tax declarations (80C, 80D, HRA, NPS).',
   bank: 'Add up to 3 bank accounts for salary disbursement. The first account is the primary salary account.',
   salary: 'Enter the salary structure. These values feed payroll calculations.',
-  device: 'Configure the employee\u2019s work device and security credentials for attendance and access.',
-  experience: 'Add the employee\u2019s previous job experience. You can add multiple organizations.',
-  achievements: 'Document notable achievements and awards received by the employee.',
-  activities: 'Record extra-curricular activities and volunteer work the employee participates in.',
+  experience: 'Add previous job experience, achievements, awards, and activities. Multiple entries allowed.',
   it_setup: 'Configure email, system access, and security credentials for the employee.',
   review: 'Final review of all employee details before saving.',
 };
@@ -694,18 +680,15 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
   // Static scalar fields per tab (used for completion counts).
   const STATIC_FIELDS: Record<string, string[]> = {
-    personal: ['firstName', 'employeeCode', 'joinDate', 'gender', 'dateOfBirth', 'bloodGroup', 'maritalStatus', 'emergencyContact', 'emergencyPhone'],
-    family: ['fatherName', 'motherName', 'siblingName', 'spouseName', 'spousePhone', 'numberOfChildren', 'nomineeName', 'nomineeRelationship'],
-    address: ['currentAddress', 'permanentAddress', 'landmark', 'permanentLandmark', 'currentState', 'currentPincode', 'permanentState', 'permanentPincode'],
-    identity: ['aadharNumber', 'panNumber', 'voterId', 'drivingLicense', 'passportNumber'],
+    personal: ['firstName', 'employeeCode', 'joinDate', 'gender', 'dateOfBirth', 'bloodGroup', 'maritalStatus', 'emergencyContact', 'emergencyPhone', 'fatherName', 'motherName', 'siblingName', 'spouseName', 'spousePhone', 'numberOfChildren', 'nomineeName', 'nomineeRelationship'],
+    address: ['currentAddress', 'permanentAddress', 'landmark', 'permanentLandmark', 'currentState', 'currentPincode', 'permanentState', 'permanentPincode', 'aadharNumber', 'panNumber', 'voterId', 'drivingLicense', 'passportNumber'],
     education: [],
     skills: [],
     employment: ['companyId', 'departmentId', 'designationId', 'branchIds'],
     benefits: ['pfNumber', 'pfUan', 'esicNumber', 'mediclaimNumber', 'mediclaimProvider', 'lifeInsuranceNumber', 'lifeInsuranceProvider'],
     bank: ['bankName', 'bankAccountNumber', 'ifscCode', 'accountHolderName'],
     salary: ['baseSalary', 'salaryTemplateId'],
-    login: ['email', 'phone', 'password', 'passcode'],
-    device: ['deviceName', 'deviceType', 'deviceSerialNumber', 'deviceIpAddress', 'deviceMacAddress'],
+    login: ['email', 'phone', 'password', 'passcode', 'deviceName', 'deviceType', 'deviceSerialNumber', 'deviceIpAddress', 'deviceMacAddress'],
     it_setup: ['itGrantDate', 'itCompletionDate', 'itAssignedBy', 'itEmailCreated', 'itSystemAccess', 'itErpAccess', 'itCloudApps', 'itCredentialsIssued', 'itVpnAccess', 'itMfaEnabled', 'itHardwareAssigned', 'itPolicySigned', 'itTrainingDone'],
   };
   // Dynamic list fields per tab: each item counts once when ANY required key is filled.
@@ -713,14 +696,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     education: [
       { key: 'educationDetails', required: ['educationLevel', 'institution', 'degree'] },
       { key: 'certifications', required: ['name'] },
-    ],
-    skills: [
       { key: 'languages', required: ['name'] },
       { key: 'skillsList', required: ['name'] },
     ],
-    experience: [{ key: 'experienceDetails', required: ['company', 'designation'] }],
-    achievements: [{ key: 'achievementsDetails', required: ['title'] }],
-    activities: [{ key: 'activitiesDetails', required: ['name'] }],
+    experience: [
+      { key: 'experienceDetails', required: ['company', 'designation'] },
+      { key: 'achievementsDetails', required: ['title'] },
+      { key: 'activitiesDetails', required: ['name'] },
+    ],
   };
 
   const tabStats = (tid: string) => {
@@ -1202,6 +1185,56 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     </p>
                   </div>
                 </div>
+
+                {/* Device subsection */}
+                <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                    <Smartphone className="w-4 h-4 text-red-500" /> Work Device
+                  </h4>
+                  <div className="space-y-4">
+                    <div className={empGridClass}>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Device Name</label>
+                        <input type="text" value={input(formData.deviceName)} onChange={(e) => set({ deviceName: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., HP EliteBook, iPhone 14" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Assigned device name / model</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Device Type</label>
+                        <SearchableSelect
+                          value={input(formData.deviceType) as string}
+                          onChange={(v) => set({ deviceType: String(v) })}
+                          options={(deviceTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
+                          placeholder="Select Device Type"
+                          showAllOption={false}
+                          clearable
+                          className="w-full"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select assigned device type</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Serial No./IMEI</label>
+                        <input type="text" value={input(formData.deviceSerialNumber)} onChange={(e) => set({ deviceSerialNumber: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Device serial number" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device serial number or IMEI</p>
+                      </div>
+                    </div>
+                    <div className={empGridClass}>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">IP Address</label>
+                        <input type="text" value={input(formData.deviceIpAddress)} onChange={(e) => set({ deviceIpAddress: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="192.168.1.1" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device IP address, e.g., 192.168.1.1</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">MAC Address</label>
+                        <input type="text" value={input(formData.deviceMacAddress)} onChange={(e) => set({ deviceMacAddress: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="00:1B:44:11:3A:B7" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device MAC address, e.g., 00:1B:44:11:3A:B7</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1299,6 +1332,66 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Date of joining, dd-mm-yyyy</p>
                   </div>
                 </div>
+
+                {/* Family subsection */}
+                <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                    <Heart className="w-4 h-4 text-rose-500" /> Family Details
+                  </h4>
+                  <div className={empGridClass}>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Father's Name</label>
+                      <input type="text" value={input(formData.fatherName)} onChange={(e) => set({ fatherName: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter father's name" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Father's full name</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Mother's Name</label>
+                      <input type="text" value={input(formData.motherName)} onChange={(e) => set({ motherName: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter mother's name" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Mother's full name</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Brother/Sister Name</label>
+                      <input type="text" value={input(formData.siblingName)} onChange={(e) => set({ siblingName: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter brother/sister name" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Sibling's full name</p>
+                    </div>
+                  </div>
+                  <div className={empGridClass}>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Spouse Name</label>
+                      <input type="text" value={input(formData.spouseName)} onChange={(e) => set({ spouseName: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter spouse name (if married)" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Spouse's full name, if married</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Spouse Phone</label>
+                      <PhoneInput value={input(formData.spousePhone)} onChange={(v) => set({ spousePhone: v })} defaultDial={dialCode} placeholder="Enter spouse phone number" inputClassName="w-full px-3 py-2 border border-[var(--border-color)] rounded-r-lg focus:outline-none focus:ring-2" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Spouse's phone with country code</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Number of Children</label>
+                      <input type="number" value={num(formData.numberOfChildren)} onChange={(e) => set({ numberOfChildren: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter number of children" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Total number of children</p>
+                    </div>
+                  </div>
+                  <div className={empGridClass}>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Nominee Name</label>
+                      <input type="text" value={input(formData.nomineeName)} onChange={(e) => set({ nomineeName: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter nominee name" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Insurance nominee's full name</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Nominee Relationship</label>
+                      <input type="text" value={input(formData.nomineeRelationship)} onChange={(e) => set({ nomineeRelationship: e.target.value })}
+                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Father, Spouse, Son" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Relationship of nominee, e.g., Father</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1379,228 +1472,231 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">6-digit pincode</p>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* IDENTITY */}
-            {tab === 'identity' && (
-              <div className="space-y-4">
-                {/* Photo | CV */}
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Profile Photo</label>
-                    <DocumentUpload
-                      label="Profile Photo"
-                      docType="photo"
-                      employeeId={docEmployeeId}
-                      file={formData.photoFile || null}
-                      existingUrl={typeof formData.photoUrl === 'string' && formData.photoUrl ? formData.photoUrl : undefined}
-                      onFileChange={(f) => {
-                        if (f && f.type.startsWith('image/')) {
-                          const reader = new FileReader();
-                          reader.onload = () => set({ photoFile: f, photoUrl: reader.result as string });
-                          reader.readAsDataURL(f);
-                        } else {
-                          set({ photoFile: f });
-                        }
-                      }}
-                      onUploaded={(url) => set({ photoUrl: url })}
-                      onDelete={() => handleDeleteDocument('photo')}
-                      accent={accent}
-                      hideLabel
-                      compact
-                      className="w-full"
-                    />
+              {/* Identity subsection */}
+              <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                  <IdCard className="w-4 h-4 text-violet-500" /> Identity Documents & Uploads
+                </h4>
+                <div className="space-y-4">
+                  {/* Photo | CV */}
+                  <div className={empGridClass}>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Profile Photo</label>
+                      <DocumentUpload
+                        label="Profile Photo"
+                        docType="photo"
+                        employeeId={docEmployeeId}
+                        file={formData.photoFile || null}
+                        existingUrl={typeof formData.photoUrl === 'string' && formData.photoUrl ? formData.photoUrl : undefined}
+                        onFileChange={(f) => {
+                          if (f && f.type.startsWith('image/')) {
+                            const reader = new FileReader();
+                            reader.onload = () => set({ photoFile: f, photoUrl: reader.result as string });
+                            reader.readAsDataURL(f);
+                          } else {
+                            set({ photoFile: f });
+                          }
+                        }}
+                        onUploaded={(url) => set({ photoUrl: url })}
+                        onDelete={() => handleDeleteDocument('photo')}
+                        accent={accent}
+                        hideLabel
+                        compact
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Resume / CV</label>
+                      <DocumentUpload
+                        label="Resume / CV"
+                        docType="resume"
+                        employeeId={docEmployeeId}
+                        file={formData.resumeFile || null}
+                        existingUrl={typeof formData.resumeUrl === 'string' ? formData.resumeUrl : undefined}
+                        onFileChange={(f) => set({ resumeFile: f })}
+                        onDelete={() => handleDeleteDocument('resume')}
+                        accent={accent}
+                        hideLabel
+                        compact
+                        className="w-full"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Resume / CV</label>
-                    <DocumentUpload
-                      label="Resume / CV"
-                      docType="resume"
-                      employeeId={docEmployeeId}
-                      file={formData.resumeFile || null}
-                      existingUrl={typeof formData.resumeUrl === 'string' ? formData.resumeUrl : undefined}
-                      onFileChange={(f) => set({ resumeFile: f })}
-                      onDelete={() => handleDeleteDocument('resume')}
-                      accent={accent}
-                      hideLabel
-                      compact
-                      className="w-full"
-                    />
+                  <div className="border-t border-[var(--border-color)] pt-4" />
+                  {/* Identity documents — number + upload side by side */}
+                  <div className={`${empGridClass} [&_.doc-pair]:col-span-2 [&_.doc-pair]:grid [&_.doc-pair]:grid-cols-1 [&_.doc-pair]:sm:grid-cols-2 [&_.doc-pair]:gap-x-4 [&_.doc-pair]:items-start`}>
+                    {isIndia && (
+                      <div className="doc-pair">
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Aadhar Number</label>
+                          <input type="text" value={input(formData.aadharNumber)} onChange={(e) => updateField('aadharNumber', formatAadhaar(e.target.value))}
+                            className={inputCls('aadharNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Aadhar number" maxLength={14} />
+                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">12-digit Aadhaar number, e.g. 1234 5678 9012</p>
+                          <FieldError name="aadharNumber" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Aadhar</label>
+                          <DocumentUpload
+                            label="Aadhaar Card"
+                            docType="aadhar"
+                            employeeId={docEmployeeId}
+                            file={formData.aadharFile || null}
+                            existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['aadhar']}
+                            onFileChange={(f) => set({ aadharFile: f })}
+                            onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), aadhar: url } })}
+                            onParsed={(num) => set({ aadharNumber: formatAadhaar(num) })}
+                            onDelete={() => handleDeleteDocument('aadhar')}
+                            accent={accent}
+                            hideLabel
+                            compact
+                            className="w-full"
+                          />
+                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill Aadhaar number</p>
+                        </div>
+                      </div>
+                    )}
+                    {isIndia && (
+                      <div className="doc-pair">
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">PAN Number</label>
+                          <input type="text" value={input(formData.panNumber)} onChange={(e) => updateField('panNumber', e.target.value.toUpperCase())}
+                            className={inputCls('panNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter PAN number" maxLength={10} />
+                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">10-character PAN, e.g. ABCDE1234F</p>
+                          <FieldError name="panNumber" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload PAN</label>
+                          <DocumentUpload
+                            label="PAN Card"
+                            docType="pan"
+                            employeeId={docEmployeeId}
+                            file={formData.panFile || null}
+                            existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['pan']}
+                            onFileChange={(f) => set({ panFile: f })}
+                            onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), pan: url } })}
+                            onParsed={(num) => set({ panNumber: num.toUpperCase() })}
+                            onDelete={() => handleDeleteDocument('pan')}
+                            accent={accent}
+                            hideLabel
+                            compact
+                            className="w-full"
+                          />
+                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill PAN number</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="doc-pair">
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Voter ID</label>
+                          <input type="text" value={input(formData.voterId)} onChange={(e) => updateField('voterId', e.target.value.toUpperCase())}
+                            className={inputCls('voterId')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Voter ID card number, e.g. ABC1234567</p>
+                        <FieldError name="voterId" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Voter ID</label>
+                        <DocumentUpload
+                          label="Voter ID"
+                          docType="voter"
+                          employeeId={docEmployeeId}
+                          file={formData.voterFile || null}
+                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['voter']}
+                          onFileChange={(f) => set({ voterFile: f })}
+                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), voter: url } })}
+                          onParsed={(num) => set({ voterId: num.toUpperCase() })}
+                          onDelete={() => handleDeleteDocument('voter')}
+                          accent={accent}
+                          hideLabel
+                          compact
+                          className="w-full"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill Voter ID</p>
+                      </div>
+                    </div>
+                    <div className="doc-pair">
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Driving License</label>
+                        <input type="text" value={input(formData.drivingLicense)} onChange={(e) => set({ drivingLicense: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Driving License" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Driving license number</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Driving License</label>
+                        <DocumentUpload
+                          label="Driving License"
+                          docType="drivingLicense"
+                          employeeId={docEmployeeId}
+                          file={formData.drivingLicenseFile || null}
+                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['drivingLicense']}
+                          onFileChange={(f) => set({ drivingLicenseFile: f })}
+                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), drivingLicense: url } })}
+                          onParsed={(num) => set({ drivingLicense: num })}
+                          onDelete={() => handleDeleteDocument('drivingLicense')}
+                          accent={accent}
+                          hideLabel
+                          compact
+                          className="w-full"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill license number</p>
+                      </div>
+                    </div>
+                    <div className="doc-pair">
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Passport Number</label>
+                        <input type="text" value={input(formData.passportNumber)} onChange={(e) => set({ passportNumber: e.target.value.toUpperCase() })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Passport Number" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Passport number</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Passport</label>
+                        <DocumentUpload
+                          label="Passport"
+                          docType="passport"
+                          employeeId={docEmployeeId}
+                          file={formData.passportFile || null}
+                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['passport']}
+                          onFileChange={(f) => set({ passportFile: f })}
+                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), passport: url } })}
+                          onParsed={(num) => set({ passportNumber: num.toUpperCase() })}
+                          onDelete={() => handleDeleteDocument('passport')}
+                          accent={accent}
+                          hideLabel
+                          compact
+                          className="w-full"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill passport number</p>
+                      </div>
+                    </div>
+                    <div className="doc-pair">
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Birth Certificate No. <span className="text-xs font-normal text-[#94A3B8]">(optional)</span></label>
+                        <input type="text" value={input(formData.birthCertificateNumber)} onChange={(e) => set({ birthCertificateNumber: e.target.value })}
+                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Birth Certificate number" />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Birth certificate number</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Birth Certificate</label>
+                        <DocumentUpload
+                          label="Birth Certificate"
+                          docType="birthCertificate"
+                          employeeId={docEmployeeId}
+                          file={formData.birthCertificateFile || null}
+                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['birthCertificate']}
+                          onFileChange={(f) => set({ birthCertificateFile: f })}
+                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), birthCertificate: url } })}
+                          onParsed={(num) => set({ birthCertificateNumber: num })}
+                          onDelete={() => handleDeleteDocument('birthCertificate')}
+                          accent={accent}
+                          hideLabel
+                          compact
+                          className="w-full"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Optional birth certificate upload</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="border-t border-[var(--border-color)] pt-4" />
-                {/* Identity documents — number + upload side by side */}
-                <div className={`${empGridClass} [&_.doc-pair]:col-span-2 [&_.doc-pair]:grid [&_.doc-pair]:grid-cols-1 [&_.doc-pair]:sm:grid-cols-2 [&_.doc-pair]:gap-x-4 [&_.doc-pair]:items-start`}>
-                  {isIndia && (
-                    <div className="doc-pair">
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Aadhar Number</label>
-                        <input type="text" value={input(formData.aadharNumber)} onChange={(e) => updateField('aadharNumber', formatAadhaar(e.target.value))}
-                          className={inputCls('aadharNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Aadhar number" maxLength={14} />
-                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">12-digit Aadhaar number, e.g. 1234 5678 9012</p>
-                        <FieldError name="aadharNumber" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Aadhar</label>
-                        <DocumentUpload
-                          label="Aadhaar Card"
-                          docType="aadhar"
-                          employeeId={docEmployeeId}
-                          file={formData.aadharFile || null}
-                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['aadhar']}
-                          onFileChange={(f) => set({ aadharFile: f })}
-                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), aadhar: url } })}
-                          onParsed={(num) => set({ aadharNumber: formatAadhaar(num) })}
-                          onDelete={() => handleDeleteDocument('aadhar')}
-                          accent={accent}
-                          hideLabel
-                          compact
-                          className="w-full"
-                        />
-                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill Aadhaar number</p>
-                      </div>
-                    </div>
-                  )}
-                  {isIndia && (
-                    <div className="doc-pair">
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">PAN Number</label>
-                        <input type="text" value={input(formData.panNumber)} onChange={(e) => updateField('panNumber', e.target.value.toUpperCase())}
-                          className={inputCls('panNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter PAN number" maxLength={10} />
-                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">10-character PAN, e.g. ABCDE1234F</p>
-                        <FieldError name="panNumber" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload PAN</label>
-                        <DocumentUpload
-                          label="PAN Card"
-                          docType="pan"
-                          employeeId={docEmployeeId}
-                          file={formData.panFile || null}
-                          existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['pan']}
-                          onFileChange={(f) => set({ panFile: f })}
-                          onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), pan: url } })}
-                          onParsed={(num) => set({ panNumber: num.toUpperCase() })}
-                          onDelete={() => handleDeleteDocument('pan')}
-                          accent={accent}
-                          hideLabel
-                          compact
-                          className="w-full"
-                        />
-                        <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill PAN number</p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="doc-pair">
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Voter ID</label>
-                        <input type="text" value={input(formData.voterId)} onChange={(e) => updateField('voterId', e.target.value.toUpperCase())}
-                          className={inputCls('voterId')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Voter ID card number, e.g. ABC1234567</p>
-                      <FieldError name="voterId" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Voter ID</label>
-                      <DocumentUpload
-                        label="Voter ID"
-                        docType="voter"
-                        employeeId={docEmployeeId}
-                        file={formData.voterFile || null}
-                        existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['voter']}
-                        onFileChange={(f) => set({ voterFile: f })}
-                        onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), voter: url } })}
-                        onParsed={(num) => set({ voterId: num.toUpperCase() })}
-                        onDelete={() => handleDeleteDocument('voter')}
-                        accent={accent}
-                        hideLabel
-                        compact
-                        className="w-full"
-                      />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill Voter ID</p>
-                    </div>
-                  </div>
-                  <div className="doc-pair">
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Driving License</label>
-                      <input type="text" value={input(formData.drivingLicense)} onChange={(e) => set({ drivingLicense: e.target.value })}
-                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Driving License" />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Driving license number</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Driving License</label>
-                      <DocumentUpload
-                        label="Driving License"
-                        docType="drivingLicense"
-                        employeeId={docEmployeeId}
-                        file={formData.drivingLicenseFile || null}
-                        existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['drivingLicense']}
-                        onFileChange={(f) => set({ drivingLicenseFile: f })}
-                        onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), drivingLicense: url } })}
-                        onParsed={(num) => set({ drivingLicense: num })}
-                        onDelete={() => handleDeleteDocument('drivingLicense')}
-                        accent={accent}
-                        hideLabel
-                        compact
-                        className="w-full"
-                      />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill license number</p>
-                    </div>
-                  </div>
-                  <div className="doc-pair">
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Passport Number</label>
-                      <input type="text" value={input(formData.passportNumber)} onChange={(e) => set({ passportNumber: e.target.value.toUpperCase() })}
-                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Passport Number" />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Passport number</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Passport</label>
-                      <DocumentUpload
-                        label="Passport"
-                        docType="passport"
-                        employeeId={docEmployeeId}
-                        file={formData.passportFile || null}
-                        existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['passport']}
-                        onFileChange={(f) => set({ passportFile: f })}
-                        onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), passport: url } })}
-                        onParsed={(num) => set({ passportNumber: num.toUpperCase() })}
-                        onDelete={() => handleDeleteDocument('passport')}
-                        accent={accent}
-                        hideLabel
-                        compact
-                        className="w-full"
-                      />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Upload to auto-fill passport number</p>
-                    </div>
-                  </div>
-                  <div className="doc-pair">
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Birth Certificate No. <span className="text-xs font-normal text-[#94A3B8]">(optional)</span></label>
-                      <input type="text" value={input(formData.birthCertificateNumber)} onChange={(e) => set({ birthCertificateNumber: e.target.value })}
-                        className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Birth Certificate number" />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Birth certificate number</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Upload Birth Certificate</label>
-                      <DocumentUpload
-                        label="Birth Certificate"
-                        docType="birthCertificate"
-                        employeeId={docEmployeeId}
-                        file={formData.birthCertificateFile || null}
-                        existingUrl={(formData.idDocuments as Record<string, string> | undefined)?.['birthCertificate']}
-                        onFileChange={(f) => set({ birthCertificateFile: f })}
-                        onUploaded={(url) => set({ idDocuments: { ...(formData.idDocuments as Record<string, string> || {}), birthCertificate: url } })}
-                        onParsed={(num) => set({ birthCertificateNumber: num })}
-                        onDelete={() => handleDeleteDocument('birthCertificate')}
-                        accent={accent}
-                        hideLabel
-                        compact
-                        className="w-full"
-                      />
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Optional birth certificate upload</p>
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
@@ -1789,26 +1885,88 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* SKILLS */}
-            {tab === 'skills' && (
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">Languages</h4>
-                    <button type="button" onClick={() => addRow('languages')}
+                {/* Skills subsection */}
+                <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                    <Award className="w-4 h-4 text-yellow-500" /> Skills & Languages
+                </h4>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-sm font-semibold text-[var(--text-primary)]">Languages</h4>
+                      <button type="button" onClick={() => addRow('languages')}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
+                        + Add Language
+                      </button>
+                    </div>
+                    {(formData.languages as Record<string, unknown>[] || []).map((lang, idx) => (
+                      <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative mb-3">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-semibold text-[#0F172A]">Language {idx + 1}</h5>
+                          {idx >= 2 && (
+                            <button type="button" onClick={() => removeRow('languages', idx)}
+                              className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className={empGridClass}>
+                          <div>
+                            <label className="block text-xs font-medium text-[#64748B] mb-1">Language</label>
+                            <input type="text" value={input(lang.name)} onChange={(e) => updateList('languages', idx, { name: e.target.value })}
+                              className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., English, Hindi, Tamil" />
+                              <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Language name</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-[#64748B] mb-1">Proficiency</label>
+                            <SearchableSelect
+                              value={String(lang.proficiency ?? '')}
+                              onChange={(v) => updateList('languages', idx, { proficiency: String(v) })}
+                              options={(proficiencyOptions || []).map((opt: any) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
+                              placeholder="Select level"
+                              showAllOption={false}
+                              clearable
+                              className="w-full"
+                            />
+                              <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Read/Write/Speak level</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-[#64748B] mb-1">Is Native</label>
+                            <div className="flex items-center gap-2 mt-1">
+                              <input type="checkbox" checked={!!lang.isNative} onChange={(e) => updateList('languages', idx, { isNative: e.target.checked })}
+                                className="w-4 h-4 text-[var(--primary-blue)] border-gray-300 rounded focus:ring-2" />
+                              <span className="text-sm text-[var(--text-primary)]">Native speaker</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Mother tongue / native</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {(formData.languages as Record<string, unknown>[] || []).length === 0 && (
+                      <p className="text-sm text-[#94A3B8] py-1">No languages added. Click "+ Add Language" to add one.</p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">Skills</h4>
+                    <button type="button" onClick={() => addRow('skillsList')}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
-                      + Add Language
+                      + Add Skill
                     </button>
                   </div>
-                  {(formData.languages as Record<string, unknown>[] || []).map((lang, idx) => (
-                    <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative mb-3">
+                  {(formData.skillsList as Record<string, unknown>[] || []).length === 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Skills</label>
+                      <textarea value={input(formData.skills)} onChange={(e) => set({ skills: e.target.value })}
+                        className={formTextareaClass} placeholder="e.g., Java, Python, Project Management, Communication" />
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Comma-separated list of skills</p>
+                    </div>
+                  )}
+                  {(formData.skillsList as Record<string, unknown>[] || []).map((sk, idx) => (
+                    <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
                       <div className="flex items-center justify-between">
-                        <h5 className="text-sm font-semibold text-[#0F172A]">Language {idx + 1}</h5>
+                        <h5 className="text-sm font-semibold text-[#0F172A]">Skill {idx + 1}</h5>
                         {idx >= 2 && (
-                          <button type="button" onClick={() => removeRow('languages', idx)}
+                          <button type="button" onClick={() => removeRow('skillsList', idx)}
                             className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1816,100 +1974,40 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       </div>
                       <div className={empGridClass}>
                         <div>
-                          <label className="block text-xs font-medium text-[#64748B] mb-1">Language</label>
-                          <input type="text" value={input(lang.name)} onChange={(e) => updateList('languages', idx, { name: e.target.value })}
-                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., English, Hindi, Tamil" />
-                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Language name</p>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Skill Name</label>
+                          <input type="text" value={input(sk.name)} onChange={(e) => updateList('skillsList', idx, { name: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Java, Python, Excel" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the skill</p>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-[#64748B] mb-1">Proficiency</label>
                           <SearchableSelect
-                            value={String(lang.proficiency ?? '')}
-                            onChange={(v) => updateList('languages', idx, { proficiency: String(v) })}
+                            value={String(sk.proficiency ?? '')}
+                            onChange={(v) => updateList('skillsList', idx, { proficiency: String(v) })}
                             options={(proficiencyOptions || []).map((opt: any) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
                             placeholder="Select level"
                             showAllOption={false}
                             clearable
                             className="w-full"
                           />
-                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Read/Write/Speak level</p>
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select skill proficiency level</p>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-[#64748B] mb-1">Is Native</label>
-                          <div className="flex items-center gap-2 mt-1">
-                            <input type="checkbox" checked={!!lang.isNative} onChange={(e) => updateList('languages', idx, { isNative: e.target.checked })}
-                              className="w-4 h-4 text-[var(--primary-blue)] border-gray-300 rounded focus:ring-2" />
-                            <span className="text-sm text-[var(--text-primary)]">Native speaker</span>
-                          </div>
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Mother tongue / native</p>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Years of Experience</label>
+                          <input type="number" min="0" value={num(sk.years)} onChange={(e) => updateList('skillsList', idx, { years: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., 3" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Years of experience with skill</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Last Used</label>
+                          <DatePicker value={input(sk.lastUsed)} onChange={(val) => updateList('skillsList', idx, { lastUsed: val })} />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Last year the skill was used</p>
                         </div>
                       </div>
                     </div>
                   ))}
-                  {(formData.languages as Record<string, unknown>[] || []).length === 0 && (
-                    <p className="text-sm text-[#94A3B8] py-1">No languages added. Click "+ Add Language" to add one.</p>
-                  )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-[var(--text-primary)]">Skills</h4>
-                  <button type="button" onClick={() => addRow('skillsList')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
-                    + Add Skill
-                  </button>
-                </div>
-                {(formData.skillsList as Record<string, unknown>[] || []).length === 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Skills</label>
-                    <textarea value={input(formData.skills)} onChange={(e) => set({ skills: e.target.value })}
-                      className={formTextareaClass} placeholder="e.g., Java, Python, Project Management, Communication" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Comma-separated list of skills</p>
-                  </div>
-                )}
-                {(formData.skillsList as Record<string, unknown>[] || []).map((sk, idx) => (
-                  <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-sm font-semibold text-[#0F172A]">Skill {idx + 1}</h5>
-                      {idx >= 2 && (
-                        <button type="button" onClick={() => removeRow('skillsList', idx)}
-                          className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div className={empGridClass}>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Skill Name</label>
-                        <input type="text" value={input(sk.name)} onChange={(e) => updateList('skillsList', idx, { name: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Java, Python, Excel" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the skill</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Proficiency</label>
-                        <SearchableSelect
-                          value={String(sk.proficiency ?? '')}
-                          onChange={(v) => updateList('skillsList', idx, { proficiency: String(v) })}
-                          options={(proficiencyOptions || []).map((opt: any) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
-                          placeholder="Select level"
-                          showAllOption={false}
-                          clearable
-                          className="w-full"
-                        />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select skill proficiency level</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Years of Experience</label>
-                        <input type="number" min="0" value={num(sk.years)} onChange={(e) => updateList('skillsList', idx, { years: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., 3" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Years of experience with skill</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Last Used</label>
-                        <DatePicker value={input(sk.lastUsed)} onChange={(val) => updateList('skillsList', idx, { lastUsed: val })} />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Last year the skill was used</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              </div>
               </div>
             )}
 
@@ -1966,96 +2064,38 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Life insurance provider company name</p>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* TAX */}
-            {tab === 'tax' && (
-              <div className="space-y-6">
-                <p className="text-sm text-[var(--text-secondary)]">Tax declaration details (If any).</p>
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80C Deduction</label>
-                    <input type="number" className={formInputClass} value={(formData as any).deduction80c || ''} onChange={e => setFormData({ ...formData, deduction80c: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80D (Medical)</label>
-                    <input type="number" className={formInputClass} value={(formData as any).deduction80d || ''} onChange={e => setFormData({ ...formData, deduction80d: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">HRA Exemption</label>
-                    <input type="number" className={formInputClass} value={(formData as any).hraExemption || ''} onChange={e => setFormData({ ...formData, hraExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">LTA Exemption</label>
-                    <input type="number" className={formInputClass} value={(formData as any).ltaExemption || ''} onChange={e => setFormData({ ...formData, ltaExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">NPS Deduction</label>
-                    <input type="number" className={formInputClass} value={(formData as any).npsDeduction || ''} onChange={e => setFormData({ ...formData, npsDeduction: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Home Loan Interest</label>
-                    <input type="number" className={formInputClass} value={(formData as any).homeLoanInterest || ''} onChange={e => setFormData({ ...formData, homeLoanInterest: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* FAMILY */}
-            {tab === 'family' && (
-              <div className="space-y-4">
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Father's Name</label>
-                    <input type="text" value={input(formData.fatherName)} onChange={(e) => set({ fatherName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter father's name" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Father's full name</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Mother's Name</label>
-                    <input type="text" value={input(formData.motherName)} onChange={(e) => set({ motherName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter mother's name" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Mother's full name</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Brother/Sister Name</label>
-                    <input type="text" value={input(formData.siblingName)} onChange={(e) => set({ siblingName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter brother/sister name" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Sibling's full name</p>
-                  </div>
-                </div>
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Spouse Name</label>
-                    <input type="text" value={input(formData.spouseName)} onChange={(e) => set({ spouseName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter spouse name (if married)" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Spouse's full name, if married</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Spouse Phone</label>
-                    <PhoneInput value={input(formData.spousePhone)} onChange={(v) => set({ spousePhone: v })} defaultDial={dialCode} placeholder="Enter spouse phone number" inputClassName="w-full px-3 py-2 border border-[var(--border-color)] rounded-r-lg focus:outline-none focus:ring-2" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Spouse's phone with country code</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Number of Children</label>
-                    <input type="number" value={num(formData.numberOfChildren)} onChange={(e) => set({ numberOfChildren: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter number of children" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Total number of children</p>
-                  </div>
-                </div>
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Nominee Name</label>
-                    <input type="text" value={input(formData.nomineeName)} onChange={(e) => set({ nomineeName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter nominee name" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Insurance nominee's full name</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Nominee Relationship</label>
-                    <input type="text" value={input(formData.nomineeRelationship)} onChange={(e) => set({ nomineeRelationship: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Father, Spouse, Son" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Relationship of nominee, e.g., Father</p>
+                {/* Tax subsection */}
+                <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                    <Landmark className="w-4 h-4 text-emerald-600" /> Tax Declarations
+                  </h4>
+                  <p className="text-sm text-[var(--text-secondary)]">Tax declaration details (If any).</p>
+                  <div className={empGridClass}>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80C Deduction</label>
+                      <input type="number" className={formInputClass} value={(formData as any).deduction80c || ''} onChange={e => setFormData({ ...formData, deduction80c: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80D (Medical)</label>
+                      <input type="number" className={formInputClass} value={(formData as any).deduction80d || ''} onChange={e => setFormData({ ...formData, deduction80d: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">HRA Exemption</label>
+                      <input type="number" className={formInputClass} value={(formData as any).hraExemption || ''} onChange={e => setFormData({ ...formData, hraExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">LTA Exemption</label>
+                      <input type="number" className={formInputClass} value={(formData as any).ltaExemption || ''} onChange={e => setFormData({ ...formData, ltaExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">NPS Deduction</label>
+                      <input type="number" className={formInputClass} value={(formData as any).npsDeduction || ''} onChange={e => setFormData({ ...formData, npsDeduction: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Home Loan Interest</label>
+                      <input type="number" className={formInputClass} value={(formData as any).homeLoanInterest || ''} onChange={e => setFormData({ ...formData, homeLoanInterest: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2395,59 +2435,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               </div>
             )}
 
-            {/* DEVICE */}
-            {tab === 'device' && (
-              <div className="space-y-4">
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Device Name</label>
-                    <input type="text" value={input(formData.deviceName)} onChange={(e) => set({ deviceName: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., HP EliteBook, iPhone 14" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Assigned device name / model</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Device Type</label>
-                    <SearchableSelect
-                      value={input(formData.deviceType) as string}
-                      onChange={(v) => set({ deviceType: String(v) })}
-                      options={(deviceTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
-                      placeholder="Select Device Type"
-                      showAllOption={false}
-                      clearable
-                      className="w-full"
-                    />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select assigned device type</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Serial No./IMEI</label>
-                    <input type="text" value={input(formData.deviceSerialNumber)} onChange={(e) => set({ deviceSerialNumber: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Device serial number" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device serial number or IMEI</p>
-                  </div>
-                </div>
-                <div className={empGridClass}>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Serial No./IMEI</label>
-                    <input type="text" value={input(formData.deviceSerialNumber)} onChange={(e) => set({ deviceSerialNumber: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Device serial number" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device serial number or IMEI</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">IP Address</label>
-                    <input type="text" value={input(formData.deviceIpAddress)} onChange={(e) => set({ deviceIpAddress: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="192.168.1.1" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device IP address, e.g., 192.168.1.1</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">MAC Address</label>
-                    <input type="text" value={input(formData.deviceMacAddress)} onChange={(e) => set({ deviceMacAddress: e.target.value })}
-                      className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="00:1B:44:11:3A:B7" />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Device MAC address, e.g., 00:1B:44:11:3A:B7</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* EXPERIENCE */}
             {tab === 'experience' && (
               <div className="space-y-4">
@@ -2536,184 +2523,189 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* ACHIEVEMENTS */}
-            {tab === 'achievements' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-[var(--text-primary)]">Achievements</h4>
-                  <button type="button" onClick={() => addRow('achievementsDetails')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
-                    + Add Achievement
-                  </button>
+                {/* Achievements subsection */}
+              <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                  <Trophy className="w-4 h-4 text-orange-500" /> Achievements & Awards
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">Achievements</h4>
+                    <button type="button" onClick={() => addRow('achievementsDetails')}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
+                      + Add Achievement
+                    </button>
+                  </div>
+                  {(formData.achievementsDetails as Record<string, unknown>[] || []).length === 0 && (
+                    <div className="bg-white p-4 rounded-lg border border-gray-200">
+                      <h5 className="font-semibold text-gray-800 mb-3">Achievement 1</h5>
+                      <div className={empGridClass}>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Achievement Title</label>
+                          <input type="text" value={input(formData.achievement1_title)} onChange={(e) => set({ achievement1_title: e.target.value })}
+                            className={formInputClass} placeholder="e.g., Employee of the Year" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement title, e.g., Employee of Year</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                          <DatePicker value={input(formData.achievement1_date)} onChange={(val) => set({ achievement1_date: val })} />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement date, dd-mm-yyyy</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+                          <input type="text" value={input(formData.achievement1_org)} onChange={(e) => set({ achievement1_org: e.target.value })}
+                            className={formInputClass} placeholder="Organization" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Organization that awarded it</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                          <textarea value={input(formData.achievement1_description)} onChange={(e) => set({ achievement1_description: e.target.value })}
+                            className={formTextareaClass} placeholder="Describe your achievement" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Brief description of the achievement</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {(formData.achievementsDetails as Record<string, unknown>[] || []).map((a, idx) => (
+                    <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-sm font-semibold text-[#0F172A]">Achievement {idx + 1}</h5>
+                        {idx >= 2 && (
+                          <button type="button" onClick={() => removeRow('achievementsDetails', idx)}
+                            className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div className={empGridClass}>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Achievement Title</label>
+                          <input type="text" value={input(a.title)} onChange={(e) => updateList('achievementsDetails', idx, { title: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Employee of the Year" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement title, e.g., Employee of Year</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Date</label>
+                          <DatePicker value={input(a.date)} onChange={(val) => updateList('achievementsDetails', idx, { date: val })} />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement date, dd-mm-yyyy</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Organization</label>
+                          <input type="text" value={input(a.org)} onChange={(e) => updateList('achievementsDetails', idx, { org: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Organization" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Organization that awarded it</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Description</label>
+                          <textarea value={input(a.description)} onChange={(e) => updateList('achievementsDetails', idx, { description: e.target.value })}
+                            className={formTextareaClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Describe your achievement" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Brief description of the achievement</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {(formData.achievementsDetails as Record<string, unknown>[] || []).length === 0 && (
-                  <div className="bg-white p-4 rounded-lg border border-gray-200">
-                    <h5 className="font-semibold text-gray-800 mb-3">Achievement 1</h5>
-                    <div className={empGridClass}>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Achievement Title</label>
-                        <input type="text" value={input(formData.achievement1_title)} onChange={(e) => set({ achievement1_title: e.target.value })}
-                          className={formInputClass} placeholder="e.g., Employee of the Year" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement title, e.g., Employee of Year</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                        <DatePicker value={input(formData.achievement1_date)} onChange={(val) => set({ achievement1_date: val })} />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement date, dd-mm-yyyy</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
-                        <input type="text" value={input(formData.achievement1_org)} onChange={(e) => set({ achievement1_org: e.target.value })}
-                          className={formInputClass} placeholder="Organization" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Organization that awarded it</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <textarea value={input(formData.achievement1_description)} onChange={(e) => set({ achievement1_description: e.target.value })}
-                          className={formTextareaClass} placeholder="Describe your achievement" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Brief description of the achievement</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {(formData.achievementsDetails as Record<string, unknown>[] || []).map((a, idx) => (
-                  <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-sm font-semibold text-[#0F172A]">Achievement {idx + 1}</h5>
-                      {idx >= 2 && (
-                        <button type="button" onClick={() => removeRow('achievementsDetails', idx)}
-                          className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div className={empGridClass}>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Achievement Title</label>
-                        <input type="text" value={input(a.title)} onChange={(e) => updateList('achievementsDetails', idx, { title: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="e.g., Employee of the Year" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement title, e.g., Employee of Year</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Date</label>
-                        <DatePicker value={input(a.date)} onChange={(val) => updateList('achievementsDetails', idx, { date: val })} />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Achievement date, dd-mm-yyyy</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Organization</label>
-                        <input type="text" value={input(a.org)} onChange={(e) => updateList('achievementsDetails', idx, { org: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Organization" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Organization that awarded it</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Description</label>
-                        <textarea value={input(a.description)} onChange={(e) => updateList('achievementsDetails', idx, { description: e.target.value })}
-                          className={formTextareaClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Describe your achievement" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Brief description of the achievement</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
               </div>
-            )}
 
-            {/* ACTIVITIES */}
-            {tab === 'activities' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-[var(--text-primary)]">Activities</h4>
-                  <button type="button" onClick={() => addRow('activitiesDetails')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
-                    + Add Activity
-                  </button>
+              {/* Activities subsection */}
+              <div className="pt-4 mt-2 border-t border-[var(--border-color)]">
+                <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4 text-fuchsia-500" /> Activities & Volunteering
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">Activities</h4>
+                    <button type="button" onClick={() => addRow('activitiesDetails')}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-colors" style={{ backgroundColor: accent }}>
+                      + Add Activity
+                    </button>
+                  </div>
+                  {(formData.activitiesDetails as Record<string, unknown>[] || []).length === 0 && (
+                    <div className="bg-white p-4 rounded-lg border border-gray-200">
+                      <h5 className="font-semibold text-gray-800 mb-3">Activity 1</h5>
+                      <div className={empGridClass}>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
+                          <SearchableSelect
+                            value={input(formData.activity1_type) as string}
+                            onChange={(v) => set({ activity1_type: String(v) })}
+                            options={(activityTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
+                            placeholder="Select Activity Type"
+                            showAllOption={false}
+                            clearable
+                            className="w-full"
+                          />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Type, e.g., Sports, Volunteering</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Activity Name</label>
+                          <input type="text" value={input(formData.activity1_name)} onChange={(e) => set({ activity1_name: e.target.value })}
+                            className={formInputClass} placeholder="Activity name" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the activity</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                          <input type="text" value={input(formData.activity1_role)} onChange={(e) => set({ activity1_role: e.target.value })}
+                            className={formInputClass} placeholder="Your role" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Your role in the activity</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                          <textarea value={input(formData.activity1_description)} onChange={(e) => set({ activity1_description: e.target.value })}
+                            className={formTextareaClass} placeholder="Describe your involvement" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Describe your involvement</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {(formData.activitiesDetails as Record<string, unknown>[] || []).map((ac, idx) => (
+                    <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-sm font-semibold text-[#0F172A]">Activity {idx + 1}</h5>
+                        {idx >= 2 && (
+                          <button type="button" onClick={() => removeRow('activitiesDetails', idx)}
+                            className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <div className={empGridClass}>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Activity Type</label>
+                          <SearchableSelect
+                            value={String(ac.type ?? '')}
+                            onChange={(v) => updateList('activitiesDetails', idx, { type: String(v) })}
+                            options={(activityTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
+                            placeholder="Select Activity Type"
+                            showAllOption={false}
+                            clearable
+                            className="w-full"
+                          />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Type, e.g., Sports, Volunteering</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Activity Name</label>
+                          <input type="text" value={input(ac.name)} onChange={(e) => updateList('activitiesDetails', idx, { name: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Activity name" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the activity</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Role</label>
+                          <input type="text" value={input(ac.role)} onChange={(e) => updateList('activitiesDetails', idx, { role: e.target.value })}
+                            className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Your role" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Your role in the activity</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#64748B] mb-1">Description</label>
+                          <textarea value={input(ac.description)} onChange={(e) => updateList('activitiesDetails', idx, { description: e.target.value })}
+                            className={formTextareaClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Describe your involvement" />
+                            <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Describe your involvement</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                {(formData.activitiesDetails as Record<string, unknown>[] || []).length === 0 && (
-                  <div className="bg-white p-4 rounded-lg border border-gray-200">
-                    <h5 className="font-semibold text-gray-800 mb-3">Activity 1</h5>
-                    <div className={empGridClass}>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Activity Type</label>
-                        <SearchableSelect
-                          value={input(formData.activity1_type) as string}
-                          onChange={(v) => set({ activity1_type: String(v) })}
-                          options={(activityTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
-                          placeholder="Select Activity Type"
-                          showAllOption={false}
-                          clearable
-                          className="w-full"
-                        />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Type, e.g., Sports, Volunteering</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Activity Name</label>
-                        <input type="text" value={input(formData.activity1_name)} onChange={(e) => set({ activity1_name: e.target.value })}
-                          className={formInputClass} placeholder="Activity name" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the activity</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                        <input type="text" value={input(formData.activity1_role)} onChange={(e) => set({ activity1_role: e.target.value })}
-                          className={formInputClass} placeholder="Your role" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Your role in the activity</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <textarea value={input(formData.activity1_description)} onChange={(e) => set({ activity1_description: e.target.value })}
-                          className={formTextareaClass} placeholder="Describe your involvement" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Describe your involvement</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {(formData.activitiesDetails as Record<string, unknown>[] || []).map((ac, idx) => (
-                  <div key={idx} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-3 relative">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-sm font-semibold text-[#0F172A]">Activity {idx + 1}</h5>
-                      {idx >= 2 && (
-                        <button type="button" onClick={() => removeRow('activitiesDetails', idx)}
-                          className="text-[#DC2626] hover:bg-red-50 p-1 rounded-lg transition-colors" title="Remove">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div className={empGridClass}>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Activity Type</label>
-                        <SearchableSelect
-                          value={String(ac.type ?? '')}
-                          onChange={(v) => updateList('activitiesDetails', idx, { type: String(v) })}
-                          options={(activityTypeOptions as Option[]).map((opt: Option) => ({ id: String(opt.value ?? opt.code ?? ''), name: opt.label || opt.name || '' }))}
-                          placeholder="Select Activity Type"
-                          showAllOption={false}
-                          clearable
-                          className="w-full"
-                        />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Type, e.g., Sports, Volunteering</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Activity Name</label>
-                        <input type="text" value={input(ac.name)} onChange={(e) => updateList('activitiesDetails', idx, { name: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Activity name" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Name of the activity</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Role</label>
-                        <input type="text" value={input(ac.role)} onChange={(e) => updateList('activitiesDetails', idx, { role: e.target.value })}
-                          className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Your role" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Your role in the activity</p>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">Description</label>
-                        <textarea value={input(ac.description)} onChange={(e) => updateList('activitiesDetails', idx, { description: e.target.value })}
-                          className={formTextareaClass} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Describe your involvement" />
-                          <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Describe your involvement</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                </div>
               </div>
             )}
 

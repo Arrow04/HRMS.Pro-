@@ -15,7 +15,7 @@ import {
   Clock,
   Edit2,
   ExternalLink,
-  Eye,
+  FileText,
   LogIn,
   LogOut,
   Megaphone,
@@ -215,6 +215,17 @@ const formatFullDate = (value: string): string => {
   });
 };
 
+const formatTime = (value: string): string => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+};
+
 const dayKey = (value: string): string => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
@@ -222,9 +233,21 @@ const dayKey = (value: string): string => {
 };
 
 const viewTargetFor = (type: string): { path: string; label: string } | null => {
-  if (type === 'leave') return { path: '/leaves', label: 'View leave' };
-  if (type === 'expense') return { path: '/expenses', label: 'View expense' };
-  return null;
+  const targets: Record<string, { path: string; label: string }> = {
+    leave: { path: '/leaves', label: 'View leave' },
+    expense: { path: '/expenses', label: 'View expense' },
+    payroll: { path: '/payroll', label: 'View payroll' },
+    attendance: { path: '/attendance', label: 'View attendance' },
+    holiday: { path: '/holidays', label: 'View holidays' },
+    recruitment: { path: '/recruitment', label: 'View recruitment' },
+    onboarding: { path: '/employees', label: 'View employees' },
+    exit: { path: '/exit-management', label: 'View exit' },
+    announcement: { path: '/announcements', label: 'View announcement' },
+    notice: { path: '/announcements', label: 'View notice' },
+    grievance: { path: '/grievances', label: 'View grievance' },
+    system: { path: '/notifications', label: 'View notification' },
+  };
+  return targets[type] || { path: '/notifications', label: 'View details' };
 };
 
 const loadMutedTypes = (): string[] => {
@@ -490,6 +513,20 @@ const Notifications = () => {
       },
     },
     {
+      key: 'status',
+      header: 'Status',
+      width: '100px',
+      render: (n) => (
+        <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full ${
+          n.isRead
+            ? 'bg-gray-100 text-gray-600'
+            : 'bg-blue-100 text-blue-700'
+        }`}>
+          {n.isRead ? 'Read' : 'Unread'}
+        </span>
+      ),
+    },
+    {
       key: 'date',
       header: 'Date',
       width: '120px',
@@ -501,6 +538,16 @@ const Notifications = () => {
             {formatAppDate(n.createdAt)}
           </span>
         </Tooltip>
+      ),
+    },
+    {
+      key: 'time',
+      header: 'Time',
+      width: '100px',
+      render: (n) => (
+        <span className="text-xs text-[#64748B] whitespace-nowrap">
+          {formatTime(n.createdAt)}
+        </span>
       ),
     },
   ];
@@ -522,7 +569,7 @@ const Notifications = () => {
                 className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
                 title="View"
               >
-                <Eye className="w-4 h-4" />
+                <FileText className="w-4 h-4" />
               </button>
             </Tooltip>
             <Tooltip id={`edit-notif-${n.id}`} content="Edit">

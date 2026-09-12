@@ -12,6 +12,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useThemedStyles } from '../hooks/useThemedStyles';
 import { useIsAdmin } from '../hooks/useIsAdmin';
 import { prepareSelfieForUpload, newPunchRequestId } from '../utils/selfieCapture';
+import { useFaceDetection } from '../hooks/useFaceDetection';
 import { radii, spacing, shadows, resolveStatChip } from '../theme';
 import { TAB_BAR_CLEARANCE } from '../components/AppTabBar';
 import { AdminMonthRow, scrollViewTopBarProps, bannerShellStyle } from '../components/AdminScreenKit';
@@ -592,6 +593,7 @@ const AttendanceScreen = ({ navigation }) => {
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
+  const { detectAndValidate, isDetecting, clearResult } = useFaceDetection();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const ringAnim = useRef(new Animated.Value(0)).current;
   const punchRingOpacity = ringAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0] });
@@ -797,10 +799,26 @@ const AttendanceScreen = ({ navigation }) => {
           skipProcessing: true,
           shutterSound: false,
         });
+        
+        // Perform face detection and validation
+        const faceResult = await detectAndValidate(photo.uri);
+        
+        if (!faceResult.passed) {
+          Alert.alert(
+            'Face Validation Failed',
+            faceResult.validation.reason + '\n\n' + faceResult.validation.details,
+            [
+              { text: 'Try Again', onPress: () => clearResult() },
+              { text: 'Cancel', onPress: closeCamera, style: 'cancel' },
+            ]
+          );
+          return;
+        }
+        
         setShowCamera(false);
         const base64 = await prepareSelfieForUpload(photo.uri);
         setTimeout(() => submitPunch(pendingPunchType, base64), 300);
-      } catch {
+      } catch (err) {
         setShowCamera(false);
         Alert.alert('Error', 'Failed to capture selfie.');
       }
@@ -1275,14 +1293,17 @@ const AttendanceScreen = ({ navigation }) => {
                 <Text style={styles.cameraTitle}>
                   {pendingPunchType === 'in' ? 'Check In Verification' : 'Check Out Verification'}
                 </Text>
-                <Text style={styles.cameraSub}>Place your face inside the circle</Text>
+                <Text style={styles.cameraSub}>Position your face and tap capture</Text>
               </View>
+              {isDetecting && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, backgroundColor: 'rgba(20, 184, 166, 0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+                  <Ionicons name="scan-outline" size={14} color="#14B8A6" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#14B8A6', fontSize: 12, fontWeight: '600' }}>Analyzing face...</Text>
+                </View>
+              )}
             </View>
             <View style={styles.cameraFaceGuide}>
-              <View style={styles.faceRing}>
-                <View style={styles.faceCircle} />
-              </View>
-              <Text style={styles.faceGuideText}>Center your face in the circle, then tap capture</Text>
+              <Text style={styles.faceGuideText}>Position your face in frame, then tap capture</Text>
             </View>
             <View style={styles.cameraBottomBar}>
               <TouchableOpacity onPress={captureSelfie} style={styles.captureBtn} activeOpacity={0.85}>

@@ -3,6 +3,7 @@ import { DeviceEventEmitter, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Application from 'expo-application';
 import api, { getApiBaseUrl } from '../services/api';
+import { registerForPushNotifications } from '../services/notifications';
 
 const AuthContext = createContext();
 
@@ -80,6 +81,9 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
 
       await fetchPermissions();
+
+      // Register for push notifications
+      registerForPushNotifications(userData.id);
 
       return { success: true };
     } catch (error) {

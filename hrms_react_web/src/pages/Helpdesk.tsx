@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Headset, Plus, Eye, Edit2, Trash2,
-  MessageSquare, CheckCircle2, Clock, PauseCircle, AlertTriangle, XCircle
+  Headset, Plus, FileText, Edit2, Trash2,
+  CheckCircle2, XCircle, RotateCcw, Calendar, MessageSquare, AlertTriangle, Clock, PauseCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -17,6 +17,10 @@ import PageSkeleton from '../components/skeleton/PageSkeleton';
 import TableSkeleton from '../components/TableSkeleton';
 import Tooltip from '../components/Tooltip';
 import ExportButton from '../components/ExportButton';
+import SearchableSelect from '../components/SearchableSelect';
+import DateRangePicker from '../components/DateRangePicker';
+import { personDisplayName } from '../utils/employeeNameUtils';
+import type { Company } from '../types';
 
 type TicketRow = {
   id: number;
@@ -28,6 +32,8 @@ type TicketRow = {
   status?: 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed' | string;
   employeeId?: number;
   employeeName?: string;
+  companyId?: number;
+  companyName?: string;
   assignedTo?: number | null;
   assignedToName?: string | null;
   resolutionNotes?: string | null;
@@ -37,7 +43,7 @@ type TicketRow = {
 };
 
 const TICKET_TABS = [
-  { id: 'all', label: 'All', icon: MessageSquare },
+  { id: 'all', label: 'All Status', icon: MessageSquare },
   { id: 'open', label: 'Open', icon: AlertTriangle },
   { id: 'in_progress', label: 'In Progress', icon: Clock },
   { id: 'on_hold', label: 'On Hold', icon: PauseCircle },
@@ -90,6 +96,9 @@ const Helpdesk = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [companyFilter, setCompanyFilter] = useState<string | number>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [mounted, setMounted] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<TicketRow | null>(null);
@@ -103,6 +112,7 @@ const Helpdesk = () => {
     priority: 'medium',
     status: 'open',
     resolution_notes: '',
+    assignedTo: '',
   });
 
   useEffect(() => {
@@ -122,6 +132,30 @@ const Helpdesk = () => {
     },
     staleTime: 2 * 60 * 1000,
   });
+
+  const { data: employees = [] } = useQuery<Array<{ id: number; name?: string; email?: string }>>({
+    queryKey: ['employees-list'],
+    queryFn: async () => {
+      const res = await api.get('/employees/list');
+      return Array.isArray(res.data) ? res.data : (res.data?.items || []);
+    },
+  });
+
+  const { data: companies = [] } = useQuery<Company[]>({
+    queryKey: ['companies-dropdown'],
+    queryFn: async () => {
+      const res = await api.get('/companies', { params: { active_only: true } });
+      return (res.data?.items || res.data || []) as Company[];
+    },
+  });
+
+  const scopedEmployees = useMemo(() => {
+    if (companyFilter === 'all') return employees;
+    return employees.filter((emp: Record<string, unknown>) => {
+      const empCompanyId = emp.companyId || emp.company_id || (emp.company && (emp.company as { id?: number })?.id);
+      return String(empCompanyId) === String(companyFilter);
+    });
+  }, [employees, companyFilter]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['helpdesk-tickets'] });
 
@@ -184,7 +218,7 @@ const Helpdesk = () => {
   });
 
   const resetForm = () => {
-    setForm({ subject: '', description: '', category: 'general', priority: 'medium', status: 'open', resolution_notes: '' });
+    setForm({ subject: '', description: '', category: 'general', priority: 'medium', status: 'open', resolution_notes: '', assignedTo: '' });
     setEditingItem(null);
   };
 
@@ -202,6 +236,7 @@ const Helpdesk = () => {
       priority: item.priority || 'medium',
       status: item.status || 'open',
       resolution_notes: item.resolutionNotes || '',
+      assignedTo: item.assignedTo ? String(item.assignedTo) : '',
     });
     setShowModal(true);
   };
@@ -221,6 +256,7 @@ const Helpdesk = () => {
     if (editingItem) {
       payload.status = form.status;
       if (form.resolution_notes.trim()) payload.resolution_notes = form.resolution_notes.trim();
+      if (form.assignedTo) payload.assigned_to = Number(form.assignedTo);
       updateMutation.mutate({ id: editingItem.id, payload });
     } else {
       createMutation.mutate(payload);
@@ -240,8 +276,20 @@ const Helpdesk = () => {
     if (priorityFilter !== 'all') {
       items = items.filter((item) => (item.priority || 'medium') === priorityFilter);
     }
+    if (startDate || endDate) {
+      items = items.filter((item) => {
+        const created = item.createdAt ? item.createdAt.split('T')[0] : '';
+        if (!created) return false;
+        if (startDate && created < startDate) return false;
+        if (endDate && created > endDate) return false;
+        return true;
+      });
+    }
+    if (companyFilter !== 'all') {
+      items = items.filter((item) => String(item.companyId) === String(companyFilter));
+    }
     return items;
-  }, [tickets, activeTab, categoryFilter, priorityFilter]);
+  }, [tickets, activeTab, categoryFilter, priorityFilter, startDate, endDate, companyFilter]);
 
   const stats = useMemo(() => {
     const list = tickets as TicketRow[];
@@ -267,31 +315,37 @@ const Helpdesk = () => {
 
   const columns: DataTableColumn<TicketRow>[] = useMemo(() => [
     {
-      key: 'subject',
-      header: 'Ticket',
-      sortable: true,
-      sortValue: (row) => row.ticket_no || row.subject,
-      render: (row) => (
-        <button type="button" onClick={() => setDetailItem(row)} className="flex items-center gap-2 text-left min-w-0 group">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
-            <Headset className="w-4 h-4 text-white" />
-          </div>
-          <span className="min-w-0">
-            <span className="font-semibold text-[var(--text-primary)] text-sm block truncate group-hover:text-[var(--primary-blue)]">
-              {row.subject}
-            </span>
-            <span className="text-xs text-gray-400">{row.ticket_no || `#${row.id}`}</span>
-          </span>
-        </button>
-      ),
-    },
-    {
       key: 'employeeName',
       header: 'Raised By',
       sortable: true,
       sortValue: (row) => row.employeeName || '',
       render: (row) => (
-        <span className="text-sm text-[#64748B]">{row.employeeName || '-'}</span>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+            <Headset className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sm font-medium text-[#0F172A] truncate">{row.employeeName || '-'}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'ticket_no',
+      header: 'Ticket ID',
+      sortable: true,
+      sortValue: (row) => row.ticket_no || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B] font-mono">{row.ticket_no || `#${row.id}`}</span>
+      ),
+    },
+    {
+      key: 'subject',
+      header: 'Subject',
+      sortable: true,
+      sortValue: (row) => row.subject,
+      render: (row) => (
+        <button type="button" onClick={() => setDetailItem(row)} className="font-semibold text-[#0F172A] text-sm hover:text-[#1C64F2] truncate text-left">
+          {row.subject}
+        </button>
       ),
     },
     {
@@ -326,14 +380,32 @@ const Helpdesk = () => {
       },
     },
     {
+      key: 'companyName',
+      header: 'Company',
+      sortable: true,
+      sortValue: (row) => row.companyName || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B]">{row.companyName || '-'}</span>
+      ),
+    },
+    {
       key: 'assignedToName',
       header: 'Assignee',
       sortable: true,
       sortValue: (row) => row.assignedToName || '',
       render: (row) => (
         row.assignedToName
-          ? <span className="text-sm text-[var(--text-primary)]">{row.assignedToName}</span>
+          ? <span className="text-sm text-[#0F172A]">{row.assignedToName}</span>
           : <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Unassigned</span>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      sortable: true,
+      sortValue: (row) => row.createdAt || '',
+      render: (row) => (
+        <span className="text-sm text-[#64748B] whitespace-nowrap">{row.createdAt ? formatAppDate(row.createdAt) : '-'}</span>
       ),
     },
     {
@@ -387,7 +459,7 @@ const Helpdesk = () => {
 
   if (!mounted) return <PageSkeleton />;
 
-  const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all';
+  const hasActiveFilters = categoryFilter !== 'all' || priorityFilter !== 'all' || companyFilter !== 'all' || startDate !== '' || endDate !== '';
 
   return (
     <div className="space-y-6 animate-page-enter">
@@ -431,43 +503,53 @@ const Helpdesk = () => {
         <div className="p-4 border-b border-[var(--border-color)]">
           <div className="flex flex-col lg:flex-row items-center gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <select
+              <SearchableSelect
+                value={companyFilter}
+                onChange={(val) => setCompanyFilter(val)}
+                options={companies.map((c) => ({ id: c.id, name: c.name }))}
+                placeholder="All Companies"
+                allOption="All Companies"
+                className="w-44"
+              />
+              <SearchableSelect
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
-                aria-label="Filter by category"
-              >
-                <option value="all">All Categories</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">{c}</option>
-                ))}
-              </select>
-              <select
+                onChange={(val) => setCategoryFilter(val.toString())}
+                options={CATEGORIES.map((c) => ({ id: c, name: c.charAt(0).toUpperCase() + c.slice(1) }))}
+                placeholder="All Categories"
+                allOption="All Categories"
+                className="w-44"
+              />
+              <SearchableSelect
                 value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-[var(--text-secondary)] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 capitalize"
-                aria-label="Filter by priority"
-              >
-                <option value="all">All Priorities</option>
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p} className="capitalize">{p}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex rounded-xl border border-gray-200 overflow-x-auto w-fit max-w-full lg:ml-auto">
-              {TICKET_TABS.map((tab) => (
+                onChange={(val) => setPriorityFilter(val.toString())}
+                options={PRIORITIES.map((p) => ({ id: p, name: p.charAt(0).toUpperCase() + p.slice(1) }))}
+                placeholder="All Priorities"
+                allOption="All Priorities"
+                className="w-44"
+              />
+              <SearchableSelect
+                value={activeTab}
+                onChange={(val) => setActiveTab(val.toString())}
+                options={TICKET_TABS.map((tab) => ({ id: tab.id, name: tab.label }))}
+                placeholder="All Status"
+                allOption="All Status"
+                className="w-40"
+              />
+              <DateRangePicker
+                startDate={startDate}
+                endDate={endDate}
+                onDateChange={(start, end) => { setStartDate(start); setEndDate(end); }}
+                placeholder="Filter by date"
+              />
+              {hasActiveFilters && (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'bg-[var(--primary-blue)] text-white'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  onClick={() => { setCategoryFilter('all'); setPriorityFilter('all'); setCompanyFilter('all'); setActiveTab('all'); setStartDate(''); setEndDate(''); }}
+                  className="p-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors"
+                  title="Clear filters"
                 >
-                  {tab.label}
+                  <RotateCcw className="w-4 h-4" />
                 </button>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -519,7 +601,7 @@ const Helpdesk = () => {
                       onClick={() => setDetailItem(row)}
                       className="p-2 text-[#64748B] hover:text-[var(--primary-blue)] hover:bg-blue-50 rounded-lg transition-colors"
                     >
-                      <Eye className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
                     </button>
                   </Tooltip>
                   <Tooltip id={`btn-edit-ticket-${row.id}`} content="Edit">
@@ -606,6 +688,18 @@ const Helpdesk = () => {
                   <option key={s} value={s}>{formatStatus(s)}</option>
                 ))}
               </select>
+            </FormField>
+          )}
+          {editingItem && (
+            <FormField label="Assign To" help="Select employee to assign this ticket">
+              <SearchableSelect
+                value={form.assignedTo || ''}
+                onChange={(val) => setForm({ ...form, assignedTo: val === 'all' ? '' : String(val) })}
+                options={scopedEmployees.map((emp) => ({ id: emp.id, name: personDisplayName(emp as never) || emp.email || `Employee #${emp.id}` }))}
+                placeholder="Unassigned"
+                allOption="Unassigned"
+                className="w-full"
+              />
             </FormField>
           )}
           {editingItem && !isResolving && (
