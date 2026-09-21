@@ -296,10 +296,13 @@ def list_journals(db: Session, organization_id: Optional[int],
                   entry_type: Optional[str] = None,
                   reference_type: Optional[str] = None,
                   reference_id: Optional[int] = None,
-                  limit: int = 200) -> List[dict]:
+                  limit: int = 200,
+                  company_id: Optional[int] = None) -> List[dict]:
     if not organization_id:
         return []
     q = db.query(JournalEntry).filter(JournalEntry.organization_id == organization_id)
+    if company_id is not None:
+        q = q.filter(JournalEntry.company_id == company_id)
     if entry_type:
         q = q.filter(JournalEntry.entry_type == entry_type)
     if reference_type:
@@ -337,13 +340,16 @@ def list_journals(db: Session, organization_id: Optional[int],
     return out
 
 
-def list_accounts(db: Session, organization_id: Optional[int]) -> List[dict]:
+def list_accounts(db: Session, organization_id: Optional[int],
+                  company_id: Optional[int] = None) -> List[dict]:
     if not organization_id:
         return []
     q = db.query(GLAccount).filter(
         GLAccount.deleted_at.is_(None),
         GLAccount.organization_id == organization_id,
     )
+    if company_id is not None:
+        q = q.filter(GLAccount.company_id == company_id)
     q = q.order_by(GLAccount.code)
     return [{
         "id": a.id,

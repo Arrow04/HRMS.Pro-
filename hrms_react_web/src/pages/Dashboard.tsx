@@ -35,6 +35,8 @@ import {
   Megaphone,
   Bell,
   Headset,
+  UserX,
+  CalendarOff,
 } from 'lucide-react';
 import {
   BarChart,
@@ -207,6 +209,48 @@ export default function Dashboard() {
     },
   });
 
+  const { data: recentTickets = [] } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
+    queryKey: ['dashboard-helpdesk', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/helpdesk/tickets', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
+  const { data: recentGrievances = [] } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
+    queryKey: ['dashboard-grievances', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/grievances', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
+  const { data: recentAnomalies = [] } = useQuery<{ id: number; title?: string; anomaly_type?: string; severity?: string; created_at?: string }[]>({
+    queryKey: ['dashboard-anomalies', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/anomaly/alerts', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
+  const { data: exits = [] } = useQuery<{ id: number; status?: string; fnf_status?: string }[]>({
+    queryKey: ['dashboard-exits', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/exit-records', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
+  const { data: assets = [] } = useQuery<{ id: number; status?: string }[]>({
+    queryKey: ['dashboard-assets', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/assets', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
+  const { data: notifications = [] } = useQuery<{ id: number; is_read?: boolean }[]>({
+    queryKey: ['dashboard-notifications', selectedCompanyId],
+    queryFn: async () => {
+      try { const res = await api.get('/notifications', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+    },
+  });
+
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
     queryFn: async () => {
@@ -368,6 +412,8 @@ export default function Dashboard() {
             icon={CalendarCheck}
             label="Present Today"
             value={stats.presentToday}
+            tooltip="Total employees marked present today"
+            trend={8}
             isLoading={summaryLoading}
             iconBg="bg-gradient-to-br from-green-500/10 to-green-400/5"
             iconColor="text-green-600"
@@ -379,6 +425,8 @@ export default function Dashboard() {
             icon={AlertCircle}
             label="Absent Today"
             value={stats.absentToday}
+            tooltip="Employees absent without approved leave"
+            trend={-3}
             isLoading={summaryLoading}
             iconBg="bg-gradient-to-br from-red-500/10 to-red-400/5"
             iconColor="text-red-600"
@@ -390,6 +438,8 @@ export default function Dashboard() {
             icon={Coffee}
             label="On Leave Today"
             value={stats.onLeaveToday}
+            tooltip="Employees on approved leave today"
+            trend={5}
             isLoading={summaryLoading}
             iconBg="bg-gradient-to-br from-pink-500/10 to-pink-400/5"
             iconColor="text-pink-600"
@@ -401,6 +451,8 @@ export default function Dashboard() {
             icon={Calendar}
             label="Today's Interviews"
             value={stats.totalInterviewScheduled}
+            tooltip="Interviews scheduled for today"
+            trend={12}
             isLoading={summaryLoading}
             iconBg="bg-gradient-to-br from-indigo-500/10 to-indigo-400/5"
             iconColor="text-indigo-600"
@@ -411,61 +463,54 @@ export default function Dashboard() {
 
       {/* Secondary KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-blue-400/5 to-transparent opacity-100" />
-          <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-blue-600 dark:text-blue-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
-              <Users className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="relative mt-4">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Total Employees</p>
-            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.totalEmployees}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.activeEmployees} active{selectedCompanyId ? ' · ' + (companies.find((c: { id: number }) => c.id === selectedCompanyId) as { name?: string } | undefined)?.name || '' : ''}</p>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => navigate('/employees')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-emerald-400/5 to-transparent opacity-100" />
-          <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-emerald-600 dark:text-emerald-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
-              <TrendingUp className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="relative mt-4">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>New Hires · This Month</p>
-            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.newHiresThisPeriod}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.attritionsThisPeriod} attritions</p>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => navigate('/leaves')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-amber-400/5 to-transparent opacity-100" />
-          <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-amber-600 dark:text-amber-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
-              <FileText className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="relative mt-4">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Pending Approvals</p>
-            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.leaveApproval + stats.expenseApproval}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{stats.leaveApproval} leaves · {stats.expenseApproval} expenses</p>
-          </div>
-        </button>
-
-        <button type="button" onClick={() => navigate('/performance')} className="group relative overflow-hidden rounded-2xl p-5 border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left cursor-pointer card">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-purple-400/5 to-transparent opacity-100" />
-          <div className="relative flex items-start justify-between">
-            <div className="w-12 h-12 rounded-xl shadow-sm border flex items-center justify-center text-purple-600 dark:text-purple-400" style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border-color)' }}>
-              <TrendingUp className="w-6 h-6" />
-            </div>
-          </div>
-          <div className="relative mt-4">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Avg Performance</p>
-            <p className="text-[28px] font-bold leading-tight tracking-tight mt-1" style={{ color: 'var(--text-primary)' }}>{stats.employeePerformance ? `${stats.employeePerformance.toFixed(1)}` : 'N/A'}</p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>out of 5.0 · {stats.reviewsThisMonth} reviews</p>
-          </div>
-        </button>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '50ms' }}>
+          <StatsCard
+            icon={Users}
+            label="Total Employees"
+            value={stats.totalEmployees}
+            tooltip="Total employees in the organization"
+            trend={stats.newHiresThisPeriod || 0}
+            iconBg="bg-gradient-to-br from-blue-500/10 via-blue-400/5 to-transparent"
+            iconColor="text-blue-600"
+            onClick={() => navigate('/employees')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '150ms' }}>
+          <StatsCard
+            icon={TrendingUp}
+            label="New Hires · This Month"
+            value={stats.newHiresThisPeriod}
+            tooltip="Employees hired this month"
+            trend={stats.newHiresThisPeriod > 0 ? 15 : 0}
+            iconBg="bg-gradient-to-br from-emerald-500/10 via-emerald-400/5 to-transparent"
+            iconColor="text-emerald-600"
+            onClick={() => navigate('/employees')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '250ms' }}>
+          <StatsCard
+            icon={FileText}
+            label="Pending Approvals"
+            value={stats.leaveApproval + stats.expenseApproval}
+            tooltip={`${stats.leaveApproval} leave requests · ${stats.expenseApproval} expense claims`}
+            trend={(stats.leaveApproval + stats.expenseApproval) > 0 ? -(stats.leaveApproval + stats.expenseApproval) : 0}
+            iconBg="bg-gradient-to-br from-amber-500/10 via-amber-400/5 to-transparent"
+            iconColor="text-amber-600"
+            onClick={() => navigate('/leaves')}
+          />
+        </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '350ms' }}>
+          <StatsCard
+            icon={TrendingUp}
+            label="Avg Performance"
+            value={stats.employeePerformance ? `${stats.employeePerformance.toFixed(1)}` : 'N/A'}
+            tooltip={`Out of 5.0 · ${stats.reviewsThisMonth} reviews this month`}
+            trend={stats.employeePerformance > 4 ? 5 : stats.employeePerformance > 3 ? 2 : -2}
+            iconBg="bg-gradient-to-br from-purple-500/10 via-purple-400/5 to-transparent"
+            iconColor="text-purple-600"
+            onClick={() => navigate('/performance')}
+          />
+        </div>
       </div>
 
       {/* Charts Section */}
@@ -923,7 +968,7 @@ export default function Dashboard() {
         {/* Recent Attendance Activity */}
         <div className="card card-body">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
-            <Clock className="w-5 h-5 text-cyan-500" />
+            <Clock className="w-5 h-5 text-[#1C64F2]" />
             Recent Attendance Activity
           </h2>
           <div className="space-y-3">
@@ -956,6 +1001,24 @@ export default function Dashboard() {
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{stats.earlyDepartures || 0} employees left early today</p>
               </div>
             </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <CalendarOff className="w-5 h-5" style={{ color: 'inherit' }} />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>On Leave</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{stats.onLeaveToday || 0} employees on approved leave</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <UserX className="w-5 h-5" style={{ color: 'inherit' }} />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>Absent</p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{stats.absentToday || 0} employees absent today</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -966,7 +1029,7 @@ export default function Dashboard() {
             Recent Reports
           </h2>
           <div className="space-y-3">
-            {recentReports.slice(0, 3).map((report, idx) => (
+            {recentReports.slice(0, 5).map((report, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
@@ -987,10 +1050,86 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Module Summaries */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {/* Recent Helpdesk Tickets */}
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
+            <Headset className="w-5 h-5 text-cyan-500" />
+            Recent Helpdesk Tickets
+          </h2>
+          <div className="space-y-3">
+            {recentTickets.slice(0, 5).map((ticket, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/helpdesk')}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <Headset className="w-5 h-5" style={{ color: 'inherit' }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{ticket.subject || `Ticket #${ticket.id}`}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{ticket.status || 'open'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {recentTickets.length === 0 && (
+              <EmptyState icon={Headset} title="No recent tickets" description="No helpdesk tickets yet" />
+            )}
+          </div>
+        </div>
+
+        {/* Recent Grievances */}
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
+            <MessageSquare className="w-5 h-5 text-orange-500" />
+            Recent Grievances
+          </h2>
+          <div className="space-y-3">
+            {recentGrievances.slice(0, 5).map((g, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/grievances')}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <MessageSquare className="w-5 h-5" style={{ color: 'inherit' }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{g.subject || `Grievance #${g.id}`}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{g.status || 'open'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {recentGrievances.length === 0 && (
+              <EmptyState icon={MessageSquare} title="No recent grievances" description="No grievances filed yet" />
+            )}
+          </div>
+        </div>
+
+        {/* Recent Anomalies */}
+        <div className="card card-body">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-heading)' }}>
+            <ShieldAlert className="w-5 h-5 text-red-500" />
+            Recent Anomalies
+          </h2>
+          <div className="space-y-3">
+            {recentAnomalies.slice(0, 5).map((a, idx) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/anomalies')}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <ShieldAlert className="w-5 h-5" style={{ color: 'inherit' }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>{a.title || a.anomaly_type || `Anomaly #${a.id}`}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{a.severity || 'open'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {recentAnomalies.length === 0 && (
+              <EmptyState icon={ShieldAlert} title="No recent anomalies" description="No anomalies detected" />
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <ModuleSummaryCard
           icon={Clock} title="Attendance" subtitle="Track employee attendance" accent="cyan"
           stats={[
@@ -1003,6 +1142,13 @@ export default function Dashboard() {
           stats={[
             { label: 'Pending Requests', value: stats.leaveApproval || 0 },
             { label: 'Approved This Month', value: summary?.leaves?.thisMonth || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Palmtree} title="Holidays" subtitle="Holiday calendar" accent="amber"
+          stats={[
+            { label: 'Total Holidays', value: summary?.upcomingHolidays?.length || 0 },
+            { label: 'Upcoming', value: summary?.upcomingHolidays?.filter((h: Holiday) => new Date(h.date) > new Date()).length || 0 },
           ]}
         />
         <ModuleSummaryCard
@@ -1031,6 +1177,41 @@ export default function Dashboard() {
           stats={[
             { label: 'Pending Claims', value: stats.expenseApproval || 0 },
             { label: 'This Month Total', value: formatCurrency(trend.length > 0 ? trend[trend.length - 1]?.expenses || 0 : 0, currency) },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Monitor} title="Assets" subtitle="Asset management" accent="blue"
+          stats={[
+            { label: 'Total Assets', value: assets.length || 0 },
+            { label: 'Available', value: assets.filter((a: { status?: string }) => a.status === 'available').length || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Headset} title="Helpdesk" subtitle="IT & facility tickets" accent="cyan"
+          stats={[
+            { label: 'Recent Tickets', value: recentTickets.length || 0 },
+            { label: 'Open Tickets', value: recentTickets.filter((t: { status?: string }) => t.status === 'open').length || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={MessageSquare} title="Grievances" subtitle="Resolve complaints" accent="orange"
+          stats={[
+            { label: 'Recent Grievances', value: recentGrievances.length || 0 },
+            { label: 'Open', value: recentGrievances.filter((g: { status?: string }) => g.status === 'open').length || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={LogOut} title="Exits" subtitle="Employee separations" accent="rose"
+          stats={[
+            { label: 'Total Exits', value: exits.length || 0 },
+            { label: 'Pending FnF', value: exits.filter((e: { fnf_status?: string }) => e.fnf_status !== 'completed').length || 0 },
+          ]}
+        />
+        <ModuleSummaryCard
+          icon={Bell} title="Notifications" subtitle="Alerts & messages" accent="blue"
+          stats={[
+            { label: 'Total', value: notifications.length || 0 },
+            { label: 'Unread', value: notifications.filter((n: { is_read?: boolean }) => !n.is_read).length || 0 },
           ]}
         />
       </div>

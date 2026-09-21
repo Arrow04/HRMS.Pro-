@@ -30,6 +30,8 @@ interface CalendarDay {
   status?: string;
   type?: string;
   name?: string;
+  isManualEntry?: boolean;
+  isEarlyDeparture?: boolean;
 }
 
 interface ApiErrorResponse {
@@ -69,6 +71,7 @@ interface Props {
 type ViewMode = 'month' | 'week' | 'day';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -117,14 +120,17 @@ function statusColors(code: string) {
 function statusDisplayName(code: string, options?: AttendanceStatusOption[]) {
   if (!code) return '';
   const opt = options?.find((o: AttendanceStatusOption) => o.code === code);
-  if (opt?.name) return opt.name;
   const map: Record<string, string> = {
     present:'Present', absent:'Absent', late:'Late', half_day:'Half Day', on_leave:'On Leave',
     work_from_home:'WFH', holiday:'Holiday', casual:'Casual Leave', sick:'Sick Leave',
     week_off:'Week Off', casual_leave:'Casual Leave', sick_leave:'Sick Leave',
     vacation:'Vacation', personal:'Personal', maternity:'Maternity', paternity:'Paternity',
   };
-  return map[code] || code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const name = opt?.name || map[code] || code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  // Leave types must read as leave: "Personal" -> "Personal Leave" (skip if already suffixed)
+  const c = code.toLowerCase();
+  if ((LEAVE_CODES.has(c) || c.includes('leave')) && !/leave/i.test(name)) return `${name} Leave`;
+  return name;
 }
 
 function formatTime(v?: string) {
@@ -333,6 +339,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     let weekdays = 0;
     let holidays = 0;
     let attended = 0;
+    let earlyDepartures = 0;
     dateList.forEach(d => {
       const ds = fmtDate(d);
       const rec = days[ds];
@@ -344,12 +351,13 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
         const s = (rec.status || '').toLowerCase();
         if (s) counts[s] = (counts[s] || 0) + 1;
         if (isAttendedStatus(s)) attended++;
+        if (rec.isEarlyDeparture) earlyDepartures++;
         if (s === 'present' && rec.checkIn) presentTimes.push(rec.checkIn);
         if (rec.checkOut) checkOutTimes.push(rec.checkOut);
       }
       if (workdaySet.has(d.getDay())) weekdays++;
     });
-    return { counts, holidays, attended, total: dateList.filter(d => days[fmtDate(d)]).length, weekdays, presentTimes, checkOutTimes };
+    return { counts, holidays, attended, earlyDepartures, total: dateList.filter(d => days[fmtDate(d)]).length, weekdays, presentTimes, checkOutTimes };
   }, [view, days, month, year, daysInMonth, weekDays, focusDate, workdaySet]);
 
   const presentDays = stats.counts['present'] || 0;
@@ -357,6 +365,13 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
   const onLeaveDays = Object.keys(stats.counts)
     .filter(k => isLeaveStatus(k))
     .reduce((acc, k) => acc + (stats.counts[k] || 0), 0);
+  // Per-type leave breakdown for the legend (casual, sick, earned, ...), non-zero only
+  const leaveBreakdown = useMemo(
+    () => Object.keys(stats.counts)
+      .filter(k => isLeaveStatus(k) && (stats.counts[k] || 0) > 0)
+      .sort((a, b) => (stats.counts[b] || 0) - (stats.counts[a] || 0)),
+    [stats.counts]
+  );
   const recordedDays = stats.total;
 
   const pieData = useMemo(() => {
@@ -655,26 +670,6 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
             </div>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <button
-              onClick={() => setShowJump(v => !v)}
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border bg-white text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--primary-blue)]"
-              title="Jump to a specific month"
-            >
-              <CalendarPlus className="w-3.5 h-3.5" />
-              Jump
-            </button>
-            <button
-              onClick={() => setMultiSelect(v => !v)}
-              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
-                multiSelect
-                  ? 'bg-[var(--primary-blue)] text-white border-[var(--primary-blue)]'
-                  : 'bg-white text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--primary-blue)]'
-              }`}
-              title={multiSelect ? 'Click days to bulk-select. Turn off to edit a single day.' : 'Turn on to bulk-select multiple days'}
-            >
-              <CheckSquare className="w-3.5 h-3.5" />
-              {multiSelect ? 'Bulk On' : 'Bulk'}
-            </button>
             <div className="flex items-center bg-gray-100 rounded-xl p-1">
               {([
                 { id: 'month' as ViewMode, label: 'Month', Icon: CalendarDays },
@@ -725,6 +720,26 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
               <ChevronRight className="w-5 h-5 text-[var(--text-secondary)]" />
             </button>
             <span className="ml-1 text-sm font-semibold text-[var(--text-primary)]">{viewLabel}</span>
+            <button
+              onClick={() => setShowJump(v => !v)}
+              className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border bg-white text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--primary-blue)]"
+              title="Jump to a specific month"
+            >
+              <CalendarPlus className="w-3.5 h-3.5" />
+              Jump
+            </button>
+            <button
+              onClick={() => setMultiSelect(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
+                multiSelect
+                  ? 'bg-[var(--primary-blue)] text-white border-[var(--primary-blue)]'
+                  : 'bg-white text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--primary-blue)]'
+              }`}
+              title={multiSelect ? 'Click days to bulk-select. Turn off to edit a single day.' : 'Turn on to bulk-select multiple days'}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              {multiSelect ? 'Bulk On' : 'Bulk'}
+            </button>
           </div>
           {showJump && (
             <div className="relative">
@@ -818,8 +833,8 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
             </div>
           ) : (
             <>
-              {/* Summary strip */}
-              <div className="flex items-center gap-2.5 py-2 flex-shrink-0 flex-wrap">
+              {/* Summary strip: status row + stats row */}
+              <div className="py-2 flex-shrink-0 space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('present').dot }} />
@@ -829,18 +844,63 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('absent').dot }} />
                     Absent {absentDays}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 text-purple-700">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('on_leave').dot }} />
-                    On Leave {onLeaveDays}
+                  {leaveBreakdown.length === 0 ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 text-purple-700">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('on_leave').dot }} />
+                      On Leave 0
+                    </span>
+                  ) : leaveBreakdown.map((code) => (
+                    <span key={code} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-50 text-purple-700">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors(code).dot }} />
+                      {statusDisplayName(code, attendanceStatusOptions)} {stats.counts[code]}
+                    </span>
+                  ))}
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('holiday').dot }} />
+                    Holidays {stats.holidays}
                   </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('week_off').dot }} />
+                    Week Off {stats.counts['week_off'] || 0}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-50 text-amber-700">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('late').dot }} />
+                    Late {stats.counts['late'] || 0}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-orange-50 text-orange-700">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('early_departure').dot }} />
+                    Early Departure {stats.earlyDepartures}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-cyan-50 text-cyan-700">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('work_from_home').dot }} />
+                    WFH {(stats.counts['work_from_home'] || 0) + (stats.counts['wfh'] || 0)}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-violet-50 text-violet-700">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColors('half_day').dot }} />
+                    Half Day {stats.counts['half_day'] || 0}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-600">
                     <span className="w-2 h-2 rounded-full bg-slate-400" />
-                    Recorded {recordedDays}/{stats.weekdays} workdays
+                    Recorded {recordedDays}/{daysInMonth} days
                   </span>
                   {avgCheckIn && (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-50 text-blue-700">
                       <Clock className="w-3 h-3" />
                       Avg check-in {avgCheckIn}
+                    </span>
+                  )}
+                  {avgCheckOut && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700">
+                      <Clock className="w-3 h-3" />
+                      Avg check-out {avgCheckOut}
+                    </span>
+                  )}
+                  {workHours.days > 0 && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-teal-50 text-teal-700">
+                      <Clock className="w-3 h-3" />
+                      Avg working {formatDuration(workHours.avg)}
                     </span>
                   )}
                 </div>
@@ -849,28 +909,15 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
               {/* Month view */}
               {view === 'month' && (
                 <>
-                  <div className="flex gap-1.5 mb-1 flex-shrink-0">
-                    <div className="w-7" />
-                    <div className="flex-1 grid grid-cols-7 gap-1.5 text-center text-xs font-semibold uppercase tracking-wider">
+                  <div className="flex gap-3 mb-1 flex-shrink-0">
+                    <div className="flex-1 grid grid-cols-7 gap-3 text-center text-xs font-semibold uppercase tracking-wider">
                       {DAY_SHORT.map((d, idx) => (
                         <div key={d} className={[0, 6].includes(idx) ? 'text-gray-400' : 'text-[var(--text-tertiary)]'}>{d}</div>
                       ))}
                     </div>
                   </div>
-                  <div className="flex-1 min-h-0 flex gap-1.5">
-                    <div className="w-7 flex-shrink-0 grid grid-rows-6 gap-1.5">
-                      {Array.from({ length: 6 }).map((_, r) => {
-                        const dayNum = r * 7 - firstDay + 1;
-                        if (dayNum < 1 || dayNum > daysInMonth) return <div key={r} />;
-                        const wk = getWeekNumber(new Date(year, month, dayNum));
-                        return (
-                          <div key={r} className="flex items-start justify-center pt-1 text-[10px] font-semibold text-gray-400 select-none">
-                            {wk}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex-1 min-h-0 grid grid-cols-7 grid-rows-6 gap-1.5">
+                  <div className="flex-1 min-h-0 flex gap-3">
+                    <div className="flex-1 min-h-0 grid grid-cols-7 grid-rows-[repeat(6,minmax(92px,1fr))] gap-3 overflow-y-auto">
                     {Array.from({ length: firstDay }).map((_, i) => (
                       <div key={`e-${i}`} className="rounded-xl bg-transparent" />
                     ))}
@@ -894,7 +941,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                           onMouseMove={(e) => { setHoverDay(dateStr); setHoverPos({ x: e.clientX, y: e.clientY }); }}
                           onMouseLeave={() => { if (!dragRef.current) { setHoverDay(null); setHoverPos(null); } }}
                           onClick={() => handleDayClick(dateStr)}
-                          className={`relative min-h-0 overflow-hidden rounded-xl flex flex-col items-center justify-center text-sm font-medium transition-all cursor-pointer border select-none ${
+                          className={`relative min-h-[92px] overflow-hidden rounded-xl flex flex-col items-center justify-center text-sm font-medium transition-all cursor-pointer border select-none ${
                             isSelected
                               ? 'ring-2 ring-[var(--primary-blue)] border-[var(--primary-blue)] bg-blue-50 scale-[1.03] z-10 shadow-md'
                               : isHoliday
@@ -912,11 +959,16 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                               <Check className="w-3 h-3" />
                             </span>
                           )}
-                          <span className={`text-base ${isToday && !isSelected ? 'text-[var(--primary-blue)] font-bold' : ''} ${isWeekend && !dayData && !isSelected ? 'text-gray-300' : ''}`}>
-                            {day}
+                          <span className={`text-sm truncate max-w-full px-1 ${isToday && !isSelected ? 'text-[var(--primary-blue)] font-bold' : ''} ${isWeekend && !dayData && !isSelected ? 'text-gray-300' : ''}`}>
+                            {day} {FULL_MONTHS[month]}
                           </span>
                           {!isSelected && colors && (
                             <div className="w-2 h-2 rounded-full mt-0.5" style={{ backgroundColor: colors.dot }} />
+                          )}
+                          {!isSelected && isHoliday && (
+                            <span className="text-[10px] leading-tight font-semibold text-blue-700 bg-blue-50 px-1.5 py-px rounded mt-0.5">
+                              Holiday
+                            </span>
                           )}
                           {!isSelected && (
                             <span className="text-[11px] leading-tight mt-0.5 opacity-70 text-center px-1 truncate max-w-full">
@@ -924,15 +976,19 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                             </span>
                           )}
                           {!isSelected && dayData?.status?.toLowerCase() === 'present' && (
-                            <span className="text-[11px] leading-tight font-semibold text-emerald-700">
-                              {dayData.checkIn ? formatTime(dayData.checkIn) : '•'}
+                            <span className="text-[11px] leading-tight font-semibold text-emerald-700 truncate max-w-full px-1">
+                              In: {dayData.checkIn ? formatTime(dayData.checkIn) : '•'}{dayData.checkOut ? ` · Out: ${formatTime(dayData.checkOut)}` : ''}
                             </span>
                           )}
-                          {!isSelected && isHoliday && (
-                            <span className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500" />
+                          {!isSelected && dayData?.checkIn && !dayData?.checkOut && (
+                            <span className="text-[10px] leading-tight font-semibold text-red-600 bg-red-50 px-1.5 py-px rounded mt-0.5">
+                              No checkout
+                            </span>
                           )}
-                          {!isSelected && !isHoliday && colors && (
-                            <span className="absolute bottom-0 left-0 right-0 h-1" style={{ backgroundColor: colors.dot }} />
+                          {!isSelected && dayData?.isManualEntry && (
+                            <span className="text-[10px] leading-tight font-semibold text-orange-600 bg-orange-50 px-1.5 py-px rounded mt-0.5">
+                              Manual
+                            </span>
                           )}
                         </button>
                       );
@@ -976,6 +1032,9 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                         <div className="flex-1 flex flex-col items-center justify-center gap-1.5 w-full">
                           {isHoliday ? (
                             <>
+                              <span className="text-[10px] leading-tight font-semibold text-blue-700 bg-blue-50 px-1.5 py-px rounded">
+                                Holiday
+                              </span>
                               <span className="text-[11px] font-semibold text-blue-700 text-center leading-tight px-1">{dayData.name}</span>
                             </>
                           ) : status ? (
@@ -986,6 +1045,16 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                                 <span className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
                                   <Clock className="w-3 h-3" />
                                   {formatTime(dayData.checkIn) || '–'} → {formatTime(dayData.checkOut) || '–'}
+                                </span>
+                              )}
+                              {dayData.isManualEntry && (
+                                <span className="text-[10px] leading-tight font-semibold text-orange-600 bg-orange-50 px-1.5 py-px rounded">
+                                  Manual
+                                </span>
+                              )}
+                              {dayData.checkIn && !dayData.checkOut && (
+                                <span className="text-[10px] leading-tight font-semibold text-red-600 bg-red-50 px-1.5 py-px rounded">
+                                  No checkout
                                 </span>
                               )}
                             </>

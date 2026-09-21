@@ -32,6 +32,16 @@ def sync_holiday_to_attendance(db: Session, holiday: Holiday) -> dict:
 
     employees = query.all()
 
+    # A working-day holiday is a normal workday — no holiday attendance rows.
+    if getattr(holiday, "is_working_day", False):
+        return {
+            "status": "skipped",
+            "reason": "working-day holiday",
+            "holiday": holiday.name,
+            "created": 0,
+            "skipped": len(employees),
+        }
+
     holiday_date = holiday.date
     if isinstance(holiday_date, str):
         from dateutil import parser as dateparser
@@ -89,8 +99,8 @@ def sync_all_holidays_for_month(db: Session, org_id: int, year: int, month: int,
         Holiday.date <= end_date,
     )
     if company_id:
-        # Only sync holidays that apply to this company (or are org-wide).
-        query = query.filter((Holiday.company_id == company_id) | (Holiday.company_id.is_(None)))
+        # Strict: only this company's own holidays (org-wide rows are NOT shared).
+        query = query.filter(Holiday.company_id == company_id)
 
     holidays = query.all()
 

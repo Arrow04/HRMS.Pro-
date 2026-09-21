@@ -19,21 +19,7 @@ MONTH_NAMES = [
     "July", "August", "September", "October", "November", "December",
 ]
 
-CURRENCY_SYMBOL = "Rs."
-
-CURRENCY_SYMBOLS = {
-    "INR": "₹", "USD": "$", "EUR": "€", "GBP": "£", "AED": "AED",
-    "SGD": "S$", "AUD": "A$", "CAD": "C$", "JPY": "¥", "CNY": "¥",
-    "CHF": "CHF", "SAR": "SAR", "QAR": "QAR", "KWD": "KWD", "MYR": "RM",
-    "THB": "฿", "IDR": "Rp", "PHP": "₱", "BRL": "R$", "MXN": "MX$",
-    "ZAR": "R", "NZD": "NZ$", "HKD": "HK$", "KRW": "₩",
-}
-
-
-def currency_symbol(currency: Optional[str]) -> str:
-    """Return a display symbol for a currency code (fallback to the code)."""
-    code = (currency or "INR").upper()
-    return CURRENCY_SYMBOLS.get(code, f"{code} ")
+from core.format_utils import currency_symbol, CURRENCY_SYMBOLS
 
 
 # Latin-1-safe fallbacks for the PDF (Helvetica font can't render ₹/€/¥/₩ etc.)

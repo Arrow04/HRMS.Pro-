@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, Modal, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
 import { getTimezone } from '../utils/timezone';
@@ -37,6 +38,8 @@ const TABS = [
   { key: 'users', label: 'Users' },
   { key: 'settings', label: 'General' },
   { key: 'notifications', label: 'Alerts' },
+  { key: 'policies', label: 'Policies' },
+  { key: 'audit', label: 'Audit Log' },
 ];
 
 
@@ -46,7 +49,7 @@ const SettingsScreen = ({ navigation }) => {
   const { user } = useAuth();
   const scrollTopBar = useScrollTopBar();
   const isAdmin = ['admin', 'superadmin', 'hr_admin', 'hr_manager'].includes(user?.role);
-  const [tab, setTab] = useState('users');
+  const [tab, setTab] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,12 +62,22 @@ const SettingsScreen = ({ navigation }) => {
   const [notifSms, setNotifSms] = useState(false);
   const [notifPush, setNotifPush] = useState(true);
   const [notifAttendance, setNotifAttendance] = useState(true);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLogStartDate, setAuditLogStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [auditLogEndDate, setAuditLogEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [editingDeviceId, setEditingDeviceId] = useState(null);
+  const [editDeviceName, setEditDeviceName] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
-      const [uRes, sRes] = await Promise.allSettled([
+      const [uRes, sRes, dRes, aRes] = await Promise.allSettled([
         api.get('/settings/users'),
         api.get('/settings/general'),
+        api.get('/auth/devices').catch(() => ({ data: [] })),
+        api.get('/settings/audit-log').catch(() => ({ data: [] })),
       ]);
       if (uRes.status === 'fulfilled') { const d = uRes.value.data; setUsers(d?.data || d?.items || (Array.isArray(d) ? d : [])); }
       if (sRes.status === 'fulfilled') {
@@ -80,6 +93,11 @@ const SettingsScreen = ({ navigation }) => {
           setNotifPush(settings.notify_push !== false);
         }
       }
+      if (dRes.status === 'fulfilled') {
+        const d = dRes.value.data;
+        setDevices(d?.devices || d?.data || (Array.isArray(d) ? d : []));
+      }
+      if (aRes.status === 'fulfilled') { const d = aRes.value.data; setAuditLogs(d?.data || d?.items || (Array.isArray(d) ? d : [])); }
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -102,6 +120,29 @@ const SettingsScreen = ({ navigation }) => {
         notify_email: notifEmail, notify_sms: notifSms, notify_push: notifPush });
       Alert.alert('Success', 'Notification settings saved.');
     } catch (e) { Alert.alert('Error', 'Failed.'); }
+  };
+
+  const handleRenameDevice = async (deviceId) => {
+    try {
+      await api.put(`/auth/devices/${deviceId}/name`, null, { params: { name: editDeviceName } });
+      Alert.alert('Success', 'Device renamed successfully.');
+      setEditingDeviceId(null);
+      setEditDeviceName('');
+      fetchData();
+    } catch (e) { Alert.alert('Error', 'Failed to rename device.'); }
+  };
+
+  const handleRevokeDevice = (device) => {
+    Alert.alert('Revoke Device', `Revoke "${device.device_name}"? You will need to login again from that device.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Revoke', style: 'destructive', onPress: async () => {
+        try {
+          await api.delete(`/auth/devices/${device.id}`);
+          Alert.alert('Success', 'Device revoked successfully.');
+          fetchData();
+        } catch (e) { Alert.alert('Error', 'Failed to revoke device.'); }
+      } },
+    ]);
   };
 
   const handleUpdateRole = (u, role) => {
@@ -142,7 +183,71 @@ const SettingsScreen = ({ navigation }) => {
         </View>
       </View>
       <View style={styles.body}>
-        <TabPill tabs={TABS} active={tab} onChange={t => { setTab(t); setSearch(''); }} />
+        {/* Settings Menu List */}
+        <Card style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.sm }}>
+            <Ionicons name="business-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.sectionTitle}>Organisation</Text>
+          </View>
+          <Divider style={{ marginBottom: spacing.sm }} />
+          {[
+            { key: 'settings', label: 'General Settings', icon: 'settings-outline', color: '#6366F1' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => setTab(tab === item.key ? null : item.key)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.divider, gap: 12 }}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: item.color + '18', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name={item.icon} size={18} color={item.color} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: colors.text }}>{item.label}</Text>
+              <Ionicons name={tab === item.key ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md, marginBottom: spacing.sm }}>
+            <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.sectionTitle}>Access</Text>
+          </View>
+          <Divider style={{ marginBottom: spacing.sm }} />
+          {[
+            { key: 'users', label: 'User Management', icon: 'people-outline', color: '#3B82F6' },
+            { key: 'devices', label: 'Devices', icon: 'phone-portrait-outline', color: '#10B981' },
+            { key: 'notifications', label: 'Notification Preferences', icon: 'notifications-outline', color: '#F59E0B' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => setTab(tab === item.key ? null : item.key)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.divider, gap: 12 }}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: item.color + '18', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name={item.icon} size={18} color={item.color} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: colors.text }}>{item.label}</Text>
+              <Ionicons name={tab === item.key ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md, marginBottom: spacing.sm }}>
+            <Ionicons name="flash-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.sectionTitle}>System</Text>
+          </View>
+          <Divider style={{ marginBottom: spacing.sm }} />
+          {[
+            { key: 'audit', label: 'Audit Log', icon: 'document-lock-outline', color: '#8B5CF6' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => setTab(tab === item.key ? null : item.key)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 12 }}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: item.color + '18', justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name={item.icon} size={18} color={item.color} />
+              </View>
+              <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: colors.text }}>{item.label}</Text>
+              <Ionicons name={tab === item.key ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ))}
+        </Card>
 
         {tab === 'users' && (
           <>
@@ -241,7 +346,131 @@ const SettingsScreen = ({ navigation }) => {
             </Card>
           </>
         )}
+
+        {tab === 'devices' && (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: 12, padding: 12, marginTop: 2, marginBottom: 14 }}>
+              <Ionicons name="lock-closed-outline" size={16} color={colors.textTertiary} />
+              <Text style={{ fontSize: 12, color: colors.textTertiary, flex: 1 }}>Manage devices that can access your account. If you notice unrecognized devices, revoke them immediately.</Text>
+            </View>
+            <Card>
+              <Text style={styles.sectionTitle}>Device Management</Text>
+              <Divider style={{ marginBottom: spacing.md }} />
+              {devices.length === 0 ? (
+                <EmptyState icon="📱" title="No devices registered" message="Devices will be automatically registered when you login." />
+              ) : (
+                devices.map((d, i) => (
+                  <Card key={d.id || i} style={{ marginBottom: 10 }}>
+                    <View style={styles.itemRow}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="phone-portrait-outline" size={18} color="#1C64F2" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        {editingDeviceId === d.id ? (
+                          <TextInput
+                            style={styles.input}
+                            value={editDeviceName}
+                            onChangeText={setEditDeviceName}
+                            placeholder="Device name"
+                            placeholderTextColor={colors.textTertiary}
+                            autoFocus
+                          />
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={styles.itemTitle}>{d.device_name}</Text>
+                            {d.is_current && (
+                              <View style={{ backgroundColor: '#059669', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFF' }}>Current</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                        <Text style={styles.itemSub} className="capitalize">{d.device_type || 'Unknown type'}</Text>
+                        <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>
+                          {d.ip_address || 'No IP'} • {d.last_used ? new Date(d.last_used).toLocaleDateString('en-US', { timeZone: getTimezone() }) : 'Never used'}
+                        </Text>
+                        {isAdmin && (
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                            {editingDeviceId === d.id ? (
+                              <>
+                                <TouchableOpacity
+                                  onPress={() => handleRenameDevice(d.id)}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.successSurface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                                >
+                                  <Ionicons name="checkmark-outline" size={14} color={colors.success} />
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.success }}>Save</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => { setEditingDeviceId(null); setEditDeviceName(''); }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceSecondary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                                >
+                                  <Ionicons name="close-outline" size={14} color={colors.textSecondary} />
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>Cancel</Text>
+                                </TouchableOpacity>
+                              </>
+                            ) : (
+                              <>
+                                <TouchableOpacity
+                                  onPress={() => { setEditingDeviceId(d.id); setEditDeviceName(d.device_name); }}
+                                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primarySurface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                                >
+                                  <Ionicons name="pencil-outline" size={14} color={colors.primary} />
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Rename</Text>
+                                </TouchableOpacity>
+                                {!d.is_current && (
+                                  <TouchableOpacity
+                                    onPress={() => handleRevokeDevice(d)}
+                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.dangerSurface, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                                  >
+                                    <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.danger }}>Revoke</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </Card>
+                ))
+              )}
+            </Card>
+          </>
+        )}
+
+        {tab === 'audit' && (
+          <>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.surfaceSecondary, borderRadius: 12, padding: 12, marginTop: 2, marginBottom: 14 }}>
+              <Ionicons name="lock-closed-outline" size={16} color={colors.textTertiary} />
+              <Text style={{ fontSize: 12, color: colors.textTertiary, flex: 1 }}>View system activity logs.</Text>
+            </View>
+            <Card>
+              <Text style={styles.sectionTitle}>Audit Log</Text>
+              <Divider style={{ marginBottom: spacing.md }} />
+              {auditLogs.length === 0 ? (
+                <EmptyState icon="📋" title="No audit logs" message="No activity has been recorded yet." />
+              ) : (
+                auditLogs.map((log, i) => (
+                  <Card key={log.id || i} style={{ marginBottom: 10 }}>
+                    <View style={styles.itemRow}>
+                      <Ionicons name="document-lock-outline" size={20} color={colors.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.itemTitle}>{log.action || 'Unknown action'}</Text>
+                        <Text style={styles.itemSub}>{log.entity_type || ''} • {log.user_name || 'System'}</Text>
+                        <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 4 }}>
+                          {log.created_at ? new Date(log.created_at).toLocaleString('en-US', { timeZone: getTimezone() }) : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+                ))
+              )}
+            </Card>
+          </>
+        )}
       </View>
+
     </ScrollView>
   );
 };

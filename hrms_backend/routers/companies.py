@@ -26,6 +26,7 @@ from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (CompanyCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
@@ -114,11 +115,100 @@ def get_all_companies(
     query = db.query(Company).filter(Company.deleted_at.is_(None))
     if current_user.organization_id:
         query = query.filter(Company.organization_id == current_user.organization_id)
+    # Company isolation: restricted roles see only their own company, so the
+    # frontend switcher locks to a single entry instead of leaking the roster.
+    _co_scope = resolve_company_scope(db, current_user, None)
+    if _co_scope is not None:
+        query = query.filter(Company.id == _co_scope)
     if active_only:
         query = query.filter(Company.status == "active")
     if search:
         query = query.filter(Company.name.ilike(f"%{search}%"))
     return query.all()
+
+
+@router.get("/api/companies/{company_id}/configuration", tags=["Companies"])
+def get_company_configuration(
+    company_id: int,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-company customization status: every template/calendar/shift needed
+    to run this company standalone, with a completeness score.
+
+    Sections: payroll templates, leave templates, attendance templates
+    (policies), holiday calendar (year), shifts, plus employee count.
+    A company is fully customizable when every section is non-empty.
+    """
+    from datetime import date as _date
+    from models import (AttendancePolicy, Employee, Holiday, LeaveTemplate,
+                        PayrollTemplate, Shift)
+    comp = db.query(Company).filter(Company.id == company_id, Company.deleted_at.is_(None)).first()
+    if not comp:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if current_user.organization_id and comp.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    assert_company_allowed(db, current_user, comp.id)
+    year = year or _date.today().year
+
+    def _names(q, label="name"):
+        rows = q.all()
+        return {"count": len(rows), "items": [{"id": r.id, "name": getattr(r, label, None), "status": getattr(r, "status", "active")} for r in rows]}
+
+    payroll = _names(db.query(PayrollTemplate).filter(
+        PayrollTemplate.organization_id == comp.organization_id,
+        PayrollTemplate.company_id == company_id,
+        PayrollTemplate.deleted_at.is_(None)))
+    leave = _names(db.query(LeaveTemplate).filter(
+        LeaveTemplate.organization_id == comp.organization_id,
+        LeaveTemplate.company_id == company_id,
+        LeaveTemplate.deleted_at.is_(None),
+        LeaveTemplate.status == "active"))
+    attendance = _names(db.query(AttendancePolicy).filter(
+        AttendancePolicy.organization_id == comp.organization_id,
+        AttendancePolicy.company_id == company_id,
+        AttendancePolicy.status == "active"))
+    holidays = db.query(Holiday).filter(
+        Holiday.organization_id == comp.organization_id,
+        Holiday.deleted_at.is_(None),
+        Holiday.year == year,
+    ).filter((Holiday.company_id == company_id) | (Holiday.company_id.is_(None))).all()
+    shifts = db.query(Shift).filter(
+        Shift.organization_id == comp.organization_id,
+        Shift.company_id == company_id,
+        Shift.status == "active",
+    ).all()
+    employees = db.query(Employee).filter(
+        Employee.organization_id == comp.organization_id,
+        Employee.company_id == company_id,
+        Employee.deleted_at.is_(None),
+        Employee.status == "active",
+    ).count()
+
+    sections = {
+        "payrollTemplates": {**payroll, "required": True},
+        "leaveTemplates": {**leave, "required": True},
+        "attendanceTemplates": {**attendance, "required": True},
+        "holidays": {"count": len(holidays),
+                     "items": [{"id": h.id, "name": h.name, "status": "active"} for h in holidays],
+                     "required": True},
+        "shifts": {"count": len(shifts),
+                   "items": [{"id": s.id, "name": s.name, "status": s.status} for s in shifts],
+                   "required": True},
+    }
+    ready = sum(1 for s in sections.values() if s["count"] > 0)
+    return {
+        "companyId": comp.id,
+        "companyName": comp.name,
+        "year": year,
+        "employeeCount": employees,
+        "sections": sections,
+        "readySections": ready,
+        "totalSections": len(sections),
+        "completeness": round(ready / len(sections) * 100),
+        "complete": ready == len(sections),
+    }
 
 
 @router.get("/api/department-head-candidates", tags=["Companies"])
@@ -139,6 +229,7 @@ def get_department_head_candidates(
     )
     if current_user.organization_id:
         query = query.filter(Employee.organization_id == current_user.organization_id)
+    company_id = resolve_company_scope(db, current_user, company_id)
     if company_id:
         query = query.filter(Employee.company_id == company_id)
     employees = query.order_by(Employee.first_name, Employee.last_name).limit(500).all()

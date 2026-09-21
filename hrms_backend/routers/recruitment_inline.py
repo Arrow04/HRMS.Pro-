@@ -26,6 +26,7 @@ from utils.name_utils import resolve_full_name, split_name
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.tenant import validate_company_in_org
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (CandidateCreate, InterviewCreate, JobOpeningCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
@@ -55,23 +56,37 @@ def _candidate_in_org(db, candidate, org_id) -> bool:
 
 def _load_candidate_in_org(db, candidate_id, current_user):
     """Load a candidate by PK and 404 unless it belongs to the caller's org (superadmin bypass)."""
-    cand = _load_candidate_in_org(db, candidate_id, current_user)
+    cand = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if cand is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
     if current_user.role != "superadmin" and not _candidate_in_org(db, cand, current_user.organization_id):
         raise HTTPException(status_code=404, detail="Candidate not found")
+    if current_user.role != "superadmin":
+        _co = cand.company_id
+        if not _co and cand.job_opening_id:
+            _job = db.query(JobOpening).filter(JobOpening.id == cand.job_opening_id).first()
+            _co = _job.company_id if _job else None
+        assert_company_allowed(db, current_user, _co)
     return cand
 
 
 def _load_job_in_org(db, job_id, current_user):
     """Load a JobOpening by PK and 404 unless it belongs to the caller's org (superadmin bypass)."""
-    jo = _load_job_in_org(db, job_id, current_user)
+    jo = db.query(JobOpening).filter(JobOpening.id == job_id).first()
+    if jo is None:
+        raise HTTPException(status_code=404, detail="Job opening not found")
     if current_user.role != "superadmin" and jo.organization_id != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Job opening not found")
+    if current_user.role != "superadmin":
+        assert_company_allowed(db, current_user, jo.company_id)
     return jo
 
 
 def _load_interview_in_org(db, interview_id, current_user):
     """Load an Interview by PK and 404 unless its candidate belongs to the caller's org."""
-    interview = _load_interview_in_org(db, interview_id, current_user)
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found")
     if current_user.role != "superadmin":
         cand = db.query(Candidate).filter(Candidate.id == interview.candidate_id).first()
         if not _candidate_in_org(db, cand, current_user.organization_id):
@@ -232,6 +247,7 @@ def get_pipeline_stats(
     """Counts of candidates at every pipeline stage (for the pipeline board).
     Pure SQL GROUP BY — scales to millions of candidates without loading rows."""
     from collections import Counter
+    companyId = resolve_company_scope(db, current_user, companyId)
 
     query = db.query(Candidate.candidate_status, func.count(Candidate.id))
     if current_user.role != "superadmin" and current_user.organization_id:
@@ -430,6 +446,7 @@ def get_job_openings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    companyId = resolve_company_scope(db, current_user, companyId)
     query = db.query(JobOpening).filter(JobOpening.deleted_at.is_(None))
     if current_user.role == "superadmin" and organizationId:
         query = query.filter(JobOpening.organization_id == organizationId)
@@ -471,6 +488,8 @@ def create_job_opening(
     data["organization_id"] = current_user.organization_id
     if current_user.role != "superadmin":
         validate_company_in_org(db, Company, data.get("company_id"), current_user.organization_id)
+    if data.get("company_id") not in (None, "", 0):
+        data["company_id"] = require_write_company(db, current_user, data.get("company_id"))
     jo = JobOpening(**data)
     db.add(jo)
     db.commit()
@@ -490,6 +509,7 @@ def get_candidates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    companyId = resolve_company_scope(db, current_user, companyId)
     query = db.query(Candidate)
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(or_(
@@ -571,7 +591,10 @@ def create_candidate(
             job = db.query(JobOpening).filter(JobOpening.id == cand.job_opening_id).first()
             if not job or job.organization_id != current_user.organization_id:
                 raise HTTPException(status_code=404, detail="Job opening not found")
+            assert_company_allowed(db, current_user, job.company_id)
         validate_company_in_org(db, Company, cand.company_id, current_user.organization_id)
+        if cand.company_id not in (None, "", 0):
+            cand.company_id = require_write_company(db, current_user, cand.company_id)
     db.add(cand)
     db.commit()
     db.refresh(cand)
@@ -1199,6 +1222,7 @@ def get_interviews(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    companyId = resolve_company_scope(db, current_user, companyId)
     query = db.query(Interview)
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.join(Candidate, Interview.candidate_id == Candidate.id).filter(or_(
@@ -1236,6 +1260,25 @@ def schedule_interview(
         data["date"] = ist_now_naive()
     if current_user.role != "superadmin":
         _load_candidate_in_org(db, data.get("candidate_id"), current_user)
+        _cand = db.query(Candidate).filter(Candidate.id == data.get("candidate_id")).first()
+        if _cand is not None:
+            _cand_co = _cand.company_id or (db.query(JobOpening).filter(JobOpening.id == _cand.job_opening_id).first().company_id if _cand.job_opening_id else None)
+            assert_company_allowed(db, current_user, _cand_co)
+    # interviews.interviewer_id FK points at users — the UI sends an employee
+    # id when the interviewer has no linked login. Resolve employee -> user.
+    if data.get("interviewer_id") is not None:
+        iv_id = data.get("interviewer_id")
+        if not db.query(User).filter(User.id == iv_id).first():
+            emp = db.query(Employee).filter(Employee.id == iv_id).first()
+            linked = getattr(emp, "user_id", None) if emp else None
+            if linked and db.query(User).filter(User.id == linked).first():
+                data["interviewer_id"] = linked
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Interviewer must be an employee with login access. "
+                           "Create a user account for this employee first.",
+                )
     interview = Interview(**data)
     db.add(interview)
     db.commit()

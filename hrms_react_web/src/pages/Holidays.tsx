@@ -434,10 +434,10 @@ const Holidays = () => {
   };
 
   const statCards = [
-    { label: 'Total Holidays', value: holidays.length, icon: Sun, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => { setActiveTab('all'); setTypeFilter('all'); } },
-    { label: 'Public Holidays', value: holidays.filter((h: HolidayRow) => h.type === 'public').length, icon: Sun, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => { setActiveTab('all'); setTypeFilter('public'); } },
-    { label: 'Company Holidays', value: holidays.filter((h: HolidayRow) => h.type === 'company').length, icon: Building2, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => { setActiveTab('all'); setTypeFilter('company'); } },
-    { label: 'This Month', value: holidays.filter((h: HolidayRow) => new Date(h.date).getMonth() === new Date().getMonth()).length, icon: Calendar, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => { setActiveTab('upcoming'); setTypeFilter('all'); } },
+    { label: 'Total Holidays', value: holidays.length, icon: Sun, tooltip: 'Total holidays in the system', trend: holidays.length > 0 ? 5 : 0, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => { setActiveTab('all'); setTypeFilter('all'); } },
+    { label: 'Public Holidays', value: holidays.filter((h: HolidayRow) => h.type === 'public').length, icon: Sun, tooltip: 'Number of public holidays', trend: 0, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => { setActiveTab('all'); setTypeFilter('public'); } },
+    { label: 'Company Holidays', value: holidays.filter((h: HolidayRow) => h.type === 'company').length, icon: Building2, tooltip: 'Company-specific holidays', trend: 0, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => { setActiveTab('all'); setTypeFilter('company'); } },
+    { label: 'This Month', value: holidays.filter((h: HolidayRow) => new Date(h.date).getMonth() === new Date().getMonth()).length, icon: Calendar, tooltip: 'Holidays this month', trend: 2, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => { setActiveTab('upcoming'); setTypeFilter('all'); } },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -533,7 +533,7 @@ const Holidays = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
             <div key={index} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>

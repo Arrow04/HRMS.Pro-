@@ -141,15 +141,15 @@ const AccountingPanel = () => {
                               <span className="text-[#0F172A]">{ln.accountName || accountName(ln.accountId)}</span>
                               <span className="text-xs text-[var(--text-tertiary)] ml-1">{ln.accountCode}</span>
                             </td>
-                            <td className="px-4 py-2 text-right text-[#059669]">{ln.debit > 0 ? `${symbol}${formatCurrency(ln.debit, getAppCurrency())}` : ''}</td>
-                            <td className="px-4 py-2 text-right text-[#DC2626]">{ln.credit > 0 ? `${symbol}${formatCurrency(ln.credit, getAppCurrency())}` : ''}</td>
+                            <td className="px-4 py-2 text-right text-[#059669]">{ln.debit > 0 ? formatCurrency(ln.debit, getAppCurrency()) : ''}</td>
+                            <td className="px-4 py-2 text-right text-[#DC2626]">{ln.credit > 0 ? formatCurrency(ln.credit, getAppCurrency()) : ''}</td>
                             <td className="px-4 py-2 text-[var(--text-tertiary)]">{ln.narration}</td>
                           </tr>
                         ))}
                         <tr className="border-t border-[var(--border-color)] bg-[#F8FAFC] font-semibold">
                           <td className="px-4 py-2 text-[#0F172A]">Totals</td>
-                          <td className="px-4 py-2 text-right text-[#059669]">{symbol}{formatCurrency(j.totalDebit, getAppCurrency())}</td>
-                          <td className="px-4 py-2 text-right text-[#DC2626]">{symbol}{formatCurrency(j.totalCredit, getAppCurrency())}</td>
+                          <td className="px-4 py-2 text-right text-[#059669]">{formatCurrency(j.totalDebit, getAppCurrency())}</td>
+                          <td className="px-4 py-2 text-right text-[#DC2626]">{formatCurrency(j.totalCredit, getAppCurrency())}</td>
                           <td className="px-4 py-2" />
                         </tr>
                       </tbody>

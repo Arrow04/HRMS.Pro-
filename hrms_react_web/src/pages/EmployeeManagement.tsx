@@ -937,10 +937,10 @@ const EmployeeManagement = () => {
   }
 
   const statCards = [
-    { label: 'Active Employees', value: stats?.active || 0, trend: stats?.activeTrend ?? 0, icon: UserCheck, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('active') },
-    { label: 'Total Transfers', value: stats?.transfersTotal ?? 0, trend: stats?.transfersRecent ?? 0, icon: ArrowRightLeft, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('transfers') },
-    { label: 'Inactive Employees', value: stats?.inactive || 0, trend: -((stats?.total || 0) > 0 ? Math.round(((stats?.inactive || 0) / (stats?.total || 0)) * 100) : 0), icon: UserX, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', onClick: () => setActiveTab('inactive') },
-    { label: 'Archived Employees', value: stats?.archivedTotal ?? 0, trend: stats?.archivedRecent ?? 0, icon: Archive, iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5', iconColor: 'text-[#0D9488]', onClick: () => setActiveTab('archived') },
+    { label: 'Active Employees', value: stats?.active || 0, trend: stats?.activeTrend ?? 0, tooltip: 'Currently active employees', icon: UserCheck, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('active') },
+    { label: 'Total Transfers', value: stats?.transfersTotal ?? 0, trend: stats?.transfersRecent ?? 0, tooltip: 'Employee transfers across departments', icon: ArrowRightLeft, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('transfers') },
+    { label: 'Inactive Employees', value: stats?.inactive || 0, trend: -((stats?.total || 0) > 0 ? Math.round(((stats?.inactive || 0) / (stats?.total || 0)) * 100) : 0), tooltip: 'Currently inactive employees', icon: UserX, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', onClick: () => setActiveTab('inactive') },
+    { label: 'Archived Employees', value: stats?.archivedTotal ?? 0, trend: stats?.archivedRecent ?? 0, tooltip: 'Archived employees from past exits', icon: Archive, iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5', iconColor: 'text-[#0D9488]', onClick: () => setActiveTab('archived') },
   ];
 
   const TABS = [
@@ -1019,7 +1019,7 @@ const EmployeeManagement = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
           {statCards.map((stat, index) => (
             <div key={stat.label} className="transition-all duration-300" style={{ transitionDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} trend={stat.trend} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} trend={stat.trend} tooltip={stat.tooltip} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
             </div>
           ))}
         </div>

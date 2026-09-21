@@ -1,8 +1,0 @@
-﻿John Smith
-john.smith@email.com
-+91 9988776655
-Address: 10 MG Road, Bengaluru
-SUMMARY
-Software Engineer with 5 years experience.
-SKILLS
-Python, React, SQL

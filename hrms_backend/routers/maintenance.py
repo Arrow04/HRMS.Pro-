@@ -115,12 +115,8 @@ def selfie_retention_policy(current_user: User = Depends(get_current_user)):
 
 def _auto_close_attendance(db: Session) -> dict:
     """Auto-checkout open sessions from previous days at shift end time, then flag as violation."""
-    from datetime import timezone as _tz
-    from models import Shift, DutyRoster, Employee, Attendance as AttModel
-    IST = _tz(timedelta(hours=5, minutes=30))
-    now_ist = datetime.now(IST)
-    today_str = now_ist.strftime("%Y-%m-%d")
-    now_naive = now_ist.replace(tzinfo=None)
+    from models import Shift, DutyRoster, Employee, Organization, Attendance as AttModel
+    from core.datetime_utils import get_org_timezone
 
     open_records = db.query(AttModel).filter(
         and_(
@@ -133,6 +129,15 @@ def _auto_close_attendance(db: Session) -> dict:
     closed = 0
     for att in open_records:
         att_date = att.date.strftime("%Y-%m-%d") if att.date else None
+        # Resolve timezone from the attendance record's org
+        org_tz = get_org_timezone(None)  # fallback
+        if att.organization_id:
+            _org = db.query(Organization).filter(Organization.id == att.organization_id, Organization.deleted_at.is_(None)).first()
+            if _org:
+                from core.datetime_utils import get_org_timezone as _got
+                org_tz = _got(_org)
+        now_org = datetime.now(org_tz)
+        today_str = now_org.strftime("%Y-%m-%d")
         if not att_date or att_date >= today_str:
             continue
 

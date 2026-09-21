@@ -263,15 +263,16 @@ export function AdminHeader({
   );
 }
 
-export function AdminStatRow({ stats = [] }) {
+export function AdminStatRow({ stats = [], columns = 2 }) {
   const adminStyles = useAdminStyles();
   const { colors, isDark } = useTheme();
+  const itemWidth = columns === 3 ? '31%' : '48%';
   return (
     <View style={adminStyles.statRow}>
       {stats.map((s, i) => {
         const chip = resolveStatChip(s, colors, isDark);
         return (
-          <View key={i} style={[adminStyles.statItem, { backgroundColor: chip.bg }]}>
+          <View key={i} style={[adminStyles.statItem, { backgroundColor: chip.bg, width: itemWidth }]}>
             <Text style={[adminStyles.statVal, { color: chip.color }]}>{s.val}</Text>
             <Text style={[adminStyles.statLabel, { color: chip.labelColor }]}>{s.label}</Text>
           </View>

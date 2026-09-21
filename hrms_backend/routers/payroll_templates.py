@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from core.auth import get_current_user
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from models import (
     AttendancePolicy, Company, Employee, Organization, PayrollComponent,
     PayrollPolicy, PayrollTemplate, StatutorySetting, TaxRegime, TaxSlab, User,
@@ -166,6 +167,7 @@ def _ser_attendance(a: AttendancePolicy) -> dict:
         "overtime_rate": a.overtime_rate,
         "late_mark_threshold_minutes": a.late_mark_threshold_minutes,
         "half_day_threshold_hours": a.half_day_threshold_hours,
+        "is_shared_template": bool(getattr(a, "is_shared_template", False)),
     }
 
 
@@ -202,6 +204,7 @@ def _ser_template(db: Session, t: PayrollTemplate, full: bool = False) -> dict:
         "status": t.status,
         "payroll_policy_id": t.payroll_policy_id,
         "attendance_policy_id": t.attendance_policy_id,
+        "leave_template_id": t.leave_template_id,
         "tax_regime_id": t.tax_regime_id,
         "pay_cycle": t.pay_cycle,
         "pay_day": t.pay_day,
@@ -214,6 +217,8 @@ def _ser_template(db: Session, t: PayrollTemplate, full: bool = False) -> dict:
     policy = db.query(PayrollPolicy).filter(PayrollPolicy.id == t.payroll_policy_id).first() if t.payroll_policy_id else None
     att = db.query(AttendancePolicy).filter(AttendancePolicy.id == t.attendance_policy_id).first() if t.attendance_policy_id else None
     tax = db.query(TaxRegime).filter(TaxRegime.id == t.tax_regime_id).first() if t.tax_regime_id else None
+    from models import LeaveTemplate
+    leave_tpl = db.query(LeaveTemplate).filter(LeaveTemplate.id == t.leave_template_id).first() if t.leave_template_id else None
     comp_count = db.query(PayrollComponent).filter(
         PayrollComponent.payroll_policy_id == t.payroll_policy_id
     ).count() if t.payroll_policy_id else 0
@@ -223,6 +228,7 @@ def _ser_template(db: Session, t: PayrollTemplate, full: bool = False) -> dict:
     data.update({
         "policy_name": policy.name if policy else None,
         "attendance_name": att.name if att else None,
+        "leave_template_name": leave_tpl.name if leave_tpl else None,
         "tax_regime_name": tax.name if tax else None,
         "component_count": comp_count,
         "employee_count": emp_count,
@@ -256,6 +262,8 @@ class PayrollTemplatePayload(BaseModel):
     statutory: Optional[Dict[str, Any]] = None
     tax_regime: Optional[Dict[str, Any]] = Field(default=None, alias="taxRegime")
     attendance_policy: Optional[Dict[str, Any]] = Field(default=None, alias="attendancePolicy")
+    attendance_policy_id: Optional[int] = Field(default=None, alias="attendancePolicyId")
+    leave_template_id: Optional[int] = Field(default=None, alias="leaveTemplateId")
     pay_cycle: Optional[str] = Field(default=None, alias="payCycle")
     pay_day: Optional[int] = Field(default=None, alias="payDay")
     auto_payslip: Optional[bool] = Field(default=None, alias="autoPayslip")
@@ -368,6 +376,7 @@ def list_templates(
         PayrollTemplate.organization_id == org.id,
         PayrollTemplate.deleted_at.is_(None),
     )
+    company_id = resolve_company_scope(db, current_user, company_id)
     if company_id is not None:
         q = q.filter(PayrollTemplate.company_id == company_id)
     return [_ser_template(db, t) for t in q.order_by(PayrollTemplate.name).all()]
@@ -381,6 +390,7 @@ def get_template(
 ):
     org = _resolve_org(db, current_user)
     tpl = _load_template(db, org, template_id)
+    assert_company_allowed(db, current_user, tpl.company_id)
     return _ser_template(db, tpl, full=True)
 
 
@@ -396,11 +406,36 @@ def create_template(
     if not name:
         raise HTTPException(status_code=422, detail="Template name is required")
     company = _resolve_company(db, org, body.get("company_id"))
+    if body.get("company_id") not in (None, "", 0):
+        body["company_id"] = require_write_company(db, current_user, body.get("company_id"))
+        company = _resolve_company(db, org, body.get("company_id"))
 
     policy = _create_policy(db, org.id, body.get("payroll_policy") or {})
-    att = _create_attendance(db, org.id, body.get("attendance_policy") or {})
+    # Link a shared attendance template when attendance_policy_id is given;
+    # otherwise create the owned policy as before.
+    att = None
+    linked_att_id = body.get("attendance_policy_id")
+    if linked_att_id:
+        att = db.query(AttendancePolicy).filter(
+            AttendancePolicy.id == linked_att_id,
+            AttendancePolicy.organization_id == org.id,
+        ).first()
+        if not att:
+            raise HTTPException(status_code=400, detail="Attendance template not found")
+    else:
+        att = _create_attendance(db, org.id, body.get("attendance_policy") or {})
     tax = _create_tax_regime(db, org.id, body.get("tax_regime") or {})
     statutory = _clean_statutory(body.get("statutory") or {})
+    leave_tpl = None
+    if body.get("leave_template_id"):
+        from models import LeaveTemplate
+        leave_tpl = db.query(LeaveTemplate).filter(
+            LeaveTemplate.id == body.get("leave_template_id"),
+            LeaveTemplate.organization_id == org.id,
+            LeaveTemplate.deleted_at.is_(None),
+        ).first()
+        if not leave_tpl:
+            raise HTTPException(status_code=400, detail="Leave template not found")
 
     tpl = PayrollTemplate(
         organization_id=org.id,
@@ -412,6 +447,7 @@ def create_template(
         status=body.get("status") or "active",
         payroll_policy_id=policy.id,
         attendance_policy_id=att.id,
+        leave_template_id=leave_tpl.id if leave_tpl else None,
         tax_regime_id=tax.id,
         statutory=statutory,
         pay_cycle=body.get("pay_cycle") or "monthly",
@@ -449,11 +485,12 @@ def update_template(
 
     if body.get("name"):
         tpl.name = body["name"].strip()
+    assert_company_allowed(db, current_user, tpl.company_id)
     if body.get("description") is not None:
         tpl.description = body.get("description")
     if "company_id" in body:
         company = _resolve_company(db, org, body.get("company_id"))
-        tpl.company_id = company.id if company else None
+        tpl.company_id = require_write_company(db, current_user, body.get("company_id")) if body.get("company_id") not in (None, "", 0) else None
     if body.get("country"):
         tpl.country = body["country"]
     if body.get("registered_state") is not None:
@@ -475,11 +512,44 @@ def update_template(
             for k, v in _pick(body["payroll_policy"], *POLICY_KEYS).items():
                 setattr(policy, k, v)
 
-    if body.get("attendance_policy") and tpl.attendance_policy_id:
-        att = db.query(AttendancePolicy).filter(AttendancePolicy.id == tpl.attendance_policy_id).first()
-        if att:
-            for k, v in _pick(body["attendance_policy"], *ATT_KEYS).items():
-                setattr(att, k, v)
+    # Attendance link vs owned-edit, decided by the shared marker so the
+    # payroll wizard can never overwrite a shared Attendance template:
+    #  - attendance_policy_id of a SHARED template -> link only, fields ignored
+    #  - attendance_policy_id of an OWNED policy -> update fields in place
+    #  - attendance_policy_id null + attendance_policy fields -> fresh owned copy
+    #  - attendance_policy_id null without fields -> unlink (no policy)
+    if "attendance_policy_id" in body or body.get("attendance_policy"):
+        linked_id = body.get("attendance_policy_id")
+        if linked_id:
+            att = db.query(AttendancePolicy).filter(
+                AttendancePolicy.id == linked_id,
+                AttendancePolicy.organization_id == org.id,
+            ).first()
+            if not att:
+                raise HTTPException(status_code=400, detail="Attendance template not found")
+            tpl.attendance_policy_id = att.id
+            if not getattr(att, "is_shared_template", False) and body.get("attendance_policy"):
+                for k, v in _pick(body["attendance_policy"], *ATT_KEYS).items():
+                    setattr(att, k, v)
+        elif body.get("attendance_policy"):
+            att = _create_attendance(db, org.id, body.get("attendance_policy") or {})
+            tpl.attendance_policy_id = att.id
+        else:
+            tpl.attendance_policy_id = None
+    if "leave_template_id" in body:
+        leave_id = body.get("leave_template_id")
+        if leave_id:
+            from models import LeaveTemplate
+            leave_tpl = db.query(LeaveTemplate).filter(
+                LeaveTemplate.id == leave_id,
+                LeaveTemplate.organization_id == org.id,
+                LeaveTemplate.deleted_at.is_(None),
+            ).first()
+            if not leave_tpl:
+                raise HTTPException(status_code=400, detail="Leave template not found")
+            tpl.leave_template_id = leave_tpl.id
+        else:
+            tpl.leave_template_id = None
 
     if body.get("tax_regime") and tpl.tax_regime_id:
         tax = db.query(TaxRegime).filter(TaxRegime.id == tpl.tax_regime_id).first()
@@ -524,6 +594,7 @@ def delete_template(
 ):
     org = _resolve_org(db, current_user)
     tpl = _load_template(db, org, template_id)
+    assert_company_allowed(db, current_user, tpl.company_id)
     from core.datetime_utils import ist_now_naive
     tpl.deleted_at = ist_now_naive()
     # Detach employees so they fall back to their own policy ids / org defaults.

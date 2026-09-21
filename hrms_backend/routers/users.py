@@ -15,7 +15,7 @@ from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["users"])
 
-USER_MANAGER_ROLES = ("admin", "superadmin", "hr_admin", "hr_manager")
+USER_MANAGER_ROLES = ("admin", "superadmin", "hr_admin", "hr_manager", "hr_executive")
 
 
 def _parse_date(value):

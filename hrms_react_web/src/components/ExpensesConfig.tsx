@@ -10,11 +10,9 @@ import type { LucideIcon } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 
-interface ExpensesConfigProps {
-  open: boolean;
-  onClose: () => void;
-}
+interface ExpensesConfigProps {}
 
 interface ApiErrorLike { response?: { data?: { detail?: string } } }
 function errMsg(err: unknown, fallback: string) {
@@ -92,49 +90,39 @@ function WizardSectionCard({ title, icon: Icon, children }: { title: string; ico
 // ── Defaults ──
 
 function defaultExpenseCategories(): ExpenseCategory[] {
-  return [
-    { id: null, name: 'Travel', code: 'TRV', description: 'Air, rail, cab, and ride-sharing fares', gl_code: '6100', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 50000, monthly_cap: 100000, requires_manager_approval: true, auto_attach_receipt_threshold: 500 },
-    { id: null, name: 'Meals', code: 'ML', description: 'Client meals and team dining', gl_code: '6101', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 5000, monthly_cap: 15000, requires_manager_approval: false, auto_attach_receipt_threshold: 1000 },
-    { id: null, name: 'Lodging', code: 'LDG', description: 'Hotel and stay expenses', gl_code: '6102', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 10000, monthly_cap: 50000, requires_manager_approval: true, auto_attach_receipt_threshold: 2000 },
-    { id: null, name: 'Local Conveyance', code: 'LCV', description: 'Auto, taxi, bus, and metro', gl_code: '6103', default_currency: 'INR', receipt_required: false, active: true, spending_limit: 2000, monthly_cap: 5000, requires_manager_approval: false, auto_attach_receipt_threshold: 500 },
-    { id: null, name: 'Communication', code: 'COM', description: 'Phone and internet reimbursements', gl_code: '6104', default_currency: 'INR', receipt_required: false, active: true, spending_limit: 1500, monthly_cap: 1500, requires_manager_approval: false, auto_attach_receipt_threshold: 0 },
-    { id: null, name: 'Office Supplies', code: 'OFF', description: 'Stationery, peripherals, and consumables', gl_code: '6105', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 10000, monthly_cap: 20000, requires_manager_approval: true, auto_attach_receipt_threshold: 2000 },
-    { id: null, name: 'Training', code: 'TRN', description: 'Courses, workshops, and certifications', gl_code: '6106', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 200000, monthly_cap: 200000, requires_manager_approval: true, auto_attach_receipt_threshold: 5000 },
-    { id: null, name: 'Health & Wellness', code: 'HLW', description: 'Medical, gym, and wellness reimbursements', gl_code: '6107', default_currency: 'INR', receipt_required: true, active: true, spending_limit: 15000, monthly_cap: 15000, requires_manager_approval: false, auto_attach_receipt_threshold: 1000 },
-    { id: null, name: 'Other', code: 'OTH', description: 'Miscellaneous expenses', gl_code: '6199', default_currency: 'INR', receipt_required: false, active: true, spending_limit: 10000, monthly_cap: 20000, requires_manager_approval: true, auto_attach_receipt_threshold: 2000 },
-  ];
+  return [];
 }
 
 function defaultApprovalWorkflow(): ApprovalWorkflow {
   return {
-    approval_levels: 2,
-    level1_approver: 'reporting-manager',
-    level2_approver: 'department-head',
-    level3_approver: 'finance',
-    auto_approve_threshold: 500,
+    approval_levels: 1,
+    level1_approver: '',
+    level2_approver: '',
+    level3_approver: '',
+    auto_approve_threshold: null,
     self_approval_allowed: false,
-    finance_notification: true,
-    escalation_days: 5,
-    rejection_reason_mandatory: true,
+    finance_notification: false,
+    escalation_days: null,
+    rejection_reason_mandatory: false,
   };
 }
 
 function defaultSpendingLimits(): SpendingLimits {
   return {
-    global_monthly_limit: 0,
-    global_quarterly_limit: 0,
-    global_annual_limit: 0,
+    global_monthly_limit: null,
+    global_quarterly_limit: null,
+    global_annual_limit: null,
     grade_limits: [],
     department_overrides: [],
-    alert_threshold_percentage: 80,
+    alert_threshold_percentage: null,
     block_over_limit: false,
   };
 }
 
 function defaultReimbursementTax(): ReimbursementTax {
   return {
-    reimbursement_method: 'salary-credit',
-    reimbursement_frequency: 'per-claim',
+    reimbursement_method: '',
+    reimbursement_frequency: '',
     tax_deduction_enabled: false,
     tax_percentage: 0,
     advance_recovery_enabled: false,
@@ -146,15 +134,15 @@ function defaultReimbursementTax(): ReimbursementTax {
 
 function defaultSubmissionRules(): SubmissionRules {
   return {
-    submission_deadline_days: 30,
-    late_submission_policy: 'allow-with-reason',
-    duplicate_detection: true,
-    duplicate_detection_tolerance_days: 3,
+    submission_deadline_days: null,
+    late_submission_policy: '',
+    duplicate_detection: false,
+    duplicate_detection_tolerance_days: null,
     receipt_upload_mandatory: false,
-    receipt_formats_allowed: ['jpg', 'png', 'pdf'],
-    max_receipt_size_mb: 5,
+    receipt_formats_allowed: [],
+    max_receipt_size_mb: null,
     bulk_upload_enabled: false,
-    csv_template_columns: 'date,amount,description,category,receipt',
+    csv_template_columns: '',
     auto_categorize: false,
   };
 }
@@ -360,7 +348,7 @@ function CategoriesTab({
   return (
     <div className="space-y-4">
       <div className="text-xs text-[var(--text-tertiary)] bg-purple-50 border border-purple-200 rounded-lg p-3">
-        <b>Predefined categories:</b> Travel, Meals, Lodging, Local Conveyance, Communication, Office Supplies, Training, Health &amp; Wellness, Other. Add or modify categories below. Each category maps to a GL code for accounting integration.
+        <b>Create your expense categories:</b> Add categories like Travel, Meals, Lodging, etc. Each category can have its own spending limits, receipt requirements, and GL codes for accounting.
       </div>
       <WizardSectionCard title="Expense Categories" icon={Receipt}>
         <div className="flex items-center justify-between mb-3">
@@ -432,7 +420,7 @@ function CategoriesTab({
                     {!cat.active && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">inactive</span>}
                   </div>
                   <div className="text-[11px] text-[var(--text-tertiary)] truncate max-w-md">
-                    {cat.description || 'No description'} · GL: {cat.gl_code || '—'} · Limit: ₹{cat.spending_limit.toLocaleString()}/claim · Cap: ₹{cat.monthly_cap.toLocaleString()}/mo
+                    {cat.description || 'No description'} · GL: {cat.gl_code || '—'} · Limit: {getCurrencySymbol(getAppCurrency())}{cat.spending_limit.toLocaleString()}/claim · Cap: {getCurrencySymbol(getAppCurrency())}{cat.monthly_cap.toLocaleString()}/mo
                   </div>
                 </div>
               </div>
@@ -646,7 +634,7 @@ function SpendingLimitsTab({
             <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 flex items-center justify-between gap-3 hover:bg-[var(--hover-bg)]">
               <div className="min-w-0">
                 <span className="text-sm font-semibold text-[var(--text-primary)]">{gl.grade}</span>
-                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">₹{gl.monthly_limit.toLocaleString()}/mo</span>
+                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">{getCurrencySymbol(getAppCurrency())}{gl.monthly_limit.toLocaleString()}/mo</span>
                 {gl.requires_additional_approval && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 ml-2">Extra approval</span>}
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -688,7 +676,7 @@ function SpendingLimitsTab({
             <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 flex items-center justify-between gap-3 hover:bg-[var(--hover-bg)]">
               <div className="min-w-0">
                 <span className="text-sm font-semibold text-[var(--text-primary)]">{deptNameMap(d.department_id)}</span>
-                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">₹{d.monthly_limit.toLocaleString()}/mo</span>
+                <span className="text-[11px] text-[var(--text-tertiary)] ml-2">{getCurrencySymbol(getAppCurrency())}{d.monthly_limit.toLocaleString()}/mo</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button onClick={() => startEditDept(i)} className="p-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--hover-bg)]"><Pencil className="w-3.5 h-3.5 text-[var(--text-secondary)]" /></button>
@@ -944,13 +932,15 @@ function NotificationsTab({
 
 // ── Main Component ──
 
-export default function ExpensesConfig({ open, onClose }: ExpensesConfigProps) {
+export default function ExpensesConfig(_props?: ExpensesConfigProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
   const [wizardTab, setWizardTab] = useState('categories');
   const [state, setState] = useState<ExpensesConfigState>(blankState());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -964,26 +954,25 @@ export default function ExpensesConfig({ open, onClose }: ExpensesConfigProps) {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: existingConfig, isLoading: configLoading } = useQuery({
-    queryKey: ['expenses-config'],
+  const { data: configsList = [], isLoading: configLoading } = useQuery({
+    queryKey: ['expenses-configs', companyId],
     queryFn: async () => {
       try {
-        const r = await api.get('/settings/configs/expenses');
-        return r.data || null;
-      } catch { return null; }
+        const params = companyId ? { companyId } : {};
+        const r = await api.get('/settings/configs/expenses', { params });
+        return Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
+      } catch { return []; }
     },
-    enabled: open,
   });
 
   const saveMutation = useMutation({
     mutationFn: (payload: { id: number | null; data: ExpensesConfigState }) =>
       payload.id
-        ? api.put(`/settings/configs/expenses/${payload.id}`, payload.data)
-        : api.post('/settings/configs/expenses', payload.data),
+        ? api.put(`/settings/configs/expenses/${payload.id}`, payload.data, { params: companyId ? { companyId } : {} })
+        : api.post('/settings/configs/expenses', payload.data, { params: companyId ? { companyId } : {} }),
     onSuccess: (res: any) => {
       toast.success(res.data?.message || 'Expenses configuration saved');
-      queryClient.invalidateQueries({ queryKey: ['expenses-config'] });
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['expenses-configs'] });
     },
     onError: (err) => toast.error(errMsg(err, 'Failed to save configuration')),
   });
@@ -1016,8 +1005,6 @@ export default function ExpensesConfig({ open, onClose }: ExpensesConfigProps) {
     }
   };
 
-  if (!open) return null;
-
   const progress = Math.min(100, Math.round(
     (WIZARD_TABS.filter(t => {
       if (t.id === 'categories') return state.expense_categories.length > 0;
@@ -1030,165 +1017,130 @@ export default function ExpensesConfig({ open, onClose }: ExpensesConfigProps) {
     }).length / WIZARD_TABS.length) * 100
   ));
 
+  if (!showWizard) {
+    return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-[#7C3AED]" />
+            Expenses Configurations
+          </h2>
+          <p className="text-sm text-[var(--text-tertiary)]">Expense categories, approval workflows, spending limits, reimbursement, and submission rules.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {companies.length > 1 && (
+            <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
+              <option value="">All Companies</option>
+              {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <button onClick={() => { setShowWizard(true); setEditingId(null); setState(blankState()); setWizardTab('categories'); }}
+            className="px-4 py-2 bg-[#7C3AED] text-white text-sm font-semibold rounded-xl hover:bg-[#6D28D9] transition-colors flex items-center gap-2">
+            <Plus className="w-4 h-4" /> New Configuration
+          </button>
+        </div>
+      </div>
+
+      {configLoading ? (
+        <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-[#7C3AED]" /></div>
+      ) : configsList.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-2xl border border-[var(--border-color)]">
+          <Wallet className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-3" />
+          <p className="text-sm font-medium text-[var(--text-primary)]">No configurations yet</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">Create your first expenses configuration to get started.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {configsList.map((cfg: any) => {
+            const d = cfg.data || cfg;
+            return (
+            <div key={cfg.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text-primary)]">{d.name || cfg.name || 'Unnamed Config'}</h3>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.description || cfg.description || 'No description'}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${cfg.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {cfg.status || 'active'}
+                </span>
+              </div>
+              <div className="space-y-1.5 text-xs text-[var(--text-tertiary)]">
+                {cfg.company_id && <p>Company: {companies.find((c: any) => c.id === cfg.company_id)?.name || '—'}</p>}
+                {(d.expense_categories || []).length > 0 && <p>{d.expense_categories.length} expense categories</p>}
+                {d.approval_workflow && <p>{d.approval_workflow.approval_levels || 1}-level approval workflow</p>}
+                {d.spending_limits?.global_monthly_limit > 0 && <p>Monthly limit: {d.spending_limits.global_monthly_limit}</p>}
+              </div>
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--border-color)]">
+                <button onClick={() => { setEditingId(cfg.id); setState({ ...blankState(), ...(cfg.data || cfg) }); setCompanyId(cfg.company_id || null); setShowWizard(true); setWizardTab('categories'); }}
+                  className="flex-1 px-3 py-1.5 text-xs font-medium border border-[var(--border-color)] rounded-lg hover:bg-[var(--hover-bg)] flex items-center justify-center gap-1">
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+                <button onClick={() => { if (confirm('Delete this configuration?')) { deleteMutation.mutate(cfg.id); } }}
+                  className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 flex items-center justify-center gap-1">
+                  <Trash2 className="w-3 h-3" /> Delete
+                </button>
+              </div>
+            </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+    );
+  }
+
+  // Wizard view — full-page modal
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50" onClick={() => { setShowWizard(false); setEditingId(null); }} />
       <div className="fixed inset-0 bg-white shadow-2xl flex flex-col">
-        {/* Header */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-white">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #7C3AED, #6D28D9)' }}>
-              <Receipt className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-[#0F172A] leading-tight">
-                {editingId ? 'Edit Expenses Configuration' : 'Expenses Configuration'}
-              </h2>
-              <p className="text-xs text-[#64748B]">Configure expense categories, approvals, limits, and rules.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {editingId && (
-              <button onClick={handleDelete}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50">
-                <Trash2 className="w-4 h-4" /> Delete
-              </button>
-            )}
-            <button onClick={onClose} title="Close" className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
-              <X className="w-5 h-5" />
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-[#7C3AED]" />
+            {editingId ? 'Edit Configuration' : 'New Configuration'}
+          </h2>
+          <p className="text-sm text-[var(--text-tertiary)]">Configure expense categories, approval workflows, spending limits, reimbursement, and submission rules.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {companies.length > 1 && (
+            <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
+              <option value="">All Companies</option>
+              {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <button onClick={() => { setShowWizard(false); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Back to List</button>
+        </div>
+      </div>
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
+        <div className="flex items-center gap-2 mb-6 overflow-x-auto">
+          {WIZARD_TABS.map((t) => (
+            <button key={t.id} onClick={() => setWizardTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${wizardTab === t.id ? 'bg-[#7C3AED] text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              <t.icon className="w-3.5 h-3.5" /> {t.label}
             </button>
-          </div>
-        </header>
-
-        {/* Progress bar */}
-        <div className="px-6 py-2.5 bg-[#F8FAFC] border-b border-[var(--border-color)]">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #7C3AED88, #7C3AED)' }} />
-            </div>
-            <span className="text-xs font-semibold whitespace-nowrap" style={{ color: '#7C3AED' }}>{progress}% complete</span>
-          </div>
-          <p className="text-[11px] text-[#B45309] mt-1.5">
-            Navigate through sections to configure expense rules. Fields marked with <span className="font-semibold text-[#DC2626]">*</span>
-            are mandatory. Click Save to apply changes.
-          </p>
+          ))}
         </div>
-
-        {/* Body: sidebar + content */}
-        <div className="flex-1 flex min-h-0">
-          {/* Sidebar */}
-          <aside className="w-64 shrink-0 border-r border-[var(--border-color)] bg-[#F8FAFC] overflow-y-auto">
-            <div className="py-2 px-3">
-              <p className="pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">Sections</p>
-              <nav className="space-y-0.5">
-                {WIZARD_TABS.map((t) => {
-                  const active = t.id === wizardTab;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setWizardTab(t.id)}
-                      className={`w-full flex items-center gap-0 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ease-out group ${
-                        active
-                          ? 'bg-gradient-to-r from-[#EFF6FF] to-[#F8FAFC] text-[#7C3AED] shadow-sm'
-                          : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-                      }`}
-                    >
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 ease-out ${
-                        active ? `${t.color}` : 'bg-white border border-[var(--border-color)]'
-                      }`}
-                        style={active ? { background: '#7C3AED14', boxShadow: '0 2px 6px #7C3AED22' } : undefined}>
-                        <t.icon className={`w-4 h-4 transition-all duration-300 ${active ? t.color : 'text-[#64748B]'}`} />
-                      </span>
-                      <span className={`flex-1 truncate transition-colors duration-300 ${active ? 'font-semibold text-[#7C3AED]' : 'font-medium'}`}>{t.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          </aside>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-5">
-            <div key={wizardTab} className="section-fade-in">
-              {/* Section header */}
-              <div className="flex items-center gap-3 mb-5">
-                <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#7C3AED14' }}>
-                  {(() => { const t = WIZARD_TABS.find(x => x.id === wizardTab); const Icon = t?.icon || Receipt; return <Icon className={`w-5 h-5 ${t?.color || ''}`} />; })()}
-                </span>
-                <div className="flex-1">
-                  <h3 className="text-base font-bold text-[#0F172A] leading-tight">{WIZARD_TABS.find(x => x.id === wizardTab)?.label || ''}</h3>
-                  <p className="text-xs text-[#64748B]">{WIZARD_HELP[wizardTab] || ''}</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {wizardTab === 'categories' && (
-                  <CategoriesTab
-                    categories={state.expense_categories}
-                    setCategories={(c) => setArray('expense_categories', c)}
-                  />
-                )}
-
-                {wizardTab === 'approval' && (
-                  <ApprovalTab
-                    workflow={state.approval_workflow}
-                    setWorkflow={(w) => setNested('approval_workflow', w)}
-                  />
-                )}
-
-                {wizardTab === 'limits' && (
-                  <SpendingLimitsTab
-                    limits={state.spending_limits}
-                    setLimits={(l) => setNested('spending_limits', l)}
-                    departments={departments}
-                  />
-                )}
-
-                {wizardTab === 'reimbursement' && (
-                  <ReimbursementTab
-                    rt={state.reimbursement_tax}
-                    setRt={(r) => setNested('reimbursement_tax', r)}
-                  />
-                )}
-
-                {wizardTab === 'submission' && (
-                  <SubmissionTab
-                    rules={state.submission_rules}
-                    setRules={(r) => setNested('submission_rules', r)}
-                  />
-                )}
-
-                {wizardTab === 'notifications' && (
-                  <NotificationsTab
-                    notifications={state.notifications}
-                    setNotifications={(n) => setNested('notifications', n)}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="space-y-4">
+          {wizardTab === 'categories' && <CategoriesTab categories={state.expense_categories} setCategories={(c) => setArray('expense_categories', c)} />}
+          {wizardTab === 'approval' && <ApprovalTab workflow={state.approval_workflow} setWorkflow={(w) => setNested('approval_workflow', w)} />}
+          {wizardTab === 'limits' && <SpendingLimitsTab limits={state.spending_limits} setLimits={(l) => setNested('spending_limits', l)} departments={departments} />}
+          {wizardTab === 'reimbursement' && <ReimbursementTab rt={state.reimbursement_tax} setRt={(r) => setNested('reimbursement_tax', r)} />}
+          {wizardTab === 'submission' && <SubmissionTab rules={state.submission_rules} setRules={(r) => setNested('submission_rules', r)} />}
+          {wizardTab === 'notifications' && <NotificationsTab notifications={state.notifications} setNotifications={(n) => setNested('notifications', n)} />}
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-color)] bg-[var(--background)]">
-          <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {state.expense_categories.length} categories</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {state.approval_workflow.approval_levels}-level approval</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {state.spending_limits.grade_limits.length} grade limits</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {state.spending_limits.department_overrides.length} dept overrides</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
-            <button onClick={handleSave} disabled={saveMutation.isPending}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[#7C3AED] text-white hover:bg-purple-700 disabled:opacity-50">
-              {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {editingId ? 'Save Changes' : 'Save Configuration'}
-            </button>
-          </div>
+        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-[var(--border-color)]">
+          <button onClick={() => { setShowWizard(false); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
+          <button onClick={handleSave} disabled={saveMutation.isPending}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50">
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {editingId ? 'Save Changes' : 'Save Configuration'}
+          </button>
         </div>
+        </div>
+      </div>
       </div>
     </div>
   );

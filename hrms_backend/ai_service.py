@@ -1048,11 +1048,13 @@ Please provide a helpful, professional response:"""
             """
         
         elif report_type == "payroll":
+            from core.format_utils import currency_symbol
+            _sym = currency_symbol(data.get('currency', 'INR'))
             prompt = f"""Summarize this payroll report in 2-3 sentences:
-            - Total Payroll: ₹{data.get('total_payroll', 0):,.0f}
+            - Total Payroll: {_sym}{data.get('total_payroll', 0):,.0f}
             - Employees: {data.get('employee_count', 0)}
-            - Average Salary: ₹{data.get('average_salary', 0):,.0f}
-            - Total Deductions: ₹{data.get('total_deductions', 0):,.0f}
+            - Average Salary: {_sym}{data.get('average_salary', 0):,.0f}
+            - Total Deductions: {_sym}{data.get('total_deductions', 0):,.0f}
             """
         
         elif report_type == "leave":

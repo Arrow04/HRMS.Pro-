@@ -30,6 +30,7 @@ from core.config import settings
 from core.schemas import (PayrollCreate, SalaryTemplateCreate, SalaryTemplateUpdate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, logger, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db, get_read_db
 from core.scale import MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT, DEFAULT_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeBranchAssignment, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PayrollPeriodLock, PayrollRun, PerformanceReview, ReportExecutionLog, SalaryLoan, SalaryRevision, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
@@ -408,6 +409,195 @@ def get_attendance_review_summary(
     }
 
 
+@router.get("/api/payroll/attendance-checklist", tags=["Payroll"])
+def get_attendance_checklist(
+    month: int,
+    year: int,
+    companyId: Optional[int] = None,
+    branchId: Optional[int] = None,
+    departmentId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pre-payroll completeness checklist: block payroll on dirty inputs.
+
+    Returns, per in-scope employee, working dates with NO attendance record
+    (week-offs, non-working holidays and out-of-employment days excluded),
+    pending leave applications overlapping the month, and check-in-without-
+    checkout rows. `complete` is True only when every list is empty.
+    Lists are capped; counts are exact.
+    """
+    from calendar import monthrange
+    from datetime import date as _date
+    from sqlalchemy import or_ as _or
+
+    org_id = current_user.organization_id
+    dim = monthrange(year, month)[1]
+    m_start, m_end = _date(year, month, 1), _date(year, month, dim)
+
+    emp_q = db.query(Employee).filter(
+        Employee.organization_id == org_id,
+        Employee.deleted_at.is_(None),
+        Employee.status == "active",
+    )
+    if companyId is not None:
+        emp_q = emp_q.filter(Employee.company_id == companyId)
+    if departmentId is not None:
+        emp_q = emp_q.filter(Employee.department_id == departmentId)
+    if branchId is not None:
+        emp_q = emp_q.filter(Employee.id.in_(
+            db.query(EmployeeBranchAssignment.employee_id)
+            .filter(
+                EmployeeBranchAssignment.branch_id == branchId,
+                EmployeeBranchAssignment.status == "active",
+                EmployeeBranchAssignment.deleted_at.is_(None),
+            )
+        ))
+    employees = emp_q.all()
+
+    # Non-working holidays in scope (working-day holidays need punches too —
+    # they are normal workdays, so they stay in the expected set implicitly).
+    hq = db.query(Holiday).filter(
+        Holiday.organization_id == org_id,
+        Holiday.deleted_at.is_(None),
+        Holiday.date >= m_start,
+        Holiday.date <= m_end,
+        _or_(Holiday.is_working_day.is_(False), Holiday.is_working_day.is_(None)),
+    )
+    if companyId is not None:
+        hq = hq.filter((Holiday.company_id == companyId) | (Holiday.company_id.is_(None)))
+    off_dates = set()
+    for h in hq.all():
+        try:
+            off_dates.add(h.date.date() if hasattr(h.date, "date") else h.date)
+        except Exception:
+            continue
+
+    # All attendance rows in scope/month, grouped per employee.
+    att_q = db.query(Attendance).filter(
+        Attendance.organization_id == org_id,
+        Attendance.deleted_at.is_(None),
+        Attendance.date >= datetime(year, month, 1),
+        Attendance.date < datetime(year, month, dim) + timedelta(days=1),
+    )
+    if companyId is not None:
+        att_q = att_q.filter(Attendance.company_id == companyId)
+    rec_dates: dict = {}
+    no_checkout: list = []
+    for r in att_q.all():
+        try:
+            d = r.date.date() if hasattr(r.date, "date") else r.date
+        except Exception:
+            continue
+        rec_dates.setdefault(r.employee_id, set()).add(d.isoformat() if hasattr(d, "isoformat") else str(d)[:10])
+        if getattr(r, "check_in", None) and not getattr(r, "check_out", None):
+            emp = next((e for e in employees if e.id == r.employee_id), None)
+            no_checkout.append({
+                "employeeId": r.employee_id,
+                "name": f"{emp.first_name} {emp.last_name}".strip() if emp else f"#{r.employee_id}",
+                "date": d.isoformat() if hasattr(d, "isoformat") else str(d)[:10],
+            })
+
+    # Pending leaves overlapping the month.
+    lv_q = db.query(LeaveApplication).filter(
+        LeaveApplication.organization_id == org_id,
+        LeaveApplication.deleted_at.is_(None),
+        LeaveApplication.status == "pending",
+        LeaveApplication.start_date <= datetime(year, month, dim, 23, 59, 59),
+        LeaveApplication.end_date >= datetime(year, month, 1),
+    )
+    if companyId is not None:
+        lv_q = lv_q.filter(LeaveApplication.company_id == companyId)
+    pending_leaves = []
+    for lv in lv_q.all():
+        emp = next((e for e in employees if e.id == lv.employee_id), None)
+        try:
+            s = lv.start_date.date() if hasattr(lv.start_date, "date") else lv.start_date
+            e = lv.end_date.date() if hasattr(lv.end_date, "date") else lv.end_date
+            s, e = (s.isoformat(), e.isoformat()) if hasattr(s, "isoformat") else (str(s)[:10], str(e)[:10])
+        except Exception:
+            s, e = str(lv.start_date)[:10], str(lv.end_date)[:10]
+        pending_leaves.append({
+            "id": lv.id,
+            "employeeId": lv.employee_id,
+            "name": f"{emp.first_name} {emp.last_name}".strip() if emp else f"#{lv.employee_id}",
+            "start": s, "end": e,
+        })
+
+    # Per-employee expected working dates (policy workweek + employment window,
+    # minus non-working holidays). Policy lookups cached: most employees share.
+    from services.payroll_service import _get_attendance_policy
+    policy_cache: dict = {}
+    missing = []
+    total_missing = 0
+    as_of = _date(year, month, dim)
+    for emp in employees:
+        key = (emp.company_id, getattr(emp, "attendance_policy_id", None), getattr(emp, "payroll_template_id", None))
+        if key not in policy_cache:
+            try:
+                pol = _get_attendance_policy(db, emp, as_of)
+                wd = set()
+                for x in (pol.working_days or "1,2,3,4,5,6").split(","):
+                    x = x.strip()
+                    if x.isdigit():
+                        wd.add(int(x))
+                policy_cache[key] = wd or {1, 2, 3, 4, 5, 6}
+            except Exception:
+                policy_cache[key] = {1, 2, 3, 4, 5, 6}
+        wd = policy_cache[key]
+        try:
+            join_d = emp.join_date.date() if emp.join_date and hasattr(emp.join_date, "date") else emp.join_date
+        except Exception:
+            join_d = None
+        try:
+            exit_d = (emp.date_of_leaving or emp.termination_date)
+            exit_d = exit_d.date() if exit_d and hasattr(exit_d, "date") else exit_d
+        except Exception:
+            exit_d = None
+        expected = []
+        for day in range(1, dim + 1):
+            d = _date(year, month, day)
+            if join_d and d < join_d:
+                continue
+            if exit_d and d > exit_d:
+                continue
+            if d > _date.today():
+                continue  # future days can't have punches yet
+            if ((d.weekday() + 1) % 7) not in wd:
+                continue
+            if d in off_dates:
+                continue
+            expected.append(d.isoformat())
+        have = rec_dates.get(emp.id, set())
+        gap = [ds for ds in expected if ds not in have]
+        if gap:
+            total_missing += len(gap)
+            missing.append({
+                "employeeId": emp.id,
+                "name": f"{emp.first_name} {emp.last_name}".strip(),
+                "code": emp.employee_code,
+                "missingCount": len(gap),
+                "missingDates": gap[:15],
+            })
+
+    status = get_attendance_status(month=month, year=year, companyId=companyId, db=db, current_user=current_user)
+    complete = not missing and not pending_leaves and not no_checkout
+    return {
+        "month": month, "year": year, "companyId": companyId,
+        "branchId": branchId, "departmentId": departmentId,
+        "employeesChecked": len(employees),
+        "complete": complete,
+        "finalized": status["finalized"],
+        "employeesWithMissing": len(missing),
+        "totalMissing": total_missing,
+        "missingDays": missing[:200],
+        "pendingLeaveCount": len(pending_leaves),
+        "pendingLeaves": pending_leaves[:200],
+        "missingCheckoutCount": len(no_checkout),
+        "missingCheckouts": no_checkout[:200],
+    }
+
+
 @router.get("/api/payroll", tags=["Payroll"])
 def get_payroll(
     employeeId: Optional[int] = None,
@@ -423,8 +613,7 @@ def get_payroll(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
 
     period_scoped = month is not None and year is not None
     max_allowed = MAX_PERIOD_LIST_LIMIT if period_scoped else MAX_LIST_LIMIT
@@ -438,6 +627,10 @@ def get_payroll(
     if current_user.organization_id:
         query = query.filter(Payroll.organization_id == current_user.organization_id)
     if employeeId:
+        if current_user.role != "superadmin":
+            _pay_emp = db.query(Employee).filter(Employee.id == employeeId).first()
+            if _pay_emp is not None:
+                assert_company_allowed(db, current_user, _pay_emp.company_id)
         query = query.filter(Payroll.employee_id == employeeId)
     if month:
         query = query.filter(Payroll.month == month)
@@ -591,6 +784,9 @@ def get_payroll_stats(
     query = db.query(Payroll).filter(Payroll.deleted_at.is_(None))
     if current_user.organization_id:
         query = query.filter(Payroll.organization_id == current_user.organization_id)
+    _st_scope = resolve_company_scope(db, current_user, None)
+    if _st_scope is not None:
+        query = query.filter(Payroll.company_id == _st_scope)
 
     total_gross = db.query(func.coalesce(func.sum(Payroll.gross_salary), 0)).select_from(Payroll).filter(Payroll.deleted_at.is_(None))
     total_net = db.query(func.coalesce(func.sum(Payroll.net_salary), 0)).select_from(Payroll).filter(Payroll.deleted_at.is_(None))
@@ -600,12 +796,18 @@ def get_payroll_stats(
         total_gross = total_gross.filter(Payroll.organization_id == current_user.organization_id)
         total_net = total_net.filter(Payroll.organization_id == current_user.organization_id)
         total_count = total_count.filter(Payroll.organization_id == current_user.organization_id)
+    if _st_scope is not None:
+        total_gross = total_gross.filter(Payroll.company_id == _st_scope)
+        total_net = total_net.filter(Payroll.company_id == _st_scope)
+        total_count = total_count.filter(Payroll.company_id == _st_scope)
 
     # Current month scope for the "paid this period" KPI
     now = ist_now_naive()
     cur_q = db.query(Payroll).filter(Payroll.deleted_at.is_(None), Payroll.month == now.month, Payroll.year == now.year)
     if current_user.organization_id:
         cur_q = cur_q.filter(Payroll.organization_id == current_user.organization_id)
+    if _st_scope is not None:
+        cur_q = cur_q.filter(Payroll.company_id == _st_scope)
     paid_cur = cur_q.filter(Payroll.status.in_(["paid", "processed"])).count()
     pending_cur = cur_q.filter(Payroll.status.in_(["draft", "pending_approval"])).count()
     cur_net = db.query(func.coalesce(func.sum(Payroll.net_salary), 0)).select_from(Payroll).filter(
@@ -614,6 +816,8 @@ def get_payroll_stats(
     )
     if current_user.organization_id:
         cur_net = cur_net.filter(Payroll.organization_id == current_user.organization_id)
+    if _st_scope is not None:
+        cur_net = cur_net.filter(Payroll.company_id == _st_scope)
 
     total_count_val = total_count.scalar() or 0
     total_net_val = total_net.scalar() or 0
@@ -644,7 +848,6 @@ def create_payroll(
     pr.status = "draft"
     if current_user.role != "superadmin":
         get_employee_in_org(db, Employee, payroll_data.employeeId, current_user.organization_id)
-        pr.organization_id = current_user.organization_id
     db.add(pr)
     db.commit()
     db.refresh(pr)
@@ -665,6 +868,7 @@ def calculate_payroll_preview(
         raise HTTPException(status_code=404, detail="Employee not found")
     if current_user.role != "superadmin":
         org_owned(emp, current_user.organization_id)
+    assert_company_allowed(db, current_user, emp.company_id)
     result = calculate_payroll(db, emp, month, year)
     result["employeeName"] = f"{emp.first_name} {emp.last_name or ''}".strip()
     result["days_in_month"] = result["working_days"]
@@ -748,6 +952,7 @@ def generate_payroll_endpoint(
     ).first()
     if locked:
         raise HTTPException(status_code=409, detail="Payroll period is locked; reopen before regenerating")
+    assert_company_allowed(db, current_user, emp.company_id)
     payroll = generate_payroll_record(db, emp, month, year)
     email_sent = False
     email_skipped = ""
@@ -795,7 +1000,7 @@ def _email_payslip_async(payroll_id: int, user_id: int) -> None:
               <h2 style="color:#1a237e;">Your Payslip is Ready</h2>
               <p>Hi {emp_name},</p>
               <p>Your payslip for <b>{payroll.month}/{payroll.year}</b> is attached as a PDF.</p>
-              <p>Net pay: <b>Rs. {float(payroll.net_salary or 0):,.2f}</b></p>
+              <p>Net pay: <b>{float(payroll.net_salary or 0):,.2f}</b></p>
               <p style="color:#888;font-size:12px;">This is a system-generated email. Do not reply.</p>
             </div>
             """
@@ -803,7 +1008,7 @@ def _email_payslip_async(payroll_id: int, user_id: int) -> None:
                 emp.email,
                 subject,
                 html,
-                text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: Rs. {float(payroll.net_salary or 0):,.2f}",
+                text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: {float(payroll.net_salary or 0):,.2f}",
                 attachments=[{"filename": f"payslip_{emp.employee_code}_{payroll.month}_{payroll.year}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
             )
             if sent and user_id:
@@ -996,13 +1201,13 @@ def _email_payslip_for_row(payroll_id, emp_email, month, year) -> bool:
           <h2 style="color:#1a237e;">Your Payslip is Ready</h2>
           <p>Hi {emp_name},</p>
           <p>Your payslip for <b>{month}/{year}</b> is attached as a PDF.</p>
-          <p>Net pay: <b>Rs. {float(payroll.net_salary or 0):,.2f}</b></p>
+          <p>Net pay: <b>{float(payroll.net_salary or 0):,.2f}</b></p>
           <p style="color:#888;font-size:12px;">This is a system-generated email. Do not reply.</p>
         </div>
         """
         sent = EmailService.send_email_with_attachment(
             emp_email, subject, html,
-            text_content=f"Your payslip for {month}/{year} is attached. Net pay: Rs. {float(payroll.net_salary or 0):,.2f}",
+            text_content=f"Your payslip for {month}/{year} is attached. Net pay: {float(payroll.net_salary or 0):,.2f}",
             attachments=[{"filename": f"payslip_{emp.employee_code}_{month}_{year}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
         )
         return bool(sent)
@@ -1011,6 +1216,36 @@ def _email_payslip_for_row(payroll_id, emp_email, month, year) -> bool:
         return False
     finally:
         s.close()
+
+
+@router.get("/api/payroll/preflight", tags=["Payroll"])
+def payroll_preflight_check(
+    month: int,
+    year: int,
+    companyId: int = Query(...),
+    branchId: Optional[int] = Query(None),
+    departmentId: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pre-flight validation before running payroll.
+
+    Checks ALL required configuration for a company:
+    - PayrollTemplate exists
+    - PayrollPolicy configured
+    - AttendancePolicy configured
+    - StatutorySetting configured
+    - TaxRegime + TaxSlabs exist
+    - PayrollComponents exist
+    - Employees have salary data
+    - Attendance data exists for the period
+
+    Returns {valid, errors, warnings, summary}.
+    Use this BEFORE clicking "Generate Payroll" to show users what's missing.
+    """
+    from services.payroll_preflight import run_preflight
+    result = run_preflight(db, current_user.organization_id, companyId, month, year, branchId, departmentId)
+    return result
 
 
 @router.post("/api/payroll/generate-all", tags=["Payroll"])
@@ -1034,6 +1269,22 @@ def generate_all_payroll(
     multi_company = is_feature_enabled(db, current_user.organization_id, "multiCompany")
     if multi_company and not companyId:
         raise HTTPException(status_code=400, detail="Multi-company payroll is enabled. Select a company to generate payroll for.")
+    # Company isolation: generate only within your allowed company.
+    companyId = resolve_company_scope(db, current_user, companyId)
+
+    # Pre-flight validation: block payroll if critical config is missing
+    from services.payroll_preflight import run_preflight
+    preflight = run_preflight(db, current_user.organization_id, companyId, month, year, branchId, departmentId)
+    if not preflight["valid"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Payroll cannot be generated — configuration errors found",
+                "errors": preflight["errors"],
+                "warnings": preflight["warnings"],
+                "fix": "Fix the errors below, then try again. Click 'Run Pre-flight Check' for details.",
+            }
+        )
 
     run = PayrollRun(
         organization_id=current_user.organization_id,
@@ -1068,6 +1319,7 @@ def get_payroll_run(run_id: int, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=404, detail="Run not found")
     if current_user.organization_id and run.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Not authorized")
+    assert_company_allowed(db, current_user, run.company_id)
     return {
         "runId": run.id,
         "status": run.status,
@@ -1087,10 +1339,13 @@ def get_payroll_run(run_id: int, db: Session = Depends(get_db), current_user: Us
 
 @router.get("/api/payroll/runs", tags=["Payroll"])
 def list_payroll_runs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """List recent payroll runs for the organization."""
+    """List recent payroll runs for the organization (company-scoped for restricted roles)."""
     q = db.query(PayrollRun)
     if current_user.organization_id:
         q = q.filter(PayrollRun.organization_id == current_user.organization_id)
+    _run_scope = resolve_company_scope(db, current_user, None)
+    if _run_scope is not None:
+        q = q.filter(PayrollRun.company_id == _run_scope)
     q = q.order_by(PayrollRun.id.desc()).limit(50)
     runs = q.all()
     user_ids = set()
@@ -1618,6 +1873,9 @@ def _assert_can_view_payroll(db: Session, payroll_id: int, current_user: User) -
         raise HTTPException(status_code=403, detail="Not authorized for this payroll")
     role = (current_user.role or "").lower()
     if role in ("admin", "superadmin", "hr_admin", "hr_manager", "hr_executive", "finance", "accountant"):
+        _pe = db.query(Employee).filter(Employee.id == payroll.employee_id).first()
+        if _pe is not None:
+            assert_company_allowed(db, current_user, _pe.company_id)
         return payroll
     emp = db.query(Employee).filter(Employee.id == payroll.employee_id).first()
     if emp and emp.user_id and emp.user_id == current_user.id:
@@ -1639,6 +1897,10 @@ def get_payroll_by_employee(
         emp = db.query(Employee).filter(Employee.id == employee_id).first()
         if not emp or emp.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to view this employee's payroll")
+    else:
+        emp = db.query(Employee).filter(Employee.id == employee_id).first()
+        if emp is not None:
+            assert_company_allowed(db, current_user, emp.company_id)
     query = db.query(Payroll).filter(
         Payroll.deleted_at.is_(None),
         Payroll.employee_id == employee_id,
@@ -1665,6 +1927,9 @@ def update_payroll_status(
     pr = pr.first()
     if not pr:
         raise HTTPException(status_code=404, detail="Payroll not found")
+    _pr_emp = db.query(Employee).filter(Employee.id == pr.employee_id).first()
+    if _pr_emp is not None:
+        assert_company_allowed(db, current_user, _pr_emp.company_id)
     # Strict forward-only workflow; "locked" is the closed-period terminal state.
     # Reopening a locked payroll requires a DIFFERENT user than the one who locked
     # it (maker-checker), so a lock cannot be silently lifted by the same person.
@@ -1773,6 +2038,9 @@ def get_payroll_summary(
         query = query.filter(Payroll.year == year)
     if current_user.organization_id:
         query = query.filter(Payroll.organization_id == current_user.organization_id)
+    _sum_scope = resolve_company_scope(db, current_user, None)
+    if _sum_scope is not None:
+        query = query.filter(Payroll.company_id == _sum_scope)
 
     records = query.all()
     total_gross = sum(r.gross_salary or 0 for r in records)
@@ -1781,7 +2049,7 @@ def get_payroll_summary(
 
     # Multi-currency reporting: rates configured in org.settings.payroll.currency_rates,
     # keyed by target currency (value of 1 base unit in that currency). Force-reload marker.
-    base_currency = "INR"
+    base_currency = ""
     rates: dict = {}
     try:
         org = db.query(Organization).filter(
@@ -1789,7 +2057,7 @@ def get_payroll_summary(
             Organization.id == current_user.organization_id,
         ).first() if current_user.organization_id else None
         if org:
-            base_currency = (org.default_currency or "INR")
+            base_currency = (org.default_currency or "")
             rates = ((org.settings or {}).get("payroll", {}) or {}).get("currency_rates", {}) or {}
     except Exception:
         pass
@@ -1867,7 +2135,7 @@ def _email_payslip(db: Session, payroll, current_user: User) -> bool:
       <h2 style="color:#1a237e;">Your Payslip is Ready</h2>
       <p>Hi {emp_name},</p>
       <p>Your payslip for <b>{payroll.month}/{payroll.year}</b> is attached as a PDF.</p>
-      <p>Net pay: <b>Rs. {float(payroll.net_salary or 0):,.2f}</b></p>
+      <p>Net pay: <b>{float(payroll.net_salary or 0):,.2f}</b></p>
       <p style="color:#888;font-size:12px;">This is a system-generated email. Do not reply.</p>
     </div>
     """
@@ -1875,7 +2143,7 @@ def _email_payslip(db: Session, payroll, current_user: User) -> bool:
         emp.email,
         subject,
         html,
-        text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: Rs. {float(payroll.net_salary or 0):,.2f}",
+        text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: {float(payroll.net_salary or 0):,.2f}",
         attachments=[{"filename": f"payslip_{emp.employee_code}_{payroll.month}_{payroll.year}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
     )
     if sent:
@@ -1907,7 +2175,7 @@ def email_payslip(
       <h2 style="color:#1a237e;">Your Payslip is Ready</h2>
       <p>Hi {emp_name},</p>
       <p>Your payslip for <b>{payroll.month}/{payroll.year}</b> is attached as a PDF.</p>
-      <p>Net pay: <b>Rs. {float(payroll.net_salary or 0):,.2f}</b></p>
+      <p>Net pay: <b>{float(payroll.net_salary or 0):,.2f}</b></p>
       <p style="color:#888;font-size:12px;">This is a system-generated email. Do not reply.</p>
     </div>
     """
@@ -1915,7 +2183,7 @@ def email_payslip(
         emp.email,
         subject,
         html,
-        text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: Rs. {float(payroll.net_salary or 0):,.2f}",
+        text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: {float(payroll.net_salary or 0):,.2f}",
         attachments=[{"filename": f"payslip_{emp.employee_code}_{payroll.month}_{payroll.year}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
     )
     _create_audit_log(db, current_user, "email_payslip", "payroll", payroll_id, f"Emailed payslip {payroll.month}/{payroll.year} to {emp.email}")
@@ -1967,7 +2235,7 @@ def bulk_email_payslips(
               <h2 style="color:#1a237e;">Your Payslip is Ready</h2>
               <p>Hi {emp_name},</p>
               <p>Your payslip for <b>{payroll.month}/{payroll.year}</b> is attached as a PDF.</p>
-              <p>Net pay: <b>Rs. {float(payroll.net_salary or 0):,.2f}</b></p>
+              <p>Net pay: <b>{float(payroll.net_salary or 0):,.2f}</b></p>
               <p style="color:#888;font-size:12px;">This is a system-generated email. Do not reply.</p>
             </div>
             """
@@ -1975,7 +2243,7 @@ def bulk_email_payslips(
                 emp.email,
                 subject,
                 html,
-                text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: Rs. {float(payroll.net_salary or 0):,.2f}",
+                text_content=f"Your payslip for {payroll.month}/{payroll.year} is attached. Net pay: {float(payroll.net_salary or 0):,.2f}",
                 attachments=[{"filename": f"payslip_{emp.employee_code}_{payroll.month}_{payroll.year}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
             )
             emailed.append({"payrollId": pid, "employeeCode": emp.employee_code, "email": emp.email, "sent": sent})
@@ -2181,8 +2449,8 @@ def download_form16_pdf(
         sent = EmailService.send_email_with_attachment(
             emp.email,
             f"Form 16 — FY {data['financial_year']} for {emp_name}",
-            f"<div style='font-family:Segoe UI,Arial,sans-serif;color:#333'><h2 style='color:#1a237e'>Form 16 / TDS Certificate</h2><p>Hi {emp_name},</p><p>Your Form 16 (Part B) for FY <b>{data['financial_year']}</b> is attached. Total tax deducted: <b>Rs. {data['totals']['tds']:,.2f}</b>. Part A must be downloaded from TRACES by your employer.</p></div>",
-            text_content=f"Your Form 16 (Part B) for FY {data['financial_year']} is attached. Total TDS deducted: Rs. {data['totals']['tds']:,.2f}. Part A must be obtained from TRACES.",
+            f"<div style='font-family:Segoe UI,Arial,sans-serif;color:#333'><h2 style='color:#1a237e'>Form 16 / TDS Certificate</h2><p>Hi {emp_name},</p><p>Your Form 16 (Part B) for FY <b>{data['financial_year']}</b> is attached. Total tax deducted: <b>{data['totals']['tds']:,.2f}</b>. Part A must be downloaded from TRACES by your employer.</p></div>",
+            text_content=f"Your Form 16 (Part B) for FY {data['financial_year']} is attached. Total TDS deducted: {data['totals']['tds']:,.2f}. Part A must be obtained from TRACES.",
             attachments=[{"filename": f"form16_{emp.employee_code}_{data['financial_year']}.pdf", "data": pdf_bytes, "mime": "application/pdf"}],
         )
         _create_audit_log(db, current_user, "email_form16", "employee", employee_id, f"Emailed Form 16 FY {data['financial_year']}")

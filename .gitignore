@@ -47,3 +47,40 @@ hrms_mobile/.expo-shared/
 # Python
 *.egg-info/
 .pytest_cache/
+
+# Uploads - NEVER commit user files
+hrms_backend/uploads/
+hrms_backend/routers/uploads/
+**/uploads/
+
+# Generated files
+hrms_backend/generated/
+**/generated/
+
+# Database files
+*.db
+*.sqlite3
+**/*.db
+**/*.sqlite3
+**/chroma_db/
+
+# Backup files
+*.bak
+*.bak_*
+**/*.bak
+**/*.bak_*
+
+# Test/temp PDFs
+*.pdf
+!docs/**/*.pdf
+
+# Root-level debug scripts
+check_*.py
+fix_*.py
+verify_*.py
+enable_*.py
+import_*.py
+seed_*.py
+test_*.py
+!hrms_backend/tests/**/*.py
+!hrms_react_web/src/**/*.test.*

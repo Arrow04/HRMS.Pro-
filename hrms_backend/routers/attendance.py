@@ -29,7 +29,9 @@ from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_ca
 from core.config import settings
 from core.schemas import (AttendanceCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BulkDeleteRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
-from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
+from core.tenant import (org_owned, get_employee_in_org, validate_company_in_org,
+    get_header_company_id)
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db, get_read_db
 from core.attendance_pulse import (
     get_idempotent_checkin,
@@ -37,7 +39,7 @@ from core.attendance_pulse import (
     store_idempotent_checkin,
     try_acquire_open_session,
 )
-from core.datetime_utils import ist_now_naive, ist_today_str
+from core.datetime_utils import ist_now_naive, ist_today_str, org_now_naive, org_today_str, org_isoformat, get_org_timezone
 from core.scale import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendanceCorrectionRequest, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -45,15 +47,62 @@ from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Attendance"])
 
-IST_SUFFIX = "+05:30"
 
-def _ist_iso(dt):
+def _get_org(db, current_user):
+    """Load the Organization for the current user (cached per request)."""
+    if not current_user.organization_id:
+        return None
+    return db.query(Organization).filter(
+        Organization.id == current_user.organization_id,
+        Organization.deleted_at.is_(None),
+    ).first()
+
+
+def _org_now_naive(db, current_user):
+    """Current time as naive datetime in the org's timezone."""
+    org = _get_org(db, current_user)
+    if org:
+        return org_now_naive(org)
+    return ist_now_naive()
+
+
+def _org_today_str(db, current_user):
+    """Current date string in the org's timezone."""
+    org = _get_org(db, current_user)
+    if org:
+        return org_today_str(org)
+    return ist_today_str()
+
+
+def _get_org_offset_str(db, current_user) -> str:
+    """Return the org's UTC offset as '+HH:MM' string (e.g. '+05:30' for India, '+00:00' for UK)."""
+    from zoneinfo import ZoneInfo
+    org = _get_org(db, current_user)
+    tz_name = getattr(org, "timezone", None) if org else None
+    if not tz_name:
+        tz_name = "Asia/Kolkata"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("Asia/Kolkata")
+    offset = datetime.now(tz).utcoffset()
+    if offset is None:
+        return "+00:00"
+    total_seconds = int(offset.total_seconds())
+    hours, remainder = divmod(abs(total_seconds), 3600)
+    minutes = remainder // 60
+    sign = "+" if total_seconds >= 0 else "-"
+    return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def _ist_iso(dt, offset_str: str = "+05:30"):
+    """Format datetime as ISO string with the given UTC offset appended."""
     if dt is None:
         return None
     s = dt.isoformat()
     if "+" in s or "Z" in s:
         return s
-    return s + IST_SUFFIX
+    return s + offset_str
 
 
 def _resolve_punch_employee(db: Session, current_user: User) -> Optional[Employee]:
@@ -219,13 +268,13 @@ def get_attendance(
     request: Request = None,
 ):
     period_scoped = startDate is not None and endDate is not None
+    _offset = _get_org_offset_str(db, current_user)
     max_allowed = MAX_PERIOD_LIST_LIMIT if period_scoped else MAX_LIST_LIMIT
     if limit is None:
         eff_limit = max_allowed if period_scoped else DEFAULT_LIST_LIMIT
     else:
         eff_limit = min(limit, max_allowed)
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(Attendance).filter(Attendance.deleted_at.is_(None))
     if companyId:
         query = query.filter(Attendance.company_id == companyId)
@@ -246,14 +295,11 @@ def get_attendance(
         if emp:
             query = query.filter(Attendance.employee_id == emp.id)
 
-    # Default to today (IST) if no dates provided
-    from datetime import timezone as _tz_def
-    IST_DEF = _tz_def(timedelta(hours=5, minutes=30))
-    now = datetime.now(IST_DEF)
+    # Default to today (org timezone) if no dates provided
     if not startDate:
-        startDate = now.strftime("%Y-%m-%d")
+        startDate = _org_today_str(db, current_user)
     if not endDate:
-        endDate = now.strftime("%Y-%m-%d")
+        endDate = _org_today_str(db, current_user)
 
     if startDate:
         query = query.filter(Attendance.date >= startDate)
@@ -299,8 +345,8 @@ def get_attendance(
             "organization_id": r.organization_id, "company_id": r.company_id,
             "department_id": r.department_id, "shift_id": r.shift_id,
             "date": str(r.date)[:10] if r.date else None,
-            "check_in": _ist_iso(r.check_in),
-            "check_out": _ist_iso(r.check_out),
+            "check_in": _ist_iso(r.check_in, _offset),
+            "check_out": _ist_iso(r.check_out, _offset),
             "status": r.status, "work_hours": r.work_hours,
             "clock_out_violation": bool(r.check_in and not r.check_out),
             "scheduled_hours": r.scheduled_hours, "overtime_hours": r.overtime_hours,
@@ -319,22 +365,22 @@ def get_attendance(
             "user_agent": r.user_agent, "is_work_from_home": r.is_work_from_home,
             "wfh_approval_id": r.wfh_approval_id, "wfh_location": r.wfh_location,
             "is_manual_entry": r.is_manual_entry, "approved_by": r.approved_by,
-            "approved_at": _ist_iso(r.approved_at),
+            "approved_at": _ist_iso(r.approved_at, _offset),
             "approval_comments": r.approval_comments,
             "leave_application_id": r.leave_application_id, "is_on_leave": r.is_on_leave,
             "is_holiday": r.is_holiday, "holiday_id": r.holiday_id,
             "sync_status": r.sync_status, "sync_attempt_count": r.sync_attempt_count,
-            "last_sync_attempt": _ist_iso(r.last_sync_attempt),
+            "last_sync_attempt": _ist_iso(r.last_sync_attempt, _offset),
             "sync_error_message": r.sync_error_message,
-            "offline_created_at": _ist_iso(r.offline_created_at),
+            "offline_created_at": _ist_iso(r.offline_created_at, _offset),
             "offline_device_id": r.offline_device_id,
             "conflict_resolution_status": r.conflict_resolution_status,
             "conflict_resolved_by": r.conflict_resolved_by,
-            "conflict_resolved_at": _ist_iso(r.conflict_resolved_at),
+            "conflict_resolved_at": _ist_iso(r.conflict_resolved_at, _offset),
             "conflict_reason": r.conflict_reason,
-            "created_at": _ist_iso(r.created_at),
-            "updated_at": _ist_iso(r.updated_at),
-            "deleted_at": _ist_iso(r.deleted_at),
+            "created_at": _ist_iso(r.created_at, _offset),
+            "updated_at": _ist_iso(r.updated_at, _offset),
+            "deleted_at": _ist_iso(r.deleted_at, _offset),
         })
 
     # Merge approved leaves as synthetic on_leave records
@@ -417,6 +463,7 @@ def update_attendance(
 
     if current_user.role != "superadmin":
         org_owned(att, current_user.organization_id)
+    assert_company_allowed(db, current_user, att.company_id)
 
     old_status = att.status
     old_check_in = att.check_in
@@ -516,8 +563,11 @@ def get_attendance_calendar(
         if emp:
             target_employee_id = emp.id
 
+    _targ_co = None
     if target_employee_id and current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, target_employee_id, current_user.organization_id)
+        _targ = get_employee_in_org(db, Employee, target_employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, _targ.company_id)
+        _targ_co = _targ.company_id
 
     records = []
     if target_employee_id:
@@ -530,11 +580,18 @@ def get_attendance_calendar(
             records_query = records_query.filter(Attendance.organization_id == current_user.organization_id)
         records = records_query.all()
 
-    holidays_query = db.query(Holiday).filter(Holiday.deleted_at.is_(None), 
+    holidays_query = db.query(Holiday).filter(Holiday.deleted_at.is_(None),
         Holiday.date >= start, Holiday.date <= end
     )
     if current_user.role != "superadmin" and current_user.organization_id:
         holidays_query = holidays_query.filter(Holiday.organization_id == current_user.organization_id)
+    # Strict company match: only the target employee's company holidays.
+    if _targ_co is not None:
+        holidays_query = holidays_query.filter(Holiday.company_id == _targ_co)
+    else:
+        _cal_scope = resolve_company_scope(db, current_user, None)
+        if _cal_scope is not None:
+            holidays_query = holidays_query.filter(Holiday.company_id == _cal_scope)
     holidays = holidays_query.all()
 
     calendar_data = {}
@@ -568,7 +625,8 @@ def get_employee_calendar(
         get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
 
     if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        emp_in_org = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, emp_in_org.company_id)
 
     start = f"{year}-{month:02d}-01"
     last_day = calendar.monthrange(year, month)[1]
@@ -587,6 +645,11 @@ def get_employee_calendar(
     )
     if current_user.role != "superadmin" and current_user.organization_id:
         holidays_query = holidays_query.filter(Holiday.organization_id == current_user.organization_id)
+    # Strict: only the employee's own company holidays (no shared rows).
+    # Superadmin sees the month unfiltered (no single employee scope).
+    _cal_emp = emp_in_org if current_user.role != "superadmin" else db.query(Employee).filter(Employee.id == employee_id).first()
+    if _cal_emp is not None and _cal_emp.company_id is not None:
+        holidays_query = holidays_query.filter(Holiday.company_id == _cal_emp.company_id)
     holidays = holidays_query.all()
 
     leaves = db.query(LeaveApplication).filter(
@@ -617,6 +680,7 @@ def get_employee_calendar(
             "isLate": r.is_late,
             "lateMinutes": r.late_minutes,
             "isEarlyDeparture": r.is_early_departure,
+            "isManualEntry": bool(r.is_manual_entry),
             "notes": r.notes,
             "shiftId": r.shift_id,
         }
@@ -766,9 +830,7 @@ def check_in(
             request_data.selfieData, emp.id, "checkin", organization_id=current_user.organization_id
         )
 
-    from datetime import timezone as _tz
-    IST = _tz(timedelta(hours=5, minutes=30))
-    now = datetime.now(IST).replace(tzinfo=None)
+    now = _org_now_naive(db, current_user)
 
     # Resolve shift and compute late status
     resolved_shift = _resolve_shift(db, emp.id, now.date())
@@ -791,7 +853,7 @@ def check_in(
 
     att = Attendance(
         employee_id=emp.id,
-        organization_id=current_user.organization_id,
+        organization_id=emp.organization_id,
         company_id=emp.company_id,
         department_id=emp.department_id,
         date=now,
@@ -825,12 +887,13 @@ def check_in(
         store_idempotent_checkin(emp.id, request_data.clientRequestId, {"id": att.id})
 
     invalidate_cache("hrms:tenant:*")
+    _off = _get_org_offset_str(db, current_user)
     return {
         "id": att.id,
         "employee_id": att.employee_id,
         "date": str(att.date)[:10] if att.date else None,
-        "check_in": _ist_iso(att.check_in),
-        "check_out": _ist_iso(att.check_out),
+        "check_in": _ist_iso(att.check_in, _off),
+        "check_out": _ist_iso(att.check_out, _off),
         "status": att.status,
         "work_hours": att.work_hours,
         "is_within_geofence": att.is_within_geofence,
@@ -901,9 +964,7 @@ def check_out(
             request_data.selfieData, emp.id, "checkout", organization_id=current_user.organization_id
         )
 
-    from datetime import timezone as _tz2
-    IST2 = _tz2(timedelta(hours=5, minutes=30))
-    now = datetime.now(IST2).replace(tzinfo=None)
+    now = _org_now_naive(db, current_user)
     att.check_out = now
     att.check_out_latitude = request_data.latitude
     att.check_out_longitude = request_data.longitude
@@ -933,12 +994,13 @@ def check_out(
     db.refresh(att)
     release_open_session(emp.id)
     invalidate_cache("hrms:tenant:*")
+    _off2 = _get_org_offset_str(db, current_user)
     return {
         "id": att.id,
         "employee_id": att.employee_id,
         "date": str(att.date)[:10] if att.date else None,
-        "check_in": _ist_iso(att.check_in),
-        "check_out": _ist_iso(att.check_out),
+        "check_in": _ist_iso(att.check_in, _off2),
+        "check_out": _ist_iso(att.check_out, _off2),
         "status": att.status,
         "work_hours": att.work_hours,
         "overtime_hours": att.overtime_hours,
@@ -977,11 +1039,23 @@ def create_manual_attendance(
 
         from core.employee_scope import resolve_employee_org_scope
         scope = resolve_employee_org_scope(db, data.employeeId)
+        # Company isolation: manual entries only for your own company's employees.
+        assert_company_allowed(db, current_user, scope.get("companyId"))
 
-        att = Attendance(
-            employee_id=data.employeeId,
-            organization_id=current_user.organization_id,
-            date=parsed_date,
+        # Upsert: one row per employee+date. Always-inserting created duplicate
+        # rows that confused the calendar and payroll (which keeps latest id).
+        # The leave link + on-leave flag are preserved so approved-leave pay
+        # mapping stays intact when HR edits around a leave day.
+        day_start = datetime.combine(parsed_date.date(), datetime.min.time())
+        day_end = day_start + timedelta(days=1)
+        existing = db.query(Attendance).filter(
+            Attendance.deleted_at.is_(None),
+            Attendance.employee_id == data.employeeId,
+            Attendance.date >= day_start,
+            Attendance.date < day_end,
+        ).order_by(Attendance.id.desc()).first()
+
+        vals = dict(
             check_in=ci,
             check_out=co,
             work_hours=data.workHours,
@@ -1012,16 +1086,31 @@ def create_manual_attendance(
             is_within_geofence=data.isWithinGeofence if data.isWithinGeofence is not None else True,
             device_type=data.deviceType,
         )
-        db.add(att)
+        if existing:
+            prev_status = existing.status
+            for k, v in vals.items():
+                setattr(existing, k, v)
+            att = existing
+            audit_action, audit_prev = "updated", {"status": prev_status}
+        else:
+            att = Attendance(
+                employee_id=data.employeeId,
+                organization_id=scope.get("organizationId"),
+                company_id=scope.get("companyId"),
+                date=parsed_date,
+                **vals,
+            )
+            db.add(att)
+            audit_action, audit_prev = "created", {}
         db.commit()
         db.refresh(att)
-        _log(f"  SUCCESS id={att.id}")
+        _log(f"  SUCCESS id={att.id} {audit_action}")
 
         log = AttendanceAuditLog(
             attendance_id=att.id,
             employee_id=data.employeeId,
-            action="created",
-            previous_values={},
+            action=audit_action,
+            previous_values=audit_prev,
             new_values={"status": att.status, "date": str(parsed_date.date())},
             changed_fields=["status", "date"],
             action_by=current_user.id,
@@ -1066,11 +1155,15 @@ def sync_attendance(
     synced = 0
     for rec in sync_data.attendanceRecords:
         emp_id = rec.get("employeeId")
+        _sync_emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
+        if not _sync_emp:
+            continue
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+            assert_company_allowed(db, current_user, _sync_emp.company_id)
         att = Attendance(
             employee_id=emp_id,
-            organization_id=current_user.organization_id,
+            organization_id=_sync_emp.organization_id,
+            company_id=_sync_emp.company_id,
             check_in=rec.get("checkIn"),
             check_out=rec.get("checkOut"),
             status=rec.get("status", "present"),
@@ -1130,7 +1223,10 @@ def bulk_mark_attendance(
         if not emp_id or not date_str:
             continue
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+            _bulk_emp = get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+            assert_company_allowed(db, current_user, _bulk_emp.company_id)
+        else:
+            _bulk_emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
         rec_date = dateparser.parse(date_str).date()
         existing = db.query(Attendance).filter(Attendance.deleted_at.is_(None),
             Attendance.employee_id == emp_id,
@@ -1186,6 +1282,9 @@ def bulk_mark_attendance(
             dt = dateparser.parse(date_str)
             att = Attendance(
                 employee_id=emp_id,
+                organization_id=_bulk_emp.organization_id if _bulk_emp else None,
+                company_id=_bulk_emp.company_id if _bulk_emp else None,
+                department_id=_bulk_emp.department_id if _bulk_emp else None,
                 date=dt,
                 status=data.status,
                 is_manual_entry=True,
@@ -1229,7 +1328,8 @@ def bulk_delete_attendance(
         if not emp_id or not date_str:
             continue
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+            _del_emp = get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+            assert_company_allowed(db, current_user, _del_emp.company_id)
         att = db.query(Attendance).filter(Attendance.deleted_at.is_(None),
             Attendance.employee_id == emp_id,
             func.date(Attendance.date) == dateparser.parse(date_str).date(),
@@ -1294,6 +1394,7 @@ def get_attendance_audit_logs(
         except Exception:
             pass
     logs = query.order_by(AttendanceAuditLog.created_at.desc()).limit(limit).all()
+    _off3 = _get_org_offset_str(db, current_user)
     result = []
     for log in logs:
         actor = db.query(User).filter(User.deleted_at.is_(None), User.id == log.action_by).first()
@@ -1310,7 +1411,7 @@ def get_attendance_audit_logs(
             "actionBy": log.action_by,
             "actorName": f"{actor.full_name} ({actor.email})" if actor else "System",
             "reason": log.reason,
-            "createdAt": _ist_iso(log.created_at),
+            "createdAt": _ist_iso(log.created_at, _off3),
         })
     return result
 
@@ -1330,9 +1431,12 @@ def bulk_upload_attendance(
         emp_id = int(row.get("employeeId", 0))
         if current_user.role != "superadmin":
             get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+        _upload_emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
         att = Attendance(
             employee_id=emp_id,
-            organization_id=current_user.organization_id,
+            organization_id=_upload_emp.organization_id if _upload_emp else current_user.organization_id,
+            company_id=_upload_emp.company_id if _upload_emp else None,
+            department_id=_upload_emp.department_id if _upload_emp else None,
             check_in=row.get("checkIn"),
             check_out=row.get("checkOut"),
             status=row.get("status", "present"),
@@ -1415,7 +1519,9 @@ def create_correction_request(
         raise HTTPException(status_code=400, detail="Invalid request date")
     req = AttendanceCorrectionRequest(
         employee_id=employee_id,
-        organization_id=current_user.organization_id,
+        organization_id=employee.organization_id if employee else current_user.organization_id,
+        company_id=employee.company_id if employee else None,
+        department_id=employee.department_id if employee else None,
         attendance_id=data.get("attendanceId"),
         request_date=req_date,
         requested_check_in=dateparser.parse(data["requestedCheckIn"]) if data.get("requestedCheckIn") else None,
@@ -1455,10 +1561,10 @@ def approve_correction_request(
     req.review_comments = (payload or {}).get("comments")
     att = Attendance(
         employee_id=req.employee_id,
-        organization_id=req.organization_id,
-        company_id=req.company_id,
-        branch_id=req.branch_id,
-        department_id=req.department_id,
+        organization_id=employee.organization_id if employee else req.organization_id,
+        company_id=employee.company_id if employee else req.company_id,
+        branch_id=employee.branch_id if employee else req.branch_id,
+        department_id=employee.department_id if employee else req.department_id,
         date=req.request_date,
         check_in=req.requested_check_in,
         check_out=req.requested_check_out,

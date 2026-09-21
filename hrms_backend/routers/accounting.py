@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
+from core.company_scope import resolve_company_scope
 from database import get_db
 from models import User
 from services.accounting_service import (
@@ -30,11 +31,13 @@ class ReversePayload(BaseModel):
 
 @router.get("/accounts")
 def get_accounts(
+    companyId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     org_id = getattr(current_user, "organization_id", None)
-    return {"status": "success", "items": list_accounts(db, org_id)}
+    scope_company = resolve_company_scope(db, current_user, companyId)
+    return {"status": "success", "items": list_accounts(db, org_id, company_id=scope_company)}
 
 
 @router.get("/journals")
@@ -42,12 +45,14 @@ def get_journals(
     entry_type: Optional[str] = Query(None),
     reference_type: Optional[str] = Query(None),
     reference_id: Optional[int] = Query(None),
+    companyId: Optional[int] = Query(None),
     limit: int = Query(200, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     org_id = getattr(current_user, "organization_id", None)
-    items = list_journals(db, org_id, entry_type, reference_type, reference_id, limit)
+    scope_company = resolve_company_scope(db, current_user, companyId)
+    items = list_journals(db, org_id, entry_type, reference_type, reference_id, limit, company_id=scope_company)
     return {"status": "success", "items": items}
 
 

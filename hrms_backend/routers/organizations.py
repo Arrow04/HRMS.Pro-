@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.auth import check_role, get_current_user
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import get_db
 from models import Department, Organization, User, Company, Branch, Designation, Employee
 from core.audit import log_activity, get_client_info
@@ -86,6 +87,7 @@ def get_departments(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Department).filter(Department.organization_id == current_user.organization_id)
+    companyId = resolve_company_scope(db, current_user, companyId)
     if companyId:
         query = query.filter(Department.company_id == companyId)
     if active_only:
@@ -125,6 +127,7 @@ def get_departments_count(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Department).filter(Department.organization_id == current_user.organization_id)
+    companyId = resolve_company_scope(db, current_user, companyId)
     if companyId:
         query = query.filter(Department.company_id == companyId)
     return query.count()
@@ -345,6 +348,11 @@ def get_companies(
     query = db.query(Company).filter(Company.organization_id == current_user.organization_id)
     if active_only:
         query = query.filter(Company.status == "active")
+    # Company isolation: restricted roles see only their own company (this rich
+    # payload carries tax IDs — never leak the roster).
+    _org_co_scope = resolve_company_scope(db, current_user, None)
+    if _org_co_scope is not None:
+        query = query.filter(Company.id == _org_co_scope)
     companies = query.limit(100).all()  # Limit for performance
     return [
         {
@@ -381,6 +389,9 @@ def get_companies_count(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Company).filter(Company.organization_id == current_user.organization_id)
+    _cnt_scope = resolve_company_scope(db, current_user, None)
+    if _cnt_scope is not None:
+        query = query.filter(Company.id == _cnt_scope)
     return query.count()
 
 
@@ -644,6 +655,7 @@ def get_branches(
     query = db.query(Branch).filter(Branch.organization_id == current_user.organization_id)
     if active_only:
         query = query.filter(Branch.status == "active")
+    companyId = resolve_company_scope(db, current_user, companyId)
     if companyId:
         query = query.filter(Branch.company_id == companyId)
     branches = query.limit(100).all()  # Limit for performance
@@ -674,8 +686,9 @@ def get_branches_count(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Branch).filter(Branch.organization_id == current_user.organization_id)
-    if companyId:
-        query = query.filter(Branch.company_id == companyId)
+    _br_scope = resolve_company_scope(db, current_user, companyId)
+    if _br_scope:
+        query = query.filter(Branch.company_id == _br_scope)
     return query.count()
 
 
@@ -986,6 +999,7 @@ def get_designations(
     query = db.query(Designation).filter(Designation.organization_id == current_user.organization_id)
     if departmentId:
         query = query.filter(Designation.department_id == departmentId)
+    companyId = resolve_company_scope(db, current_user, companyId)
     if companyId:
         query = query.filter(Designation.company_id == companyId)
     designations = query.limit(100).all()  # Limit for performance
@@ -1015,6 +1029,9 @@ def get_designations_count(
     query = db.query(Designation).filter(Designation.organization_id == current_user.organization_id)
     if departmentId:
         query = query.filter(Designation.department_id == departmentId)
+    _dg_scope = resolve_company_scope(db, current_user, None)
+    if _dg_scope is not None:
+        query = query.filter(Designation.company_id == _dg_scope)
     return query.count()
 
 

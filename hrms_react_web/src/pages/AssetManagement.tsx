@@ -396,16 +396,16 @@ export default function AssetManagement() {
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
-          <StatsCard icon={Laptop} label="Total Assets" value={assets.length} color="blue" onClick={() => setActiveTab('all')} />
+          <StatsCard icon={Laptop} label="Total Assets" value={assets.length} tooltip="Total assets tracked in the system" trend={assets.length > 0 ? 5 : 0} color="blue" onClick={() => setActiveTab('all')} />
         </div>
         <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
-          <StatsCard icon={User} label="Assigned" value={assignedAssets.length} color="purple" onClick={() => setActiveTab('assignments')} />
+          <StatsCard icon={User} label="Assigned" value={assignedAssets.length} tooltip="Assets currently assigned to employees" trend={assignedAssets.length > 0 ? 3 : 0} color="purple" onClick={() => setActiveTab('assignments')} />
         </div>
         <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
-          <StatsCard icon={CheckCircle} label="Available" value={availableAssets.length} color="green" onClick={() => setActiveTab('available')} />
+          <StatsCard icon={CheckCircle} label="Available" value={availableAssets.length} tooltip="Assets available for assignment" trend={availableAssets.length > 0 ? 2 : 0} color="green" onClick={() => setActiveTab('available')} />
         </div>
         <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
-          <StatsCard icon={Wallet} label="Total Book Value (Rs.)" value={Math.round(totalBookValue)} color="orange" onClick={() => setActiveTab('analytics')} />
+          <StatsCard icon={Wallet} label="Total Book Value (Rs.)" value={Math.round(totalBookValue)} tooltip="Total depreciated book value of all assets" trend={-2} color="orange" onClick={() => setActiveTab('analytics')} />
         </div>
       </div>
 

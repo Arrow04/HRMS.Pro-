@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
+from core.company_scope import resolve_company_scope
 from database import get_db
 from models import AnomalyAlert, User
 from services.anomaly_service import run_full_scan
@@ -63,6 +64,7 @@ def list_anomalies(
     status: Optional[str] = Query(None, pattern="^(open|dismissed|resolved)$"),
     severity: Optional[str] = Query(None, pattern="^(low|medium|high|critical)$"),
     anomaly_type: Optional[str] = None,
+    companyId: Optional[int] = None,
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -71,6 +73,9 @@ def list_anomalies(
     query = db.query(AnomalyAlert).filter(
         AnomalyAlert.organization_id == current_user.organization_id,
     )
+    company_scope = resolve_company_scope(db, current_user, companyId)
+    if company_scope is not None:
+        query = query.filter(AnomalyAlert.company_id == company_scope)
     if status:
         query = query.filter(AnomalyAlert.status == status)
     if severity:
@@ -84,14 +89,21 @@ def list_anomalies(
 
 @router.get("/stats")
 def anomaly_stats(
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get anomaly alert summary statistics."""
     org_id = current_user.organization_id
-    total = db.query(AnomalyAlert).filter(AnomalyAlert.organization_id == org_id).count()
+    company_scope = resolve_company_scope(db, current_user, companyId)
+
+    base_filters = [AnomalyAlert.organization_id == org_id]
+    if company_scope is not None:
+        base_filters.append(AnomalyAlert.company_id == company_scope)
+
+    total = db.query(AnomalyAlert).filter(*base_filters).count()
     open_count = db.query(AnomalyAlert).filter(
-        AnomalyAlert.organization_id == org_id, AnomalyAlert.status == "open"
+        *base_filters, AnomalyAlert.status == "open"
     ).count()
 
     # Type breakdown
@@ -99,7 +111,7 @@ def anomaly_stats(
     type_rows = db.query(
         AnomalyAlert.anomaly_type, func.count(AnomalyAlert.id)
     ).filter(
-        AnomalyAlert.organization_id == org_id,
+        *base_filters,
         AnomalyAlert.status == "open",
     ).group_by(AnomalyAlert.anomaly_type).all()
 

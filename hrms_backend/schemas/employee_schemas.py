@@ -38,6 +38,7 @@ class EmployeeBase(BaseModel):
     phone: Optional[str] = Field(None, max_length=50)
     date_of_birth: Optional[date] = None
     gender: Optional[str] = Field(None, max_length=20)
+    is_person_with_disability: Optional[bool] = False
     address: Optional[str] = Field(None, max_length=500)
     emergency_contact: Optional[str] = Field(None, max_length=100)
     emergency_phone: Optional[str] = Field(None, max_length=50)

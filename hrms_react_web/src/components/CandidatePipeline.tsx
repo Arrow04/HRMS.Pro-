@@ -8,6 +8,7 @@ import {
 import CvUploadButton from './CvUploadButton';
 import { formatAppDate } from '../services/appSettingsService';
 import { personDisplayName, personInitials } from '../utils/employeeNameUtils';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 
 interface PipelineCandidate {
   id: number;
@@ -147,7 +148,7 @@ const CandidatePipeline: React.FC<CandidatePipelineProps> = ({
 
   const initials = (c: PipelineCandidate) => personInitials(c, 'C');
 
-  const currency = (v?: number) => v ? `₹${(v / 100000).toFixed(1)}L` : '';
+  const currency = (v?: number) => v ? `${getCurrencySymbol(getAppCurrency())}${(v / 100000).toFixed(1)}L` : '';
 
   const canAdvance = (c: PipelineCandidate) => {
     if (c.onboarded) return false;

@@ -11,6 +11,7 @@ import re
 from database_enterprise import get_db
 from ai_engine import chatbot, ai_engine
 from ai_service import AIAssistant, ChatContext
+from core.format_utils import currency_symbol, org_currency_code
 
 router = APIRouter(tags=["chatbot"])
 
@@ -157,6 +158,7 @@ def _handle_payroll_query(message: str, user_id: str, db: Session) -> str:
         return "Could not find your employee profile. Please contact HR."
 
     emp_id = user.id
+    _sym = currency_symbol(org_currency_code(None))
 
     payslips = db.query(Payroll).filter(Payroll.employee_id == emp_id).order_by(Payroll.created_at.desc()).limit(3).all()
 
@@ -167,7 +169,7 @@ def _handle_payroll_query(message: str, user_id: str, db: Session) -> str:
         for p in payslips:
             net = p.net_pay or p.net_payable or p.take_home or 0
             status = p.status or 'pending'
-            lines.append(f"• {p.pay_period or p.period or 'N/A'} — ₹{net:,.0f} ({status})")
+            lines.append(f"• {p.pay_period or p.period or 'N/A'} — {_sym}{net:,.0f} ({status})")
         lines.append("\nGo to Profile > Payslips to download PDFs.")
         return "\n".join(lines)
 
@@ -181,10 +183,10 @@ def _handle_payroll_query(message: str, user_id: str, db: Session) -> str:
         deductions = p.total_deductions or p.deductions or (gross - net) if gross and net else 0
         lines = [
             f"Payroll Summary ({p.pay_period or p.period or 'Latest'}):",
-            f"• Basic Salary: ₹{base:,.0f}",
-            f"• Gross Salary: ₹{gross:,.0f}",
-            f"• Deductions: ₹{deductions:,.0f}",
-            f"• Net Pay: ₹{net:,.0f}",
+            f"• Basic Salary: {_sym}{base:,.0f}",
+            f"• Gross Salary: {_sym}{gross:,.0f}",
+            f"• Deductions: {_sym}{deductions:,.0f}",
+            f"• Net Pay: {_sym}{net:,.0f}",
         ]
         return "\n".join(lines)
 

@@ -24,6 +24,7 @@ from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.company_scope import resolve_company_scope, assert_company_allowed
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
@@ -209,7 +210,10 @@ def export_employee_report(
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(Employee.organization_id == current_user.organization_id)
-    if companyId:
+    _rpt_scope = resolve_company_scope(db, current_user, companyId)
+    if _rpt_scope is not None:
+        query = query.filter(Employee.company_id == _rpt_scope)
+    elif companyId:
         query = query.filter(Employee.company_id == companyId)
     employees = query.all()
 

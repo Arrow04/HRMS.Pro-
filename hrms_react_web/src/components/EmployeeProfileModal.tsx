@@ -13,12 +13,14 @@ import {
 } from '../services/employeeService';
 import { useMasterData } from '../hooks/useMasterData';
 import { capitalizeStatus } from '../utils/statusUtils';
+import { formatTime } from '../utils/formatUtils';
 import toast from 'react-hot-toast';
 import DatePicker from '../components/DatePicker';
 import IfscInput from '../components/IfscInput';
 import StateSelect from '../components/StateSelect';
 import PincodeInput from '../components/PincodeInput';
 import type { Attendance, Employee, Expense, Holiday, LeaveApplication, Payroll } from '../types';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import type { LookupValue } from '../services/masterDataService';
 import { joinEmployeeName, personDisplayName, personInitials, splitEmployeeName } from '../utils/employeeNameUtils';
 
@@ -345,8 +347,8 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
                         {records.map((r, i) => (
                           <tr key={i} className="hover:bg-gray-50">
                             <td className="px-4 py-2 text-xs font-medium">{r.date?.split('T')[0]}</td>
-                            <td className="px-4 py-2 text-xs">{r.checkIn || '-'}</td>
-                            <td className="px-4 py-2 text-xs">{r.checkOut || '-'}</td>
+                            <td className="px-4 py-2 text-xs">{formatTime(r.checkIn)}</td>
+                            <td className="px-4 py-2 text-xs">{formatTime(r.checkOut)}</td>
                             <td className="px-4 py-2"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${r.status === 'present' ? 'bg-green-50 text-green-700' : r.status === 'absent' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>{capitalizeStatus(r.status)}</span></td>
                           </tr>
                         ))}
@@ -385,9 +387,9 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
                   {payroll.length > 0 ? payroll.slice(0, 6).map((r: Payroll, i: number) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-xs font-medium">{r.month}/{r.year}</td>
-                      <td className="px-4 py-3 text-xs">₹{r.grossSalary?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-xs text-red-600">₹{r.totalDeductions?.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-xs font-semibold text-green-600">₹{r.netSalary?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs">{getCurrencySymbol(getAppCurrency())}{r.grossSalary?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs text-red-600">{getCurrencySymbol(getAppCurrency())}{r.totalDeductions?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-green-600">{getCurrencySymbol(getAppCurrency())}{r.netSalary?.toLocaleString()}</td>
                       <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${r.status === 'paid' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>{capitalizeStatus(r.status)}</span></td>
                     </tr>
                   )) : <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No payroll records</td></tr>}
@@ -462,7 +464,7 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
                   {expenses.length > 0 ? expenses.slice(0, 8).map((e: Expense, i: number) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-xs font-medium">{e.category}</td>
-                      <td className="px-4 py-3 text-xs">₹{e.amount?.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs">{getCurrencySymbol(getAppCurrency())}{e.amount?.toLocaleString()}</td>
                       <td className="px-4 py-3 text-xs">{e.expenseDate?.split('T')[0]}</td>
                       <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${e.status === 'approved' ? 'bg-green-50 text-green-700' : e.status === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-yellow-50 text-yellow-700'}`}>{capitalizeStatus(e.status)}</span></td>
                     </tr>

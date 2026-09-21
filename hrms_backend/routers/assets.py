@@ -31,6 +31,7 @@ from core.config import settings
 from core.schemas import (AssetCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -45,15 +46,27 @@ router = APIRouter(tags=["Assets"])
 def get_assets(
     status: Optional[str] = None,
     employeeId: Optional[int] = None,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Asset).filter(Asset.deleted_at.is_(None))
     if current_user.organization_id:
         query = query.filter(Asset.organization_id == current_user.organization_id)
+    # Company isolation: assets assigned to another company's employees are
+    # hidden. Unassigned pool stock (no employee) stays visible for operations.
+    _asset_scope = resolve_company_scope(db, current_user, companyId)
+    if _asset_scope is not None:
+        from sqlalchemy import or_ as _or
+        query = query.outerjoin(Employee, Asset.employee_id == Employee.id).filter(
+            _or_(Employee.company_id == _asset_scope, Asset.employee_id.is_(None)))
     if status:
         query = query.filter(Asset.status == status)
     if employeeId:
+        if current_user.role != "superadmin":
+            _a_emp = db.query(Employee).filter(Employee.id == employeeId).first()
+            if _a_emp is not None:
+                assert_company_allowed(db, current_user, _a_emp.company_id)
         query = query.filter(Asset.employee_id == employeeId)
     results = query.order_by(Asset.created_at.desc()).limit(500).all()
 
@@ -136,7 +149,8 @@ def create_asset(
     if current_user.role != "superadmin":
         snake["organization_id"] = current_user.organization_id
         if snake.get("employee_id"):
-            get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
+            _asg = get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
+            assert_company_allowed(db, current_user, _asg.company_id)
     else:
         snake["organization_id"] = data.organizationId or current_user.organization_id
     for date_key in ("purchase_date", "issue_date"):
@@ -174,6 +188,8 @@ def update_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
     if current_user.role != "superadmin":
         org_owned(att, current_user.organization_id)
+    _upd_emp = db.query(Employee).filter(Employee.id == att.employee_id).first() if att.employee_id else None
+    assert_company_allowed(db, current_user, _upd_emp.company_id if _upd_emp else None)
     update_data = data.model_dump(exclude_unset=True)
     snake = convert_camel_to_snake(update_data)
     for date_key in ("purchase_date", "issue_date"):
@@ -191,7 +207,8 @@ def update_asset(
             raise HTTPException(status_code=400, detail=f"Invalid {date_key}: {raw}")
         snake[date_key] = parsed.date()
     if current_user.role != "superadmin" and snake.get("employee_id"):
-        get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
+        _reasg = get_employee_in_org(db, Employee, snake["employee_id"], current_user.organization_id)
+        assert_company_allowed(db, current_user, _reasg.company_id)
     for key, val in snake.items():
         if val is not None:
             setattr(att, key, val)
@@ -210,6 +227,8 @@ def delete_asset(
         raise HTTPException(status_code=404, detail="Asset not found")
     if current_user.role != "superadmin":
         org_owned(att, current_user.organization_id)
+    _del_emp = db.query(Employee).filter(Employee.id == att.employee_id).first() if att.employee_id else None
+    assert_company_allowed(db, current_user, _del_emp.company_id if _del_emp else None)
     att.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Asset deleted"}
@@ -310,7 +329,16 @@ def get_bonuses(
         Payroll.bonus > 0,
         Payroll.deleted_at.is_(None),
     )
+    if current_user.organization_id:
+        query = query.filter(Payroll.organization_id == current_user.organization_id)
+    _bon_scope = resolve_company_scope(db, current_user, None)
+    if _bon_scope is not None:
+        query = query.filter(Payroll.company_id == _bon_scope)
     if employeeId:
+        if current_user.role != "superadmin":
+            _bon_emp = db.query(Employee).filter(Employee.id == employeeId).first()
+            if _bon_emp is not None:
+                assert_company_allowed(db, current_user, _bon_emp.company_id)
         query = query.filter(Payroll.employee_id == employeeId)
     if month:
         query = query.filter(Payroll.month == month)
@@ -347,6 +375,9 @@ def create_bonus(
         Payroll.deleted_at.is_(None),
     ).first()
     if existing:
+        _ex_emp = db.query(Employee).filter(Employee.id == existing.employee_id).first()
+        if _ex_emp is not None:
+            assert_company_allowed(db, current_user, _ex_emp.company_id)
         existing.bonus = (existing.bonus or 0) + data.amount
         if data.reason:
             existing.notes = (existing.notes or "") + f"; Bonus: {data.reason}"
@@ -354,6 +385,7 @@ def create_bonus(
         emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == data.employeeId).first()
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found")
+        assert_company_allowed(db, current_user, emp.company_id)
         p = Payroll(
             employee_id=data.employeeId,
             month=data.month,

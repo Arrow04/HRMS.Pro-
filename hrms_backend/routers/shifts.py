@@ -12,6 +12,7 @@ from database import get_db
 from models import Shift, DutyRoster, Employee, User, Company, Branch, Department
 from routers.auth import get_current_user
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 
 router = APIRouter(tags=["Shifts & Roster"])
 
@@ -91,15 +92,17 @@ def get_shifts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all shifts with optional filtering"""
+    """Get all shifts with optional filtering (company-scoped for restricted roles)."""
     query = db.query(Shift)
-    
+
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(Shift.organization_id == current_user.organization_id)
     elif organization_id:
         query = query.filter(Shift.organization_id == organization_id)
+    company_id = resolve_company_scope(db, current_user, company_id)
     if company_id:
-        query = query.filter(Shift.company_id == company_id)
+        from sqlalchemy import or_
+        query = query.filter(or_(Shift.company_id == company_id, Shift.company_id == None))
     if shift_type:
         query = query.filter(Shift.shift_type == shift_type)
     if status:
@@ -119,6 +122,8 @@ def create_shift(
         data["organization_id"] = current_user.organization_id
         if data.get("company_id"):
             validate_company_in_org(db, Company, data["company_id"], current_user.organization_id)
+        if data.get("company_id") not in (None, "", 0):
+            data["company_id"] = require_write_company(db, current_user, data["company_id"])
         if data.get("branch_id"):
             br = db.query(Branch).filter(Branch.id == data["branch_id"]).first()
             if br is None or int(br.organization_id) != int(current_user.organization_id):
@@ -132,14 +137,8 @@ def create_shift(
             raise HTTPException(status_code=400, detail="organization_id is required for superadmin")
 
     dup = db.query(Shift).filter(Shift.code == data["code"])
-    if data.get("company_id"):
-        dup = dup.filter(Shift.company_id == data["company_id"])
-    else:
-        dup = dup.filter(Shift.company_id == None)
-    if data.get("organization_id"):
-        dup = dup.filter(Shift.organization_id == data["organization_id"])
     if dup.first():
-        raise HTTPException(status_code=400, detail="Shift code already exists for this scope")
+        raise HTTPException(status_code=400, detail=f"Shift code '{data['code']}' already exists. Please choose a different code.")
     db_shift = Shift(**data)
     db.add(db_shift)
     db.commit()
@@ -160,6 +159,7 @@ def update_shift(
     
     if current_user.role != "superadmin":
         org_owned(db_shift, current_user.organization_id)
+    assert_company_allowed(db, current_user, db_shift.company_id)
     for key, value in shift.dict().items():
         if key in ("organization_id", "company_id"):
             continue
@@ -183,6 +183,7 @@ def delete_shift(
     
     if current_user.role != "superadmin":
         org_owned(db_shift, current_user.organization_id)
+    assert_company_allowed(db, current_user, db_shift.company_id)
     db_shift.status = "inactive"
     db_shift.updated_at = ist_now_naive()
     db.commit()
@@ -220,8 +221,10 @@ def get_weekly_roster(
         query = query.filter(Employee.organization_id == current_user.organization_id)
     if employee_id:
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+            _rost_emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+            assert_company_allowed(db, current_user, _rost_emp.company_id)
         query = query.filter(DutyRoster.employee_id == employee_id)
+    company_id = resolve_company_scope(db, current_user, company_id)
     if company_id:
         query = query.filter(Employee.company_id == company_id)
     
@@ -248,10 +251,12 @@ def assign_shift(
 ):
     """Assign shift to employee for a specific day"""
     if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, assignment.employee_id, current_user.organization_id)
+        _asg_emp = get_employee_in_org(db, Employee, assignment.employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, _asg_emp.company_id)
         shift = db.query(Shift).filter(Shift.id == assignment.shift_id).first()
         if shift is None or int(shift.organization_id) != int(current_user.organization_id):
             raise HTTPException(status_code=404, detail="Shift not found")
+        assert_company_allowed(db, current_user, shift.company_id)
     week_start = datetime.strptime(assignment.week_start_date, "%Y-%m-%d")
     specific_date = datetime.strptime(assignment.specific_date, "%Y-%m-%d") if assignment.specific_date else None
     
@@ -302,7 +307,8 @@ def assign_shift_bulk(
     
     for employee_id in assignment.employee_ids:
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+            _bulk_emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+            assert_company_allowed(db, current_user, _bulk_emp.company_id)
         for day in assignment.days:
             # Check existing
             existing = db.query(DutyRoster).filter(
@@ -343,7 +349,8 @@ def remove_roster_assignment(
         raise HTTPException(status_code=404, detail="Roster entry not found")
     
     if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, roster.employee_id, current_user.organization_id)
+        _rm_emp = get_employee_in_org(db, Employee, roster.employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, _rm_emp.company_id)
     db.delete(roster)
     db.commit()
     return {"message": "Roster assignment removed"}
@@ -358,7 +365,8 @@ def get_employee_roster_history(
 ):
     """Get roster history for a specific employee"""
     if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        _hist_emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, _hist_emp.company_id)
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     

@@ -904,48 +904,52 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '0ms' }}>
-            <StatsCard 
-              icon={FileBarChart} 
-              label="Total Reports" 
-              value={liveData?.reports?.length || 0} 
-              trend={12} 
-              iconBg="bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5" 
-              iconColor="text-[var(--primary-blue)]" 
-              onClick={() => setActiveSection('export-hub')}
-            />
+          <StatsCard
+  icon={FileBarChart}
+  label="Total Reports"
+  value={liveData?.reports?.length || 0}
+  trend={12}
+  tooltip="Total reports generated in the system"
+  iconBg="bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5"
+  iconColor="text-[var(--primary-blue)]"
+  onClick={() => setActiveSection('export-hub')}
+  />
           </div>
           <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '100ms' }}>
-            <StatsCard 
-              icon={Activity} 
-              label="Active Schedule" 
-              value={scheduledReports?.filter((r: ScheduleEntry) => r.enabled !== false).length || 0} 
-              trend={8} 
-              iconBg="bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5" 
-              iconColor="text-[#059669]" 
-              onClick={() => setActiveSection('scheduler')}
-            />
+          <StatsCard
+  icon={Activity}
+  label="Active Schedule"
+  value={scheduledReports?.filter((r: ScheduleEntry) => r.enabled !== false).length || 0}
+  trend={8}
+  tooltip="Currently active report schedules"
+  iconBg="bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5"
+  iconColor="text-[#059669]"
+  onClick={() => setActiveSection('scheduler')}
+  />
           </div>
           <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '200ms' }}>
-            <StatsCard 
-              icon={Clock} 
-              label="Inactive Schedule" 
-              value={scheduledReports?.filter((r: ScheduleEntry) => r.enabled === false).length || 0} 
-              trend={-5} 
-              iconBg="bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5" 
-              iconColor="text-[#7C3AED]" 
-              onClick={() => setActiveSection('scheduler')}
-            />
+          <StatsCard
+  icon={Clock}
+  label="Inactive Schedule"
+  value={scheduledReports?.filter((r: ScheduleEntry) => r.enabled === false).length || 0}
+  trend={-5}
+  tooltip="Paused or disabled report schedules"
+  iconBg="bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5"
+  iconColor="text-[#7C3AED]"
+  onClick={() => setActiveSection('scheduler')}
+  />
           </div>
           <div className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: '300ms' }}>
-            <StatsCard 
-              icon={Download} 
-              label="Exports Today" 
-              value={exportHistory?.length || 0} 
-              trend={-2} 
-              iconBg="bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5" 
-              iconColor="text-[#D97706]" 
-              onClick={() => setActiveSection('report-log')}
-            />
+          <StatsCard
+  icon={Download}
+  label="Exports Today"
+  value={exportHistory?.length || 0}
+  trend={-2}
+  tooltip="Report exports performed today"
+  iconBg="bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5"
+  iconColor="text-[#D97706]"
+  onClick={() => setActiveSection('report-log')}
+  />
           </div>
         </div>
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from core.shared import _get_employee_id_for_user
 from database import get_db, get_read_db
 from models import Employee, SupportTicket, User
@@ -70,6 +71,7 @@ def _ticket_number(ticket_id: int) -> str:
 def list_tickets(
     status: Optional[str] = None,
     category: Optional[str] = None,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -79,6 +81,11 @@ def list_tickets(
         if not employee_id:
             raise HTTPException(status_code=400, detail="Employee profile not found")
         query = query.filter(SupportTicket.employee_id == employee_id)
+    else:
+        # Company isolation for ticket viewers (self-filed view above is unaffected).
+        _tk_scope = resolve_company_scope(db, current_user, companyId)
+        if _tk_scope is not None:
+            query = query.filter(SupportTicket.company_id == _tk_scope)
     if status:
         query = query.filter(SupportTicket.status == status)
     if category:
@@ -151,6 +158,7 @@ def update_ticket(
     is_owner = employee_id and ticket.employee_id == employee_id
     if not (is_admin or is_owner):
         raise HTTPException(status_code=403, detail="Not authorized")
+    assert_company_allowed(db, current_user, ticket.company_id)
     if "subject" in data and data["subject"] is not None:
         ticket.subject = str(data["subject"]).strip() or ticket.subject
     if "description" in data and data["description"] is not None:
@@ -195,6 +203,7 @@ def delete_ticket(
     ticket = db.query(SupportTicket).filter(SupportTicket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    assert_company_allowed(db, current_user, ticket.company_id)
     ticket.deleted_at = datetime.utcnow()
     db.commit()
     return {"message": "Ticket deleted", "id": ticket_id}

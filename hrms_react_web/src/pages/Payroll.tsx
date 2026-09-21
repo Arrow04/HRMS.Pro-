@@ -1143,10 +1143,10 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   };
 
   const statCards = [
-    { label: 'Total Payroll (Rs.)', value: toNum(stats.totalPayroll), icon: Wallet, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('payslips') },
-    { label: 'Employees Paid', value: toNum(stats.employeesPaid), icon: Users, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('payslips') },
-    { label: 'Pending', value: toNum(stats.pending), icon: Clock, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => setActiveTab('payslips') },
-    { label: 'Avg Salary (Rs.)', value: toNum(stats.avgSalary), icon: Coins, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => setActiveTab('payslips') },
+    { label: 'Total Payroll (Rs.)', value: toNum(stats.totalPayroll), icon: Wallet, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', tooltip: 'Total payroll processed this period', trend: 8, onClick: () => setActiveTab('payslips') },
+    { label: 'Employees Paid', value: toNum(stats.employeesPaid), icon: Users, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', tooltip: 'Employees who received salary this period', trend: 5, onClick: () => setActiveTab('payslips') },
+    { label: 'Pending', value: toNum(stats.pending), icon: Clock, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', tooltip: 'Payroll records awaiting processing', trend: stats.pending > 0 ? -3 : 0, onClick: () => setActiveTab('payslips') },
+    { label: 'Avg Salary (Rs.)', value: toNum(stats.avgSalary), icon: Coins, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', tooltip: 'Average salary across processed employees', trend: 3, onClick: () => setActiveTab('payslips') },
   ];
 
   
@@ -1614,7 +1614,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
           {statCards.map((stat, index) => (
             <div key={index} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>

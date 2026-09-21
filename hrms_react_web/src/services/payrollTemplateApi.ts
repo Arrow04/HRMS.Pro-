@@ -114,12 +114,14 @@ export interface PayrollTemplate {
   payroll_policy_id?: number | null;
   attendance_policy_id?: number | null;
   tax_regime_id?: number | null;
+  leave_template_id?: number | null;
   pay_cycle?: string;
   pay_day?: number | null;
   auto_payslip?: boolean;
   email_payslip?: boolean;
   policy_name?: string | null;
   attendance_name?: string | null;
+  leave_template_name?: string | null;
   tax_regime_name?: string | null;
   component_count?: number;
   employee_count?: number;
@@ -144,6 +146,8 @@ export interface PayrollTemplatePayload {
   statutory?: PayrollTemplateStatutory;
   taxRegime?: PayrollTemplateTaxRegime;
   attendancePolicy?: PayrollTemplateAttendance;
+  attendancePolicyId?: number | null;
+  leaveTemplateId?: number | null;
   payCycle?: string;
   payDay?: number | null;
   autoPayslip?: boolean;

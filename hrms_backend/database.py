@@ -642,8 +642,8 @@ def init_db():
                 name="Default Organization",
                 code="DEFAULT",
                 status="active",
-                default_currency="INR",
-                timezone="Asia/Kolkata",
+                default_currency=os.environ.get("DEFAULT_CURRENCY", "INR"),
+                timezone=os.environ.get("DEFAULT_TIMEZONE", "Asia/Kolkata"),
                 registered_state="Karnataka",
             )
             db.add(org)

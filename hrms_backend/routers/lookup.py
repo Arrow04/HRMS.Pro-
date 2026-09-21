@@ -160,6 +160,8 @@ async def get_lookup_structure(db: Session = Depends(get_db), current_user: User
 @router.post("")
 async def create_lookup_item(lookup_data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Create a new lookup item"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         new_lookup = Lookup(
             tab_category=lookup_data["tabCategory"],
@@ -191,6 +193,8 @@ async def create_lookup_item(lookup_data: dict, db: Session = Depends(get_db), c
 @router.put("/{lookup_id}")
 async def update_lookup_item(lookup_id: int, lookup_data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Update an existing lookup item"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         lookup = db.query(Lookup).filter(Lookup.id == lookup_id).first()
         if not lookup:
@@ -224,6 +228,8 @@ async def update_lookup_item(lookup_id: int, lookup_data: dict, db: Session = De
 @router.delete("/{lookup_id}")
 async def delete_lookup_item(lookup_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Delete a lookup item"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         lookup = db.query(Lookup).filter(Lookup.id == lookup_id).first()
         if not lookup:
@@ -240,6 +246,8 @@ async def delete_lookup_item(lookup_id: int, db: Session = Depends(get_db), curr
 @router.patch("/{lookup_id}/toggle")
 async def toggle_lookup_item(lookup_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Toggle active status of a lookup item"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         lookup = db.query(Lookup).filter(Lookup.id == lookup_id).first()
         if not lookup:
@@ -260,6 +268,8 @@ async def toggle_lookup_item(lookup_id: int, db: Session = Depends(get_db), curr
 @router.post("/bulk")
 async def bulk_create_lookup_items(items: list[dict], db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Bulk create lookup items"""
+    if current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     try:
         created_items = []
         for item_data in items:

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
+from core.company_scope import resolve_company_scope
 from database import get_db
 from models import Employee, InvestmentDeclaration, TaxRegime, User
 
@@ -120,12 +121,16 @@ def _get_decl(db: Session, decl_id: int, user: Optional[User] = None) -> Investm
 def list_declarations(
     employee_id: Optional[int] = Query(None),
     financial_year: Optional[str] = Query(None),
+    companyId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
+    scope_company = resolve_company_scope(db, user, companyId)
     q = db.query(InvestmentDeclaration).join(Employee, Employee.id == InvestmentDeclaration.employee_id).filter(InvestmentDeclaration.deleted_at.is_(None))
     if user and user.role != "superadmin":
         q = q.filter(Employee.organization_id == user.organization_id)
+    if scope_company is not None:
+        q = q.filter(Employee.company_id == scope_company)
     if employee_id:
         q = q.filter(InvestmentDeclaration.employee_id == employee_id)
     if financial_year:

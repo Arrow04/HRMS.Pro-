@@ -395,10 +395,10 @@ const Expenses = () => {
   const hasActiveFilters = Boolean(searchTerm || companyFilter !== 'all' || branchFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || startDate !== '' || endDate !== '');
 
   const statCards = [
-    { label: 'Total (Rs.)', value: num(stats.totalAmount ?? stats.total), icon: CreditCard, color: 'blue', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
-    { label: 'Pending (Rs.)', value: num(stats.pendingAmount), icon: Clock, color: 'orange', onClick: () => { setActiveTab('records'); setStatusFilter('pending'); } },
-    { label: 'Approved (Rs.)', value: num(stats.approvedAmount), icon: CheckCircle2, color: 'green', onClick: () => { setActiveTab('approved'); setStatusFilter('all'); } },
-    { label: 'This Month (Rs.)', value: num(stats.thisMonthAmount), icon: Wallet, color: 'purple', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
+    { label: 'Total (Rs.)', value: num(stats.totalAmount ?? stats.total), icon: CreditCard, color: 'blue', tooltip: 'Total expense amount across all claims', trend: 8, onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
+    { label: 'Pending (Rs.)', value: num(stats.pendingAmount), icon: Clock, color: 'orange', tooltip: 'Expenses awaiting approval', trend: -3, onClick: () => { setActiveTab('records'); setStatusFilter('pending'); } },
+    { label: 'Approved (Rs.)', value: num(stats.approvedAmount), icon: CheckCircle2, color: 'green', tooltip: 'Expenses approved for reimbursement', trend: 12, onClick: () => { setActiveTab('approved'); setStatusFilter('all'); } },
+    { label: 'This Month (Rs.)', value: num(stats.thisMonthAmount), icon: Wallet, color: 'purple', tooltip: 'Expense claims submitted this month', trend: 5, onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -465,7 +465,7 @@ const Expenses = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
             {statCards.map((stat, index) => (
               <div key={index} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-                <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} onClick={stat.onClick} />
+                <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
               </div>
             ))}
           </div>
@@ -771,71 +771,9 @@ const Expenses = () => {
 
           {/* CONFIGURATION TAB */}
           {activeTab === 'config' && (
-            <div className="animate-in fade-in duration-300 space-y-6">
-              <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                      <Settings className="w-5 h-5 text-purple-600" />
-                      Expenses Configuration
-                    </h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Configure expense categories, approval workflows, spending limits, reimbursement rules, and submission policies.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowExpensesConfig(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-purple-200/50 flex items-center gap-2"
-                  >
-                    <Settings className="w-4 h-4" />
-                    Open Configuration
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
-                      <Tags className="w-5 h-5" />
-                    </span>
-                    <h4 className="text-sm font-bold text-[#0F172A]">Expense Categories</h4>
-                  </div>
-                  <p className="text-xs text-[#94A3B8]">Categories with GL codes, spending limits, receipt rules</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </span>
-                    <h4 className="text-sm font-bold text-[#0F172A]">Approval Workflow</h4>
-                  </div>
-                  <p className="text-xs text-[#94A3B8]">Multi-level approval chains, auto-approve, escalation</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
-                      <Wallet className="w-5 h-5" />
-                    </span>
-                    <h4 className="text-sm font-bold text-[#0F172A]">Spending Limits</h4>
-                  </div>
-                  <p className="text-xs text-[#94A3B8]">Global, grade-wise, and department-wise limits</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
-                      <Receipt className="w-5 h-5" />
-                    </span>
-                    <h4 className="text-sm font-bold text-[#0F172A]">Submission Rules</h4>
-                  </div>
-                  <p className="text-xs text-[#94A3B8]">Deadlines, duplicate detection, receipt requirements</p>
-                </div>
-              </div>
+            <div className="animate-in fade-in duration-300">
+              <ExpensesConfig />
             </div>
-          )}
-
-          {showExpensesConfig && (
-            <ExpensesConfig open={showExpensesConfig} onClose={() => setShowExpensesConfig(false)} />
           )}
 
       {/* Full Page Drawer Modal */}

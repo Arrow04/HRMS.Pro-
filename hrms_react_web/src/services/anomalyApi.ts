@@ -22,11 +22,11 @@ export interface AnomalyStats {
   by_type: Record<string, number>;
 }
 
-export const getAnomalies = (params?: { status?: string; severity?: string; anomaly_type?: string; limit?: number }) =>
+export const getAnomalies = (params?: { company_id?: number; status?: string; severity?: string; anomaly_type?: string; limit?: number }) =>
   api.get<AnomalyAlert[]>('/anomalies', { params }).then(r => r.data);
 
-export const getAnomalyStats = () =>
-  api.get<AnomalyStats>('/anomalies/stats').then(r => r.data);
+export const getAnomalyStats = (companyId?: number) =>
+  api.get<AnomalyStats>('/anomalies/stats', { params: companyId ? { companyId } : undefined }).then(r => r.data);
 
 export const runScan = () =>
   api.post<{ scanned_at: string; detected: number; new_alerts: number; by_type: Record<string, number> }>('/anomalies/scan').then(r => r.data);

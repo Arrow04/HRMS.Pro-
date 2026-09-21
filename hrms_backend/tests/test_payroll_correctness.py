@@ -739,11 +739,16 @@ def test_employee_list_masks_pii_for_employee_role(client, db_session, admin_tok
     app.dependency_overrides[get_read_db] = override_read_db
     try:
         org, emp = _mk(db_session)
+        from models import Company
+        co = Company(name="PC Co", organization_id=org.id, status="active")
+        db_session.add(co)
+        db_session.flush()
+        emp.company_id = co.id
         emp.pan_number = "ABCDE1234F"
         emp.bank_account_number = "987654321"
         emp.base_salary = 600000
         emp2 = Employee(first_name="Other", last_name="Colleague", email="other@example.com", employee_code="PC099",
-                        organization_id=org.id, base_salary=500000, status="active", join_date=datetime(2020, 1, 1),
+                        organization_id=org.id, company_id=co.id, base_salary=500000, status="active", join_date=datetime(2020, 1, 1),
                         pan_number="ZZZZZ9999Z", bank_account_number="111222333")
         db_session.add(emp2)
         db_session.flush()

@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity, TextInput } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
+import { Badge } from '../components/UI';
 import { useTheme } from '../context/ThemeContext';
 import { EmptyState } from '../components/UI';
 import {
   useAdminStyles, AdminHeader, AdminStatRow, AdminTabPills, AdminSearchBar,
-  AdminListCard, AdminFieldLabel, AdminInput, AdminCrudSheet, AdminDetailRows, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
+  AdminListCard, AdminFieldLabel, AdminInput, AdminCrudSheet, AdminDetailRows, AdminModalShell, scrollViewTopBarProps, useScrollTopBar } from '../components/AdminScreenKit';
 
 const TABS = [
   { key: 'companies', label: 'Companies' },
   { key: 'branches', label: 'Branches' },
-  { key: 'departments', label: 'Depts' },
-  { key: 'designations', label: 'Desigs' },
+  { key: 'departments', label: 'Departments' },
+  { key: 'designations', label: 'Designations' },
 ];
 
 const ENDPOINTS = {
@@ -35,6 +37,17 @@ const CompanyScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+
+  const STATUS_OPTIONS = [
+    { label: 'All Status', value: '' },
+    { label: 'Active', value: 'active' },
+    { label: 'Inactive', value: 'inactive' },
+  ];
   const [selectedItem, setSelectedItem] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -42,7 +55,8 @@ const CompanyScreen = ({ navigation }) => {
   const [saving, setSaving] = useState(false);
 
   const isModalOpen = !!selectedItem || isCreating;
-  const entityLabel = tab.slice(0, -1);
+  const entityLabel = tab === 'companies' ? 'company' : tab === 'branches' ? 'branch' : tab === 'departments' ? 'department' : 'designation';
+  const EntityLabel = entityLabel.charAt(0).toUpperCase() + entityLabel.slice(1);
 
   const fetchData = useCallback(async () => {
     try {
@@ -116,10 +130,18 @@ const CompanyScreen = ({ navigation }) => {
     ]);
   };
 
+  const selectedCompanyName = companyFilter ? (companies.find((c) => String(c.id) === companyFilter)?.name || 'Select company') : 'All Companies';
+  const companyOptions = companies.filter((c) => !companySearch.trim() || (c.name || '').toLowerCase().includes(companySearch.trim().toLowerCase()));
   const data = { companies, branches, departments, designations }[tab] || [];
+  const itemCompanyId = (d) => d.companyId ?? d.company_id ?? d.company?.id;
   const filtered = data.filter((d) => {
     const q = search.toLowerCase();
-    return !q || (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q) || (d.title || '').toLowerCase().includes(q);
+    const matchSearch = !q || (d.name || '').toLowerCase().includes(q) || (d.code || '').toLowerCase().includes(q) || (d.title || '').toLowerCase().includes(q);
+    const matchCompany = tab === 'companies' || !companyFilter || String(itemCompanyId(d) ?? '') === companyFilter;
+    const rawActive = d.isActive ?? d.is_active;
+    const statusVal = typeof rawActive === 'boolean' ? (rawActive ? 'active' : 'inactive') : (d.status || '').toLowerCase();
+    const matchStatus = !statusFilter || statusVal === statusFilter;
+    return matchSearch && matchCompany && matchStatus;
   });
 
   return (
@@ -137,8 +159,95 @@ const CompanyScreen = ({ navigation }) => {
             { val: departments.length, label: 'Departments', color: '#10B981', bg: '#DCFCE7' },
             { val: designations.length, label: 'Designations', color: '#D97706', bg: '#FEF3C7' },
           ]} />
-          <AdminTabPills tabs={TABS} active={tab} onChange={(t) => { setTab(t); setSearch(''); closeModal(); }} />
+          <AdminTabPills tabs={TABS} active={tab} onChange={(t) => { setTab(t); setSearch(''); setCompanyFilter(''); setStatusFilter(''); closeModal(); }} />
           <AdminSearchBar value={search} onChangeText={setSearch} placeholder={`Search ${tab}...`} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(tab !== 'companies' && companies.length > 0) && (
+              <TouchableOpacity
+                style={[adminStyles.searchRow, { flex: 1 }]}
+                onPress={() => { setCompanySearch(''); setCompanyDropdownOpen(true); }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="business" size={16} color={colors.textTertiary} style={{ marginRight: 8 }} />
+                <Text style={[adminStyles.searchInput, { paddingVertical: 0, color: companyFilter ? colors.text : colors.textTertiary }]} numberOfLines={1}>
+                  {selectedCompanyName}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[adminStyles.searchRow, { flex: 1 }]}
+              onPress={() => setStatusDropdownOpen(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="pricetag" size={16} color={colors.textTertiary} style={{ marginRight: 8 }} />
+              <Text style={[adminStyles.searchInput, { paddingVertical: 0, color: statusFilter ? colors.text : colors.textTertiary }]} numberOfLines={1}>
+                {STATUS_OPTIONS.find((o) => o.value === statusFilter)?.label || 'All Status'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+              <AdminModalShell visible={companyDropdownOpen} onClose={() => setCompanyDropdownOpen(false)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Select Company</Text>
+                  <TouchableOpacity onPress={() => setCompanyDropdownOpen(false)}>
+                    <Ionicons name="close" size={22} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <View style={adminStyles.searchRow}>
+                  <Ionicons name="search" size={16} color={colors.textTertiary} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={adminStyles.searchInput}
+                    value={companySearch}
+                    onChangeText={setCompanySearch}
+                    placeholder="Search company..."
+                    placeholderTextColor={colors.textTertiary}
+                  />
+                </View>
+                <View style={{ maxHeight: 320 }}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}
+                      onPress={() => { setCompanyFilter(''); setCompanyDropdownOpen(false); }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: companyFilter === '' ? '700' : '400', color: colors.text }}>All Companies</Text>
+                      {companyFilter === '' && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                    </TouchableOpacity>
+                    {companyOptions.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}
+                        onPress={() => { setCompanyFilter(String(c.id)); setCompanyDropdownOpen(false); }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: companyFilter === String(c.id) ? '700' : '400', color: colors.text }}>{c.name}</Text>
+                        {companyFilter === String(c.id) && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </AdminModalShell>
+          <AdminModalShell visible={statusDropdownOpen} onClose={() => setStatusDropdownOpen(false)}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Select Status</Text>
+              <TouchableOpacity onPress={() => setStatusDropdownOpen(false)}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ maxHeight: 320 }}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {STATUS_OPTIONS.map((o) => (
+                  <TouchableOpacity
+                    key={o.value || 'all'}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}
+                    onPress={() => { setStatusFilter(o.value); setStatusDropdownOpen(false); }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: statusFilter === o.value ? '700' : '400', color: colors.text }}>{o.label}</Text>
+                    {statusFilter === o.value && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </AdminModalShell>
           {loading ? (
             <View>{[1, 2, 3, 4].map((i) => <View key={i} style={adminStyles.skeleton} />)}</View>
           ) : filtered.length === 0 ? (
@@ -147,10 +256,20 @@ const CompanyScreen = ({ navigation }) => {
             filtered.map((item) => (
               <AdminListCard key={item.id} onPress={() => openDetail(item)}>
                 <View style={{ flex: 1 }}>
-                  <Text style={adminStyles.listTitle}>{item.name || item.title}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[adminStyles.listTitle, { flex: 1 }]}>{item.name || item.title}</Text>
+                    {item.status ? <Badge status={item.status} size="sm" /> : null}
+                  </View>
                   {item.code ? <Text style={adminStyles.listSub}>Code: {item.code}</Text> : null}
-                  {item.email ? <Text style={adminStyles.listSub}>{item.email}</Text> : null}
-                  {item.location ? <Text style={adminStyles.listSub}>📍 {item.location}</Text> : null}
+                  {(tab === 'companies') ? <Text style={adminStyles.listSub}>✉️ Email: {item.email || 'None'}</Text> : (item.email ? <Text style={adminStyles.listSub}>{item.email}</Text> : null)}
+                  {(tab === 'companies') ? <Text style={adminStyles.listSub}>📞 Phone: {item.phone || 'None'}</Text> : (item.phone ? <Text style={adminStyles.listSub}>{item.phone}</Text> : null)}
+                  {(item.location && tab !== 'branches') ? <Text style={adminStyles.listSub}>📍 {item.location}</Text> : null}
+                  {(tab !== 'companies') ? <Text style={adminStyles.listSub}>🏢 Company: {companies.find((c) => String(c.id) === String(item.companyId ?? item.company_id))?.name || item.companyName || item.company_name || 'None'}</Text> : null}
+                  {(tab === 'companies') ? <Text style={adminStyles.listSub}>🏠 Address: {item.address || 'None'}</Text> : (tab === 'branches') ? <Text style={adminStyles.listSub}>🏠 Address: {item.address || item.location || 'None'}</Text> : (item.address ? <Text style={adminStyles.listSub}>🏠 {item.address}</Text> : null)}
+                  {(item.latitude || item.longitude) ? <Text style={adminStyles.listSub}>Lat: {item.latitude || '—'}, Long: {item.longitude || '—'}</Text> : null}
+                  {(item.managerName || item.manager_name) ? <Text style={adminStyles.listSub}>👤 Department Head - {item.managerName || item.manager_name}</Text> : (tab === 'departments' ? <Text style={adminStyles.listSub}>👤 Department Head - None</Text> : null)}
+                  {(item.grade || tab === 'designations') ? <Text style={adminStyles.listSub}>🎖️ Grade: {item.grade || 'None'}</Text> : null}
+                  {(tab === 'companies') ? <Text style={adminStyles.listSub}>🧾 GST: {item.taxId || item.gstNo || item.gst || 'None'}</Text> : ((item.taxId || item.gstNo || item.gst) ? <Text style={adminStyles.listSub}>🧾 GST: {item.taxId || item.gstNo || item.gst}</Text> : null)}
                 </View>
               </AdminListCard>
             ))
@@ -161,9 +280,9 @@ const CompanyScreen = ({ navigation }) => {
 
       <AdminCrudSheet
         visible={isModalOpen}
-        detailTitle={`${entityLabel} Detail`}
-        createTitle={`Add ${entityLabel}`}
-        editTitle={`Edit ${entityLabel}`}
+        detailTitle={`${EntityLabel} Detail`}
+        createTitle={`Add ${EntityLabel}`}
+        editTitle={`Edit ${EntityLabel}`}
         onClose={closeModal}
         onCancelEdit={() => setIsEditing(false)}
         isEditing={isEditing}
@@ -172,14 +291,21 @@ const CompanyScreen = ({ navigation }) => {
         onSave={handleSave}
         onDelete={handleDelete}
         saving={saving}
-        saveLabel={isCreating ? `Create ${entityLabel}` : `Update ${entityLabel}`}
+        saveLabel={isCreating ? `Create ${EntityLabel}` : `Update ${EntityLabel}`}
         viewContent={selectedItem && (
           <AdminDetailRows rows={[
             { label: 'Name', value: selectedItem.name || selectedItem.title, valueStyle: { textTransform: 'none' } },
+            { label: 'Status', value: selectedItem.status || '—', valueStyle: { textTransform: 'none' } },
             { label: 'Code', value: selectedItem.code || '—', valueStyle: { textTransform: 'none' } },
-            { label: 'Email', value: selectedItem.email || '—', valueStyle: { textTransform: 'none' } },
-            { label: 'Phone', value: selectedItem.phone || '—', valueStyle: { textTransform: 'none' } },
-            { label: 'Location', value: selectedItem.location || '—', valueStyle: { textTransform: 'none' } },
+            ...(tab !== 'companies' ? [{ label: 'Company', value: companies.find((c) => String(c.id) === String(selectedItem.companyId ?? selectedItem.company_id))?.name || selectedItem.companyName || selectedItem.company_name || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'companies' || selectedItem.email ? [{ label: 'Email', value: selectedItem.email || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'companies' || selectedItem.phone ? [{ label: 'Phone', value: selectedItem.phone || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(selectedItem.location ? [{ label: 'Location', value: selectedItem.location, valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'departments' || selectedItem.managerName || selectedItem.manager_name ? [{ label: 'Department Head', value: selectedItem.managerName || selectedItem.manager_name || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'designations' || selectedItem.grade ? [{ label: 'Grade', value: selectedItem.grade || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'companies' || tab === 'branches' || selectedItem.address ? [{ label: 'Address', value: selectedItem.address || '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...((tab === 'branches' || (tab !== 'companies' && (selectedItem.latitude || selectedItem.longitude))) ? [{ label: 'Latitude', value: selectedItem.latitude != null && selectedItem.latitude !== '' ? String(selectedItem.latitude) : '—', valueStyle: { textTransform: 'none' } }, { label: 'Longitude', value: selectedItem.longitude != null && selectedItem.longitude !== '' ? String(selectedItem.longitude) : '—', valueStyle: { textTransform: 'none' } }] : []),
+            ...(tab === 'companies' || selectedItem.taxId || selectedItem.gstNo || selectedItem.gst ? [{ label: 'GST', value: selectedItem.taxId || selectedItem.gstNo || selectedItem.gst || '—', valueStyle: { textTransform: 'none' } }] : []),
           ]} />
         )}
       >

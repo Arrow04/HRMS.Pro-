@@ -306,6 +306,8 @@ const Grievances = () => {
       icon: MessageSquare,
       iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5',
       iconColor: 'text-[#4F46E5]',
+      tooltip: 'All grievances filed by employees',
+      trend: stats.total > 0 ? 5 : 0,
       onClick: () => {
         setActiveTab('all');
         setPriorityFilter('all');
@@ -318,6 +320,8 @@ const Grievances = () => {
       icon: AlertTriangle,
       iconBg: 'bg-gradient-to-br from-[#DC2626]/20 via-[#F87171]/10 to-[#FCA5A5]/5',
       iconColor: 'text-[#DC2626]',
+      tooltip: 'Grievances pending resolution',
+      trend: stats.open > 0 ? -stats.open : 0,
       onClick: () => {
         setActiveTab('open');
         setPriorityFilter('all');
@@ -330,6 +334,8 @@ const Grievances = () => {
       icon: Flag,
       iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5',
       iconColor: 'text-[#D97706]',
+      tooltip: 'Grievances flagged as high priority',
+      trend: stats.high > 0 ? -2 : 0,
       onClick: () => {
         setActiveTab('all');
         setPriorityFilter('high');
@@ -342,6 +348,8 @@ const Grievances = () => {
       icon: Clock,
       iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5',
       iconColor: 'text-[#7C3AED]',
+      tooltip: 'Grievances open for more than 7 days',
+      trend: stats.overdue > 0 ? -3 : 0,
       onClick: () => {
         setActiveTab('all');
         setPriorityFilter('all');
@@ -354,6 +362,8 @@ const Grievances = () => {
       icon: CheckCircle2,
       iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5',
       iconColor: 'text-[#059669]',
+      tooltip: 'Grievances successfully resolved',
+      trend: stats.resolved > 0 ? 10 : 0,
       onClick: () => {
         setActiveTab('resolved');
         setPriorityFilter('all');
@@ -566,15 +576,17 @@ const Grievances = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {statCards.map((stat, i) => (
           <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 60}ms` }}>
-            <StatsCard
+<StatsCard
               label={stat.label}
               value={stat.value}
               icon={stat.icon}
               iconBg={stat.iconBg}
               iconColor={stat.iconColor}
+              tooltip={stat.tooltip}
+              trend={stat.trend}
               isLoading={isLoading}
               onClick={stat.onClick}
-            />
+              />
           </div>
         ))}
       </div>

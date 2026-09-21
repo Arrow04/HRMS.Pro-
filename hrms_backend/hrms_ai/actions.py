@@ -690,7 +690,7 @@ class AIActionExecutor:
             return {
                 "success": True,
                 "data": {"expense_id": expense.id},
-                "message": f"Expense claim submitted for {expense_type}: ₹{amount}. Claim ID: {expense.id}",
+                "message": f"Expense claim submitted for {expense_type}: {expense.amount}. Claim ID: {expense.id}",
             }
         except Exception as e:
             db.rollback()

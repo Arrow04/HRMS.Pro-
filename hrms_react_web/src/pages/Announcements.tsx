@@ -265,6 +265,8 @@ const Announcements = () => {
         icon: FileText,
         iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5',
         iconColor: 'text-[#4F46E5]',
+        tooltip: 'Total number of announcements and notices',
+        trend: total > 0 ? 5 : 0,
         filter: 'all' as StatFilter,
         tab: 'all',
       },
@@ -274,6 +276,8 @@ const Announcements = () => {
         icon: Megaphone,
         iconBg: 'bg-gradient-to-br from-[#EC4899]/20 via-[#F472B6]/10 to-[#F9A8D4]/5',
         iconColor: 'text-[#DB2777]',
+        tooltip: 'Official notices requiring attention',
+        trend: notices > 0 ? 3 : 0,
         filter: 'notices' as StatFilter,
         tab: 'notice',
       },
@@ -283,6 +287,8 @@ const Announcements = () => {
         icon: Pin,
         iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5',
         iconColor: 'text-[#D97706]',
+        tooltip: 'Announcements pinned to the top',
+        trend: pinned > 0 ? 2 : 0,
         filter: 'pinned' as StatFilter,
         tab: 'all',
       },
@@ -292,6 +298,8 @@ const Announcements = () => {
         icon: Clock,
         iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5',
         iconColor: 'text-[#DC2626]',
+        tooltip: 'Announcements expiring within 7 days',
+        trend: expiring > 0 ? -1 : 0,
         filter: 'expiring' as StatFilter,
         tab: 'all',
       },
@@ -608,6 +616,8 @@ const Announcements = () => {
               icon={stat.icon}
               iconBg={stat.iconBg}
               iconColor={stat.iconColor}
+              tooltip={stat.tooltip}
+              trend={stat.trend}
               isLoading={isLoading}
               onClick={() => handleStatClick(stat.filter, stat.tab)}
             />

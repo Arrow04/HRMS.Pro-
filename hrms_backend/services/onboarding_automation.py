@@ -60,20 +60,42 @@ def ensure_user_account(db: Session, emp, default_password: str = "TempPass123!"
 
 
 def provision_leave_balances(db: Session, emp) -> list:
-    """Create LeaveBalance rows for the current year for each active leave type."""
-    from models import LeaveBalance, LeaveType
+    """Create MISSING LeaveBalance rows for the current year.
+
+    Same engine as the Leave module (config-first, else type Days/Year;
+    unpaid types skipped), so joiners match init-all exactly. Never touches
+    existing rows.
+    """
+    from models import LeaveBalance
+    from utils.leave_balance_utils import (
+        active_leave_types,
+        org_single_leave_policy,
+        pinned_template_body,
+        resolve_leave_config,
+        resolve_quota,
+        resolve_type_flags,
+    )
 
     created = []
     year = datetime.now().year
-    leave_types = (
-        db.query(LeaveType)
-        .filter(
-            LeaveType.status == "active",
-            (LeaveType.organization_id == emp.organization_id) | (LeaveType.organization_id.is_(None)),
-        )
-        .all()
-    )
-    for lt in leave_types:
+    config = None
+    single_policy = {}
+    body = None
+    try:
+        config = resolve_leave_config(db, emp.id, emp.organization_id)
+        single_policy = org_single_leave_policy(db, emp.organization_id)
+        body = pinned_template_body(db, emp)
+    except Exception:
+        config = None
+    types = active_leave_types(db, emp.organization_id)
+    paid_map = {}
+    try:
+        paid_map = resolve_type_flags(db, emp, types)
+    except Exception:
+        paid_map = {}
+    for lt in types:
+        if paid_map.get(lt.id, {}).get("paid", getattr(lt, "is_paid", True)) is False:
+            continue
         existing = (
             db.query(LeaveBalance)
             .filter(
@@ -85,16 +107,17 @@ def provision_leave_balances(db: Session, emp) -> list:
         )
         if existing:
             continue
+        days = resolve_quota(body, config, single_policy, lt)
         bal = LeaveBalance(
             employee_id=emp.id,
             year=year,
             leave_type_id=lt.id,
-            total_days=lt.days_allowed or 0,
+            total_days=days,
             used_days=0,
-            remaining_days=lt.days_allowed or 0,
+            remaining_days=days,
         )
         db.add(bal)
-        created.append({"leave_type": lt.name, "days": lt.days_allowed or 0})
+        created.append({"leave_type": lt.name, "days": days})
     db.flush()
     return created
 

@@ -54,6 +54,17 @@ export const CompanyProvider: React.FC<{ children: ReactNode }> = ({ children })
     window.location.reload();
   }, []);
 
+  // Server-side scoping returns a single company for restricted roles —
+  // pin the selection so every consumer (header, chatbot, filters) follows.
+  useEffect(() => {
+    if (loading || companies.length !== 1) return;
+    const only = String(companies[0].id);
+    if (selectedCompanyId !== only) {
+      setSelectedCompanyIdState(only);
+      localStorage.setItem(STORAGE_KEY, only);
+    }
+  }, [loading, companies, selectedCompanyId]);
+
   const selectedCompany = companies.find(c => String(c.id) === selectedCompanyId) || null;
 
   return (

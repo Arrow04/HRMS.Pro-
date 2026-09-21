@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Union
 import redis
 import structlog
 from dateutil import parser as dateparser
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
@@ -105,20 +105,7 @@ def update_general_settings(
     if current_user.organization_id:
         org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == current_user.organization_id).first()
         if org:
-            COUNTRY_TIMEZONE_MAP = {
-                "India": "Asia/Kolkata",
-                "United States": "America/New_York",
-                "United Kingdom": "Europe/London",
-                "Australia": "Australia/Sydney",
-                "United Arab Emirates": "Asia/Dubai",
-                "Singapore": "Asia/Singapore",
-                "Germany": "Europe/Berlin",
-                "Canada": "America/Toronto",
-                "Japan": "Asia/Tokyo",
-                "France": "Europe/Paris",
-                "China": "Asia/Shanghai",
-                "Brazil": "America/Sao_Paulo",
-            }
+            from core.datetime_utils import COUNTRY_TIMEZONE_MAP
             payload_dict = payload.model_dump(exclude_unset=True)
             if "country" in payload_dict:
                 new_country = payload_dict["country"]
@@ -525,6 +512,7 @@ def _configs_key(domain):
 @router.get("/api/settings/configs/{domain}", tags=["Settings"])
 def list_configs(
     domain: str,
+    companyId: int = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -534,13 +522,17 @@ def list_configs(
     if not org:
         return []
     data = org.settings or {}
-    return data.get(_configs_key(domain), [])
+    configs = data.get(_configs_key(domain), [])
+    if companyId is not None:
+        configs = [c for c in configs if c.get("company_id") == companyId]
+    return configs
 
 
 @router.post("/api/settings/configs/{domain}", tags=["Settings"])
 def create_config(
     domain: str,
     payload: dict,
+    companyId: int = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -553,6 +545,8 @@ def create_config(
     configs = list(data.get(_configs_key(domain), []))
     new_id = max([c.get("id", 0) for c in configs], default=0) + 1
     config = {"id": new_id}
+    if companyId is not None:
+        config["company_id"] = companyId
     config.update({k: v for k, v in payload.items() if v is not None})
     configs.append(config)
     data[_configs_key(domain)] = configs

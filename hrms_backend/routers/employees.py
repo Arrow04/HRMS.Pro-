@@ -12,7 +12,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import asc, func
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -20,6 +20,7 @@ from core.auth import check_role, get_current_user, get_password_hash
 from core.datetime_utils import ist_now_naive
 from core.document_retention import EMPLOYEE_DOC_MAX_UPLOAD_BYTES
 from core.tenant import get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 
 
 def _require_module_action(db: Session, user: User, module: str, action: str = "read"):
@@ -209,8 +210,7 @@ def get_employee_count(
     request: Request = None,
 ):
     """Get employee count with optional filters (Redis-cached for 2 minutes)"""
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(Employee)
     if current_user.organization_id is not None:
         query = query.filter(Employee.organization_id == current_user.organization_id)
@@ -253,8 +253,7 @@ def get_employees(
     request: Request = None,
 ):
     """Paginated employee list — summary view by default (safe at 1M+ scale)."""
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
 
     from sqlalchemy.orm import selectinload, joinedload
 
@@ -405,6 +404,7 @@ def get_employees(
             "gender": emp.gender,
             "bloodGroup": emp.blood_group,
             "maritalStatus": emp.marital_status,
+            "isPersonWithDisability": bool(emp.is_person_with_disability) if emp.is_person_with_disability else False,
             "emergencyContact": emp.emergency_contact,
             "emergencyPhone": emp.emergency_phone,
             "voterId": emp.voter_id,
@@ -451,6 +451,9 @@ def get_employees(
             "attendancePolicyId": emp.attendance_policy_id,
             "taxRegimeId": emp.tax_regime_id,
             "payrollTemplateId": emp.payroll_template_id,
+            "leaveTemplateId": emp.leave_template_id,
+            "payFrequency": emp.pay_frequency or "monthly",
+            "payRate": emp.pay_rate,
             "resumeUrl": emp.resume_url,
             "idProofUrl": emp.id_proof_url,
             "photoUrl": emp.photo_url,
@@ -536,10 +539,13 @@ def get_org_structure(
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return org structure as manager -> reportees tree."""
+    """Return org structure as manager -> reportees tree (company-scoped for restricted roles)."""
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
     if current_user.organization_id is not None:
         query = query.filter(Employee.organization_id == current_user.organization_id)
+    _scope_company = resolve_company_scope(db, current_user, None)
+    if _scope_company is not None:
+        query = query.filter(Employee.company_id == _scope_company)
 
     employees = query.options(
         joinedload(Employee.department),
@@ -548,6 +554,26 @@ def get_org_structure(
     ).all()
 
     emp_map = {}
+    emp_ids = [emp.id for emp in employees]
+    primary_branch: dict[int, int] = {}
+    if emp_ids:
+        br_rows = (
+            db.query(EmployeeBranchAssignment.employee_id, EmployeeBranchAssignment.branch_id)
+            .filter(
+                EmployeeBranchAssignment.employee_id.in_(emp_ids),
+                EmployeeBranchAssignment.status == "active",
+                EmployeeBranchAssignment.deleted_at.is_(None),
+            )
+            .order_by(EmployeeBranchAssignment.is_primary.desc())
+            .all()
+        )
+        for eid, bid in br_rows:
+            if eid not in primary_branch:
+                primary_branch[eid] = bid
+    branch_names = {}
+    if primary_branch:
+        for br in db.query(Branch).filter(Branch.id.in_(set(primary_branch.values()))).all():
+            branch_names[br.id] = br.name
     for emp in employees:
         emp_map[emp.id] = {
             "id": emp.id,
@@ -556,6 +582,7 @@ def get_org_structure(
             "designation": emp.designation,
             "department": emp.department.name if emp.department else None,
             "company": emp.company.name if emp.company else None,
+            "branch": branch_names.get(primary_branch.get(emp.id)),
             "reportingManagerId": emp.reporting_manager_id,
             "directReports": [],
         }
@@ -588,6 +615,7 @@ def get_employee_light_list(
     current_user: User = Depends(get_current_user),
 ):
     """Lightweight employee list for dropdowns — slim payload, read-replica safe."""
+    companyId = resolve_company_scope(db, current_user, companyId)
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
     if current_user.organization_id is not None:
         query = query.filter(Employee.organization_id == current_user.organization_id)
@@ -755,6 +783,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
     employee = employee_query.first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
+    assert_company_allowed(db, current_user, employee.company_id)
 
     return {
         "id": employee.id,
@@ -787,13 +816,13 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "gender": employee.gender,
         "bloodGroup": employee.blood_group,
         "maritalStatus": employee.marital_status,
+        "isPersonWithDisability": bool(employee.is_person_with_disability) if employee.is_person_with_disability else False,
         "emergencyContact": employee.emergency_contact,
         "emergencyPhone": employee.emergency_phone,
         "bankName": employee.bank_name,
         "bankAccountNumber": employee.bank_account_number,
         "ifscCode": employee.ifsc_code,
         "accountHolderName": employee.account_holder_name,
-        "bankAccounts": employee.bank_accounts or [],
         "experienceDetails": employee.experience_details or [],
         "achievementsDetails": employee.achievements_details or [],
         "activitiesDetails": employee.activities_details or [],
@@ -810,6 +839,9 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "attendancePolicyId": employee.attendance_policy_id,
         "taxRegimeId": employee.tax_regime_id,
         "payrollTemplateId": employee.payroll_template_id,
+        "leaveTemplateId": employee.leave_template_id,
+        "payFrequency": employee.pay_frequency or "monthly",
+        "payRate": employee.pay_rate,
         "panNumber": employee.pan_number,
         "voterId": employee.voter_id,
         "aadharNumber": employee.aadhar_number,
@@ -876,6 +908,8 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
     # Convert camelCase to snake_case for backend compatibility
     snake_case_data = convert_camel_to_snake(employee_data)
     snake_case_data = normalize_name_payload(snake_case_data)
+    # Company isolation: restricted callers can only create into their own company.
+    snake_case_data["company_id"] = require_write_company(db, current_user, snake_case_data.get("company_id"))
     
     email = snake_case_data.get("email")
     # Use provided password or default
@@ -1025,6 +1059,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         gender=snake_case_data.get("gender"),
         blood_group=snake_case_data.get("blood_group"),
         marital_status=snake_case_data.get("marital_status"),
+        is_person_with_disability=snake_case_data.get("is_person_with_disability", False),
         emergency_contact=snake_case_data.get("emergency_contact"),
         emergency_phone=snake_case_data.get("emergency_phone"),
         voter_id=snake_case_data.get("voter_id"),
@@ -1062,6 +1097,9 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         attendance_policy_id=snake_case_data.get("attendance_policy_id") if snake_case_data.get("attendance_policy_id") not in (None, "", 0) else None,
         tax_regime_id=snake_case_data.get("tax_regime_id") if snake_case_data.get("tax_regime_id") not in (None, "", 0) else None,
         payroll_template_id=snake_case_data.get("payroll_template_id") if snake_case_data.get("payroll_template_id") not in (None, "", 0) else None,
+        leave_template_id=snake_case_data.get("leave_template_id") if snake_case_data.get("leave_template_id") not in (None, "", 0) else None,
+        pay_frequency=(snake_case_data.get("pay_frequency") or "monthly") if (snake_case_data.get("pay_frequency") or "monthly") in ("daily", "weekly", "monthly", "annual") else "monthly",
+        pay_rate=float(snake_case_data.get("pay_rate")) if snake_case_data.get("pay_rate") not in (None, "") else None,
         resume_url=snake_case_data.get("resume_url"),
         id_proof_url=snake_case_data.get("id_proof_url"),
         photo_url=snake_case_data.get("photo_url"),
@@ -1191,9 +1229,15 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
     if is_self and current_user.role not in ("admin", "superadmin", "hr_admin", "hr_manager", "hr_executive"):
         if not is_feature_enabled(db, current_user.organization_id, "selfService"):
             raise HTTPException(status_code=403, detail="Self-service profile updates are disabled by your organisation")
+    # Company isolation: cannot edit employees of another company. Moving an
+    # employee across companies requires a transfer, not a direct edit.
+    assert_company_allowed(db, current_user, employee.company_id)
     
     # Convert camelCase to snake_case for backend compatibility
     snake_case_data = convert_camel_to_snake(employee_data)
+    # Cross-company moves via direct edit are forbidden — use transfers.
+    if snake_case_data.get("company_id") not in (None, "", 0):
+        snake_case_data["company_id"] = require_write_company(db, current_user, snake_case_data["company_id"])
 
     # Document uploads toggle: block document field changes when disabled.
     if not is_feature_enabled(db, current_user.organization_id, "docUploads"):
@@ -1345,6 +1389,8 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.blood_group = snake_case_data["blood_group"]
     if "marital_status" in snake_case_data:
         employee.marital_status = snake_case_data["marital_status"]
+    if "is_person_with_disability" in snake_case_data:
+        employee.is_person_with_disability = bool(snake_case_data["is_person_with_disability"])
     if "phone" in snake_case_data:
         new_phone = str(snake_case_data["phone"] or "").strip()
         if new_phone:
@@ -1468,6 +1514,19 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
                     employee.attendance_policy_id = tpl.attendance_policy_id
                 if not employee.tax_regime_id and tpl.tax_regime_id:
                     employee.tax_regime_id = tpl.tax_regime_id
+    if "leave_template_id" in snake_case_data:
+        try:
+            employee.leave_template_id = int(snake_case_data["leave_template_id"]) if snake_case_data["leave_template_id"] not in (None, "", 0) else None
+        except (TypeError, ValueError):
+            employee.leave_template_id = None
+    if "pay_frequency" in snake_case_data:
+        freq = snake_case_data["pay_frequency"] or "monthly"
+        employee.pay_frequency = freq if freq in ("daily", "weekly", "monthly", "annual") else "monthly"
+    if "pay_rate" in snake_case_data:
+        try:
+            employee.pay_rate = float(snake_case_data["pay_rate"]) if snake_case_data["pay_rate"] not in (None, "") else None
+        except (TypeError, ValueError):
+            employee.pay_rate = None
     # Documents
     if "resume_url" in snake_case_data:
         employee.resume_url = snake_case_data["resume_url"]

@@ -305,11 +305,11 @@ const Helpdesk = () => {
     }).length;
     const resolved = list.filter((t) => t.status === 'resolved').length;
     return [
-      { label: 'Total Tickets', value: list.length, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', icon: Headset, tab: 'all' },
-      { label: 'Open', value: open, iconBg: 'bg-gradient-to-br from-[#DC2626]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', icon: MessageSquare, tab: 'open' },
-      { label: 'Urgent', value: urgent, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', icon: AlertTriangle, tab: 'all' },
-      { label: 'Overdue (3d+)', value: overdue, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', icon: Clock, tab: 'all' },
-      { label: 'Resolved', value: resolved, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', icon: CheckCircle2, tab: 'resolved' },
+      { label: 'Total Tickets', value: list.length, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', icon: Headset, tooltip: 'All helpdesk tickets in the system', trend: list.length > 0 ? 5 : 0, tab: 'all' },
+      { label: 'Open', value: open, iconBg: 'bg-gradient-to-br from-[#DC2626]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', icon: MessageSquare, tooltip: 'Tickets awaiting resolution', trend: open > 0 ? -open : 0, tab: 'open' },
+      { label: 'Urgent', value: urgent, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', icon: AlertTriangle, tooltip: 'High-priority tickets needing immediate attention', trend: urgent > 0 ? -2 : 0, tab: 'all' },
+      { label: 'Overdue (3d+)', value: overdue, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', icon: Clock, tooltip: 'Tickets open for more than 3 days', trend: overdue > 0 ? -3 : 0, tab: 'all' },
+      { label: 'Resolved', value: resolved, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', icon: CheckCircle2, tooltip: 'Successfully resolved tickets', trend: resolved > 0 ? 10 : 0, tab: 'resolved' },
     ];
   }, [tickets]);
 
@@ -486,15 +486,17 @@ const Helpdesk = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {stats.map((stat, i) => (
           <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 60}ms` }}>
-            <StatsCard
+<StatsCard
               label={stat.label}
               value={stat.value}
               icon={stat.icon}
               iconBg={stat.iconBg}
               iconColor={stat.iconColor}
+              tooltip={stat.tooltip}
+              trend={stat.trend}
               isLoading={isLoading}
               onClick={() => setActiveTab(stat.tab)}
-            />
+              />
           </div>
         ))}
       </div>

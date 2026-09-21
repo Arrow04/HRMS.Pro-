@@ -13,52 +13,51 @@ import { HrmsRefreshControl } from '../components/HrmsRefreshControl';
 import api from '../services/api';
 
 const { width: W } = Dimensions.get('window');
-const GRID_ITEM = (W - 40 - 16 * 2) / 3;
+const GRID_ITEM = (W - 40 - 12) / 2;
 
 const MY_HR_ITEMS = [
-  { icon: 'time-outline', label: 'Attendance', screen: 'AttendanceHistory', color: '#3B82F6' },
+  { icon: 'time-outline', label: 'Attendance', screen: 'Attendance', color: '#3B82F6' },
   { icon: 'calendar-outline', label: 'Leave', screen: 'Leaves', color: '#4F46E5' },
-  { icon: 'card-outline', label: 'Payslips', screen: 'Payslips', color: '#059669' },
+  { icon: 'card-outline', label: 'Payroll', screen: 'Payslips', color: '#059669' },
   { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
   { icon: 'copy-outline', label: 'Documents', screen: 'Documents', color: '#F59E0B' },
-  { icon: 'document-text-outline', label: 'Policies', screen: 'Policies', color: '#1C64F2' },
   { icon: 'calendar-clear-outline', label: 'Holidays', screen: 'Holidays', color: '#0D9488' },
   { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
   { icon: 'alert-circle-outline', label: 'Grievances', screen: 'Grievance', color: '#EF4444' },
-  { icon: 'trophy-outline', label: 'Performance', screen: 'MyPerformance', color: '#8B5CF6' },
+  { icon: 'trophy-outline', label: 'Performance', screen: 'Performance', color: '#8B5CF6' },
   { icon: 'people-outline', label: 'Team', screen: 'TeamDirectory', color: '#6366F1' },
-  { icon: 'star-outline', label: 'Feedback', screen: 'Chat', color: '#14B8A6' },
+  { icon: 'headset-outline', label: 'Helpdesk', screen: 'Helpdesk', color: '#06B6D4' },
 ];
 
 const ADMIN_ITEMS = [
-  { icon: 'business-outline', label: 'Organization', screen: 'Company', color: '#1C64F2' },
-  { icon: 'document-text-outline', label: 'Recruitment', screen: 'Recruitment', color: '#7C3AED' },
-  { icon: 'people-outline', label: 'Employees', screen: 'Employees', color: '#6366F1' },
-  { icon: 'finger-print-outline', label: 'Attendance', screen: 'AdminAttendance', color: '#3B82F6' },
-  { icon: 'calendar-outline', label: 'Holidays', screen: 'Holidays', color: '#4F46E5' },
-  { icon: 'calendar-outline', label: 'Leaves', screen: 'AdminLeaves', color: '#4F46E5' },
-  { icon: 'wallet-outline', label: 'Expenses', screen: 'Expenses', color: '#F59E0B' },
-  { icon: 'star-outline', label: 'Performance', screen: 'Performance', color: '#F59E0B' },
-  { icon: 'laptop-outline', label: 'Assets', screen: 'Assets', color: '#0D9488' },
-  { icon: 'cash-outline', label: 'Payroll', screen: 'PayrollAdmin', color: '#059669' },
-  { icon: 'checkmark-done-outline', label: 'Approvals', screen: 'Approvals', color: '#10B981' },
-  { icon: 'alert-circle-outline', label: 'Anomalies', screen: 'AdminAnomalies', color: '#DC2626' },
-  { icon: 'exit-outline', label: 'Offboarding', screen: 'ExitMgmt', color: '#DC2626' },
-  { icon: 'calendar-number-outline', label: 'Shift & Roster', screen: 'ShiftRoster', color: '#6366F1' },
-  { icon: 'megaphone-outline', label: 'Notices', screen: 'Announcements', color: '#EC4899' },
-  { icon: 'bar-chart-outline', label: 'Reports', screen: 'Reports', color: '#4F46E5' },
-  { icon: 'document-lock-outline', label: 'Audit Log', screen: 'AuditLog', color: '#6366F1' },
-  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1' },
+  { icon: 'business-outline', label: 'Organization', screen: 'Company', color: '#1C64F2', adminOnly: true },
+  { icon: 'document-text-outline', label: 'Policy Management', screen: 'Policies', color: '#1C64F2', adminOnly: true },
+  { icon: 'document-text-outline', label: 'Recruitment', screen: 'Recruitment', color: '#7C3AED', adminOnly: true },
+  { icon: 'people-outline', label: 'Employee Management', screen: 'Employees', color: '#6366F1', adminOnly: true },
+  { icon: 'finger-print-outline', label: 'Attendance Management', screen: 'AdminAttendance', color: '#3B82F6', adminOnly: true },
+  { icon: 'calendar-outline', label: 'Leave Management', screen: 'AdminLeaves', color: '#4F46E5', adminOnly: true },
+  { icon: 'cash-outline', label: 'Payroll Management', screen: 'PayrollAdmin', color: '#059669', adminOnly: true },
+  { icon: 'wallet-outline', label: 'Expense Management', screen: 'Expenses', color: '#F59E0B', adminOnly: true },
+  { icon: 'checkmark-done-outline', label: 'Approval Center', screen: 'Approvals', color: '#10B981', adminOnly: true },
+  { icon: 'trophy-outline', label: 'Performance Management', screen: 'Performance', color: '#8B5CF6', adminOnly: true },
+  { icon: 'laptop-outline', label: 'Asset Management', screen: 'Assets', color: '#0D9488', adminOnly: true },
+  { icon: 'calendar-clear-outline', label: 'Holiday Management', screen: 'Holidays', color: '#0D9488', adminOnly: true },
+  { icon: 'alert-circle-outline', label: 'Anomaly Detection', screen: 'AdminAnomalies', color: '#DC2626', adminOnly: true },
+  { icon: 'exit-outline', label: 'Exit Management', screen: 'ExitMgmt', color: '#DC2626', adminOnly: true },
+  { icon: 'headset-outline', label: 'Manage Helpdesk', screen: 'Helpdesk', color: '#06B6D4', adminOnly: true },
+  { icon: 'megaphone-outline', label: 'Announcements', screen: 'Announcements', color: '#EC4899', adminOnly: true },
+  { icon: 'bar-chart-outline', label: 'Reports & Analytics', screen: 'Reports', color: '#4F46E5', adminOnly: true },
+  { icon: 'settings-outline', label: 'Settings', screen: 'Settings', color: '#6366F1', adminOnly: true },
 ];
 
-function MenuGrid({ items, navigation, colors, isDark }) {
+function MenuGrid({ items, onItemPress, colors, isDark }) {
   return (
     <View style={styles.menuGrid}>
       {items.map((item, i) => (
         <TouchableOpacity
           key={`${item.screen}-${i}`}
           style={[styles.menuItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={() => navigation.navigate(item.screen)}
+          onPress={() => onItemPress(item)}
           activeOpacity={0.7}
         >
           <View style={[styles.menuIcon, { backgroundColor: item.color + (isDark ? '22' : '12') }]}>
@@ -80,6 +79,7 @@ const MoreScreen = ({ navigation }) => {
   const scrollTopBar = useScrollTopBar();
   const [refreshing, setRefreshing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeTab, setActiveTab] = useState('core-hr');
   const roleLabel = (user?.role || 'employee').replace(/_/g, ' ');
 
   const loadMenuData = useCallback(async () => {
@@ -112,6 +112,19 @@ const MoreScreen = ({ navigation }) => {
       Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
     ]).start();
     navigation.navigate('Chat');
+  };
+
+  const handleMenuPress = (item) => {
+    // Role-based routing for screens with employee/admin versions
+    if (item.screen === 'Attendance' && isAdmin) {
+      navigation.navigate('AdminAttendance');
+    } else if (item.screen === 'Leave' && isAdmin) {
+      navigation.navigate('AdminLeaves');
+    } else if (item.screen === 'Performance' && isAdmin) {
+      navigation.navigate('Performance');
+    } else {
+      navigation.navigate(item.screen);
+    }
   };
 
   const handleNotificationPress = () => {
@@ -172,17 +185,33 @@ const MoreScreen = ({ navigation }) => {
         </LinearGradient>
 
         <View style={themed.body}>
-          <View style={themed.section}>
-            <Text style={[themed.sectionTitle, { color: colors.textTertiary }]}>Core HR</Text>
-            <MenuGrid items={MY_HR_ITEMS} navigation={navigation} colors={colors} isDark={isDark} />
-          </View>
-
+          {/* Tab Bar */}
           {isAdmin && (
-            <View style={themed.section}>
-              <Text style={[themed.sectionTitle, { color: colors.textTertiary }]}>Admin</Text>
-              <MenuGrid items={ADMIN_ITEMS} navigation={navigation} colors={colors} isDark={isDark} />
+            <View style={{ flexDirection: 'row', backgroundColor: colors.surface, borderRadius: 12, padding: 4, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
+              <TouchableOpacity
+                onPress={() => setActiveTab('core-hr')}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: activeTab === 'core-hr' ? '#1C64F2' : 'transparent', alignItems: 'center' }}
+              >
+                <Text style={{ color: activeTab === 'core-hr' ? '#FFF' : colors.text, fontWeight: '600', fontSize: 13 }}>Core HR</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setActiveTab('admin')}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: activeTab === 'admin' ? '#1C64F2' : 'transparent', alignItems: 'center' }}
+              >
+                <Text style={{ color: activeTab === 'admin' ? '#FFF' : colors.text, fontWeight: '600', fontSize: 13 }}>Admin</Text>
+              </TouchableOpacity>
             </View>
           )}
+
+          {/* Menu Grid */}
+          <View style={themed.section}>
+            <MenuGrid
+              items={activeTab === 'admin' ? ADMIN_ITEMS : MY_HR_ITEMS}
+              onItemPress={handleMenuPress}
+              colors={colors}
+              isDark={isDark}
+            />
+          </View>
 
           <Text style={[themed.footer, { color: colors.textTertiary }]}>HRMS.Pro! v1.0.0</Text>
         </View>

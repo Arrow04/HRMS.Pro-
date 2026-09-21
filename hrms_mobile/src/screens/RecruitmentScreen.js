@@ -17,6 +17,8 @@ const TABS = [
   { key: 'jobs', label: 'Jobs' },
   { key: 'candidates', label: 'Candidates' },
   { key: 'interviews', label: 'Interviews' },
+  { key: 'offered', label: 'Offered' },
+  { key: 'onboarding', label: 'Onboarding' },
 ];
 
 const emptyJobForm = { title: '', department: '', description: '', positions_count: '1' };
@@ -30,6 +32,7 @@ const RecruitmentScreen = ({ navigation }) => {
   const [jobs, setJobs] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [interviews, setInterviews] = useState([]);
+  const [onboarding, setOnboarding] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -43,10 +46,11 @@ const RecruitmentScreen = ({ navigation }) => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [jRes, cRes, iRes] = await Promise.allSettled([
+      const [jRes, cRes, iRes, oRes] = await Promise.allSettled([
         api.get('/recruitment/jobs'),
         api.get('/recruitment/candidates'),
         api.get('/recruitment/interviews'),
+        api.get('/employees/list', { params: { status: 'new', limit: 200 } }),
       ]);
       const pick = (res) => {
         if (res.status !== 'fulfilled') return [];
@@ -56,6 +60,7 @@ const RecruitmentScreen = ({ navigation }) => {
       setJobs(pick(jRes));
       setCandidates(pick(cRes));
       setInterviews(pick(iRes));
+      setOnboarding(pick(oRes));
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -135,14 +140,44 @@ const RecruitmentScreen = ({ navigation }) => {
   const filterList = (list, keys) => list.filter((item) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return keys.some((k) => (item[k] || '').toLowerCase().includes(q));
+    return keys.some((k) => String(item[k] || '').toLowerCase().includes(q));
   });
 
-  const filteredJobs = filterList(jobs, ['title', 'department', 'status']);
-  const filteredCandidates = filterList(candidates, ['name', 'email', 'job_title', 'status']);
-  const filteredInterviews = filterList(interviews, ['candidate_name', 'job_title', 'interviewer', 'status']);
+  const handleOnboard = () => {
+    if (!selectedItem) return;
+    Alert.alert('Onboard', `Move "${selectedItem.fullName || selectedItem.name || `Candidate-${selectedItem.id}`}" to onboarding?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'OK', onPress: async () => {
+        try { await api.post(`/recruitment/candidates/${selectedItem.id}/onboard`, {}); Alert.alert('Success', 'Candidate moved to onboarding.'); closeModal(); fetchData(); }
+        catch (e) { Alert.alert('Error', e.response?.data?.detail || 'Failed.'); }
+      }},
+    ]);
+  };
 
-  const detailTitle = tab === 'jobs' ? 'Job Detail' : tab === 'candidates' ? 'Candidate Detail' : 'Interview Detail';
+  const handleCompleteOnboarding = () => {
+    if (!selectedItem) return;
+    Alert.alert('Complete', `Complete onboarding for "${selectedItem.fullName || selectedItem.name || `Employee-${selectedItem.id}`}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'OK', onPress: async () => {
+        try { await api.post(`/employees/${selectedItem.id}/complete-onboarding`); Alert.alert('Success', 'Onboarding completed.'); closeModal(); fetchData(); }
+        catch (e) { Alert.alert('Error', e.response?.data?.detail || 'Failed.'); }
+      }},
+    ]);
+  };
+
+  const filteredJobs = filterList(jobs, ['title', 'department', 'status']);
+  const filteredCandidates = filterList(candidates, ['name', 'fullName', 'email', 'job_title', 'jobTitle', 'status']);
+  const filteredInterviews = filterList(interviews, ['candidate_name', 'candidate', 'job_title', 'interviewer', 'status']);
+  const OFFERED_STATUSES = ['offered', 'hired', 'not_joined'];
+  const filteredOffered = candidates.filter((c) => {
+    if (!OFFERED_STATUSES.includes((c.status || '').toLowerCase())) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return ['name', 'fullName', 'email', 'job_title', 'jobTitle', 'status'].some((k) => String(c[k] || '').toLowerCase().includes(q));
+  });
+  const filteredOnboarding = filterList(onboarding, ['fullName', 'name', 'email', 'employeeCode', 'phone']);
+
+  const detailTitle = tab === 'jobs' ? 'Job Detail' : tab === 'candidates' ? 'Candidate Detail' : tab === 'interviews' ? 'Interview Detail' : tab === 'offered' ? 'Offer Detail' : 'Onboarding Detail';
 
   const renderViewContent = () => {
     if (!selectedItem) return null;
@@ -167,6 +202,30 @@ const RecruitmentScreen = ({ navigation }) => {
         ]} />
       );
     }
+    if (tab === 'offered') {
+      return (
+        <AdminDetailRows rows={[
+          { label: 'Name', value: selectedItem.fullName || selectedItem.name || `Candidate-${selectedItem.id}`, valueStyle: { textTransform: 'none' } },
+          { label: 'Email', value: selectedItem.email || 'N/A', valueStyle: { textTransform: 'none' } },
+          { label: 'Phone', value: selectedItem.phone || '—', valueStyle: { textTransform: 'none' } },
+          { label: 'Job', value: selectedItem.jobTitle || selectedItem.job_title || 'N/A', valueStyle: { textTransform: 'none' } },
+          { label: 'Company', value: selectedItem.companyName || selectedItem.company_name || '—', valueStyle: { textTransform: 'none' } },
+          { label: 'Status', value: selectedItem.status || 'offered' },
+          { label: 'Offered On', value: selectedItem.hiredDate || selectedItem.updatedAt || selectedItem.createdAt || '—', valueStyle: { textTransform: 'none' } },
+        ]} />
+      );
+    }
+    if (tab === 'onboarding') {
+      return (
+        <AdminDetailRows rows={[
+          { label: 'Name', value: selectedItem.fullName || selectedItem.name || `Employee-${selectedItem.id}`, valueStyle: { textTransform: 'none' } },
+          { label: 'Email', value: selectedItem.email || 'N/A', valueStyle: { textTransform: 'none' } },
+          { label: 'Phone', value: selectedItem.phone || '—', valueStyle: { textTransform: 'none' } },
+          { label: 'Employee Code', value: selectedItem.employeeCode || selectedItem.employee_code || '—', valueStyle: { textTransform: 'none' } },
+          { label: 'Status', value: selectedItem.status || 'new' },
+        ]} />
+      );
+    }
     return (
       <AdminDetailRows rows={[
         { label: 'Candidate', value: selectedItem.candidate_name, valueStyle: { textTransform: 'none' } },
@@ -187,11 +246,13 @@ const RecruitmentScreen = ({ navigation }) => {
       >
         <AdminHeader navigation={navigation} title="Recruitment" subtitle="Manage hiring pipeline" onAdd={tab === 'jobs' ? openCreate : undefined} />
         <View style={adminStyles.body}>
-          <AdminStatRow stats={[
+          <AdminStatRow columns={3} stats={[
             { val: jobs.length, label: 'Jobs', color: '#2563EB', bg: '#DBEAFE' },
             { val: candidates.length, label: 'Candidates', color: '#4F46E5', bg: '#EEF2FF' },
             { val: interviews.length, label: 'Interviews', color: '#10B981', bg: '#DCFCE7' },
-            { val: candidates.filter((c) => c.status === 'hired').length, label: 'Hired', color: '#D97706', bg: '#FEF3C7' },
+            { val: filteredOffered.length, label: 'Offered', color: '#059669', bg: '#D1FAE5' },
+            { val: onboarding.length, label: 'Onboarded', color: '#0D9488', bg: '#CCFBF1' },
+            { val: candidates.filter((c) => (c.status || '').toLowerCase() === 'rejected').length, label: 'Rejected', color: '#DC2626', bg: '#FEE2E2' },
           ]} />
           <AdminTabPills tabs={TABS} active={tab} onChange={(t) => { setTab(t); setSearch(''); closeModal(); }} />
           <AdminSearchBar value={search} onChangeText={setSearch} placeholder={`Search ${tab}...`} />
@@ -204,13 +265,13 @@ const RecruitmentScreen = ({ navigation }) => {
               ) : filteredJobs.map((job) => (
                 <AdminListCard key={job.id} onPress={() => openDetail(job)}>
                   <View style={{ flex: 1 }}>
-                    <Text style={adminStyles.listTitle}>{job.title}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[adminStyles.listTitle, { flex: 1 }]}>{job.title}</Text>
+                      <Badge status={job.status === 'open' ? 'active' : job.status === 'closed' ? 'inactive' : 'pending'} label={job.status || 'open'} size="sm" />
+                    </View>
                     <Text style={adminStyles.listSub}>
                       {typeof job.department === 'object' ? job.department?.name : job.department || 'General'} • {job.positions_count || 1} position{(job.positions_count || 1) > 1 ? 's' : ''}
                     </Text>
-                    <View style={{ marginTop: 6 }}>
-                      <Badge status={job.status === 'open' ? 'active' : job.status === 'closed' ? 'inactive' : 'pending'} label={job.status || 'open'} size="sm" />
-                    </View>
                   </View>
                 </AdminListCard>
               )))}
@@ -220,11 +281,11 @@ const RecruitmentScreen = ({ navigation }) => {
                 <AdminListCard key={c.id} onPress={() => openDetail(c)}>
                   <Avatar firstName={c.name?.split(' ')[0]} lastName={c.name?.split(' ').slice(1).join(' ')} size={44} />
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={adminStyles.listTitle}>{c.name || `Candidate-${c.id}`}</Text>
-                    <Text style={adminStyles.listSub}>{c.email || 'N/A'} • {c.job_title || 'N/A'}</Text>
-                    <View style={{ marginTop: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[adminStyles.listTitle, { flex: 1 }]}>{c.name || `Candidate-${c.id}`}</Text>
                       <Badge status={c.status === 'hired' ? 'active' : c.status === 'rejected' ? 'rejected' : 'pending'} label={c.status || 'submitted'} size="sm" />
                     </View>
+                    <Text style={adminStyles.listSub}>{c.email || 'N/A'} • {c.job_title || 'N/A'}</Text>
                   </View>
                 </AdminListCard>
               )))}
@@ -233,11 +294,39 @@ const RecruitmentScreen = ({ navigation }) => {
               ) : filteredInterviews.map((int) => (
                 <AdminListCard key={int.id} onPress={() => openDetail(int)}>
                   <View style={{ flex: 1 }}>
-                    <Text style={adminStyles.listTitle}>{int.candidate_name || `Interview-${int.id}`}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[adminStyles.listTitle, { flex: 1 }]}>{int.candidate_name || `Interview-${int.id}`}</Text>
+                      <Badge status={int.status === 'completed' ? 'completed' : 'pending'} label={int.status || 'scheduled'} size="sm" />
+                    </View>
                     <Text style={adminStyles.listSub}>{int.job_title || 'N/A'} • {int.interviewer || 'TBD'}</Text>
                     {int.scheduled_at ? <Text style={adminStyles.listSub}>{new Date(int.scheduled_at).toLocaleString('en-US', { timeZone: getTimezone() })}</Text> : null}
+                  </View>
+                </AdminListCard>
+              )))}
+              {tab === 'offered' && (filteredOffered.length === 0 ? (
+                <EmptyState icon="🏆" title="No offers" message="Offered candidates will appear here." />
+              ) : filteredOffered.map((c) => (
+                <AdminListCard key={c.id} onPress={() => openDetail(c)}>
+                  <Avatar firstName={(c.fullName || c.name || '')?.split(' ')[0]} lastName={(c.fullName || c.name || '')?.split(' ').slice(1).join(' ')} size={44} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={adminStyles.listTitle}>{c.fullName || c.name || `Candidate-${c.id}`}</Text>
+                    <Text style={adminStyles.listSub}>{c.email || 'N/A'} • {c.jobTitle || c.job_title || 'N/A'}</Text>
                     <View style={{ marginTop: 6 }}>
-                      <Badge status={int.status === 'completed' ? 'completed' : 'pending'} label={int.status || 'scheduled'} size="sm" />
+                      <Badge status={c.status === 'hired' ? 'active' : c.status === 'not_joined' ? 'rejected' : 'pending'} label={c.status || 'offered'} size="sm" />
+                    </View>
+                  </View>
+                </AdminListCard>
+              )))}
+              {tab === 'onboarding' && (filteredOnboarding.length === 0 ? (
+                <EmptyState icon="🚀" title="No onboarding" message="Employees in onboarding will appear here." />
+              ) : filteredOnboarding.map((e) => (
+                <AdminListCard key={e.id} onPress={() => openDetail(e)}>
+                  <Avatar firstName={(e.fullName || e.name || '')?.split(' ')[0]} lastName={(e.fullName || e.name || '')?.split(' ').slice(1).join(' ')} size={44} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={adminStyles.listTitle}>{e.fullName || e.name || `Employee-${e.id}`}</Text>
+                    <Text style={adminStyles.listSub}>{e.email || 'N/A'} • {e.employeeCode || e.employee_code || 'No code'}</Text>
+                    <View style={{ marginTop: 6 }}>
+                      <Badge status="pending" label={e.status || 'new'} size="sm" />
                     </View>
                   </View>
                 </AdminListCard>
@@ -267,6 +356,14 @@ const RecruitmentScreen = ({ navigation }) => {
         footerContent={tab === 'candidates' && selectedItem?.status === 'submitted' && !isEditing ? (
           <TouchableOpacity style={localStyles.actionBtn} onPress={handleSchedule}>
             <Text style={localStyles.actionBtnText}>Schedule Interview</Text>
+          </TouchableOpacity>
+        ) : tab === 'offered' && selectedItem && !selectedItem.employee_id && !selectedItem.employeeId && !isEditing ? (
+          <TouchableOpacity style={localStyles.actionBtn} onPress={handleOnboard}>
+            <Text style={localStyles.actionBtnText}>Move to Onboarding</Text>
+          </TouchableOpacity>
+        ) : tab === 'onboarding' && selectedItem && !isEditing ? (
+          <TouchableOpacity style={localStyles.actionBtn} onPress={handleCompleteOnboarding}>
+            <Text style={localStyles.actionBtnText}>Complete Onboarding</Text>
           </TouchableOpacity>
         ) : null}
         viewContent={renderViewContent()}

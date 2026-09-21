@@ -319,9 +319,11 @@ class AutoApprovalEngine:
         company_id: Optional[int] = None,
     ) -> Tuple[AutoApprovalStatus, str, Optional[str]]:
         """Evaluate if an expense claim can be auto-approved"""
+        from core.format_utils import currency_symbol, org_currency_code
+        _sym = currency_symbol(org_currency_code(None))
         # Auto-approve small amounts
         if amount <= 5000:
-            return AutoApprovalStatus.AUTO_APPROVED, f"Auto-approved: amount ₹{amount} within threshold", None
+            return AutoApprovalStatus.AUTO_APPROVED, f"Auto-approved: amount {_sym}{amount} within threshold", None
         
         if amount <= 20000:
             return AutoApprovalStatus.NEEDS_APPROVAL, "Requires manager approval", "manager"

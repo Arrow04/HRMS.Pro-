@@ -27,6 +27,7 @@ from core.auth import check_role, get_current_user, get_password_hash, oauth2_sc
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.tenant import get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from database import Base, SessionLocal, engine, get_db, get_read_db
@@ -50,8 +51,7 @@ def get_dashboard_summary(
     request: Request = None,
 ):
     org_id = current_user.organization_id
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
 
     # Validate company belongs to the org if provided
     if companyId:
@@ -168,9 +168,29 @@ def get_dashboard_summary(
         att_today = att_today.join(Employee, Attendance.employee_id == Employee.id).filter(Employee.organization_id == org_id)
     if companyId:
         att_today = att_today.filter(Attendance.company_id == companyId)
-    present_today = att_today.filter(Attendance.status == "present").count()
+    present_today = att_today.filter(Attendance.status.in_(["present", "late", "work_from_home", "half_day"])).count()
     late_today = att_today.filter(Attendance.is_late == True).count()
     early_departures = att_today.filter(Attendance.is_early_departure == True).count()
+
+    # Employees who never clocked in today
+    emp_today_q = db.query(Attendance.employee_id).filter(
+        Attendance.deleted_at.is_(None),
+        Attendance.date == today_str,
+    )
+    if companyId:
+        emp_today_q = emp_today_q.filter(Attendance.company_id == companyId)
+    emp_today_ids = {r[0] for r in emp_today_q.all()}
+
+    absent_q = db.query(Employee).filter(
+        Employee.deleted_at.is_(None),
+        Employee.status == "active",
+        Employee.id.notin_(emp_today_ids),
+    )
+    if companyId:
+        absent_q = absent_q.filter(Employee.company_id == companyId)
+    if org_id:
+        absent_q = absent_q.filter(Employee.organization_id == org_id)
+    absent_today = absent_q.count()
 
     # --- Leave stats ---
     leave_base = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None))
@@ -180,8 +200,9 @@ def get_dashboard_summary(
         leave_base = leave_base.filter(LeaveApplication.company_id == companyId)
     pending_leaves = leave_base.filter(LeaveApplication.status == "pending").count()
     leaves_this_month = leave_base.filter(
-        LeaveApplication.created_at >= month_start,
-        LeaveApplication.created_at <= month_end,
+        LeaveApplication.status == "approved",
+        LeaveApplication.start_date >= month_start,
+        LeaveApplication.start_date <= month_end,
     ).count()
 
     # --- Expense stats (filter via employee's org/company) ---
@@ -486,6 +507,7 @@ def get_dashboard_summary(
             "lateToday": late_today,
             "earlyDepartures": early_departures,
             "onLeaveToday": on_leave_today,
+            "absentToday": absent_today,
         },
         "leaves": {
             "pending": pending_leaves,
@@ -530,10 +552,14 @@ def get_dashboard_stats(
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id
+    # Company isolation for aggregate KPIs (restricted roles see only their company).
+    _dash_scope = resolve_company_scope(db, current_user, None)
 
     emp_query = db.query(Employee).filter(Employee.deleted_at.is_(None))
     if org_id:
         emp_query = emp_query.filter(Employee.organization_id == org_id)
+    if _dash_scope is not None:
+        emp_query = emp_query.filter(Employee.company_id == _dash_scope)
 
     total_employees = emp_query.count()
     active_employees = emp_query.filter(Employee.status == "active").count()
@@ -563,6 +589,12 @@ def get_dashboard_stats(
         expenses_q = expenses_q.filter(Expense.organization_id == org_id)
         dept_q = dept_q.filter(Department.organization_id == org_id)
         comp_q = comp_q.filter(Company.organization_id == org_id)
+    if _dash_scope is not None:
+        present_q = present_q.filter(Attendance.company_id == _dash_scope)
+        leaves_q = leaves_q.filter(LeaveApplication.company_id == _dash_scope)
+        expenses_q = expenses_q.filter(Expense.company_id == _dash_scope)
+        dept_q = dept_q.filter(Department.company_id == _dash_scope)
+        comp_q = comp_q.filter(Company.id == _dash_scope)
 
     present_today = present_q.count()
     pending_leaves = leaves_q.count()

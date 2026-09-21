@@ -29,6 +29,7 @@ from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_ca
 from core.config import settings
 from core.datetime_utils import ist_now_naive, ist_today_str
 from core.tenant import get_employee_in_org, org_owned
+from core.company_scope import assert_company_allowed, require_write_company, resolve_company_scope
 from core.schemas import (UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from database import Base, SessionLocal, engine, get_db
@@ -41,6 +42,18 @@ from utils.name_utils import employee_display_name
 router = APIRouter(tags=["Employees"])
 
 
+def _get_employee_in_org_checked(db: Session, employee_id: int, current_user: User) -> Employee:
+    """Load employee via org scope, then enforce company isolation."""
+    if current_user.role != "superadmin":
+        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, emp.company_id)
+        return emp
+    emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return emp
+
+
 
 
 @router.get("/api/employees/{employee_id}/lifecycle", tags=["Employees"])
@@ -49,12 +62,7 @@ def get_employee_lifecycle(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
     return {
         "employeeId": emp.id,
         "employeeName": f"{emp.first_name} {emp.last_name}",
@@ -74,8 +82,7 @@ def get_employee_attendance_history(
     current_user: User = Depends(get_current_user),
 ):
     """Paginated attendance history for an employee (fast for large datasets)."""
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     query = db.query(Attendance).filter(Attendance.deleted_at.is_(None), Attendance.employee_id == employee_id)
     if startDate:
         query = query.filter(Attendance.date >= startDate)
@@ -123,8 +130,7 @@ def get_employee_attendance_summary(
     year = today.year
     month = today.month
 
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
 
     # Build month boundaries going back `months` months
     boundaries = []
@@ -195,8 +201,7 @@ def get_employee_leaves_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     query = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None), LeaveApplication.employee_id == employee_id)
     if status:
         query = query.filter(LeaveApplication.status == status)
@@ -231,8 +236,7 @@ def get_employee_payroll_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     query = db.query(Payroll).filter(Payroll.employee_id == employee_id)
     if month:
         query = query.filter(Payroll.month == month)
@@ -271,14 +275,7 @@ def get_employee_full_statement(
     now = ist_now_naive()
     month = month or now.month
     year = year or now.year
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(
-            Employee.deleted_at.is_(None), Employee.id == employee_id
-        ).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     # Payroll for the period (all, incl. multiple runs)
     payroll_rows = db.query(Payroll).filter(
@@ -404,8 +401,7 @@ def get_employee_expenses_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     query = db.query(Expense).filter(Expense.deleted_at.is_(None), Expense.employee_id == employee_id)
     total = query.count()
     records = query.order_by(Expense.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
@@ -430,8 +426,7 @@ def get_employee_performance_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     reviews = db.query(PerformanceReview).filter(
         PerformanceReview.deleted_at.is_(None),
         PerformanceReview.employee_id == employee_id,
@@ -474,8 +469,7 @@ def get_employee_exit_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+    _get_employee_in_org_checked(db, employee_id, current_user)
     records = db.query(ExitRecord).filter(
         ExitRecord.deleted_at.is_(None),
         ExitRecord.employee_id == employee_id,
@@ -513,12 +507,7 @@ def export_employee_history(
     import csv
     import io
 
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     name = f"{emp.first_name} {emp.last_name}".strip() or emp.email
     buf = io.StringIO()
@@ -785,12 +774,7 @@ def download_employee_resume(
 ):
     """Download an employee's CV if uploaded; otherwise generate a resume PDF
     from their profile data (education, experience, skills, achievements, etc.)."""
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     name = f"{emp.first_name} {emp.last_name}".strip() or emp.email or "employee"
     safe_name = re.sub(r"[^\w\- ]", "", name).replace(" ", "_")
@@ -848,12 +832,7 @@ def get_onboarding_progress(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
     return {
         "employeeId": emp.id,
         "onboardingStep": emp.onboarding_step or "pending",
@@ -869,12 +848,7 @@ def update_onboarding_step(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     step_id = payload.stepId
     if not step_id:
@@ -899,12 +873,7 @@ def save_onboarding_data(
     current_user: User = Depends(get_current_user),
 ):
     """Save the full onboarding form data to the employee record."""
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     from utils.helpers import convert_camel_to_snake
     from utils.name_utils import normalize_name_payload, apply_name_fields, employee_display_name
@@ -926,13 +895,20 @@ def save_onboarding_data(
         data.pop("last_name", None)
     if current_user.role != "superadmin":
         data.pop("organization_id", None)
+    # Company isolation on draft saves: cannot file a draft under another company.
+    if data.get("company_id") not in (None, "", 0):
+        data["company_id"] = require_write_company(db, current_user, data["company_id"])
 
     # Fields that must never hold an empty string — empty means "not set".
     integer_fields = {
         "designation_id", "department_id", "company_id", "organization_id",
         "manager_id", "reporting_to", "branch_id", "graduation_year",
         "number_of_children", "experience_years", "notice_period_days", "shift_id",
+        "salary_template_id", "salary_company_id", "payroll_policy_id",
+        "attendance_policy_id", "tax_regime_id", "payroll_template_id",
+        "leave_template_id",
     }
+    float_fields = {"pay_rate"}
     date_fields = {
         "date_of_birth", "join_date", "certification_date",
         "certification_expiry", "device_assigned_date", "date_of_leaving",
@@ -945,6 +921,13 @@ def save_onboarding_data(
                 return None
             try:
                 return int(float(val))
+            except (TypeError, ValueError):
+                return None
+        if f in float_fields:
+            if val in ("", None):
+                return None
+            try:
+                return float(val)
             except (TypeError, ValueError):
                 return None
         if f in date_fields and isinstance(val, str):
@@ -974,7 +957,10 @@ def save_onboarding_data(
               "spouse_phone", "number_of_children", "nominee_name",
               "nominee_relationship", "user_role", "device_type",
               "device_ip_address", "device_mac_address", "device_serial_number",
-              "status", "birth_certificate_number", "shift_id"]:
+              "status", "birth_certificate_number", "shift_id",
+              "salary_template_id", "salary_company_id", "payroll_policy_id",
+              "attendance_policy_id", "tax_regime_id", "payroll_template_id",
+              "leave_template_id", "pay_frequency", "pay_rate"]:
         if f in data and data[f] is not None:
             val = _clean_value(f, data[f])
             # Skip empty strings for identity fields to avoid clobbering the
@@ -1137,12 +1123,7 @@ def complete_onboarding(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     # Optionally save onboarding data before completing
     if payload:
@@ -1232,12 +1213,7 @@ def activate_onboarding(
     Stores the system date as the employee's onboarding/join date. The date is
     captured from the confirmation modal (read-only) on the frontend.
     """
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     emp.onboarding_step = "completed"
     emp.status = "active"
@@ -1284,12 +1260,7 @@ def initiate_exit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "superadmin":
-        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
-    else:
-        emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == employee_id).first()
-        if not emp:
-            raise HTTPException(status_code=404, detail="Employee not found")
+    emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     exit_type = payload.exitType or "resigned"
     exit_date = payload.exitDate or ist_today_str()
@@ -1340,6 +1311,7 @@ def initiate_exit(
 
 @router.get("/api/exit-records", tags=["Exit Management"])
 def list_exit_records(
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1349,6 +1321,11 @@ def list_exit_records(
     )
     if current_user.role != "superadmin":
         records = records.filter(ExitRecord.organization_id == current_user.organization_id)
+    company_scope = resolve_company_scope(db, current_user, companyId)
+    if company_scope is not None:
+        records = records.filter(ExitRecord.employee_id.in_(
+            db.query(Employee.id).filter(Employee.company_id == company_scope, Employee.deleted_at.is_(None))
+        ))
     records = records.order_by(ExitRecord.created_at.desc()).all()
     result = []
     for r in records:

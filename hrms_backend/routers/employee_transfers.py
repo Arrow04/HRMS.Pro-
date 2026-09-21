@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -9,17 +9,24 @@ from routers.auth import get_current_user
 from core.audit import log_activity
 from core.datetime_utils import ist_now_naive
 from core.tenant import get_employee_in_org, org_owned, validate_company_in_org
+from core.company_scope import assert_company_allowed, resolve_company_scope
 
 router = APIRouter(tags=["employee-transfers"])
 
 
-def _transfer_owned(db: Session, transfer, org_id: int):
-    """Raise 404 unless the transfer's employee belongs to the caller's org."""
+def _transfer_owned(db: Session, transfer, org_id: int, current_user=None):
+    """Raise 404 unless the transfer's employee belongs to the caller's org.
+
+    When the caller is provided, also enforces company isolation: restricted
+    roles can only touch transfers of their own company's employees.
+    """
     if transfer is None:
         raise HTTPException(status_code=404, detail="Transfer not found")
     emp = db.query(Employee).filter(Employee.id == transfer.employee_id).first()
     if emp is None or int(emp.organization_id) != int(org_id):
         raise HTTPException(status_code=404, detail="Transfer not found")
+    if current_user is not None:
+        assert_company_allowed(db, current_user, getattr(emp, "company_id", None))
     return transfer
 
 # Pydantic Schemas
@@ -113,6 +120,8 @@ def create_transfer(
         employee = db.query(Employee).filter(Employee.id == transfer.employee_id).first()
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
+    # Company isolation: transfers can only move your own company's employees.
+    assert_company_allowed(db, current_user, employee.company_id)
     
     # Resolve target branches (support single or multiple)
     target_ids = transfer.to_branch_ids or ([transfer.to_branch_id] if transfer.to_branch_id else [])
@@ -203,16 +212,22 @@ def create_transfer(
 def get_transfers(
     employee_id: Optional[int] = None,
     status: Optional[str] = None,
+    companyId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get all transfers with optional filters"""
+    
+    scope_company = resolve_company_scope(db, current_user, companyId)
     
     query = db.query(EmployeeTransfer)
     if current_user.role != "superadmin":
         query = query.join(Employee, EmployeeTransfer.employee_id == Employee.id).filter(
             Employee.organization_id == current_user.organization_id
         )
+    
+    if scope_company is not None:
+        query = query.filter(Employee.company_id == scope_company)
     
     if employee_id:
         query = query.filter(EmployeeTransfer.employee_id == employee_id)
@@ -237,7 +252,7 @@ def get_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     
     return _format_transfer_response(transfer, db)
 
@@ -255,7 +270,7 @@ def update_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     
     # Editing pending transfer details
     edit_fields = [
@@ -366,7 +381,7 @@ def approve_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     if transfer.status != "pending":
         raise HTTPException(status_code=400, detail="Only pending transfers can be approved")
     transfer.status = "approved"
@@ -406,7 +421,7 @@ def complete_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     if transfer.status not in ("approved", "in_progress"):
         raise HTTPException(status_code=400, detail="Only approved transfers can be completed")
     transfer.status = "completed"
@@ -418,6 +433,27 @@ def complete_transfer(
             to_company = db.query(Company).filter(Company.id == transfer.to_company_id).first()
             if to_company:
                 employee.companies = [to_company]
+            # Re-pin leave + attendance templates to the target company's
+            # defaults so quotas/workweek follow the move (used days preserved).
+            try:
+                from models import AttendancePolicy, LeaveTemplate
+                lt = db.query(LeaveTemplate).filter(
+                    LeaveTemplate.deleted_at.is_(None),
+                    LeaveTemplate.status == "active",
+                    LeaveTemplate.organization_id == employee.organization_id,
+                    LeaveTemplate.company_id == transfer.to_company_id,
+                ).order_by(LeaveTemplate.id.desc()).first()
+                if lt:
+                    employee.leave_template_id = lt.id
+                ap = db.query(AttendancePolicy).filter(
+                    AttendancePolicy.organization_id == employee.organization_id,
+                    AttendancePolicy.status == "active",
+                    AttendancePolicy.company_id == transfer.to_company_id,
+                ).order_by(AttendancePolicy.id.desc()).first()
+                if ap:
+                    employee.attendance_policy_id = ap.id
+            except Exception:
+                pass
         # Branches are many-to-many — replace the from-branch with the target branch(es)
         from models import EmployeeBranchAssignment
         # Remove the source branch assignment only for permanent moves.
@@ -499,7 +535,7 @@ def revert_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     if transfer.status != "completed":
         raise HTTPException(status_code=400, detail="Only completed transfers can be reverted")
 
@@ -593,7 +629,7 @@ def reject_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     if transfer.status != "pending":
         raise HTTPException(status_code=400, detail="Only pending transfers can be rejected")
     transfer.status = "rejected"
@@ -624,7 +660,7 @@ def delete_transfer(
     if not transfer:
         raise HTTPException(status_code=404, detail="Transfer not found")
     if current_user.role != "superadmin":
-        _transfer_owned(db, transfer, current_user.organization_id)
+        _transfer_owned(db, transfer, current_user.organization_id, current_user)
     
     if transfer.status != 'pending':
         raise HTTPException(status_code=400, detail="Can only delete pending transfers")

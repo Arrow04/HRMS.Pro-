@@ -119,6 +119,7 @@ from routers.compliance import router as compliance_router
 from routers.ai_automation_tasks import router as ai_automation_router
 from routers.companies import router as companies_router
 from routers.leaves import router as leaves_router
+from routers.leave_templates import router as leave_templates_router
 from routers.payroll import router as payroll_router
 from routers.notifications import router as notifications_router
 from routers.assets import router as assets_router
@@ -140,6 +141,7 @@ from routers.grievances import router as grievances_router
 from routers.helpdesk import router as helpdesk_router
 from routers.aggregations import router as aggregations_router
 from routers.search import router as search_router
+from routers.statutory_rules import router as statutory_rules_router
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from utils.helpers import convert_camel_to_snake
 
@@ -688,6 +690,7 @@ app.include_router(ai_automation_router)
 
 app.include_router(companies_router)
 app.include_router(leaves_router)
+app.include_router(leave_templates_router)
 app.include_router(payroll_router)
 app.include_router(notifications_router)
 app.include_router(assets_router)
@@ -710,6 +713,7 @@ app.include_router(batch_operations_router)
 
 app.include_router(aggregations_router)
 app.include_router(search_router)
+app.include_router(statutory_rules_router)
 
 # --- Test Route ---
 

@@ -47,6 +47,7 @@ class EmployeeBase(BaseModel):
     permanentAddress: Optional[str] = None
     dateOfBirth: Optional[str] = None
     gender: Optional[str] = None
+    isPersonWithDisability: Optional[bool] = False
     emergencyContact: Optional[str] = None
     emergencyPhone: Optional[str] = None
     voterId: Optional[str] = None
@@ -548,6 +549,82 @@ class LeaveTypeCreate(LeaveTypeBase):
     pass
 
 
+class LeaveTypeUpdate(BaseModel):
+    """Partial update — every field optional (toggles and configure-only edits)."""
+    name: Optional[str] = None
+    code: Optional[str] = None
+    daysAllowed: Optional[int] = None
+    carryForward: Optional[bool] = None
+    carryForwardLimit: Optional[int] = None
+    organizationId: Optional[int] = None
+    companyId: Optional[int] = None
+    status: Optional[str] = None
+    isPaid: Optional[bool] = None
+    isEncashable: Optional[bool] = None
+    color: Optional[str] = None
+
+
+class LeaveTemplateBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    companyId: Optional[int] = None
+    status: Optional[str] = "active"
+    body: Optional[Dict[str, Any]] = None
+    effectiveFrom: Optional[str] = None
+    accrual_method: Optional[str] = "monthly"
+    accrual_day: Optional[int] = 1
+    probation_accrual_rate: Optional[float] = 0.5
+    max_balance_cap: Optional[int] = None
+    lapse_unused: Optional[bool] = False
+    carry_forward_enabled: Optional[bool] = False
+    carry_forward_max_days: Optional[int] = None
+    carry_forward_expiry: Optional[str] = "year_end"
+    carry_forward_use_it_or_lose_it: Optional[bool] = False
+    encashment_enabled: Optional[bool] = False
+    encashment_min_balance: Optional[int] = None
+    encashment_rate: Optional[float] = None
+    encashment_taxable: Optional[bool] = False
+    holiday_optional_limit: Optional[int] = None
+    holiday_auto_apply_national: Optional[bool] = False
+    enable_half_day: Optional[bool] = False
+    min_leave_for_half_day: Optional[int] = None
+    advance_notice_days: Optional[int] = None
+    max_consecutive_days: Optional[int] = None
+
+
+class LeaveTemplateCreate(LeaveTemplateBase):
+    pass
+
+
+class LeaveTemplateUpdate(BaseModel):
+    """Partial update — versioned edits handled by the endpoint."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    companyId: Optional[int] = None
+    status: Optional[str] = None
+    body: Optional[Dict[str, Any]] = None
+    effectiveFrom: Optional[str] = None
+    accrual_method: Optional[str] = None
+    accrual_day: Optional[int] = None
+    probation_accrual_rate: Optional[float] = None
+    max_balance_cap: Optional[int] = None
+    lapse_unused: Optional[bool] = None
+    carry_forward_enabled: Optional[bool] = None
+    carry_forward_max_days: Optional[int] = None
+    carry_forward_expiry: Optional[str] = None
+    carry_forward_use_it_or_lose_it: Optional[bool] = None
+    encashment_enabled: Optional[bool] = None
+    encashment_min_balance: Optional[int] = None
+    encashment_rate: Optional[float] = None
+    encashment_taxable: Optional[bool] = None
+    holiday_optional_limit: Optional[int] = None
+    holiday_auto_apply_national: Optional[bool] = None
+    enable_half_day: Optional[bool] = None
+    min_leave_for_half_day: Optional[int] = None
+    advance_notice_days: Optional[int] = None
+    max_consecutive_days: Optional[int] = None
+
+
 class LeaveTypeResponse(LeaveTypeBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
@@ -754,8 +831,9 @@ class JobOpeningResponse(JobOpeningBase):
 
 
 class CandidateBase(BaseModel):
-    firstName: str
-    lastName: str
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    fullName: Optional[str] = None
     email: str
     phone: Optional[str] = None
     jobOpeningId: Optional[int] = None
@@ -995,6 +1073,7 @@ class HolidayBase(BaseModel):
     year: Optional[int] = None
     isRecurring: Optional[bool] = False
     isPaid: Optional[bool] = True
+    isWorkingDay: Optional[bool] = False
     region: Optional[str] = None
     category: Optional[str] = "general"
     notes: Optional[str] = None

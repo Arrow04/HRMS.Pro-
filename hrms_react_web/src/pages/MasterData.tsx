@@ -404,10 +404,10 @@ const MasterData = () => {
   const inactiveValues = uniqueValues.filter((v: MasterDataValue) => v.is_active === false).length;
 
   const stats = [
-    { label: 'Total Values', value: totalValues, icon: Database, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveCategory(null) },
-    { label: 'Active', value: activeValues, icon: CheckCircle2, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveCategory(null) },
-    { label: 'Inactive', value: inactiveValues, icon: X, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', onClick: () => setActiveCategory(null) },
-    { label: 'Categories', value: totalCategories, icon: Tag, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => setActiveCategory(null) },
+    { label: 'Total Values', value: totalValues, icon: Database, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', tooltip: 'Total reference data values across all categories', trend: totalValues > 0 ? 5 : 0, onClick: () => setActiveCategory(null) },
+    { label: 'Active', value: activeValues, icon: CheckCircle2, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', tooltip: 'Active values available in dropdowns', trend: totalValues > 0 ? Math.round((activeValues / totalValues) * 100) : 0, onClick: () => setActiveCategory(null) },
+    { label: 'Inactive', value: inactiveValues, icon: X, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', tooltip: 'Inactive values hidden from dropdowns', trend: totalValues > 0 ? -Math.round((inactiveValues / totalValues) * 100) : 0, onClick: () => setActiveCategory(null) },
+    { label: 'Categories', value: totalCategories, icon: Tag, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', tooltip: 'Number of data categories', trend: 2, onClick: () => setActiveCategory(null) },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -482,7 +482,7 @@ const MasterData = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {stats.map((stat, index) => (
             <div key={stat.label} className="transition-all duration-300" style={{ transitionDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>

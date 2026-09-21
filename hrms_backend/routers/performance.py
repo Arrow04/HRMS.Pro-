@@ -25,6 +25,7 @@ from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_cri
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.tenant import get_employee_in_org, org_owned, get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.datetime_utils import ist_now_naive
@@ -51,8 +52,7 @@ def get_performance_reviews(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(PerformanceReview).filter(PerformanceReview.deleted_at.is_(None))
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(PerformanceReview.organization_id == current_user.organization_id)
@@ -135,6 +135,7 @@ def get_performance_review(
         raise HTTPException(status_code=404, detail="Performance review not found")
     if current_user.role != "superadmin":
         org_owned(pr, current_user.organization_id)
+    assert_company_allowed(db, current_user, pr.company_id)
     return pr
 
 
@@ -160,7 +161,9 @@ def _load_performance_employee(db: Session, current_user: User, employee_id: int
     if employee_id is None:
         raise HTTPException(status_code=422, detail="employeeId is required")
     if current_user.role != "superadmin":
-        return get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        emp = get_employee_in_org(db, Employee, employee_id, current_user.organization_id)
+        assert_company_allowed(db, current_user, emp.company_id)
+        return emp
     emp = db.query(Employee).filter(
         Employee.deleted_at.is_(None),
         Employee.id == employee_id,
@@ -281,6 +284,7 @@ def update_performance_review(
         raise HTTPException(status_code=404, detail="Performance review not found")
     if current_user.role != "superadmin":
         org_owned(pr, current_user.organization_id)
+    assert_company_allowed(db, current_user, pr.company_id)
     data = convert_camel_to_snake(review_data.model_dump(exclude_unset=True))
     if "employee_id" in data:
         emp = _load_performance_employee(db, current_user, data["employee_id"])
@@ -330,11 +334,18 @@ def get_goals(
         Employee.status == "active",
     )
     if employeeId:
+        if current_user.role != "superadmin":
+            _g_emp = db.query(Employee).filter(Employee.id == employeeId).first()
+            if _g_emp is not None:
+                assert_company_allowed(db, current_user, _g_emp.company_id)
         q = q.filter(Goal.employee_id == employeeId)
     if status:
         q = q.filter(Goal.status == status)
     if current_user.organization_id:
         q = q.filter(Goal.organization_id == current_user.organization_id)
+    _g_scope = resolve_company_scope(db, current_user, None)
+    if _g_scope is not None:
+        q = q.filter(Employee.company_id == _g_scope)
     records = q.order_by(Goal.created_at.desc()).limit(500).all()
 
     emp_ids = {g.employee_id for g in records if g.employee_id}
@@ -461,7 +472,14 @@ def get_feedback(
         Employee.status == "active",
     )
     if employeeId:
+        if current_user.role != "superadmin":
+            _f_emp = db.query(Employee).filter(Employee.id == employeeId).first()
+            if _f_emp is not None:
+                assert_company_allowed(db, current_user, _f_emp.company_id)
         q = q.filter(Feedback.employee_id == employeeId)
+    _f_scope = resolve_company_scope(db, current_user, None)
+    if _f_scope is not None:
+        q = q.filter(Employee.company_id == _f_scope)
     if feedbackType:
         q = q.filter(Feedback.feedback_type == feedbackType)
     records = q.order_by(Feedback.created_at.desc()).limit(500).all()
@@ -561,6 +579,7 @@ def update_feedback(
 @router.get("/api/performance/stats", tags=["Performance"])
 def get_performance_stats(
     organizationId: Optional[int] = None,
+    companyId: Optional[int] = None,
     year: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -583,6 +602,11 @@ def get_performance_stats(
     if organizationId:
         base = base.filter(PerformanceReview.employee_id.in_(
             db.query(Employee.id).filter(Employee.organization_id == organizationId)
+        ))
+    company_scope = resolve_company_scope(db, current_user, companyId)
+    if company_scope is not None:
+        base = base.filter(PerformanceReview.employee_id.in_(
+            db.query(Employee.id).filter(Employee.company_id == company_scope)
         ))
     if year:
         base = base.filter(PerformanceReview.review_year == year)
@@ -608,40 +632,35 @@ def get_performance_stats(
         avg_score = avg_score.filter(org_filter)
         max_score = max_score.filter(org_filter)
         min_score = min_score.filter(org_filter)
+    if company_scope is not None:
+        _comp_filter = PerformanceReview.employee_id.in_(
+            db.query(Employee.id).filter(Employee.company_id == company_scope)
+        )
+        avg_score = avg_score.filter(_comp_filter)
+        max_score = max_score.filter(_comp_filter)
+        min_score = min_score.filter(_comp_filter)
     if year:
         avg_score = avg_score.filter(PerformanceReview.review_year == year)
         max_score = max_score.filter(PerformanceReview.review_year == year)
         min_score = min_score.filter(PerformanceReview.review_year == year)
 
-    # Status counts in one GROUP BY query instead of N count queries
+    status_filters = [PerformanceReview.deleted_at.is_(None)]
+    if organizationId:
+        status_filters.append(PerformanceReview.employee_id.in_(
+            db.query(Employee.id).filter(Employee.organization_id == organizationId)
+        ))
+    if company_scope is not None:
+        status_filters.append(PerformanceReview.employee_id.in_(
+            db.query(Employee.id).filter(Employee.company_id == company_scope)
+        ))
+    if year:
+        status_filters.append(PerformanceReview.review_year == year)
     status_rows = dict(
         db.query(PerformanceReview.status, func.count(PerformanceReview.id))
-        .filter(PerformanceReview.deleted_at.is_(None))
+        .filter(*status_filters)
         .group_by(PerformanceReview.status)
         .all()
     )
-    if organizationId:
-        status_rows = dict(
-            db.query(PerformanceReview.status, func.count(PerformanceReview.id))
-            .filter(
-                PerformanceReview.deleted_at.is_(None),
-                PerformanceReview.employee_id.in_(
-                    db.query(Employee.id).filter(Employee.organization_id == organizationId)
-                ),
-            )
-            .group_by(PerformanceReview.status)
-            .all()
-        )
-    elif year:
-        status_rows = dict(
-            db.query(PerformanceReview.status, func.count(PerformanceReview.id))
-            .filter(
-                PerformanceReview.deleted_at.is_(None),
-                PerformanceReview.review_year == year,
-            )
-            .group_by(PerformanceReview.status)
-            .all()
-        )
 
     completed = status_rows.get("completed", 0) + status_rows.get("acknowledged", 0)
     pending = status_rows.get("draft", 0) + status_rows.get("submitted", 0)
@@ -772,6 +791,7 @@ def delete_performance_review(
         raise HTTPException(status_code=404, detail="Performance review not found")
     if current_user.role != "superadmin":
         org_owned(pr, current_user.organization_id)
+    assert_company_allowed(db, current_user, pr.company_id)
     pr.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Performance review deleted"}

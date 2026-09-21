@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -39,47 +39,13 @@ const FEEDBACK_CATEGORIES = [
   { id: 'subordinate', name: 'Subordinate' },
 ];
 
-const RATING_TEMPLATES: Record<string, { label: string; ratings: { value: number; label: string; color: string }[] }> = {
-  '1-5': { label: '1-5 Numeric', ratings: [
-    { value: 1, label: 'Poor', color: '#EF4444' },
-    { value: 2, label: 'Needs Improvement', color: '#F97316' },
-    { value: 3, label: 'Meets Expectations', color: '#EAB308' },
-    { value: 4, label: 'Exceeds Expectations', color: '#22C55E' },
-    { value: 5, label: 'Exceptional', color: '#3B82F6' },
-  ]},
-  'a-f': { label: 'A-F Grade', ratings: [
-    { value: 1, label: 'F - Unsatisfactory', color: '#EF4444' },
-    { value: 2, label: 'D - Below Expectations', color: '#F97316' },
-    { value: 3, label: 'C - Meets Expectations', color: '#EAB308' },
-    { value: 4, label: 'B - Exceeds Expectations', color: '#22C55E' },
-    { value: 5, label: 'A - Exceptional', color: '#3B82F6' },
-  ]},
-  'cn': { label: '中文评级', ratings: [
-    { value: 1, label: '不合格', color: '#EF4444' },
-    { value: 2, label: '合格', color: '#F97316' },
-    { value: 3, label: '良好', color: '#EAB308' },
-    { value: 4, label: '优秀', color: '#22C55E' },
-    { value: 5, label: '卓越', color: '#3B82F6' },
-  ]},
-};
-
-const COMPETENCY_TEMPLATES = [
-  { name: 'Technical', description: 'Domain-specific skills and knowledge', weight: 40 },
-  { name: 'Leadership', description: 'Ability to guide and inspire teams', weight: 25 },
-  { name: 'Communication', description: 'Verbal and written communication skills', weight: 20 },
-  { name: 'Teamwork', description: 'Collaboration and team contribution', weight: 15 },
-];
-
-const GOAL_TEMPLATES = [
-  { name: 'Revenue Growth', description: 'Financial performance and business growth targets' },
-  { name: 'Customer Satisfaction', description: 'Customer experience and satisfaction metrics' },
-  { name: 'Project Delivery', description: 'Project milestones and delivery timelines' },
-  { name: 'Innovation', description: 'New ideas, process improvements, and creative solutions' },
-];
+const RATING_TEMPLATES: Record<string, { label: string; ratings: { value: number; label: string; color: string }[] }> = {};
+const COMPETENCY_TEMPLATES: { name: string; description: string; weight: number }[] = [];
+const GOAL_TEMPLATES: { name: string; description: string }[] = [];
 
 interface PerformanceConfigProps {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
 }
 
 // ── Types ──
@@ -140,6 +106,8 @@ interface FeedbackSettings {
 }
 
 interface PageState {
+  name: string;
+  description: string;
   reviewCycles: ReviewCycle[];
   ratingScales: RatingScale[];
   competencyCategories: CompetencyCategory[];
@@ -149,6 +117,8 @@ interface PageState {
 
 function defaultState(): PageState {
   return {
+    name: '',
+    description: '',
     reviewCycles: [],
     ratingScales: [],
     competencyCategories: [],
@@ -174,7 +144,7 @@ function defaultReviewCycle(): ReviewCycle {
 }
 
 function defaultRatingScale(): RatingScale {
-  return { name: '', description: '', min_rating: 1, max_rating: 5, ratings: RATING_TEMPLATES['1-5'].ratings.map(r => ({ ...r })) };
+  return { name: '', description: '', min_rating: 1, max_rating: 5, ratings: [] };
 }
 
 function defaultCompetencyCategory(): CompetencyCategory {
@@ -281,11 +251,11 @@ const WIZARD_TABS = [
 ];
 
 const WIZARD_HELP: Record<string, string> = {
-  cycles: 'Define performance review cycles, frequency, and review options.',
-  ratings: 'Configure rating scales with labels, colors, and value ranges.',
-  competency: 'Build competency categories with weighted proficiency levels.',
-  goals: 'Create goal categories and KRA templates with weight allocation.',
-  feedback: 'Set up feedback collection, anonymity, templates, and deadlines.',
+  cycles: 'Set up how often reviews happen (quarterly, half-yearly, or annually). Define the review window, who gets reviewed, and whether self-assessment is required.',
+  ratings: 'Create the rating scale your managers will use to score employees. Define each level with a name, numeric value, and color — e.g. 1 = Poor (Red), 5 = Exceptional (Blue).',
+  competency: 'Define what skills and qualities you evaluate. Assign a weight (%) to each category so the final score reflects what matters most to your organization.',
+  goals: 'Create goal categories and Key Result Areas (KRAs) that employees work toward. Each goal has a target and weight that feeds into the overall performance score.',
+  feedback: 'Configure how 360° feedback works — who gives it, whether it\'s anonymous, how many responses are needed, and when feedback is due.',
 };
 
 // ── Main component ──
@@ -293,37 +263,46 @@ const WIZARD_HELP: Record<string, string> = {
 export default function PerformanceConfig({ open, onClose }: PerformanceConfigProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('cycles');
+  const [step, setStep] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingType, setEditingType] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
 
   const [pageState, setPageState] = useState<PageState>(defaultState);
 
-  const { data: configData, isLoading } = useQuery({
-    queryKey: ['performance-config'],
-    queryFn: async () => {
-      try {
-        const r = await api.get('/settings/configs/performance');
-        return r.data || defaultState();
-      } catch { return defaultState(); }
-    },
-    enabled: open,
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    staleTime: 5 * 60 * 1000,
+    enabled: true,
   });
 
-  useState(() => {
-    if (configData) setPageState(configData);
+  const { data: configsList = [], isLoading: listLoading } = useQuery({
+    queryKey: ['performance-configs', companyId],
+    queryFn: async () => {
+      try {
+        const params = companyId ? { companyId } : {};
+        const r = await api.get('/settings/configs/performance', { params });
+        return Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
+      } catch { return []; }
+    },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (state: PageState) => {
-      if (editingId && editingType) {
-        return api.put(`/settings/configs/performance/${editingId}`, { type: editingType, data: state });
+      if (editingConfigId) {
+        return api.put(`/settings/configs/performance/${editingConfigId}`, state, { params: companyId ? { companyId } : {} });
       }
-      return api.post('/settings/configs/performance', state);
+      return api.post('/settings/configs/performance', state, { params: companyId ? { companyId } : {} });
     },
     onSuccess: (res: any) => {
       toast.success(res?.data?.message || 'Performance configuration saved');
       queryClient.invalidateQueries({ queryKey: ['performance-config'] });
+      queryClient.invalidateQueries({ queryKey: ['performance-configs'] });
+      setShowWizard(false);
+      setEditingConfigId(null);
       setEditingId(null);
       setEditingType(null);
     },
@@ -336,6 +315,16 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     onSuccess: (res: any) => {
       toast.success(res?.data?.message || 'Deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['performance-config'] });
+      queryClient.invalidateQueries({ queryKey: ['performance-configs'] });
+    },
+    onError: (err: unknown) => toast.error(errMsg(err, 'Failed to delete')),
+  });
+
+  const deleteConfigMutation = useMutation({
+    mutationFn: async (id: number) => api.delete(`/settings/configs/performance/${id}`),
+    onSuccess: () => {
+      toast.success('Configuration deleted');
+      queryClient.invalidateQueries({ queryKey: ['performance-configs'] });
     },
     onError: (err: unknown) => toast.error(errMsg(err, 'Failed to delete')),
   });
@@ -366,9 +355,8 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
   const addScale = () => setS({ ratingScales: [...pageState.ratingScales, defaultRatingScale()] });
   const removeScale = (i: number) => setS({ ratingScales: pageState.ratingScales.filter((_, idx) => idx !== i) });
   const editScale = (i: number) => { setEditingId(pageState.ratingScales[i].id ?? null); setEditingType('ratingScale'); };
-  const applyTemplate = (i: number, templateKey: string) => {
-    const t = RATING_TEMPLATES[templateKey];
-    if (t) setScale(i, { ratings: t.ratings.map(r => ({ ...r })), min_rating: 1, max_rating: t.ratings.length });
+  const applyTemplate = (_i: number, _templateKey: string) => {
+    // Templates removed — users create from scratch
   };
 
   const setRatingRow = (scaleIdx: number, ratingIdx: number, patch: Partial<{ value: number; label: string; color: string }>) => {
@@ -408,12 +396,11 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     setCategory(catIdx, { competencies: cat.competencies.filter((_, idx) => idx !== itemIdx) });
   };
   const applyCompetencyTemplate = (i: number, templateName: string) => {
-    const t = COMPETENCY_TEMPLATES.find(tp => tp.name === templateName);
-    if (t) setCategory(i, { name: t.name, description: t.description, weight: t.weight });
+    // Templates removed — users create from scratch
   };
 
   const totalCompetencyWeight = useMemo(
-    () => pageState.competencyCategories.reduce((s, c) => s + (c.weight || 0), 0),
+    () => (pageState.competencyCategories || []).reduce((s, c) => s + (c.weight || 0), 0),
     [pageState.competencyCategories]
   );
 
@@ -439,13 +426,12 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     const cat = pageState.goalCategories[catIdx];
     setGoalCategory(catIdx, { kras: cat.kras.filter((_, idx) => idx !== kraIdx) });
   };
-  const applyGoalTemplate = (i: number, templateName: string) => {
-    const t = GOAL_TEMPLATES.find(tp => tp.name === templateName);
-    if (t) setGoalCategory(i, { name: t.name, description: t.description });
+  const applyGoalTemplate = (_i: number, _templateName: string) => {
+    // Templates removed — users create from scratch
   };
 
   const totalGoalWeight = useMemo(
-    () => pageState.goalCategories.reduce((s, c) => s + c.kras.reduce((ks, k) => ks + (k.weight || 0), 0), 0),
+    () => (pageState.goalCategories || []).reduce((s, c) => s + (c.kras || []).reduce((ks, k) => ks + (k.weight || 0), 0), 0),
     [pageState.goalCategories]
   );
 
@@ -482,11 +468,84 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     }
   };
 
-  if (!open) return null;
+  // ── List View (default) ──
+  if (!showWizard) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <SlidersHorizontal className="w-5 h-5 text-[#8B5CF6]" />
+              Performance Configurations
+            </h2>
+            <p className="text-sm text-[var(--text-tertiary)]">Review cycles, rating scales, competencies, goals and feedback settings.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {companies.length > 1 && (
+              <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
+                <option value="">All Companies</option>
+                {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <button onClick={() => { setShowWizard(true); setEditingConfigId(null); setPageState(defaultState()); setStep(0); }}
+              className="px-4 py-2 bg-[#8B5CF6] text-white text-sm font-semibold rounded-xl hover:bg-[#7C3AED] transition-colors flex items-center gap-2">
+              <Plus className="w-4 h-4" /> New Configuration
+            </button>
+          </div>
+        </div>
+
+        {listLoading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-[#8B5CF6]" /></div>
+        ) : configsList.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-[var(--border-color)]">
+            <SlidersHorizontal className="w-12 h-12 text-[var(--text-tertiary)] mx-auto mb-3" />
+            <p className="text-sm font-medium text-[var(--text-primary)]">No configurations yet</p>
+            <p className="text-xs text-[var(--text-tertiary)] mt-1">Create your first performance configuration to get started.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {configsList.map((cfg: any) => {
+              const d = cfg.data || cfg;
+              return (
+              <div key={cfg.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">{d.name || cfg.name || 'Unnamed Config'}</h3>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.description || cfg.description || 'No description'}</p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${cfg.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {cfg.status || 'active'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 text-xs text-[var(--text-tertiary)]">
+                  {cfg.company_id && <p>Company: {companies.find((c: any) => c.id === cfg.company_id)?.name || '—'}</p>}
+                  {(d.reviewCycles || []).length > 0 && <p>{d.reviewCycles.length} review cycle(s)</p>}
+                  {(d.ratingScales || []).length > 0 && <p>{d.ratingScales.length} rating scale(s)</p>}
+                  {(d.competencyCategories || []).length > 0 && <p>{d.competencyCategories.length} competency categories</p>}
+                  {(d.goalCategories || []).length > 0 && <p>{d.goalCategories.length} goal categories</p>}
+                </div>
+                <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--border-color)]">
+                  <button onClick={() => { setEditingConfigId(cfg.id); setPageState({ ...defaultState(), ...(cfg.data || cfg) }); setCompanyId(cfg.company_id || null); setShowWizard(true); setStep(0); setEditingId(null); setEditingType(null); }}
+                    className="flex-1 px-3 py-1.5 text-xs font-medium border border-[var(--border-color)] rounded-lg hover:bg-[var(--hover-bg)] flex items-center justify-center gap-1">
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                  <button onClick={() => { if (confirm('Delete this configuration?')) { deleteConfigMutation.mutate(cfg.id); } }}
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 flex items-center justify-center gap-1">
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50" onClick={() => { setShowWizard(false); setEditingConfigId(null); setEditingId(null); setEditingType(null); }} />
       <div className="fixed inset-0 bg-white shadow-2xl flex flex-col">
         {/* Header */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-white">
@@ -499,62 +558,71 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
               <p className="text-xs text-[#64748B]">Review cycles, rating scales, competencies, goals and feedback.</p>
             </div>
           </div>
-          <button onClick={onClose} title="Close" className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setShowWizard(false); setEditingConfigId(null); setEditingId(null); setEditingType(null); }} title="Close" className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         {/* Body */}
-        <div className="flex-1 flex min-h-0">
-          {/* Sidebar */}
-          <aside className="w-64 shrink-0 border-r border-[var(--border-color)] bg-[#F8FAFC] overflow-y-auto">
-            <div className="py-2 px-3">
-              <p className="pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]">Sections</p>
-              <nav className="space-y-0.5">
-                {WIZARD_TABS.map((t) => {
-                  const active = t.id === activeTab;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setActiveTab(t.id)}
-                      className={`w-full flex items-center gap-0 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ease-out group ${
-                        active
-                          ? 'bg-gradient-to-r from-[#F5F3FF] to-[#F8FAFC] text-[#8B5CF6] shadow-sm'
-                          : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-                      }`}
-                    >
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300 ease-out ${
-                        active ? `${t.color}` : 'bg-white border border-[var(--border-color)]'
-                      }`}
-                        style={active ? { background: '#8B5CF614', boxShadow: '0 2px 6px #8B5CF622' } : undefined}>
-                        <t.icon className={`w-4 h-4 transition-all duration-300 ${active ? t.color : 'text-[#64748B]'}`} />
-                      </span>
-                      <span className={`flex-1 truncate transition-colors duration-300 ${active ? 'font-semibold text-[#8B5CF6]' : 'font-medium'}`}>{t.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Step Progress */}
+          <div className="px-6 py-4 border-b border-[var(--border-color)]">
+            <div className="flex items-center gap-2">
+              {WIZARD_TABS.map((t, i) => (
+                <div key={t.id} className="flex items-center gap-2">
+                  <button onClick={() => setStep(i)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      step === i ? 'bg-[#8B5CF6] text-white shadow-sm' : step > i ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                    {step > i ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border">{i + 1}</span>}
+                    <span className="hidden sm:inline">{t.label}</span>
+                  </button>
+                  {i < WIZARD_TABS.length - 1 && <div className={`w-6 h-0.5 rounded ${step > i ? 'bg-green-300' : 'bg-gray-200'}`} />}
+                </div>
+              ))}
             </div>
-          </aside>
+          </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-5">
-            <div key={activeTab} className="section-fade-in">
-              {/* Section header */}
-              <div className="flex items-center gap-3 mb-5">
-                <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#8B5CF614' }}>
-                  {(() => { const t = WIZARD_TABS.find(x => x.id === activeTab); const Icon = t?.icon || SlidersHorizontal; return <Icon className={`w-5 h-5 ${t?.color || ''}`} />; })()}
-                </span>
-                <div className="flex-1">
-                  <h3 className="text-base font-bold text-[#0F172A] leading-tight">{WIZARD_TABS.find(x => x.id === activeTab)?.label || ''}</h3>
-                  <p className="text-xs text-[#64748B]">{WIZARD_HELP[activeTab] || ''}</p>
-                </div>
-              </div>
+            <div className="mb-5">
+              <h3 className="text-base font-bold text-[var(--text-primary)]">{WIZARD_TABS[step]?.label}</h3>
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">{WIZARD_HELP[WIZARD_TABS[step]?.id] || ''}</p>
+            </div>
 
               <div className="space-y-4">
+
+              <div className="space-y-4">
+                {/* Name, Company & Description */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-[var(--background)] rounded-xl border border-[var(--border-color)]">
+                  <div>
+                    <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Configuration Name</label>
+                    <input className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#8B5CF6] bg-white text-[var(--text-primary)]"
+                      value={pageState.name} placeholder="e.g. Standard Review Policy" onChange={e => setS({ name: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Company</label>
+                    {companies.length > 1 ? (
+                      <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)}
+                        className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#8B5CF6] bg-white text-[var(--text-primary)]">
+                        <option value="">All Companies (Org-wide)</option>
+                        {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    ) : (
+                      <input className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-gray-50 text-[var(--text-tertiary)]" value={companies[0]?.name || 'Org-wide'} disabled />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Description</label>
+                    <input className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#8B5CF6] bg-white text-[var(--text-primary)]"
+                      value={pageState.description} placeholder="Optional description" onChange={e => setS({ description: e.target.value })} />
+                  </div>
+                </div>
+
                 {/* ═══════════════════ TAB 1: Review Cycles ═══════════════════ */}
-                {activeTab === 'cycles' && (
+                {step === 0 && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-[var(--text-tertiary)]">Configure review cycles that drive your performance management process.</p>
@@ -580,31 +648,31 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                           </div>
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <Field label="Cycle name" help="Text — e.g. 'Q1 2026 Review'.">
+                              <Field label="Cycle name" help="Give this cycle a clear name so managers know which review period it covers.">
                                 <TextInput value={cycle.name} onChange={v => setCycle(i, { name: v })} placeholder="e.g. Q1 2026 Review" />
                               </Field>
-                              <Field label="Frequency" help="How often reviews occur.">
+                              <Field label="Frequency" help="How often reviews happen — quarterly means every 3 months, half-yearly every 6 months.">
                                 <SearchableSelect value={cycle.frequency} onChange={v => setCycle(i, { frequency: String(v) })} placeholder="Select frequency" options={FREQUENCIES} showAllOption={false} />
                               </Field>
-                              <Field label="Start month" help="Month the cycle begins.">
+                              <Field label="Start month" help="The month when this review cycle begins each year.">
                                 <SearchableSelect value={cycle.start_month} onChange={v => setCycle(i, { start_month: String(v) })} placeholder="Select month" options={MONTHS} showAllOption={false} />
                               </Field>
-                              <Field label="Duration (days)" help="Number — total days in the review cycle.">
+                              <Field label="Duration (days)" help="How long the review window stays open for employees and managers to complete their assessments.">
                                 <NumInput value={cycle.duration_days} onChange={v => setCycle(i, { duration_days: v ?? 90 })} />
                               </Field>
                               <div className="md:col-span-2">
-                                <Field label="Description" help="Text — what this cycle covers.">
+                                <Field label="Description" help="Optional note about what this cycle covers — helps managers understand the scope.">
                                   <TextInput value={cycle.description} onChange={v => setCycle(i, { description: v })} placeholder="Brief description" />
                                 </Field>
                               </div>
                             </div>
                             <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t border-[var(--border-color)] pt-3">
-                              <Toggle label="Auto-start next cycle" help="Automatically start the next cycle when current ends" checked={cycle.auto_start_next} onChange={v => setCycle(i, { auto_start_next: v })} />
-                              <Toggle label="Allow peer review" help="Enable peer feedback during review cycle" checked={cycle.allow_peer_review} onChange={v => setCycle(i, { allow_peer_review: v })} />
-                              <Toggle label="Self-appraisal mandatory" help="Require self-appraisal before manager review" checked={cycle.self_appraisal_mandatory} onChange={v => setCycle(i, { self_appraisal_mandatory: v })} />
-                              <Toggle label="360-degree feedback" help="Enable multi-rater feedback from peers, reports, and stakeholders" checked={cycle.degree_360_feedback} onChange={v => setCycle(i, { degree_360_feedback: v })} />
+                              <Toggle label="Auto-start next cycle" help="When this cycle ends, automatically open the next one — no manual setup needed." checked={cycle.auto_start_next} onChange={v => setCycle(i, { auto_start_next: v })} />
+                              <Toggle label="Allow peer review" help="Let employees request feedback from colleagues they work with closely." checked={cycle.allow_peer_review} onChange={v => setCycle(i, { allow_peer_review: v })} />
+                              <Toggle label="Self-appraisal mandatory" help="Employees must complete their self-assessment before the manager can submit their review." checked={cycle.self_appraisal_mandatory} onChange={v => setCycle(i, { self_appraisal_mandatory: v })} />
+                              <Toggle label="360-degree feedback" help="Collect feedback from peers, direct reports, and stakeholders — not just the manager." checked={cycle.degree_360_feedback} onChange={v => setCycle(i, { degree_360_feedback: v })} />
                             </div>
-                            <Field label="Reminder days before" help="Send reminders N days before cycle deadline">
+                            <Field label="Reminder days before" help="How many days before the deadline to send email reminders to pending reviewers.">
                               <div className="w-48"><NumInput value={cycle.reminder_days} onChange={v => setCycle(i, { reminder_days: v ?? 7 })} placeholder="7" /></div>
                             </Field>
                             <div className="flex justify-end">
@@ -620,7 +688,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                 )}
 
                 {/* ═══════════════════ TAB 2: Rating Scales ═══════════════════ */}
-                {activeTab === 'ratings' && (
+                {step === 1 && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-[var(--text-tertiary)]">Define rating scales used across performance reviews.</p>
@@ -645,10 +713,10 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                           </div>
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <Field label="Scale name" help="Text — e.g. 'Standard 1-5 Scale'.">
+                              <Field label="Scale name" help="Give this rating scale a name so you can reuse it across review cycles.">
                                 <TextInput value={scale.name} onChange={v => setScale(i, { name: v })} placeholder="e.g. Standard 1-5" />
                               </Field>
-                              <Field label="Description" help="Text — when this scale is used.">
+                              <Field label="Description" help="Explain when this scale should be used — helps managers pick the right one.">
                                 <TextInput value={scale.description} onChange={v => setScale(i, { description: v })} placeholder="Description" />
                               </Field>
                             </div>
@@ -700,7 +768,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                 )}
 
                 {/* ═══════════════════ TAB 3: Competency Framework ═══════════════════ */}
-                {activeTab === 'competency' && (
+                {step === 2 && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-[var(--text-tertiary)]">Build competency categories and items for performance evaluation.</p>
@@ -756,13 +824,13 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                           </div>
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <Field label="Category name" help="Text — e.g. 'Technical', 'Leadership'.">
+                              <Field label="Category name" help="Name the skill area — e.g. Technical, Leadership, Communication.">
                                 <TextInput value={cat.name} onChange={v => setCategory(i, { name: v })} placeholder="e.g. Technical" />
                               </Field>
-                              <Field label="Description" help="Text — what this category evaluates.">
+                              <Field label="Description" help="What this category evaluates — helps managers understand what to rate.">
                                 <TextInput value={cat.description} onChange={v => setCategory(i, { description: v })} placeholder="Description" />
                               </Field>
-                              <Field label="Weight (%)" help="Number — percentage weight of this category.">
+                              <Field label="Weight (%)" help="How much this category affects the final score. All categories should add up to 100%.">
                                 <NumInput value={cat.weight} onChange={v => setCategory(i, { weight: v ?? 0 })} />
                               </Field>
                             </div>
@@ -823,7 +891,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                 )}
 
                 {/* ═══════════════════ TAB 4: Goal & KRA Templates ═══════════════════ */}
-                {activeTab === 'goals' && (
+                {step === 3 && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-[var(--text-tertiary)]">Define goal categories and KRA templates with weight allocation.</p>
@@ -873,10 +941,10 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                           </div>
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <Field label="Category name" help="Text — e.g. 'Revenue Growth', 'Customer Satisfaction'.">
+                              <Field label="Category name" help="Name the goal area — e.g. Revenue Growth, Customer Satisfaction, Innovation.">
                                 <TextInput value={cat.name} onChange={v => setGoalCategory(i, { name: v })} placeholder="e.g. Revenue Growth" />
                               </Field>
-                              <Field label="Description" help="Text — what this category covers.">
+                              <Field label="Description" help="What this goal category covers — helps employees understand the focus area.">
                                 <TextInput value={cat.description} onChange={v => setGoalCategory(i, { description: v })} placeholder="Description" />
                               </Field>
                             </div>
@@ -940,23 +1008,23 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                 )}
 
                 {/* ═══════════════════ TAB 5: Feedback Settings ═══════════════════ */}
-                {activeTab === 'feedback' && (
+                {step === 4 && (
                   <div className="space-y-4">
                     <WizardSectionCard title="Feedback Preferences" icon={MessageSquare}>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Field label="Minimum feedback count" help="Minimum number of feedback responses required">
-                          <div className="w-48"><NumInput value={pageState.feedbackSettings.min_feedback_count} onChange={v => setFeedback({ min_feedback_count: v ?? 3 })} /></div>
-                        </Field>
-                        <Field label="Feedback weight in final rating (%)" help="How much feedback contributes to overall score">
-                          <div className="w-48"><NumInput value={pageState.feedbackSettings.feedback_weight} onChange={v => setFeedback({ feedback_weight: v ?? 20 })} /></div>
-                        </Field>
-                        <Field label="Feedback deadline (days)" help="Days after review start to collect feedback">
-                          <div className="w-48"><NumInput value={pageState.feedbackSettings.feedback_deadline_days} onChange={v => setFeedback({ feedback_deadline_days: v ?? 7 })} /></div>
-                        </Field>
+                              <Field label="Minimum feedback count" help="How many feedback responses must be collected before a review can be marked complete.">
+                                <div className="w-48"><NumInput value={pageState.feedbackSettings.min_feedback_count} onChange={v => setFeedback({ min_feedback_count: v ?? 3 })} /></div>
+                              </Field>
+                              <Field label="Feedback weight in final rating (%)" help="What percentage of the overall performance score comes from peer/360° feedback vs manager assessment.">
+                                <div className="w-48"><NumInput value={pageState.feedbackSettings.feedback_weight} onChange={v => setFeedback({ feedback_weight: v ?? 20 })} /></div>
+                              </Field>
+                              <Field label="Feedback deadline (days)" help="How many days after the review starts to collect feedback before the window closes.">
+                                <div className="w-48"><NumInput value={pageState.feedbackSettings.feedback_deadline_days} onChange={v => setFeedback({ feedback_deadline_days: v ?? 7 })} /></div>
+                              </Field>
                       </div>
                       <div className="flex flex-wrap items-start gap-x-8 gap-y-3 border-t border-[var(--border-color)] pt-3">
-                        <Toggle label="Anonymous feedback" help="Hide reviewer identity in feedback" checked={pageState.feedbackSettings.anonymous_feedback} onChange={v => setFeedback({ anonymous_feedback: v })} />
-                        <Toggle label="Auto-remind non-respondents" help="Send automatic reminders to pending feedback providers" checked={pageState.feedbackSettings.auto_remind} onChange={v => setFeedback({ auto_remind: v })} />
+                                <Toggle label="Anonymous feedback" help="Hide the reviewer's name so feedback is honest and unbiased." checked={pageState.feedbackSettings.anonymous_feedback} onChange={v => setFeedback({ anonymous_feedback: v })} />
+                                <Toggle label="Auto-remind non-respondents" help="Send email reminders to people who haven't submitted their feedback yet." checked={pageState.feedbackSettings.auto_remind} onChange={v => setFeedback({ auto_remind: v })} />
                       </div>
                     </WizardSectionCard>
 
@@ -985,10 +1053,10 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                           </div>
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <Field label="Template name" help="Text — e.g. 'Peer Feedback Q1'.">
+                              <Field label="Template name" help="Give this feedback template a name — e.g. 'Peer Feedback Q1' or 'Manager Self-Assessment'.">
                                 <TextInput value={tmpl.name} onChange={v => setTemplate(i, { name: v })} placeholder="e.g. Peer Feedback Q1" />
                               </Field>
-                              <Field label="Category" help="Who provides this feedback.">
+                              <Field label="Category" help="Who gives this feedback — peer (colleague), self, manager, or subordinate.">
                                 <SearchableSelect value={tmpl.category} onChange={v => setTemplate(i, { category: String(v) })} placeholder="Select category" options={FEEDBACK_CATEGORIES} showAllOption={false} />
                               </Field>
                             </div>
@@ -1025,20 +1093,25 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-color)] bg-[var(--background)]">
-          <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {pageState.reviewCycles.length} cycles</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {pageState.ratingScales.length} scales</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {pageState.competencyCategories.length} categories</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {pageState.goalCategories.length} goals</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {pageState.feedbackSettings.templates.length} templates</span>
+          <div className="text-xs text-[var(--text-tertiary)]">
+            Step {step + 1} of {WIZARD_TABS.length}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
-            <button onClick={handleSaveAll} disabled={saveMutation.isPending}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[#8B5CF6] text-white hover:bg-[#7C3AED] disabled:opacity-50">
-              {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save All
-            </button>
+            <button onClick={() => { setShowWizard(false); setEditingConfigId(null); setEditingId(null); setEditingType(null); setStep(0); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
+            {step > 0 && (
+              <button onClick={() => setStep(step - 1)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Back</button>
+            )}
+            {step < WIZARD_TABS.length - 1 ? (
+              <button onClick={() => setStep(step + 1)} className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[#8B5CF6] text-white hover:bg-[#7C3AED]">
+                Next <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
+              </button>
+            ) : (
+              <button onClick={handleSaveAll} disabled={saveMutation.isPending}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[#8B5CF6] text-white hover:bg-[#7C3AED] disabled:opacity-50">
+                {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save
+              </button>
+            )}
           </div>
         </div>
       </div>

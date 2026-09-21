@@ -22,7 +22,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import * as settingsApi from '../services/settingsService';
 import ConfigPanel from '../components/ConfigPanel';
-import AttendanceConfig from '../components/AttendanceConfig';
+import AttendanceTemplateManager from '../components/AttendanceTemplateManager';
 import { getCurrentUser } from '../services/authService';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { runAutomation } from '../services/aiAutomation';
@@ -161,7 +161,6 @@ const ATTENDANCE_FORM_TABS = [
 const Attendance = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabId>('records');
-  const [showAttendanceConfig, setShowAttendanceConfig] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; id: number } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: AttendanceRow[] } | null>(null);
   const [quickActionTarget, setQuickActionTarget] = useState<{ type: 'single'; record: AttendanceRow } | { type: 'bulk'; records: AttendanceRow[] } | null>(null);
@@ -178,46 +177,6 @@ const Attendance = () => {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showManualModal, setShowManualModal] = useState(false);
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
-
-  // Attendance configuration
-  const [attConfig, setAttConfig] = useState({
-    workStart: '09:00', workEnd: '18:00', gracePeriod: '15', halfDayCutoff: '4',
-    geoRadius: '100', manualOverride: true, weekendTracking: false, workingDays: '0,1,2,3,4,5,6',
-  });
-  const [attConfigLoading, setAttConfigLoading] = useState(false);
-  const [attConfigSaving, setAttConfigSaving] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    settingsApi.fetchAttendanceSettings()
-      .then((s) => {
-        if (!active) return;
-        setAttConfig({
-          workStart: s.workStart || '09:00',
-          workEnd: s.workEnd || '18:00',
-          gracePeriod: String(s.gracePeriod ?? '15'),
-          halfDayCutoff: String(s.halfDayCutoff ?? '4'),
-          geoRadius: String(s.geoRadius ?? '100'),
-          manualOverride: s.manualOverride ?? true,
-          weekendTracking: s.weekendTracking ?? false,
-          workingDays: s.workingDays || '0,1,2,3,4,5,6',
-        });
-      })
-      .catch(() => {})
-      .finally(() => { if (active) setAttConfigLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const saveAttendanceConfig = () => {
-    setAttConfigSaving(true);
-    settingsApi.saveAttendanceSettings({
-      ...attConfig,
-      workDays: attConfig.workingDays.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !isNaN(n)),
-    })
-      .then(() => { toast.success('Attendance configuration saved'); queryClient.invalidateQueries({ queryKey: ['attendance'] }); })
-      .catch(() => toast.error('Failed to save attendance configuration'))
-      .finally(() => setAttConfigSaving(false));
-  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -923,12 +882,12 @@ const Attendance = () => {
   const earlyDepartureCount = roster.filter((r: AttendanceRow) => r.isEarlyDeparture).length || attendanceRecords.filter((r) => r.isEarlyDeparture).length;
 
   const statCards = [
-    { label: 'Total Workforce', value: totalWorkforce, icon: Users, color: 'blue', onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
-    { label: 'Present Today', value: presentCount, icon: CheckCircle, trend: totalWorkforce ? Math.round((presentCount / totalWorkforce) * 100) : 0, color: 'green', onClick: () => { setActiveTab('records'); setStatusFilter('present'); } },
-    { label: 'Late Arrivals', value: lateCount, icon: Clock, color: 'orange', onClick: () => { setActiveTab('records'); setStatusFilter('late'); } },
-    { label: 'On Leave', value: onLeaveCount, icon: Calendar, color: 'purple', onClick: () => { setActiveTab('records'); setStatusFilter('leave'); } },
-    { label: 'Early Departure', value: earlyDepartureCount, icon: LogOut, color: 'red', onClick: () => { setActiveTab('records'); setStatusFilter('early'); } },
-    { label: 'Absent', value: absentCount, icon: X, color: 'red', onClick: () => { setActiveTab('records'); setStatusFilter('absent'); } },
+    { label: 'Total Workforce', value: totalWorkforce, icon: Users, color: 'blue', tooltip: 'Total employees in the organization', trend: 0, onClick: () => { setActiveTab('records'); setStatusFilter('all'); } },
+    { label: 'Present Today', value: presentCount, icon: CheckCircle, trend: totalWorkforce ? Math.round((presentCount / totalWorkforce) * 100) : 0, color: 'green', tooltip: 'Employees present today', onClick: () => { setActiveTab('records'); setStatusFilter('present'); } },
+    { label: 'Late Arrivals', value: lateCount, icon: Clock, color: 'orange', tooltip: 'Employees who arrived late today', trend: lateCount > 0 ? -lateCount : 0, onClick: () => { setActiveTab('records'); setStatusFilter('late'); } },
+    { label: 'On Leave', value: onLeaveCount, icon: Calendar, color: 'purple', tooltip: 'Employees on approved leave today', trend: onLeaveCount > 0 ? 0 : 0, onClick: () => { setActiveTab('records'); setStatusFilter('leave'); } },
+    { label: 'Early Departure', value: earlyDepartureCount, icon: LogOut, color: 'red', tooltip: 'Employees who left early today', trend: earlyDepartureCount > 0 ? -earlyDepartureCount : 0, onClick: () => { setActiveTab('records'); setStatusFilter('early'); } },
+    { label: 'Absent', value: absentCount, icon: X, color: 'red', tooltip: 'Employees absent without approved leave', trend: absentCount > 0 ? -absentCount : 0, onClick: () => { setActiveTab('records'); setStatusFilter('absent'); } },
   ];
 
   // =============================================================================
@@ -1077,7 +1036,7 @@ const Attendance = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
                   {statCards.map((stat, index) => (
                   <div key={stat.label} className="transition-all duration-300" style={{ transitionDelay: `${index * 100}ms` }}>
-                  <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} trend={stat.trend} onClick={stat.onClick} />
+                  <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
                   </div>
                   ))}
                   </div>
@@ -1668,71 +1627,9 @@ const Attendance = () => {
         )}
 
         {activeTab === 'configuration' && (
-          <div className="animate-in fade-in duration-300 space-y-6">
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-amber-600" />
-                    Attendance Configuration
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Configure work schedules, shifts, overtime rules, geofencing, and payroll integration settings.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowAttendanceConfig(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-amber-200/50 flex items-center gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  Open Configuration
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
-                    <Clock className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Work Schedule</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Working days, hours, grace periods</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
-                    <Zap className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Shifts & Overtime</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Shift templates, OT rules, comp-off</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
-                    <MapPin className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Geofencing & IP</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Location, WiFi, IP restrictions</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
-                    <TrendingUp className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Payroll Integration</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Half-day, weekend, manual override rules</p>
-              </div>
-            </div>
+          <div className="animate-in fade-in duration-300">
+            <AttendanceTemplateManager />
           </div>
-        )}
-
-        {showAttendanceConfig && (
-          <AttendanceConfig open={showAttendanceConfig} onClose={() => setShowAttendanceConfig(false)} />
         )}
       </div>
 

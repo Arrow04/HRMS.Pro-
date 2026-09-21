@@ -8,6 +8,7 @@ import io
 import json
 import math
 import os
+import re
 import time
 import uuid
 from collections import defaultdict
@@ -18,7 +19,8 @@ from typing import Any, Dict, List, Optional, Union
 import redis
 import structlog
 from dateutil import parser as dateparser
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile,
+status)
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import case, event, func, inspect, or_, text
 from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_criteria
@@ -26,9 +28,10 @@ from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_cri
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
-from core.schemas import (LeaveCreate, LeaveTypeCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
+from core.schemas import (LeaveCreate, LeaveTypeCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate,InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, LeaveTypeUpdate, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db, get_read_db, get_read_db
 from core.datetime_utils import ist_now_naive, ist_today, ist_year
 from core.scale import MAX_LIST_LIMIT
@@ -50,14 +53,14 @@ def get_leave_types(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(LeaveType)
     if current_user.role == "superadmin":
         if organizationId:
             query = query.filter(LeaveType.organization_id == organizationId)
     else:
-        query = query.filter(LeaveType.organization_id == current_user.organization_id)
+        # Org's own types + global defaults (organization_id IS NULL), same as balance init.
+        query = query.filter(or_(LeaveType.organization_id == current_user.organization_id, LeaveType.organization_id.is_(None)))
     if companyId is not None:
         # Company-specific leave types + org-wide defaults (company_id IS NULL).
         query = query.filter(or_(LeaveType.company_id == companyId, LeaveType.company_id.is_(None)))
@@ -84,7 +87,7 @@ def create_leave_type(
 @router.put("/api/leave-types/{leave_type_id}", tags=["Leave Types"])
 def update_leave_type(
     leave_type_id: int,
-    lt_data: LeaveTypeCreate,
+    lt_data: LeaveTypeUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -92,7 +95,8 @@ def update_leave_type(
     lt = db.query(LeaveType).filter(LeaveType.id == leave_type_id).first()
     if not lt:
         raise HTTPException(status_code=404, detail="Leave type not found")
-    if current_user.role != "superadmin" and lt.organization_id != current_user.organization_id:
+    # Global types (organization_id NULL) are universal defaults — editable by any org admin.
+    if current_user.role != "superadmin" and lt.organization_id is not None and lt.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Not allowed")
     data = convert_camel_to_snake(lt_data.model_dump(exclude_unset=True))
     for k, v in data.items():
@@ -113,7 +117,7 @@ def delete_leave_type(
     lt = db.query(LeaveType).filter(LeaveType.id == leave_type_id).first()
     if not lt:
         raise HTTPException(status_code=404, detail="Leave type not found")
-    if current_user.role != "superadmin" and lt.organization_id != current_user.organization_id:
+    if current_user.role != "superadmin" and lt.organization_id is not None and lt.organization_id != current_user.organization_id:
         raise HTTPException(status_code=403, detail="Not allowed")
     lt.status = "inactive"
     db.commit()
@@ -121,9 +125,10 @@ def delete_leave_type(
 
 
 def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
-    """Auto-create LeaveBalance records for an employee from the org's leave config.
-    
-    Reads from Organization.settings.leave_configs (the Leave Management page values).
+    """Auto-create MISSING LeaveBalance rows for an employee (joiners, new year).
+
+    Never touches existing rows (safe to call anytime). Scoped config wins;
+    otherwise falls back to each type's own Days/Year. Skips unpaid types.
     """
     emp = db.query(Employee).filter(Employee.id == employee_id, Employee.deleted_at.is_(None)).first()
     if not emp:
@@ -131,31 +136,17 @@ def _auto_init_leave_balances(db: Session, employee_id: int, year: int) -> int:
     org_id = emp.organization_id
 
     config = _resolve_leave_config(db, employee_id, org_id)
-    if not config:
-        return 0
-
-    leave_types = db.query(LeaveType).filter(
-        LeaveType.deleted_at.is_(None),
-        LeaveType.status == "active",
-    )
-    if org_id:
-        leave_types = leave_types.filter(
-            (LeaveType.organization_id == org_id) | (LeaveType.organization_id.is_(None))
-        )
-    leave_types = leave_types.all()
+    from utils.leave_balance_utils import (org_single_leave_policy, pinned_template_body,
+                                           resolve_quota, resolve_type_flags)
+    single_policy = org_single_leave_policy(db, org_id)
+    body = pinned_template_body(db, emp)
+    flags = resolve_type_flags(db, emp, _active_leave_types(db, org_id))
+    leave_types = [t for t in _active_leave_types(db, org_id)
+                   if flags.get(t.id, {}).get("paid", getattr(t, "is_paid", True)) is not False]
 
     created = 0
-    for field, (code, _label) in LEAVE_CONFIG_MAP.items():
-        days = config.get(field)
-        if days is None:
-            continue
-        try:
-            days = int(days)
-        except (TypeError, ValueError):
-            continue
-        lt = next((t for t in leave_types if (t.code or "").upper() == code), None)
-        if not lt:
-            continue
+    for lt in leave_types:
+        days = resolve_quota(body, config, single_policy, lt)
         existing = db.query(LeaveBalance).filter(
             LeaveBalance.employee_id == employee_id,
             LeaveBalance.year == year,
@@ -185,7 +176,7 @@ def get_leave_balances(
     employeeId: Optional[int] = None,
     year: Optional[int] = None,
     page: int = Query(1, ge=1),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=10000),
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -194,9 +185,15 @@ def get_leave_balances(
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.join(Employee, LeaveBalance.employee_id == Employee.id).filter(
             Employee.organization_id == current_user.organization_id)
+        if current_user.role in ("admin", "hr_admin", "hr_manager", "hr_executive"):
+            # Company isolation for HR viewers (self-service branch below is unaffected).
+            _bal_scope = resolve_company_scope(db, current_user, None)
+            if _bal_scope is not None:
+                query = query.filter(Employee.company_id == _bal_scope)
     if employeeId:
         if current_user.role != "superadmin":
-            get_employee_in_org(db, Employee, employeeId, current_user.organization_id)
+            _bal_emp = get_employee_in_org(db, Employee, employeeId, current_user.organization_id)
+            assert_company_allowed(db, current_user, _bal_emp.company_id)
         query = query.filter(LeaveBalance.employee_id == employeeId)
     elif current_user.role not in ("superadmin", "admin", "hr_admin", "hr_manager", "hr_executive"):
         emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.user_id == current_user.id).first()
@@ -223,17 +220,21 @@ def get_leave_balances(
     total = query.count()
     results = query.order_by(LeaveBalance.id.desc()).offset((page - 1) * limit).limit(limit).all()
 
-    # Batch load employees and leave types to avoid N+1 queries
+    # Batch load employees, leave types and companies to avoid N+1 queries
     emp_ids = {b.employee_id for b in results}
     lt_ids = {b.leave_type_id for b in results}
     employees_map = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(emp_ids)).all()} if emp_ids else {}
     types_map = {t.id: t for t in db.query(LeaveType).filter(LeaveType.id.in_(lt_ids)).all()} if lt_ids else {}
+    comp_ids = {e.company_id for e in employees_map.values() if getattr(e, "company_id", None)}
+    comp_map = {c.id: c.name for c in db.query(Company).filter(Company.id.in_(comp_ids)).all()} if comp_ids else {}
 
     balances = []
     for b in results:
         emp = employees_map.get(b.employee_id)
         lt = types_map.get(b.leave_type_id)
         balances.append({
+            "companyId": getattr(emp, "company_id", None) if emp else None,
+            "companyName": comp_map.get(getattr(emp, "company_id", None)) if emp else None,
             "id": b.id,
             "employeeId": b.employee_id,
             "employeeName": f"{emp.first_name} {emp.last_name}" if emp else None,
@@ -265,6 +266,7 @@ def update_leave_balance(
         emp = db.query(Employee).filter(Employee.id == bal.employee_id).first()
         if emp is None or int(emp.organization_id) != int(current_user.organization_id):
             raise HTTPException(status_code=404, detail="Leave balance not found")
+        assert_company_allowed(db, current_user, emp.company_id)
     update_data = data.model_dump(exclude_unset=True)
     field_map = {"totalDays": "total_days", "usedDays": "used_days", "remainingDays": "remaining_days"}
     for camel, snake in field_map.items():
@@ -273,6 +275,14 @@ def update_leave_balance(
     db.commit()
     db.refresh(bal)
     return {"message": "Leave balance updated"}
+
+
+def _leave_company_guarded(db: Session, lv, current_user) -> None:
+    """Company isolation for a leave record (checked via its employee)."""
+    if current_user.role == "superadmin":
+        return
+    emp = db.query(Employee).filter(Employee.id == lv.employee_id).first()
+    assert_company_allowed(db, current_user, emp.company_id if emp else lv.company_id)
 
 
 @router.get("/api/leaves/{leave_id}/history", tags=["Leaves"])
@@ -284,6 +294,7 @@ def get_leave_approval_history(
     lv = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None), LeaveApplication.id == leave_id).first()
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
+    _leave_company_guarded(db, lv, current_user)
     history = db.query(LeaveApprovalHistory).filter(
         LeaveApprovalHistory.leave_application_id == leave_id
     ).order_by(LeaveApprovalHistory.created_at.asc()).all()
@@ -322,8 +333,7 @@ def get_leaves(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None))
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(LeaveApplication.organization_id == current_user.organization_id)
@@ -435,6 +445,7 @@ def get_leaves(
 def get_leave_stats(
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
+    companyId: Optional[int] = None,
 ):
     today = ist_today()
     start_of_month = today.replace(day=1)
@@ -447,6 +458,9 @@ def get_leave_stats(
             query = query.filter(LeaveApplication.employee_id == emp_id)
         else:
             return {"pending": 0, "approved": 0, "rejected": 0, "total": 0, "approvedToday": 0, "rejectedToday": 0, "totalMonth": 0}
+    company_scope = resolve_company_scope(db, current_user, companyId)
+    if company_scope is not None:
+        query = query.filter(LeaveApplication.company_id == company_scope)
     pending = query.filter(LeaveApplication.status == "pending").count()
     approved = query.filter(LeaveApplication.status == "approved").count()
     rejected = query.filter(LeaveApplication.status == "rejected").count()
@@ -475,6 +489,35 @@ def get_leave_stats(
     }
 
 
+def _holiday_dates_in_range(db: Session, org_id, company_id, start, end) -> set:
+    """STRICT company holiday dates (YYYY-MM-DD) in [start, end].
+
+    Only holidays of the given company — org-wide rows are NOT shared.
+    Working-day flagged holidays are excluded (normal workdays).
+    Leave days falling on real holidays stay holidays: neither stamped nor
+    deducted (holidays are already paid days off).
+    """
+    from models import Holiday
+    q = db.query(Holiday.date).filter(
+        Holiday.deleted_at.is_(None),
+        Holiday.date >= start,
+        Holiday.date <= end,
+        or_(Holiday.is_working_day.is_(False), Holiday.is_working_day.is_(None)),
+    )
+    if org_id:
+        q = q.filter(or_(Holiday.organization_id == org_id, Holiday.organization_id.is_(None)))
+    if company_id:
+        # Strict: only this company's holidays (no shared rows).
+        q = q.filter(Holiday.company_id == company_id)
+    out = set()
+    for (d,) in q.all():
+        try:
+            out.add(d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
+        except Exception:
+            continue
+    return out
+
+
 def _deduct_leave_balance(db: Session, lv: LeaveApplication) -> None:
     """Deduct the approved leave days from the employee's leave balance once.
 
@@ -499,6 +542,23 @@ def _deduct_leave_balance(db: Session, lv: LeaveApplication) -> None:
             .first()
         )
         days = int(lv.total_days or 0)
+        # Exclude holidays spanned by the leave — holidays are paid days off
+        # and must not consume leave quota (total_days counts calendar days).
+        try:
+            start = lv.start_date.date() if hasattr(lv.start_date, "date") else dateparser.parse(str(lv.start_date)).date()
+            end = lv.end_date.date() if hasattr(lv.end_date, "date") else dateparser.parse(str(lv.end_date)).date()
+            emp_org = getattr(lv, "organization_id", None)
+            emp = db.query(Employee).filter(Employee.id == lv.employee_id).first()
+            comp_id = getattr(lv, "company_id", None) or (getattr(emp, "company_id", None) if emp else None)
+            holidays = _holiday_dates_in_range(db, emp_org, comp_id, start, end)
+            cur, skipped = start, 0
+            while cur <= end:
+                if cur.isoformat() in holidays:
+                    skipped += 1
+                cur += timedelta(days=1)
+            days = max(0, days - skipped)
+        except Exception:
+            pass
         if bal:
             bal.used_days = int(bal.used_days or 0) + days
             bal.remaining_days = max(0, int(bal.remaining_days or 0) - days)
@@ -525,17 +585,32 @@ def _sync_attendance_for_leave(db: Session, lv: LeaveApplication) -> None:
     start_dt = datetime.combine(current, datetime.min.time())
     end_dt = datetime.combine(end, datetime.min.time()) + timedelta(days=1)
     existing_records = {
+        # Ordered by id so the dict keeps the newest row per date — the same
+        # row payroll counts (latest id wins there too).
         r.date.date(): r for r in db.query(Attendance).filter(
             Attendance.deleted_at.is_(None),
             Attendance.employee_id == lv.employee_id,
             Attendance.date >= start_dt,
             Attendance.date < end_dt,
-        ).all()
+        ).order_by(Attendance.id).all()
     }
+    # Holidays in range stay holidays — never stamp leave over them (payroll
+    # counts holidays as paid days off; stamping would destroy the record and
+    # the deduction above already excluded these days).
+    emp_for_sync = db.query(Employee).filter(Employee.id == lv.employee_id).first()
+    sync_company_id = getattr(lv, "company_id", None) or (getattr(emp_for_sync, "company_id", None) if emp_for_sync else None)
+    holiday_dates = _holiday_dates_in_range(db, getattr(lv, "organization_id", None), sync_company_id, current, end)
     while current <= end:
+        if current.isoformat() in holiday_dates:
+            current += timedelta(days=1)
+            continue
         existing = existing_records.get(current)
         if existing:
-            # Only override unattributed / work-day statuses so we don't clobber manual entries
+            # Never clobber a holiday record; only override unattributed /
+            # work-day statuses so we don't clobber manual entries either.
+            if getattr(existing, "is_holiday", False) or (existing.status or "").strip().lower() == "holiday":
+                current += timedelta(days=1)
+                continue
             if existing.leave_application_id is None or existing.status in ("present", "absent"):
                 existing.status = status
                 existing.is_on_leave = True
@@ -585,7 +660,36 @@ def create_leave(
     if current_user.role != "superadmin":
         get_employee_in_org(db, Employee, data.get("employee_id"), current_user.organization_id)
         validate_company_in_org(db, Company, data.get("company_id"), current_user.organization_id)
-        data["organization_id"] = current_user.organization_id
+
+    # --- Precision guards: bad ranges and overlapping leaves corrupt
+    # balances and payroll (double deduction / conflicting attendance stamps).
+    try:
+        _start = dateparser.parse(str(data.get("start_date"))).date()
+        _end = dateparser.parse(str(data.get("end_date"))).date()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid start/end date")
+    if _end < _start:
+        raise HTTPException(status_code=400, detail="End date cannot be before start date")
+    _lt = db.query(LeaveType).filter(LeaveType.id == data.get("leave_type_id")).first()
+    if not _lt:
+        raise HTTPException(status_code=400, detail="Leave type not found")
+    if getattr(_lt, "status", "active") == "inactive" or getattr(_lt, "deleted_at", None):
+        raise HTTPException(status_code=400, detail="Leave type is inactive")
+    _overlap = db.query(LeaveApplication.id).filter(
+        LeaveApplication.deleted_at.is_(None),
+        LeaveApplication.employee_id == data.get("employee_id"),
+        LeaveApplication.status.in_(["pending", "approved"]),
+        LeaveApplication.start_date <= datetime.combine(_end, datetime.min.time()),
+        LeaveApplication.end_date >= datetime.combine(_start, datetime.min.time()),
+    ).first()
+    if _overlap:
+        raise HTTPException(status_code=400, detail="Employee already has a pending/approved leave overlapping these dates")
+    # Company isolation: leave only for your own company's employees.
+    _lv_emp = db.query(Employee).filter(Employee.id == data.get("employee_id")).first()
+    if _lv_emp is not None:
+        assert_company_allowed(db, current_user, _lv_emp.company_id)
+    if data.get("company_id") not in (None, "", 0):
+        data["company_id"] = require_write_company(db, current_user, data.get("company_id"))
 
     # Handle attachment upload
     attachment_url = None
@@ -637,6 +741,7 @@ def update_leave(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
+    _leave_company_guarded(db, lv, current_user)
     for key, val in leave_data.model_dump(exclude_unset=True).items():
         if key in ("organizationId", "companyId"):
             continue
@@ -659,6 +764,7 @@ def approve_leave(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
+    _leave_company_guarded(db, lv, current_user)
 
     if approval_data.action == "approve":
         if approval_data.level >= (lv.total_approval_levels or 1):
@@ -763,6 +869,7 @@ def reject_leave_put(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
+    _leave_company_guarded(db, lv, current_user)
     comments = (payload or {}).get("comments") or (payload or {}).get("reason") if payload else None
     return _apply_leave_decision(db, lv, "reject", current_user, comments)
 
@@ -778,6 +885,7 @@ def delete_leave(
         raise HTTPException(status_code=404, detail="Leave not found")
     if current_user.role != "superadmin":
         org_owned(lv, current_user.organization_id)
+    _leave_company_guarded(db, lv, current_user)
     lv.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Leave application deleted"}
@@ -812,9 +920,11 @@ async def bulk_upload_leaves(
         emp_id = int(row.get("employeeId", 0))
         if current_user.role != "superadmin":
             get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
+        _lv_emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
         lv = LeaveApplication(
             employee_id=emp_id,
-            organization_id=current_user.organization_id,
+            organization_id=_lv_emp.organization_id if _lv_emp else current_user.organization_id,
+            company_id=_lv_emp.company_id if _lv_emp else None,
             leave_type_id=int(row.get("leaveTypeId", 0)),
             start_date=row.get("startDate"),
             end_date=row.get("endDate"),
@@ -831,61 +941,23 @@ async def bulk_upload_leaves(
 # SCOPED LEAVE CONFIGURATION (company / branch / department wise)
 # =============================================================================
 
-LEAVE_CONFIG_MAP = {
-    "casual": ("CL", "casual"),
-    "sick": ("SL", "sick"),
-    "earned": ("EL", "earned"),
-    "maternity": ("ML", "maternity"),
-}
+# Shared leave-balance engine (single source of truth — also used by
+# services.onboarding_automation so joiners resolve identical quotas).
+from utils.leave_balance_utils import (
+    LEAVE_CONFIG_MAP,
+    LEAVE_CODE_ALIASES,
+    active_leave_types as _active_leave_types,
+    config_days_for_type as _config_days_for_type,
+    employee_branch_ids as _employee_branch_ids,
+    match_leave_type as _match_leave_type,
+    quota_for_type,
+    resolve_leave_config as _resolve_leave_config,
+)
 
 
-def _employee_branch_ids(db, employee_id):
-    try:
-        rows = db.execute(
-            text("SELECT branch_id FROM employee_branches WHERE employee_id = :eid"),
-            {"eid": employee_id},
-        ).fetchall()
-        return [r[0] for r in rows if r[0] is not None]
-    except Exception:
-        return []
-
-
-def _resolve_leave_config(db, employee_id, organization_id):
-    """Resolve leave config for an employee from Organization.settings.leave_configs.
-    
-    Priority: Company-specific > Branch-specific > Department-specific > Org-wide.
-    The ScopedConfigManager saves configs here and syncs to LeaveType records.
-    """
-    org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == organization_id).first()
-    if not org:
-        return None
-    data = org.settings or {}
-    configs = data.get("leave_configs") or []
-    if not configs:
-        return None
-
-    emp = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not emp:
-        return None
-
-    branch_ids = _employee_branch_ids(db, employee_id)
-
-    def score(c):
-        cid = c.get("companyId")
-        bid = c.get("branchId")
-        did = c.get("departmentId")
-        rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
-        cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
-        bm = (bid is None) or (bid in branch_ids)
-        dm = (did is None) or (emp.department_id is not None and did == emp.department_id)
-        if not (cm and bm and dm):
-            return (-1, -1, -1, -1)
-        return (rank, 1 if cm else 0, 1 if bm else 0, 1 if dm else 0)
-
-    best = max(configs, key=score, default=None)
-    if best and score(best)[0] >= 0:
-        return best
-    return None
+def _norm_leave_code(code) -> str:
+    from utils.leave_balance_utils import _norm_leave_code as _norm
+    return _norm(code)
 
 
 @router.post("/api/leave-balances/init", tags=["Leave Balances"])
@@ -926,7 +998,7 @@ def init_leave_balances(
             days = int(days)
         except (TypeError, ValueError):
             continue
-        lt = next((t for t in leave_types if (t.code or "").upper() == code), None)
+        lt = _match_leave_type(leave_types, code)
         if not lt:
             continue
         bal = db.query(LeaveBalance).filter(
@@ -960,58 +1032,122 @@ def init_leave_balances(
 
 @router.post("/api/leave-balances/init-all", tags=["Leave Balances"])
 def init_all_leave_balances(
-    year: Optional[int] = None,
+    payload: dict = {},
+    background: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Initialize leave balances for every active employee from their scoped leave config."""
+    """Queue a background job that initializes leave balances for a company+year scope.
+
+    Returns immediately with a jobId — poll GET /leave-balances/init-status/{jobId}.
+    """
     org_id = current_user.organization_id
-    employees = db.query(Employee).filter(
-        Employee.deleted_at.is_(None),
-        Employee.organization_id == org_id if org_id else True,
-    ).all()
-    total = 0
-    skipped = 0
-    for emp in employees:
-        config = _resolve_leave_config(db, emp.id, emp.organization_id or org_id)
-        if not config:
-            skipped += 1
-            continue
-        year_local = year or datetime.now().year
-        leave_types = db.query(LeaveType).filter(
-            LeaveType.organization_id == (emp.organization_id or org_id),
-            LeaveType.status == "active",
-        ).all() or db.query(LeaveType).filter(LeaveType.status == "active").all()
-        for field, (code, _label) in LEAVE_CONFIG_MAP.items():
-            days = config.get(field)
-            if days is None:
+    company_id = payload.get("companyId")
+    company_id = int(company_id) if company_id not in (None, "", "all") else None
+    try:
+        year = int(payload.get("year") or datetime.now().year)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid year")
+    if company_id is not None and current_user.role != "superadmin":
+        validate_company_in_org(db, Company, company_id, org_id)
+    job_id = uuid.uuid4().hex[:12]
+    _BALANCE_INIT_JOBS[job_id] = {
+        "jobId": job_id, "status": "queued", "progress": 0,
+        "processed": 0, "totalEmployees": 0, "updated": 0, "skipped": 0,
+        "companyId": company_id, "year": year, "message": "Queued",
+    }
+    background.add_task(_run_balance_init_job, job_id, org_id, company_id, year)
+    return {"jobId": job_id, "status": "queued", "message": "Balance initialization started in background"}
+
+
+@router.get("/api/leave-balances/init-status/{job_id}", tags=["Leave Balances"])
+def balance_init_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    job = _BALANCE_INIT_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+def _run_balance_init_job(job_id: str, org_id, company_id, year: int) -> None:
+    """Background worker: upsert balances for every employee in scope."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        job = _BALANCE_INIT_JOBS.get(job_id, {})
+        job.update({"status": "running", "message": "Running"})
+        q = db.query(Employee).filter(Employee.deleted_at.is_(None))
+        if org_id:
+            q = q.filter(Employee.organization_id == org_id)
+        if company_id:
+            q = q.filter(Employee.company_id == company_id)
+        employees = q.all()
+        job["totalEmployees"] = len(employees)
+        total, skipped = 0, 0
+        from utils.leave_balance_utils import org_single_leave_policy, pinned_template_body, resolve_quota
+        policy_cache: dict = {}
+        for i, emp in enumerate(employees):
+            emp_org = emp.organization_id or org_id
+            if emp_org not in policy_cache:
+                policy_cache[emp_org] = org_single_leave_policy(db, emp_org)
+            single_policy = policy_cache[emp_org]
+            body = pinned_template_body(db, emp)
+            leave_types = _active_leave_types(db, emp_org)
+            if not leave_types:
+                skipped += 1
                 continue
-            try:
-                days = int(days)
-            except (TypeError, ValueError):
-                continue
-            lt = next((t for t in leave_types if (t.code or "").upper() == code), None)
-            if not lt:
-                continue
-            bal = db.query(LeaveBalance).filter(
-                LeaveBalance.employee_id == emp.id,
-                LeaveBalance.year == year_local,
-                LeaveBalance.leave_type_id == lt.id,
-                LeaveBalance.deleted_at.is_(None),
-            ).first()
-            if bal:
-                bal.total_days = days
-                bal.remaining_days = max(0, days - (bal.used_days or 0))
-            else:
-                db.add(LeaveBalance(
-                    employee_id=emp.id,
-                    year=year_local,
-                    leave_type_id=lt.id,
-                    total_days=days,
-                    used_days=0,
-                    remaining_days=days,
-                ))
-            total += 1
-    db.commit()
-    return {"message": f"Initialized balances for {total} leave types across {len(employees)} employees", "updated": total, "skipped": skipped}
+            config = _resolve_leave_config(db, emp.id, emp_org)
+            from utils.leave_balance_utils import resolve_type_flags as _flags
+            _paid = _flags(db, emp, leave_types)
+            for lt in leave_types:
+                # Unpaid/LOP types get no quota rows — unpaid days are derived
+                # from attendance at payroll time, not from balances.
+                if _paid.get(lt.id, {}).get("paid", getattr(lt, "is_paid", True)) is False:
+                    continue
+                days = resolve_quota(body, config, single_policy, lt)
+                bal = db.query(LeaveBalance).filter(
+                    LeaveBalance.employee_id == emp.id,
+                    LeaveBalance.year == year,
+                    LeaveBalance.leave_type_id == lt.id,
+                    LeaveBalance.deleted_at.is_(None),
+                ).first()
+                if bal:
+                    bal.total_days = days
+                    bal.remaining_days = max(0, days - (bal.used_days or 0))
+                else:
+                    db.add(LeaveBalance(
+                        employee_id=emp.id,
+                        year=year,
+                        leave_type_id=lt.id,
+                        total_days=days,
+                        used_days=0,
+                        remaining_days=days,
+                    ))
+                total += 1
+            if (i + 1) % 25 == 0:
+                db.commit()
+                job.update({"processed": i + 1, "progress": round((i + 1) / max(len(employees), 1) * 100), "updated": total, "skipped": skipped})
+        db.commit()
+        job.update({
+            "status": "done", "progress": 100, "processed": len(employees),
+            "updated": total, "skipped": skipped,
+            "message": f"Initialized {total} balances across {len(employees)} employees",
+        })
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        _BALANCE_INIT_JOBS.get(job_id, {}).update({"status": "failed", "message": str(e)})
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+_BALANCE_INIT_JOBS: Dict[str, Dict[str, Any]] = {}
 

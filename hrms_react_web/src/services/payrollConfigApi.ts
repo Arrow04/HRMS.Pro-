@@ -16,11 +16,11 @@ export interface PayrollPolicy {
   status?: string;
 }
 
-export const getPayrollPolicies = () =>
-  api.get<PayrollPolicy[]>('/payroll-config/policies').then(r => r.data);
+export const getPayrollPolicies = (companyId?: number) =>
+  api.get<PayrollPolicy[]>('/payroll-config/policies', { params: companyId ? { companyId } : {} }).then(r => r.data);
 
-export const createPayrollPolicy = (data: PayrollPolicy) =>
-  api.post<PayrollPolicy>('/payroll-config/policies', data).then(r => r.data);
+export const createPayrollPolicy = (data: PayrollPolicy, companyId?: number) =>
+  api.post<PayrollPolicy>('/payroll-config/policies', data, { params: companyId ? { companyId } : {} }).then(r => r.data);
 
 export const updatePayrollPolicy = (id: number, data: PayrollPolicy) =>
   api.put<PayrollPolicy>(`/payroll-config/policies/${id}`, data).then(r => r.data);
@@ -50,14 +50,15 @@ export interface PayrollComponent {
   payroll_policy_id?: number;
 }
 
-export const getPayrollComponents = (policyId?: number) => {
+export const getPayrollComponents = (policyId?: number, companyId?: number) => {
   const params: Record<string, unknown> = {};
   if (policyId) params.policy_id = policyId;
+  if (companyId) params.companyId = companyId;
   return api.get<PayrollComponent[]>('/payroll-config/components', { params }).then(r => r.data);
 };
 
-export const createPayrollComponent = (data: PayrollComponent) =>
-  api.post<PayrollComponent>('/payroll-config/components', data).then(r => r.data);
+export const createPayrollComponent = (data: PayrollComponent, companyId?: number) =>
+  api.post<PayrollComponent>('/payroll-config/components', data, { params: companyId ? { companyId } : {} }).then(r => r.data);
 
 export const updatePayrollComponent = (id: number, data: PayrollComponent) =>
   api.put<PayrollComponent>(`/payroll-config/components/${id}`, data).then(r => r.data);
@@ -87,11 +88,11 @@ export interface StatutorySetting {
   gratuity_rate?: number;
 }
 
-export const getStatutorySettings = () =>
-  api.get<StatutorySetting>('/payroll-config/statutory-settings').then(r => r.data);
+export const getStatutorySettings = (companyId?: number) =>
+  api.get<StatutorySetting>('/payroll-config/statutory-settings', { params: companyId ? { companyId } : {} }).then(r => r.data);
 
-export const upsertStatutorySettings = (data: StatutorySetting) =>
-  api.put<StatutorySetting>('/payroll-config/statutory-settings', data).then(r => r.data);
+export const upsertStatutorySettings = (data: StatutorySetting, companyId?: number) =>
+  api.put<StatutorySetting>('/payroll-config/statutory-settings', data, { params: companyId ? { companyId } : {} }).then(r => r.data);
 
 export interface StatutoryPreset {
   code: string;
@@ -130,11 +131,11 @@ export interface TaxRegime {
   slabs?: TaxSlab[];
 }
 
-export const getTaxRegimes = () =>
-  api.get<TaxRegime[]>('/payroll-config/tax-regimes').then(r => r.data);
+export const getTaxRegimes = (companyId?: number) =>
+  api.get<TaxRegime[]>('/payroll-config/tax-regimes', { params: companyId ? { companyId } : {} }).then(r => r.data);
 
-export const createTaxRegime = (data: TaxRegime) =>
-  api.post<TaxRegime>('/payroll-config/tax-regimes', data).then(r => r.data);
+export const createTaxRegime = (data: TaxRegime, companyId?: number) =>
+  api.post<TaxRegime>('/payroll-config/tax-regimes', data, { params: companyId ? { companyId } : {} }).then(r => r.data);
 
 export const updateTaxRegime = (id: number, data: TaxRegime) =>
   api.put<TaxRegime>(`/payroll-config/tax-regimes/${id}`, data).then(r => r.data);
@@ -158,6 +159,10 @@ export const deleteTaxSlab = (id: number) =>
 export interface AttendancePolicy {
   id?: number;
   name: string;
+  company_id?: number | null;
+  description?: string;
+  status?: string;
+  effective_from?: string;
   working_days_per_week?: number;
   working_days?: string;
   half_day_as_full_paid?: boolean;
@@ -165,15 +170,38 @@ export interface AttendancePolicy {
   holiday_as_present?: boolean;
   overtime_threshold_hours?: number;
   overtime_rate?: number;
+  overtime_tiers?: { from_hours: number; to_hours: number | null; rate: number }[] | null;
+  shift_differential_rates?: Record<string, number> | null;
   late_mark_threshold_minutes?: number;
   half_day_threshold_hours?: number;
+  wfh_allowed?: boolean;
+  geofence_enabled?: boolean;
+  geofence_radius?: number;
+  shift_id?: number | null;
+  late_to_absent_count?: number | null;
+  early_to_absent_count?: number | null;
+  missing_checkout_rule?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  break_hours?: number;
+  comp_off_enabled?: boolean;
+  max_comp_off_balance?: number;
+  max_overtime_hours_per_month?: number | null;
+  selfie_checkin_enabled?: boolean;
+  ip_restriction_enabled?: boolean;
+  allowed_ip_ranges?: string[] | null;
+  wifi_checkin_enabled?: boolean;
+  allowed_ssids?: string[] | null;
+  auto_approve_if_no_mark?: boolean;
+  min_hours_for_full_day?: number;
+  shift_based_payroll?: boolean;
 }
 
-export const getAttendancePolicies = () =>
-  api.get<AttendancePolicy[]>('/payroll-config/attendance-policies').then(r => r.data);
+export const getAttendancePolicies = (companyId?: number) =>
+  api.get<AttendancePolicy[]>('/payroll-config/attendance-policies', { params: companyId ? { companyId } : {} }).then(r => r.data);
 
-export const createAttendancePolicy = (data: AttendancePolicy) =>
-  api.post<AttendancePolicy>('/payroll-config/attendance-policies', data).then(r => r.data);
+export const createAttendancePolicy = (data: AttendancePolicy, companyId?: number) =>
+  api.post<AttendancePolicy>('/payroll-config/attendance-policies', data, { params: companyId ? { companyId } : {} }).then(r => r.data);
 
 export const updateAttendancePolicy = (id: number, data: AttendancePolicy) =>
   api.put<AttendancePolicy>(`/payroll-config/attendance-policies/${id}`, data).then(r => r.data);
@@ -227,3 +255,48 @@ export const calculateLWF = (grossSalary: number, stateCode: string) =>
 
 export const setOrgState = (state: string) =>
   api.put('/payroll-config/compliance/org-state', { state }).then(r => r.data);
+
+// ── Leave Templates ──
+
+export interface LeaveTemplate {
+  id?: number;
+  name: string;
+  description?: string;
+  company_id?: number | null;
+  status?: string;
+  body?: Record<string, any>;
+  effective_from?: string;
+  accrual_method?: string;
+  accrual_day?: number;
+  probation_accrual_rate?: number;
+  max_balance_cap?: number | null;
+  lapse_unused?: boolean;
+  carry_forward_enabled?: boolean;
+  carry_forward_max_days?: number | null;
+  carry_forward_expiry?: string;
+  carry_forward_use_it_or_lose_it?: boolean;
+  encashment_enabled?: boolean;
+  encashment_min_balance?: number | null;
+  encashment_rate?: number | null;
+  encashment_taxable?: boolean;
+  holiday_optional_limit?: number | null;
+  holiday_auto_apply_national?: boolean;
+  enable_half_day?: boolean;
+  min_leave_for_half_day?: number | null;
+  advance_notice_days?: number | null;
+  max_consecutive_days?: number | null;
+}
+
+const LEAVE_BASE = '/leave-templates';
+
+export const getLeaveTemplates = (companyId?: number) =>
+  api.get<LeaveTemplate[]>(LEAVE_BASE, { params: companyId ? { companyId } : {} }).then(r => r.data);
+
+export const createLeaveTemplate = (data: LeaveTemplate, companyId?: number) =>
+  api.post<LeaveTemplate>(LEAVE_BASE, data, { params: companyId ? { companyId } : {} }).then(r => r.data);
+
+export const updateLeaveTemplate = (id: number, data: LeaveTemplate) =>
+  api.put<LeaveTemplate>(`${LEAVE_BASE}/${id}`, data).then(r => r.data);
+
+export const deleteLeaveTemplate = (id: number) =>
+  api.delete(`${LEAVE_BASE}/${id}`).then(r => r.data);

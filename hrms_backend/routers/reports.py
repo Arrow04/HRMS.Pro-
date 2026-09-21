@@ -277,6 +277,76 @@ def export_report_hub(
             }
             for e in q.limit(2000).all()
         ]
+    elif report_lower in ("company", "companies") or report_lower.startswith("company"):
+        from models import Company
+        q = db.query(Company).filter(Company.deleted_at.is_(None))
+        if current_user.role != "superadmin" and org_id:
+            q = q.filter(Company.organization_id == org_id)
+        rows = [
+            {
+                "name": c.name,
+                "code": c.code or "",
+                "industry": c.industry or "",
+                "email": c.email or "",
+                "phone": c.phone or "",
+                "address": c.address or "",
+                "state": c.state or "",
+                "country": c.country or "",
+                "pan_no": c.pan_no or "",
+                "gst_no": c.gst_no or "",
+                "cin": c.cin or "",
+                "status": c.status or "",
+            }
+            for c in q.all()
+        ]
+    elif report_lower in ("branch", "branches") or report_lower.startswith("branch"):
+        from models import Branch
+        q = db.query(Branch).filter(Branch.deleted_at.is_(None))
+        if current_user.role != "superadmin" and org_id:
+            q = q.filter(Branch.organization_id == org_id)
+        rows = [
+            {
+                "name": b.name,
+                "code": b.code or "",
+                "location": b.location or "",
+                "state": b.state or "",
+                "pincode": b.pincode or "",
+                "status": b.status or "",
+            }
+            for b in q.all()
+        ]
+    elif report_lower in ("department", "departments") or report_lower.startswith("department"):
+        from models import Department
+        q = db.query(Department).filter(Department.deleted_at.is_(None))
+        if current_user.role != "superadmin" and org_id:
+            q = q.filter(Department.organization_id == org_id)
+        rows = [
+            {
+                "name": d.name,
+                "code": d.code or "",
+                "description": d.description or "",
+                "manager_id": d.manager_id or "",
+                "status": d.status or "",
+            }
+            for d in q.all()
+        ]
+    elif report_lower in ("designation", "designations") or report_lower.startswith("designation"):
+        from models import Designation
+        q = db.query(Designation).filter(Designation.deleted_at.is_(None))
+        if current_user.role != "superadmin" and org_id:
+            q = q.filter(Designation.organization_id == org_id)
+        rows = [
+            {
+                "title": d.title,
+                "code": d.code or "",
+                "grade": d.grade or "",
+                "description": d.description or "",
+                "min_salary": d.min_salary or "",
+                "max_salary": d.max_salary or "",
+                "status": d.status or "",
+            }
+            for d in q.all()
+        ]
     elif report_lower in ("leaves", "leave") or report_lower.startswith("leave"):
         q = db.query(LeaveApplication).filter(LeaveApplication.deleted_at.is_(None))
         if current_user.role != "superadmin" and org_id:

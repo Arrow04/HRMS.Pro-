@@ -885,6 +885,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5',
       iconColor: 'text-[var(--primary-blue)]',
       onClick: () => setActiveTab('jobs'),
+      tooltip: 'All job postings in the system',
     },
     {
       label: 'Total Candidates',
@@ -894,6 +895,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5',
       iconColor: 'text-[#0D9488]',
       onClick: () => setActiveTab('candidates'),
+      tooltip: 'Active candidates in the hiring pipeline',
     },
     {
       label: 'Total Interviews',
@@ -903,6 +905,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5',
       iconColor: 'text-[#D97706]',
       onClick: () => setActiveTab('interviews'),
+      tooltip: 'Interviews scheduled and completed',
     },
     {
       label: 'Total Job Offered',
@@ -912,6 +915,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       iconBg: 'bg-gradient-to-br from-[#7C3AED]/20 via-[#8B5CF6]/10 to-[#A78BFA]/5',
       iconColor: 'text-[#6D28D9]',
       onClick: () => setActiveTab('offered'),
+      tooltip: 'Candidates who received job offers',
     },
     {
       label: 'Total Onboarded',
@@ -921,6 +925,17 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5',
       iconColor: 'text-[#059669]',
       onClick: () => setActiveTab('onboarding'),
+      tooltip: 'Candidates who completed onboarding',
+    },
+    {
+      label: 'Rejected',
+      value: candidates?.filter((c: RecruitmentCandidate) => c.status === 'rejected').length || 0,
+      trend: (() => { const rejected = candidates?.filter((c: RecruitmentCandidate) => c.status === 'rejected').length || 0; const total = candidates?.length || 0; return total ? -Math.round((rejected / total) * 100) : 0; })(),
+      icon: XCircle,
+      iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5',
+      iconColor: 'text-[#DC2626]',
+      onClick: () => setActiveTab('candidates'),
+      tooltip: 'Candidates who were rejected',
     },
   ];
 
@@ -2266,10 +2281,10 @@ const renderJobForm = () => {
         />
 
         {/* Stats Section */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
           {statCards.map((stat, index) => (
             <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} trend={stat.trend} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} trend={stat.trend} tooltip={stat.tooltip} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
             </div>
           ))}
         </div>

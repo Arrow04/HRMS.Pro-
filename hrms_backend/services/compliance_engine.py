@@ -21,10 +21,12 @@ def calculate_pf(gross_basic: float, setting: StatutorySetting) -> dict:
     """Calculate PF contributions as per Employee Provident Fund & MP Act 1952.
     
     Splits employer contribution into:
-      - PF (A/c 1): 3.67% of basic
-      - EPS (A/c 10): 8.33% of basic (capped at ₹15,000)
-      - EDLIS (A/c 21): 0.5% of basic
-      - PF Admin (A/c 2): 0.5% (paid by employer, not deducted from employee)
+      - PF (A/c 1): (employer_rate - eps_rate - edli_rate) of basic
+      - EPS (A/c 10): eps_rate% of basic (capped at eps_wage_ceiling)
+      - EDLIS (A/c 21): edli_rate% of basic
+      - PF Admin (A/c 2): admin_rate% (paid by employer, not deducted from employee)
+    
+    All rates read from StatutorySetting — fully configurable per company.
     """
     if not setting.pf_applicable:
         return {"employee": 0, "employer": 0, "eps": 0, "edlis": 0, "admin": 0}
@@ -35,9 +37,19 @@ def calculate_pf(gross_basic: float, setting: StatutorySetting) -> dict:
     employee_share = min(employee_share, setting.pf_max_monthly)
     
     employer_share = round(capped_basic * setting.pf_employer_rate / 100, 2)
-    eps = round(min(capped_basic, 15000) * 8.33 / 100, 2)
-    edlis = round(capped_basic * 0.5 / 100, 2)
-    admin = round(capped_basic * 0.5 / 100, 2)
+    
+    # EPS — read rate and ceiling from DB
+    eps_rate = float(getattr(setting, 'eps_rate', None) or 0.0)
+    eps_ceiling = float(getattr(setting, 'eps_wage_ceiling', None) or 0.0)
+    eps = round(min(capped_basic, eps_ceiling) * eps_rate / 100, 2)
+    
+    # EDLI — read from DB
+    edli_rate = float(getattr(setting, 'pf_edli_rate', None) or 0.0)
+    edlis = round(capped_basic * edli_rate / 100, 2)
+    
+    # Admin — read from DB
+    admin_rate = float(getattr(setting, 'pf_admin_rate', None) or 0.0)
+    admin = round(capped_basic * admin_rate / 100, 2)
     
     return {
         "employee": employee_share,
@@ -234,22 +246,28 @@ def calculate_lwf(
 
 # ── Gratuity ──────────────────────────────────────────────────────────────
 
-def calculate_gratuity(basic_da: float, years_of_service: int) -> dict:
+def calculate_gratuity(basic_da: float, years_of_service: int, setting: Optional[StatutorySetting] = None) -> dict:
     """Calculate gratuity as per Payment of Gratuity Act 1972.
     
-    Formula: (15 * last_drawn_basic_da * years_of_service) / 26
-    Cap: ₹20,00,000 (tax-free limit)
-    Eligibility: 5+ years of continuous service
+    Formula: (days_per_year * last_drawn_basic_da * years_of_service) / 26
+    Cap: configurable (default ₹20,00,000 tax-free limit)
+    Eligibility: configurable (default 5 years)
+    
+    All parameters read from StatutorySetting — fully configurable per company.
     """
-    if years_of_service < 5:
+    eligible_years = float(getattr(setting, 'gratuity_eligible_years', None) or 0.0) if setting else 0.0
+    days_per_year = float(getattr(setting, 'gratuity_days_per_year', None) or 0.0) if setting else 0.0
+    tax_exempt_ceiling = float(getattr(setting, 'gratuity_tax_exempt_ceiling', None) or 0.0) if setting else 0.0
+    
+    if years_of_service < eligible_years:
         return {"amount": 0, "eligible": False, "years_of_service": years_of_service}
     
-    amount = (15 * basic_da * years_of_service) / 26
+    amount = (days_per_year * basic_da * years_of_service) / 26
     return {
-        "amount": round(min(amount, 2000000), 2),
+        "amount": round(min(amount, tax_exempt_ceiling), 2),
         "eligible": True,
         "years_of_service": years_of_service,
-        "capped": amount > 2000000,
+        "capped": amount > tax_exempt_ceiling,
     }
 
 
@@ -299,13 +317,17 @@ def calculate_income_tax(annual_gross: float, regime: TaxRegime, slabs: list[Tax
         # New regime: no deductions except standard deduction
         pass
     else:
-        # Old regime: allow deductions
-        taxable_income -= min(deductions_80c, 150000)
-        taxable_income -= min(deductions_80d, 50000)
+        # Old regime: allow deductions — all caps read from TaxRegime
+        cap_80c = float(getattr(regime, 'section_80c_old_cap', None) or 0)
+        cap_80d = float(getattr(regime, 'section_80d_cap', None) or 0)
+        cap_nps = float(getattr(regime, 'section_80ccd_1b_cap', None) or 0)
+        cap_home_loan = float(getattr(regime, 'section_24_home_loan_cap', None) or 0)
+        taxable_income -= min(deductions_80c, cap_80c)
+        taxable_income -= min(deductions_80d, cap_80d)
         taxable_income -= hra_exemption
         taxable_income -= lta_exemption
-        taxable_income -= min(nps_deduction, 50000)
-        taxable_income -= min(home_loan_interest, 200000)
+        taxable_income -= min(nps_deduction, cap_nps)
+        taxable_income -= min(home_loan_interest, cap_home_loan)
     
     taxable_income = max(taxable_income, 0)
     
@@ -323,9 +345,9 @@ def calculate_income_tax(annual_gross: float, regime: TaxRegime, slabs: list[Tax
     if taxable_income <= regime.rebate_threshold and regime.rebate_amount > 0:
         tax = max(0, tax - regime.rebate_amount)
     
-    # Surcharge
+    # Surcharge — read threshold from surcharge_config or use regime settings
     surcharge = 0
-    if regime.surcharge_config and taxable_income > 5000000:
+    if regime.surcharge_config:
         for s_slab in regime.surcharge_config:
             if taxable_income >= s_slab["from"]:
                 surcharge = tax * s_slab["rate"] / 100
@@ -385,7 +407,8 @@ def _compute_salary_components(
         if comp.calculation_type == "percentage":
             base_value = base_salary
             if comp.calculation_base == "basic":
-                base_value = base_salary * 0.5  # assume basic = 50% of base
+                # Use the computed "basic" if available, otherwise use base_salary directly
+                base_value = computed.get("basic", base_salary)
             elif comp.calculation_base == "ctc":
                 base_value = base_salary
             value = base_value * comp.calculation_value / 100
@@ -400,16 +423,12 @@ def _compute_salary_components(
         computed[comp.name] = round(value, 2)
         total_earnings += value
 
-    # Fallback if no components defined: use default structure
+    # Fallback if no components defined: basic = base_salary, everything else = 0
     if not computed:
-        basic = round(base_salary * 0.5, 2)
-        hra = round(basic * 0.5, 2)
-        conveyance = 1600
-        medical = 1250
-        special = round(base_salary - basic - hra - conveyance - medical, 2)
+        basic = round(base_salary, 2)
         computed = {
-            "basic": basic, "hra": hra, "conveyance": conveyance,
-            "medical": medical, "special_allowance": max(special, 0),
+            "basic": basic,
+        }
         }
         total_earnings = sum(computed.values())
 

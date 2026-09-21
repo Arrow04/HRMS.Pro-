@@ -7,6 +7,7 @@ interface ToggleSwitchProps {
   helpText?: string;
   onColor?: string;
   offColor?: string;
+  align?: 'left' | 'center';
 }
 
 const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ 
@@ -16,9 +17,10 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({
   helpText,
   onColor = 'bg-green-500',
   offColor = 'bg-red-500',
+  align = 'center',
 }) => {
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className={`flex flex-col gap-1 ${align === 'left' ? 'items-start' : 'items-center'}`}>
       <button
         type="button"
         onClick={(e) => {

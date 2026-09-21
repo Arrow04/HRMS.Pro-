@@ -30,6 +30,7 @@ from core.config import settings
 from core.schemas import (ExpenseCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
 from core.tenant import org_owned, get_employee_in_org, validate_company_in_org, get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
 from services.payroll_service import calculate_payroll, generate_payroll_record
@@ -53,8 +54,7 @@ def get_expenses(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(Expense).filter(Expense.deleted_at.is_(None))
     # Exclude expenses belonging to deactivated/terminated employees (unless requested)
     if not includeInactive:
@@ -196,9 +196,11 @@ def create_expense(
     if not organizationId:
         organizationId = current_user.organization_id
     if current_user.role != "superadmin":
-        get_employee_in_org(db, Employee, employeeId, current_user.organization_id)
+        _exp_emp = get_employee_in_org(db, Employee, employeeId, current_user.organization_id)
         validate_company_in_org(db, Company, companyId, current_user.organization_id)
-        organizationId = current_user.organization_id
+        assert_company_allowed(db, current_user, _exp_emp.company_id)
+        if companyId not in (None, "", 0):
+            companyId = require_write_company(db, current_user, companyId)
     data["organization_id"] = organizationId
     emp_check = db.query(Employee).filter(Employee.id == employeeId).first()
     if not emp_check:
@@ -244,6 +246,9 @@ def get_expenses_stats(
         )
     if current_user.organization_id:
         query = query.filter(Expense.organization_id == current_user.organization_id)
+    _exp_scope = resolve_company_scope(db, current_user, None)
+    if _exp_scope is not None:
+        query = query.filter(Expense.company_id == _exp_scope)
 
     now = ist_now_naive()
 
@@ -263,6 +268,8 @@ def get_expenses_stats(
         ))
     if current_user.organization_id:
         base_filter.append(Expense.organization_id == current_user.organization_id)
+    if _exp_scope is not None:
+        base_filter.append(Expense.company_id == _exp_scope)
 
     def _amount(status_cond=None, date_cond=None):
         q = db.query(func.coalesce(func.sum(Expense.amount), 0)).select_from(Expense).filter(*base_filter)
@@ -307,6 +314,7 @@ def approve_expense(
     emp = db.query(Employee).filter(Employee.id == exp.employee_id).first()
     if emp and emp.user_id and emp.user_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot approve your own expense")
+    assert_company_allowed(db, current_user, emp.company_id if emp else exp.company_id)
     action = str(approval_data.get("action", "approved")).lower()
     allowed = {"pending": {"approved", "rejected"}, "approved": {"rejected"}, "rejected": {"pending"}}
     if action not in allowed.get(exp.status, set()):
@@ -341,6 +349,7 @@ def approve_expense_put(
     emp = db.query(Employee).filter(Employee.id == exp.employee_id).first()
     if emp and emp.user_id and emp.user_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot approve your own expense")
+    assert_company_allowed(db, current_user, emp.company_id if emp else exp.company_id)
     if exp.status not in ("pending", "rejected"):
         raise HTTPException(status_code=400, detail=f"Invalid transition: {exp.status} -> approved")
     exp.status = "approved"
@@ -448,6 +457,9 @@ def get_expense_summary(
     query = db.query(Expense).filter(Expense.deleted_at.is_(None))
     if current_user.organization_id:
         query = query.filter(Expense.organization_id == current_user.organization_id)
+    _sum_scope = resolve_company_scope(db, current_user, None)
+    if _sum_scope is not None:
+        query = query.filter(Expense.company_id == _sum_scope)
 
     this_month = ist_now_naive().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_start = datetime(year or this_month.year, month or this_month.month, 1) if (month or year) else this_month
@@ -522,7 +534,7 @@ def bulk_upload_expenses(
         emp = db.query(Employee).filter(Employee.id == int(emp_id)).first()
         exp = Expense(
             employee_id=int(emp_id),
-            organization_id=org_id,
+            organization_id=emp.organization_id if emp else current_user.organization_id,
             company_id=emp.company_id if emp else None,
             department_id=emp.department_id if emp else None,
             category=(row.get("category") or "Other").strip() or "Other",

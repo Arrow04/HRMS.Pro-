@@ -11,6 +11,7 @@ import SearchableSelect from './SearchableSelect';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../context/AuthContext';
 import * as api from '../services/payrollConfigApi';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import { fetchPayrollSettings, savePayrollSettings } from '../services/settingsService';
 import type {
   PayrollPolicy, PayrollComponent, StatutorySetting,
@@ -71,7 +72,14 @@ const TABS = [
 
 export default function PayrollConfigContent() {
   const [activeTab, setActiveTab] = useState('templates');
+  const [companyId, setCompanyId] = useState<number | null>(null);
   const queryClient = useQueryClient();
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    staleTime: 5 * 60 * 1000,
+  });
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -106,18 +114,36 @@ export default function PayrollConfigContent() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* Company Selector */}
+        <div className="mb-5 flex items-center gap-4">
+          <label className="text-sm font-medium text-[var(--text-secondary)]">Configuring for:</label>
+          <select
+            value={companyId ?? ''}
+            onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)}
+            className="px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm focus:ring-2 focus:ring-[#1C64F2] outline-none"
+          >
+            <option value="">All Companies (Org-wide default)</option>
+            {companies.map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <span className="text-xs text-[var(--text-tertiary)]">
+            {companyId ? 'Changes apply only to this company' : 'Changes apply as org-wide defaults — individual companies can override'}
+          </span>
+        </div>
+
         <div key={activeTab} className="section-fade-in">
           <div className="mb-5">
             <h3 className="text-base font-bold text-[#0F172A] leading-tight">{TABS.find(x => x.id === activeTab)?.label || ''}</h3>
             <p className="text-xs text-[#64748B]">{WIZARD_HELP[activeTab] || ''}</p>
           </div>
           <div className="space-y-6">
-            {activeTab === 'templates' && <IndustryTemplatesSection />}
-            {activeTab === 'policy' && <PayrollPolicySection />}
-            {activeTab === 'components' && <ComponentsSection />}
-            {activeTab === 'statutory' && <StatutorySection />}
-            {activeTab === 'tax' && <TaxRegimesSection />}
-            {activeTab === 'attendance' && <AttendancePolicySection />}
+            {activeTab === 'templates' && <IndustryTemplatesSection companyId={companyId} />}
+            {activeTab === 'policy' && <PayrollPolicySection companyId={companyId} />}
+            {activeTab === 'components' && <ComponentsSection companyId={companyId} />}
+            {activeTab === 'statutory' && <StatutorySection companyId={companyId} />}
+            {activeTab === 'tax' && <TaxRegimesSection companyId={companyId} />}
+            {activeTab === 'attendance' && <AttendancePolicySection companyId={companyId} />}
             {activeTab === 'compliance' && <StateComplianceSection />}
           </div>
         </div>
@@ -140,9 +166,9 @@ const WIZARD_HELP: Record<string, string> = {
 
 // ── Industry Templates ──
 
-function IndustryTemplatesSection() {
+function IndustryTemplatesSection({ companyId }: { companyId: number | null }) {
   const { data: industries, isLoading } = useQuery({ queryKey: ['industries'], queryFn: api.getIndustries });
-  const { data: policies, isLoading: policiesLoading } = useQuery({ queryKey: ['payroll-policies'], queryFn: api.getPayrollPolicies });
+  const { data: policies, isLoading: policiesLoading } = useQuery({ queryKey: ['payroll-policies', companyId], queryFn: () => api.getPayrollPolicies(companyId ?? undefined) });
   const queryClient = useQueryClient();
   const isConfigured = !policiesLoading && !!policies && policies.length > 0;
 
@@ -217,19 +243,19 @@ function IndustryTemplatesSection() {
 
 // ── Payroll Policy ──
 
-function PayrollPolicySection() {
+function PayrollPolicySection({ companyId }: { companyId: number | null }) {
   const queryClient = useQueryClient();
   const { data: roundingMethodOptions = [] } = useMasterData('ROUNDING_METHOD');
 const { data: workingDaysOptions = [] } = useMasterData('WORKING_DAYS_PER_WEEK');
   const { data: proRationOptions = [] } = useMasterData('PAYROLL_PRO_RATA');
   const { data: computeModeOptions = [] } = useMasterData('PAYROLL_COMPUTE_MODE');
-  const { data: policies, isLoading } = useQuery({ queryKey: ['payroll-policies'], queryFn: api.getPayrollPolicies });
+  const { data: policies, isLoading } = useQuery({ queryKey: ['payroll-policies', companyId], queryFn: () => api.getPayrollPolicies(companyId ?? undefined) });
   const [editing, setEditing] = useState<PayrollPolicy | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<PayrollPolicy>({
     name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
-    gratuity_rate: 4.81, default_currency: 'INR', allow_negative_net: false,
+    gratuity_rate: null, default_currency: '', allow_negative_net: false,
   });
 
   const createMutation = useMutation({
@@ -253,7 +279,7 @@ const { data: workingDaysOptions = [] } = useMasterData('WORKING_DAYS_PER_WEEK')
   const resetForm = () => setForm({
     name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
-    gratuity_rate: 4.81, default_currency: 'INR', allow_negative_net: false,
+    gratuity_rate: null, default_currency: '', allow_negative_net: false,
   });
 
   const openEdit = (p: PayrollPolicy) => { setForm({ ...p }); setEditing(p); setShowForm(true); };
@@ -379,7 +405,7 @@ const { data: workingDaysOptions = [] } = useMasterData('WORKING_DAYS_PER_WEEK')
 
 // ── Components ──
 
-function ComponentsSection() {
+function ComponentsSection({ companyId }: { companyId: number | null }) {
   const queryClient = useQueryClient();
   const { data: componentTypeOptions = [] } = useMasterData('PAYROLL_COMPONENT_TYPE');
   const { data: calculationTypeOptions = [] } = useMasterData('PAYROLL_CALCULATION_TYPE');
@@ -395,7 +421,7 @@ function ComponentsSection() {
   const [editing, setEditing] = useState<PayrollComponent | null>(null);
   const [form, setForm] = useState<PayrollComponent>({
     name: '', component_type: 'earning', calculation_type: 'percentage',
-    calculation_base: 'basic', calculation_value: 0, apply_pro_ration: true,
+    calculation_base: 'basic', calculation_value: null, apply_pro_ration: true,
     is_active: true, is_taxable: true, priority: 0,
   });
 
@@ -443,7 +469,7 @@ function ComponentsSection() {
           <SearchableSelect value={selectedPolicy === undefined ? 'all' : selectedPolicy} onChange={val => setSelectedPolicy(val === 'all' ? undefined : Number(val))}
             options={(policies || []).filter(p => p.id !== undefined).map(p => ({ id: p.id as number, name: p.name }))}
             placeholder="All Policies" allOption="All Policies" className="w-48" />
-          <button onClick={() => { setEditing(null); setForm({ name: '', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0, apply_pro_ration: true, is_active: true, is_taxable: true, priority: 0 }); setShowForm(true); }}
+          <button onClick={() => { setEditing(null); setForm({ name: '', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, apply_pro_ration: true, is_active: true, is_taxable: true, priority: 0 }); setShowForm(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-blue)] text-white rounded-lg text-sm font-medium hover:bg-blue-700">
             <Plus className="w-4 h-4" /> Add Component
           </button>
@@ -573,7 +599,7 @@ function ComponentsSection() {
                   <td className="py-3"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${TYPE_COLORS[c.component_type] || 'text-gray-600 bg-gray-50'}`}>{c.component_type}</span></td>
                   <td className="py-3 text-[var(--text-secondary)]">{c.calculation_type}</td>
                   <td className="py-3 text-[var(--text-secondary)]">{c.calculation_value}{c.calculation_type === 'percentage' ? '%' : ''}</td>
-                  <td className="py-3 text-[var(--text-secondary)]">{c.max_cap ? `₹${c.max_cap}` : '-'}</td>
+                  <td className="py-3 text-[var(--text-secondary)]">{c.max_cap ? `${getCurrencySymbol(getAppCurrency())}${c.max_cap}` : '-'}</td>
                   <td className="py-3 text-[var(--text-secondary)]">{c.priority}</td>
                   <td className="py-3">
                     <div className="flex items-center gap-1">
@@ -593,10 +619,10 @@ function ComponentsSection() {
 
 // ── Statutory ──
 
-function StatutorySection() {
+function StatutorySection({ companyId }: { companyId: number | null }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { data: settings, isLoading } = useQuery({ queryKey: ['statutory-settings'], queryFn: api.getStatutorySettings });
+  const { data: settings, isLoading } = useQuery({ queryKey: ['statutory-settings', companyId], queryFn: () => api.getStatutorySettings(companyId ?? undefined) });
   const { data: presets = [] } = useQuery({ queryKey: ['statutory-presets'], queryFn: api.getStatutoryPresets });
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -788,57 +814,57 @@ function StatutorySection() {
         <div className="space-y-8">
           <SectionCard title="Provident Fund (PF)" icon={ShieldCheck}>
             <div className="grid gap-4 md:grid-cols-4">
-              <ToggleField label="Applicable" checked={form.pf_applicable ?? true} onChange={v => set('pf_applicable', v)} help="Turn PF deduction on/off for this scope. Off disables PF for all employees here." />
-              <NumField label="Employee Rate (%)" value={form.pf_employee_rate ?? 12} onChange={v => set('pf_employee_rate', v)} suffix="%" help="% of basic salary deducted from the employee's pay (India default 12%)." />
-              <NumField label="Employer Rate (%)" value={form.pf_employer_rate ?? 12} onChange={v => set('pf_employer_rate', v)} suffix="%" help="% of basic salary the company contributes (shown on the payslip)." />
-              <NumField label="Max Monthly (₹)" value={form.pf_max_monthly ?? 1800} onChange={v => set('pf_max_monthly', v)} suffix="₹" help="Caps the employee's monthly PF contribution. ₹1,800 is the standard ceiling." />
-              <NumField label="Min Basic for Exclusion (₹)" value={form.pf_min_basic_for_exclusion ?? 15000} onChange={v => set('pf_min_basic_for_exclusion', v)} suffix="₹" help="Employees whose basic salary exceeds this are excluded from mandatory PF (₹15,000 standard)." />
+              <ToggleField label="Applicable" checked={form.pf_applicable ?? false} onChange={v => set('pf_applicable', v)} help="Turn PF deduction on/off for this scope. Off disables PF for all employees here." />
+              <NumField label="Employee Rate (%)" value={form.pf_employee_rate} onChange={v => set('pf_employee_rate', v)} suffix="%" help="% of basic salary deducted from the employee's pay." />
+              <NumField label="Employer Rate (%)" value={form.pf_employer_rate} onChange={v => set('pf_employer_rate', v)} suffix="%" help="% of basic salary the company contributes." />
+              <NumField label="Max Monthly" value={form.pf_max_monthly} onChange={v => set('pf_max_monthly', v)} help="Caps the employee's monthly PF contribution." />
+              <NumField label="Min Basic for Exclusion" value={form.pf_min_basic_for_exclusion} onChange={v => set('pf_min_basic_for_exclusion', v)} help="Employees whose basic salary exceeds this are excluded from mandatory PF." />
             </div>
           </SectionCard>
 
           <SectionCard title="Employee State Insurance (ESI)" icon={ShieldCheck}>
             <div className="grid gap-4 md:grid-cols-4">
-              <ToggleField label="Applicable" checked={form.esi_applicable ?? true} onChange={v => set('esi_applicable', v)} help="Turn ESI deduction on/off for this scope." />
-              <NumField label="Employee Rate (%)" value={form.esi_employee_rate ?? 0.75} onChange={v => set('esi_employee_rate', v)} suffix="%" help="% of gross deducted from the employee (India default 0.75%)." />
-              <NumField label="Employer Rate (%)" value={form.esi_employer_rate ?? 3.25} onChange={v => set('esi_employer_rate', v)} suffix="%" help="% of gross the company contributes (India default 3.25%)." />
-              <NumField label="Gross Ceiling (₹)" value={form.esi_gross_ceiling ?? 21000} onChange={v => set('esi_gross_ceiling', v)} suffix="₹" help="ESI applies only while monthly gross is at or below this ceiling (₹21,000 standard)." />
+              <ToggleField label="Applicable" checked={form.esi_applicable ?? false} onChange={v => set('esi_applicable', v)} help="Turn ESI deduction on/off for this scope." />
+              <NumField label="Employee Rate (%)" value={form.esi_employee_rate} onChange={v => set('esi_employee_rate', v)} suffix="%" help="% of gross deducted from the employee." />
+              <NumField label="Employer Rate (%)" value={form.esi_employer_rate} onChange={v => set('esi_employer_rate', v)} suffix="%" help="% of gross the company contributes." />
+              <NumField label="Gross Ceiling" value={form.esi_gross_ceiling} onChange={v => set('esi_gross_ceiling', v)} help="ESI applies only while monthly gross is at or below this ceiling." />
             </div>
           </SectionCard>
 
           <SectionCard title="Professional Tax (PT)" icon={ShieldCheck}>
             <div className="grid gap-4 md:grid-cols-3">
-              <ToggleField label="Applicable" checked={form.pt_applicable ?? true} onChange={v => set('pt_applicable', v)} help="Turn professional tax on/off. When a registered state is set, the state's exact slab is auto-applied." />
-              <NumField label="Monthly Amount (₹)" value={form.pt_monthly_amount ?? 200} onChange={v => set('pt_monthly_amount', v)} suffix="₹" help="Flat PT per month when no state slab is configured (fallback amount)." />
-              <NumField label="Min Gross for PT (₹)" value={form.pt_min_gross ?? 10000} onChange={v => set('pt_min_gross', v)} suffix="₹" help="PT starts only when monthly gross is above this amount." />
+              <ToggleField label="Applicable" checked={form.pt_applicable ?? false} onChange={v => set('pt_applicable', v)} help="Turn professional tax on/off. When a registered state is set, the state's exact slab is auto-applied." />
+              <NumField label="Monthly Amount" value={form.pt_monthly_amount} onChange={v => set('pt_monthly_amount', v)} help="Flat PT per month when no state slab is configured." />
+              <NumField label="Min Gross for PT" value={form.pt_min_gross} onChange={v => set('pt_min_gross', v)} help="PT starts only when monthly gross is above this amount." />
             </div>
           </SectionCard>
 
           <SectionCard title="Labour Welfare Fund (LWF)" icon={ShieldCheck}>
             <div className="grid gap-4 md:grid-cols-3">
               <ToggleField label="Applicable" checked={form.lwf_applicable ?? false} onChange={v => set('lwf_applicable', v)} help="Turn LWF on/off. Auto-calculated from the registered state when configured." />
-              <NumField label="Employee Rate (%)" value={form.lwf_employee_rate ?? 0} onChange={v => set('lwf_employee_rate', v)} suffix="%" help="% of basic deducted from the employee (fallback when no state slab exists)." />
-              <NumField label="Employer Rate (%)" value={form.lwf_employer_rate ?? 0} onChange={v => set('lwf_employer_rate', v)} suffix="%" help="% of basic the company contributes." />
+              <NumField label="Employee Rate (%)" value={form.lwf_employee_rate} onChange={v => set('lwf_employee_rate', v)} suffix="%" help="% of basic deducted from the employee." />
+              <NumField label="Employer Rate (%)" value={form.lwf_employer_rate} onChange={v => set('lwf_employer_rate', v)} suffix="%" help="% of basic the company contributes." />
             </div>
           </SectionCard>
 
           <SectionCard title="Gratuity" icon={ShieldCheck}>
             <div className="grid gap-4 md:grid-cols-2">
-              <ToggleField label="Applicable" checked={form.gratuity_applicable ?? false} onChange={v => set('gratuity_applicable', v)} help="Turn monthly gratuity provision on/off. Paid on exit after 5 years of service." />
-              <NumField label="Rate (%)" value={form.gratuity_rate ?? 4.81} onChange={v => set('gratuity_rate', v)} suffix="%" help="4.81% = 15 days wages per year of service (statutory formula)." />
+              <ToggleField label="Applicable" checked={form.gratuity_applicable ?? false} onChange={v => set('gratuity_applicable', v)} help="Turn monthly gratuity provision on/off. Paid on exit after eligible years of service." />
+              <NumField label="Rate (%)" value={form.gratuity_rate} onChange={v => set('gratuity_rate', v)} suffix="%" help="% of basic wage for gratuity calculation." />
             </div>
           </SectionCard>
 
-          <SectionCard title="Old-Regime Tax Exemptions (annual ₹)" icon={Landmark}>
+          <SectionCard title={`Old-Regime Tax Exemptions (annual ${getCurrencySymbol(getAppCurrency())})`} icon={Landmark}>
             <p className="mb-3 text-xs text-[var(--text-tertiary)]">
               Annual amounts the employee can claim to reduce taxable income. Only used for employees on the old tax regime.
             </p>
             <div className="grid gap-4 md:grid-cols-3">
-              <NumField label="80C (PF/ELSS/LIC etc.)" value={exemptions['80c'] ?? 0} onChange={v => setEx('80c', v)} suffix="₹" help="Investments in PF, ELSS, LIC, PPF etc. Capped at ₹1.5L/year." />
-              <NumField label="80D (Health insurance)" value={exemptions['80d'] ?? 0} onChange={v => setEx('80d', v)} suffix="₹" help="Medical insurance premiums. Capped at ₹50K/year (₹25K for self)." />
-              <NumField label="HRA exemption" value={exemptions.hra ?? 0} onChange={v => setEx('hra', v)} suffix="₹" help="House rent allowance exemption (least of three statutory limits)." />
-              <NumField label="LTA exemption" value={exemptions.lta ?? 0} onChange={v => setEx('lta', v)} suffix="₹" help="Leave travel allowance — typically 2 trips in 4 years." />
-              <NumField label="NPS (80CCD)" value={exemptions.nps ?? 0} onChange={v => setEx('nps', v)} suffix="₹" help="National Pension Scheme contribution. Extra ₹50K above the 80C limit." />
-              <NumField label="Home loan interest" value={exemptions.home_loan ?? 0} onChange={v => setEx('home_loan', v)} suffix="₹" help="Interest paid on a home loan for a self-occupied property. Capped at ₹2L." />
+              <NumField label="80C (PF/ELSS/LIC etc.)" value={exemptions['80c'] ?? 0} onChange={v => setEx('80c', v)} suffix={getCurrencySymbol(getAppCurrency())} help="Investments in PF, ELSS, LIC, PPF etc. Capped at ₹1.5L/year." />
+              <NumField label="80D (Health insurance)" value={exemptions['80d'] ?? 0} onChange={v => setEx('80d', v)} suffix={getCurrencySymbol(getAppCurrency())} help="Medical insurance premiums. Capped at ₹50K/year (₹25K for self)." />
+              <NumField label="HRA exemption" value={exemptions.hra ?? 0} onChange={v => setEx('hra', v)} suffix={getCurrencySymbol(getAppCurrency())} help="House rent allowance exemption (least of three statutory limits)." />
+              <NumField label="LTA exemption" value={exemptions.lta ?? 0} onChange={v => setEx('lta', v)} suffix={getCurrencySymbol(getAppCurrency())} help="Leave travel allowance — typically 2 trips in 4 years." />
+              <NumField label="NPS (80CCD)" value={exemptions.nps ?? 0} onChange={v => setEx('nps', v)} suffix={getCurrencySymbol(getAppCurrency())} help="National Pension Scheme contribution. Extra ₹50K above the 80C limit." />
+              <NumField label="Home loan interest" value={exemptions.home_loan ?? 0} onChange={v => setEx('home_loan', v)} suffix={getCurrencySymbol(getAppCurrency())} help="Interest paid on a home loan for a self-occupied property. Capped at ₹2L." />
             </div>
             <div className="mt-4">
               <button onClick={() => exemptionsMut.mutate()} disabled={exemptionsMut.isPending}
@@ -920,16 +946,16 @@ function NumField({ label, value, onChange, help, suffix }: { label: string; val
 
 // ── Tax Regimes ──
 
-function TaxRegimesSection() {
+function TaxRegimesSection({ companyId }: { companyId: number | null }) {
   const queryClient = useQueryClient();
   const { data: regimeTypeOptions = [] } = useMasterData('TAX_REGIME_TYPE');
-  const { data: regimes, isLoading } = useQuery({ queryKey: ['tax-regimes'], queryFn: api.getTaxRegimes });
+  const { data: regimes, isLoading } = useQuery({ queryKey: ['tax-regimes', companyId], queryFn: () => api.getTaxRegimes(companyId ?? undefined) });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<TaxRegime | null>(null);
   const [form, setForm] = useState<TaxRegime>({
-    name: '', regime_type: 'new', financial_year: '2025-26',
-    standard_deduction: 50000, rebate_threshold: 700000,
-    rebate_amount: 0, cess_rate: 4,
+    name: '', regime_type: 'new', financial_year: '',
+    standard_deduction: null, rebate_threshold: null,
+    rebate_amount: null, cess_rate: null,
     surcharge_config: [],
   });
   const [slabForm, setSlabForm] = useState<TaxSlab>({ from_amount: 0, rate: 0 });
@@ -937,9 +963,9 @@ function TaxRegimesSection() {
 
   const resetForm = () => {
     setForm({
-      name: '', regime_type: 'new', financial_year: '2025-26',
-      standard_deduction: 50000, rebate_threshold: 700000,
-      rebate_amount: 0, cess_rate: 4,
+      name: '', regime_type: 'new', financial_year: '',
+      standard_deduction: null, rebate_threshold: null,
+      rebate_amount: null, cess_rate: null,
       surcharge_config: [],
     });
     setEditing(null);
@@ -1019,29 +1045,29 @@ function TaxRegimesSection() {
               <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Financial Year</label>
               <input value={form.financial_year} onChange={e => setForm({ ...form, financial_year: e.target.value })}
                 className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
-              <HelpText>Indian FY format, e.g. "2025-26".</HelpText>
+              <HelpText>Fiscal year label, e.g. "2026-27" or "FY2026".</HelpText>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Standard Deduction (₹)</label>
-              <input type="number" value={form.standard_deduction} onChange={e => setForm({ ...form, standard_deduction: +e.target.value })}
+              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Standard Deduction</label>
+              <input type="number" value={form.standard_deduction ?? ''} onChange={e => setForm({ ...form, standard_deduction: e.target.value ? +e.target.value : null })}
                 className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
-              <HelpText>Flat annual deduction from taxable income (₹50,000 standard).</HelpText>
+              <HelpText>Flat annual deduction from taxable income.</HelpText>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Rebate Threshold (₹)</label>
-              <input type="number" value={form.rebate_threshold} onChange={e => setForm({ ...form, rebate_threshold: +e.target.value })}
+              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Rebate Threshold</label>
+              <input type="number" value={form.rebate_threshold ?? ''} onChange={e => setForm({ ...form, rebate_threshold: e.target.value ? +e.target.value : null })}
                 className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
-              <HelpText>Income up to this amount pays no tax (₹7,00,000 new regime).</HelpText>
+              <HelpText>Income up to this amount pays no tax.</HelpText>
             </div>
             <div>
-              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Rebate Amount (₹)</label>
-              <input type="number" value={form.rebate_amount} onChange={e => setForm({ ...form, rebate_amount: +e.target.value })}
+              <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Rebate Amount</label>
+              <input type="number" value={form.rebate_amount ?? ''} onChange={e => setForm({ ...form, rebate_amount: e.target.value ? +e.target.value : null })}
                 className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
-              <HelpText>Tax waived for incomes at/below the threshold (usually ₹25,000).</HelpText>
+              <HelpText>Tax waived for incomes at/below the threshold.</HelpText>
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Cess Rate (%)</label>
-              <input type="number" step="0.1" value={form.cess_rate} onChange={e => setForm({ ...form, cess_rate: +e.target.value })}
+              <input type="number" step="0.1" value={form.cess_rate ?? ''} onChange={e => setForm({ ...form, cess_rate: e.target.value ? +e.target.value : null })}
                 className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
               <HelpText>Health & education cess on the tax amount (4% standard).</HelpText>
             </div>
@@ -1065,7 +1091,7 @@ function TaxRegimesSection() {
             <div className="space-y-2">
               {surchargeList.map((s, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <input type="number" placeholder="Income from (₹)" value={s.from ?? ''} onChange={e => updateSurchargeRow(idx, 'from', +e.target.value)}
+                  <input type="number" placeholder={`Income from (${getCurrencySymbol(getAppCurrency())})`} value={s.from ?? ''} onChange={e => updateSurchargeRow(idx, 'from', +e.target.value)}
                     className="flex-1 px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
                   <input type="number" step="0.1" placeholder="Rate (%)" value={s.rate ?? ''} onChange={e => updateSurchargeRow(idx, 'rate', +e.target.value)}
                     className="w-32 px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
@@ -1115,8 +1141,8 @@ function TaxRegimesSection() {
                 <table className="w-full text-sm mb-4">
                   <thead>
                     <tr className="border-b border-[var(--border-color)] text-left text-xs text-[var(--text-tertiary)]">
-                      <th className="pb-2 font-medium">From (₹)</th>
-                      <th className="pb-2 font-medium">To (₹)</th>
+                      <th className="pb-2 font-medium">{`From (${getCurrencySymbol(getAppCurrency())})`}</th>
+                      <th className="pb-2 font-medium">{`To (${getCurrencySymbol(getAppCurrency())})`}</th>
                       <th className="pb-2 font-medium">Rate (%)</th>
                       <th className="pb-2 font-medium"></th>
                     </tr>
@@ -1169,10 +1195,10 @@ function TaxRegimesSection() {
 
 // ── Attendance Policy ──
 
-function AttendancePolicySection() {
+function AttendancePolicySection({ companyId }: { companyId: number | null }) {
   const queryClient = useQueryClient();
   const { data: workingDaysOptions = [] } = useMasterData('WORKING_DAYS_PER_WEEK');
-  const { data: policies, isLoading } = useQuery({ queryKey: ['attendance-policies'], queryFn: api.getAttendancePolicies });
+  const { data: policies, isLoading } = useQuery({ queryKey: ['attendance-policies', companyId], queryFn: () => api.getAttendancePolicies(companyId ?? undefined) });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<AttendancePolicy | null>(null);
   const [form, setForm] = useState<AttendancePolicy>({
@@ -1453,15 +1479,15 @@ function StateComplianceSection() {
             <tbody>
               {(stateDetail.pt.slabs || []).map((slab: PTResultSlab, i: number) => (
                 <tr key={i} className="border-b border-[#F1F5F9]">
-                  <td className="py-2 text-[var(--text-secondary)]">₹{slab.from_gross?.toLocaleString()}</td>
-                  <td className="py-2 text-[var(--text-secondary)]">{slab.to_gross ? `₹${slab.to_gross?.toLocaleString()}` : '∞'}</td>
-                  <td className="py-2 font-medium text-[var(--text-primary)]">₹{slab.amount}</td>
+                  <td className="py-2 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
+                  <td className="py-2 text-[var(--text-secondary)]">{slab.to_gross ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : '∞'}</td>
+                  <td className="py-2 font-medium text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{slab.amount}</td>
                   <td className="py-2 text-xs text-[var(--text-tertiary)]">{slab.description}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="text-xs text-[var(--text-tertiary)]">Annual max: ₹{stateDetail.pt.annual_max?.toLocaleString()} &middot; {stateDetail.pt.notes}</p>
+          <p className="text-xs text-[var(--text-tertiary)]">Annual max: {getCurrencySymbol(getAppCurrency())}{stateDetail.pt.annual_max?.toLocaleString()} &middot; {stateDetail.pt.notes}</p>
         </div>
       )}
 
@@ -1469,9 +1495,9 @@ function StateComplianceSection() {
         <div className="border border-[var(--border-color)] rounded-xl p-5 space-y-2">
           <h3 className="font-medium text-[var(--text-primary)] text-sm">{stateDetail.lwf.state_name} — Labour Welfare Fund</h3>
           <div className="grid grid-cols-3 gap-4 text-sm">
-            <div><span className="text-[var(--text-tertiary)]">Employee:</span> <span className="font-medium">₹{stateDetail.lwf.employee_contribution}/{stateDetail.lwf.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></div>
-            <div><span className="text-[var(--text-tertiary)]">Employer:</span> <span className="font-medium">₹{stateDetail.lwf.employer_contribution}/{stateDetail.lwf.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></div>
-            <div><span className="text-[var(--text-tertiary)]">Wage ceiling:</span> <span className="font-medium">₹{stateDetail.lwf.max_wage_for_applicability?.toLocaleString()}</span></div>
+            <div><span className="text-[var(--text-tertiary)]">Employee:</span> <span className="font-medium">{getCurrencySymbol(getAppCurrency())}{stateDetail.lwf.employee_contribution}/{stateDetail.lwf.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></div>
+            <div><span className="text-[var(--text-tertiary)]">Employer:</span> <span className="font-medium">{getCurrencySymbol(getAppCurrency())}{stateDetail.lwf.employer_contribution}/{stateDetail.lwf.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></div>
+            <div><span className="text-[var(--text-tertiary)]">Wage ceiling:</span> <span className="font-medium">{getCurrencySymbol(getAppCurrency())}{stateDetail.lwf.max_wage_for_applicability?.toLocaleString()}</span></div>
           </div>
         </div>
       )}
@@ -1481,7 +1507,7 @@ function StateComplianceSection() {
         <p className="text-xs text-[var(--text-tertiary)]">See what PT and LWF would be for a given salary in the selected state.</p>
         <div className="flex gap-3 items-end">
           <div className="w-48">
-            <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Monthly Gross Salary (₹)</label>
+            <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">{`Monthly Gross Salary (${getCurrencySymbol(getAppCurrency())})`}</label>
             <input type="number" value={salary} onChange={e => setSalary(+e.target.value)}
               className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]" />
             <HelpText>Enter an employee's monthly gross to preview their PT and LWF.</HelpText>
@@ -1496,21 +1522,21 @@ function StateComplianceSection() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
             <div className="bg-[var(--background)] rounded-lg p-3">
               <p className="text-xs text-[var(--text-tertiary)]">Monthly PT</p>
-              <p className="text-xl font-bold text-[var(--text-primary)]">₹{ptResult.monthly_pt}</p>
+              <p className="text-xl font-bold text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{ptResult.monthly_pt}</p>
             </div>
             <div className="bg-[var(--background)] rounded-lg p-3">
               <p className="text-xs text-[var(--text-tertiary)]">Annual PT</p>
-              <p className="text-xl font-bold text-[var(--text-primary)]">₹{ptResult.annual_pt}</p>
+              <p className="text-xl font-bold text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{ptResult.annual_pt}</p>
             </div>
             {lwfResult && (
               <>
                 <div className="bg-[var(--background)] rounded-lg p-3">
                   <p className="text-xs text-[var(--text-tertiary)]">LWF Employee</p>
-                  <p className="text-xl font-bold text-[var(--text-primary)]">₹{lwfResult.employee_contribution}</p>
+                  <p className="text-xl font-bold text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{lwfResult.employee_contribution}</p>
                 </div>
                 <div className="bg-[var(--background)] rounded-lg p-3">
                   <p className="text-xs text-[var(--text-tertiary)]">LWF Employer</p>
-                  <p className="text-xl font-bold text-[var(--text-primary)]">₹{lwfResult.employer_contribution}</p>
+                  <p className="text-xl font-bold text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{lwfResult.employer_contribution}</p>
                 </div>
               </>
             )}

@@ -82,8 +82,10 @@ export const AuthProvider = ({ children }) => {
 
       await fetchPermissions();
 
-      // Register for push notifications
-      registerForPushNotifications(userData.id);
+      // Register for push notifications (delayed to ensure token is set)
+      setTimeout(() => {
+        registerForPushNotifications(userData.id);
+      }, 1000);
 
       return { success: true };
     } catch (error) {

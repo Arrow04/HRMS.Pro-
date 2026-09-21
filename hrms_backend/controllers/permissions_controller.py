@@ -116,8 +116,8 @@ async def get_my_permissions(
     """Get current user's permissions and allowed modules"""
     from core.permissions import get_user_permissions, has_module_permission, DEFAULT_PERMISSIONS, _level_from_flags
     
-    # ADMIN and SUPERADMIN get ALL modules (full access)
-    if current_user.role in ["admin", "superadmin"]:
+    # ADMIN, SUPERADMIN, and HR roles get ALL modules (full access)
+    if current_user.role in ["admin", "superadmin", "hr_admin", "hr_manager", "hr_executive"]:
         full_perms = [
             {
                 "module": m,

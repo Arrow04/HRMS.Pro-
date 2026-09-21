@@ -436,11 +436,11 @@ employeeId: String(rec.employeeId),
   }, [exitRecords]);
 
 const statCards = [
-    { label: 'Total Exits', value: stats.total, icon: TrendingUp, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', onClick: () => setActiveTab('exits') },
-    { label: 'Pending FnF', value: stats.pending, icon: AlertTriangle, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', onClick: () => setActiveTab('fnf') },
-    { label: 'FnF In Progress', value: stats.inProgress, icon: Calculator, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', onClick: () => setActiveTab('fnf') },
-    { label: 'FnF Completed', value: stats.completed, icon: CheckCircle, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', onClick: () => setActiveTab('fnf') },
-    { label: 'Clearance Pending', value: stats.clearancePending, icon: ClipboardCheck, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', onClick: () => setActiveTab('clearance') },
+    { label: 'Total Exits', value: stats.total, icon: TrendingUp, iconBg: 'bg-gradient-to-br from-[#1C64F2]/20 via-[#3B82F6]/10 to-[#60A5FA]/5', iconColor: 'text-[var(--primary-blue)]', tooltip: 'Total employee exits recorded', trend: stats.total > 0 ? 5 : 0, onClick: () => setActiveTab('exits') },
+    { label: 'Pending FnF', value: stats.pending, icon: AlertTriangle, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', tooltip: 'Full & Final settlements pending', trend: stats.pending > 0 ? -stats.pending : 0, onClick: () => setActiveTab('fnf') },
+    { label: 'FnF In Progress', value: stats.inProgress, icon: Calculator, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', tooltip: 'Full & Final settlements being processed', trend: stats.inProgress > 0 ? 3 : 0, onClick: () => setActiveTab('fnf') },
+    { label: 'FnF Completed', value: stats.completed, icon: CheckCircle, iconBg: 'bg-gradient-to-br from-[#10B981]/20 via-[#34D399]/10 to-[#6EE7B7]/5', iconColor: 'text-[#059669]', tooltip: 'Successfully completed settlements', trend: stats.completed > 0 ? 10 : 0, onClick: () => setActiveTab('fnf') },
+    { label: 'Clearance Pending', value: stats.clearancePending, icon: ClipboardCheck, iconBg: 'bg-gradient-to-br from-[#EF4444]/20 via-[#F87171]/10 to-[#FCA5A5]/5', iconColor: 'text-[#DC2626]', tooltip: 'Pending clearances for exiting employees', trend: stats.clearancePending > 0 ? -2 : 0, onClick: () => setActiveTab('clearance') },
   ];
 
   const hasActiveFilters = filterCompanyId !== 'all' || filterDepartmentId !== 'all' || filterType !== 'all' || filterStatus !== 'all' || !!startDate || !!endDate || !!search;
@@ -568,7 +568,7 @@ const statCards = [
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {statCards.map((stat, i) => (
             <div key={stat.label} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${i * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} iconBg={stat.iconBg} iconColor={stat.iconColor} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>

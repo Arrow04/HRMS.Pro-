@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import * as settingsApi from '../services/settingsService';
 import ConfigPanel from '../components/ConfigPanel';
-import LeaveConfig from '../components/LeaveConfig';
+import LeaveTemplateManager from '../components/LeaveTemplateManager';
 import toast from 'react-hot-toast';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
@@ -102,7 +102,6 @@ interface ApprovalHistoryEntry {
 const LeaveManagement = () => {
   const queryClient = useQueryClient();
 const [activeTab, setActiveTab] = useState('requests');
-const [showLeaveConfig, setShowLeaveConfig] = useState(false);
 const [searchTerm, setSearchTerm] = useState('');
 const [leaveTypeStatusFilter, setLeaveTypeStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 const [leaveTypeCompanyFilter, setLeaveTypeCompanyFilter] = useState<string>('all');
@@ -110,38 +109,6 @@ const [showLeaveTypeModal, setShowLeaveTypeModal] = useState(false);
 const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<number | null>(null);
 const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_allowed: 12, company_id: '' as string, is_paid: true, is_encashable: false, color: '#1C64F2' });
   const [mounted, setMounted] = useState(false);
-
-  // Leave policy configuration
-  const [leaveConfig, setLeaveConfig] = useState({ casual: '12', sick: '10', earned: '15', maternity: '180', carryForward: true, encashment: false });
-  const [leaveConfigLoading, setLeaveConfigLoading] = useState(true);
-  const [leaveConfigSaving, setLeaveConfigSaving] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    settingsApi.fetchLeavePolicy()
-      .then((s) => {
-        if (!active) return;
-        setLeaveConfig({
-          casual: String(s.casual ?? '12'),
-          sick: String(s.sick ?? '10'),
-          earned: String(s.earned ?? '15'),
-          maternity: String(s.maternity ?? '180'),
-          carryForward: s.carryForward ?? true,
-          encashment: s.encashment ?? false,
-        });
-      })
-      .catch(() => {})
-      .finally(() => { if (active) setLeaveConfigLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const saveLeaveConfig = () => {
-    setLeaveConfigSaving(true);
-    settingsApi.saveLeavePolicy(leaveConfig)
-      .then(() => { toast.success('Leave policy saved'); queryClient.invalidateQueries({ queryKey: ['leave-balances'] }); })
-      .catch(() => toast.error('Failed to save leave policy'))
-      .finally(() => setLeaveConfigSaving(false));
-  };
 
   const [initBalanceState, setInitBalanceState] = useState<{ employeeId: string; loading: boolean }>({ employeeId: '', loading: false });
   const [showInitBalanceConfirm, setShowInitBalanceConfirm] = useState(false);
@@ -739,10 +706,10 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const hasActiveFilters = companyFilter !== 'all' || branchFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || startDate !== '' || endDate !== '' || searchTerm !== '';
 
   const statCards = [
-    { label: 'Leave Applied', value: stats.total, icon: Calendar, color: 'purple', onClick: () => { setActiveTab('requests'); setStatusFilter('all'); } },
-    { label: 'Approval Pending', value: stats.pending, icon: Clock, color: 'orange', onClick: () => { setActiveTab('requests'); setStatusFilter('pending'); } },
-    { label: 'Approved', value: stats.approved, icon: CheckCircle2, color: 'green', onClick: () => { setActiveTab('requests'); setStatusFilter('approved'); } },
-    { label: 'Rejected', value: stats.rejected, icon: XCircle, RotateCcw, color: 'red', onClick: () => { setActiveTab('requests'); setStatusFilter('rejected'); } },
+    { label: 'Leave Applied', value: stats.total, icon: Calendar, color: 'purple', tooltip: 'Total leave applications', trend: stats.total > 0 ? 5 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('all'); } },
+    { label: 'Approval Pending', value: stats.pending, icon: Clock, color: 'orange', tooltip: 'Leave requests awaiting approval', trend: stats.pending > 0 ? -stats.pending : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('pending'); } },
+    { label: 'Approved', value: stats.approved, icon: CheckCircle2, color: 'green', tooltip: 'Approved leave requests', trend: stats.approved > 0 ? 12 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('approved'); } },
+    { label: 'Rejected', value: stats.rejected, icon: XCircle, RotateCcw, color: 'red', tooltip: 'Rejected leave requests', trend: stats.rejected > 0 ? -3 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('rejected'); } },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -819,7 +786,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
             <div key={index} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>
@@ -1168,71 +1135,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         )}
 
         {activeTab === 'configuration' && (
-          <div className="space-y-6">
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-blue-600" />
-                    Leave Configuration
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Configure leave types, policies, accrual rules, carry-forward, encashment, and holiday calendars.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowLeaveConfig(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-blue-200/50 flex items-center gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  Open Configuration
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
-                    <Calendar className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Leave Types & Policies</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Define leave types and policy templates</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
-                    <TrendingUp className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Accrual & Carry Forward</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Accrual methods, carry-forward rules</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
-                    <Award className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Encashment Rules</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Encashment, tax, frequency settings</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] flex items-center justify-center text-white shadow-sm">
-                    <CalendarDays className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Holiday Calendar</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Company holidays and optional leaves</p>
-              </div>
-            </div>
+          <div className="animate-in fade-in duration-300">
+            <LeaveTemplateManager />
           </div>
-        )}
-
-        {showLeaveConfig && (
-          <LeaveConfig open={showLeaveConfig} onClose={() => setShowLeaveConfig(false)} />
         )}
       </div>
 

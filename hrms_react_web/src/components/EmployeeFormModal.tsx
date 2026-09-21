@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import * as payrollApi from '../services/payrollConfigApi';
 import * as payrollTemplateApi from '../services/payrollTemplateApi';
 import {
@@ -24,8 +25,9 @@ import { generateResumePdf } from '../services/resumePdf';
 import type { Employee, Branch, Department, Designation, Company } from '../types';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAppConfig } from '../context/AppConfigContext';
-import { getCurrencySymbol } from '../services/currencyService';
 import { joinEmployeeName, personDisplayName, splitEmployeeName } from '../utils/employeeNameUtils';
+
+export type SalaryMode = 'daily' | 'weekly' | 'monthly' | 'annual' | 'manual';
 
 export type EmployeeFormData = Record<string, unknown> & {
   firstName?: string;
@@ -41,6 +43,7 @@ export type EmployeeFormData = Record<string, unknown> & {
   dateOfBirth?: string;
   bloodGroup?: string;
   maritalStatus?: string;
+  isPersonWithDisability?: boolean;
   employmentType?: string;
   shiftId?: string | number;
   geofenceEnabled?: boolean;
@@ -361,7 +364,30 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const [rosterDays, setRosterDays] = useState<Record<string, string>>({
     '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '0': ''
   });
-  const [salaryMode, setSalaryMode] = useState<'monthly' | 'annual' | 'manual'>('monthly');
+  const [salaryMode, setSalaryMode] = useState<SalaryMode>('monthly');
+  // Pay-frequency conversions to the monthly figure the payroll engine works on.
+  // Daily × 30 (monthly/30 = daily rate is the standard payroll divisor).
+  const DAILY_TO_MONTHLY = 30;
+  const WEEKLY_TO_MONTHLY = 52 / 12;
+  const toMonthly = (amount: number, mode: SalaryMode) =>
+    mode === 'annual' ? amount / 12 : mode === 'daily' ? amount * DAILY_TO_MONTHLY : mode === 'weekly' ? amount * WEEKLY_TO_MONTHLY : amount;
+  // Switching modes reinterprets the amount — clear rate + split so a monthly
+  // figure can never be silently treated as daily (miscalc guard). Manual
+  // keeps the components as a starting point.
+  const switchSalaryMode = (mode: SalaryMode) => {
+    setSalaryMode(mode);
+    if (mode !== 'manual') {
+      set({ baseSalary: '', payRate: '', salaryComponents: {} });
+    }
+  };
+  // When opening an existing employee, restore their saved pay frequency.
+  useEffect(() => {
+    const f = formData.payFrequency;
+    if (typeof f === 'string' && ['daily', 'weekly', 'monthly', 'annual'].includes(f)) {
+      setSalaryMode(f as SalaryMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
   const { data: proficiencyOptions = [] } = useMasterData('SKILL_PROFICIENCY');
   const salaryCompanyId = String(formData.salaryCompanyId ?? '');
   const salaryCompany = (companiesList || []).find((c: Company) => String(c.id) === salaryCompanyId);
@@ -405,6 +431,18 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     queryFn: () => payrollTemplateApi.getPayrollTemplates(salaryCompanyIdNum),
     staleTime: 30 * 1000,
   });
+  const { data: leaveTemplates = [] } = useQuery({
+    queryKey: ['leave-templates', salaryCompanyIdNum ?? 'all'],
+    queryFn: async () => {
+      const params = salaryCompanyIdNum ? { companyId: salaryCompanyIdNum } : {};
+      const res = await api.get('/api/leave-templates', { params });
+      return res.data || [];
+    },
+    staleTime: 30 * 1000,
+  });
+  const companyAttendancePolicies = (attendancePolicies as Record<string, unknown>[]).filter(
+    (p) => !salaryCompanyIdNum || p.company_id == null || Number(p.company_id) === salaryCompanyIdNum
+  );
 
   useEffect(() => {
     if (open && currentUserName && !formData.itAssignedBy) {
@@ -455,20 +493,19 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const tplHraPct = tplPct('HRA');
   const previewUsesTpl = !!selectedTpl && tplBasicPct > 0;
 
-  // Statutory rates from the selected payroll template (fall back to India defaults).
   const tplStatutory = (selectedTpl?.statutory || {}) as Record<string, unknown>;
-  const statNum = (key: string, def: number) => {
+  const statNum = (key: string) => {
     const v = Number(tplStatutory[key]);
-    return isNaN(v) || v < 0 ? def : v;
+    return isNaN(v) ? 0 : v;
   };
-  const pfEmployeeRate = statNum('pf_employee_rate', 12);
-  const pfEmployerRate = statNum('pf_employer_rate', 12);
-  const pfMaxMonthly = statNum('pf_max_monthly', 1800);
-  const esiEmployeeRate = statNum('esi_employee_rate', 0.75);
-  const esiEmployerRate = statNum('esi_employer_rate', 3.25);
-  const esiGrossCeiling = statNum('esi_gross_ceiling', 21000);
-  const ptMonthlyAmount = statNum('pt_monthly_amount', 200);
-  const gratuityRate = statNum('gratuity_rate', 4.81);
+  const pfEmployeeRate = statNum('pf_employee_rate');
+  const pfEmployerRate = statNum('pf_employer_rate');
+  const pfMaxMonthly = statNum('pf_max_monthly');
+  const esiEmployeeRate = statNum('esi_employee_rate');
+  const esiEmployerRate = statNum('esi_employer_rate');
+  const esiGrossCeiling = statNum('esi_gross_ceiling');
+  const ptMonthlyAmount = statNum('pt_monthly_amount');
+  const gratuityRate = statNum('gratuity_rate');
   const gratuityApplicable = !!tplStatutory.gratuity_applicable;
 
   const earningHelp = previewUsesTpl
@@ -498,12 +535,17 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   // Auto-split the base salary into monthly earnings and deductions when it
   // changes. The split uses the selected company's Salary Template percentages
   // when one is chosen; otherwise it falls back to the standard breakdown.
-  // Mode determines whether the entered amount is a monthly or annual figure.
-  const handleBaseSalaryChange = (rawValue: string, mode: 'monthly' | 'annual' = salaryMode) => {
+  // Mode determines the entered figure: daily (×30), weekly (×52/12), monthly
+  // or annual CTC (÷12) — always normalized to monthly for the payroll engine.
+  // base_salary stores that monthly equivalent; payFrequency/payRate keep the
+  // original terms (e.g. 500/day) for display and audit.
+  const handleBaseSalaryChange = (rawValue: string, mode: SalaryMode = salaryMode) => {
     const amount = parseFloat(rawValue) || 0;
-    const monthly = mode === 'annual' ? amount / 12 : amount;
     set({ baseSalary: rawValue });
+    if (mode === 'manual') return;
+    const monthly = toMonthly(amount, mode);
     if (monthly <= 0) return;
+    set({ payFrequency: mode, payRate: rawValue });
 
     const basicPct = previewUsesTpl ? tplBasicPct : Number(activeTemplate?.basic_percent ?? 0);
     const hraPct = previewUsesTpl ? tplHraPct : Number(activeTemplate?.hra_percent ?? 0);
@@ -1330,6 +1372,17 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Join Date</label>
                     <DatePicker value={input(formData.joinDate)} maxDate={new Date()} onChange={(val) => set({ joinDate: val })} />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Date of joining, dd-mm-yyyy</p>
+                  </div>
+                  <div className="flex items-center gap-3 pt-6">
+                    <ToggleSwitch
+                      checked={!!formData.isPersonWithDisability}
+                      onChange={(v) => set({ isPersonWithDisability: v })}
+                      size="sm"
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text-primary)]">Person with Disabilities (PwD)</label>
+                      <p className="text-xs text-gray-400">Enable if employee is a person with benchmark disability</p>
+                    </div>
                   </div>
                 </div>
 
@@ -2175,7 +2228,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Company</label>
                     <SearchableSelect
                       value={salaryCompanyId}
-                      onChange={(v) => set({ salaryCompanyId: String(v), salaryTemplateId: '', payrollTemplateId: '' })}
+                      onChange={(v) => set({ salaryCompanyId: String(v), salaryTemplateId: '', payrollTemplateId: '', leaveTemplateId: '', attendancePolicyId: '' })}
                       options={(companiesList || []).map((c: Company) => ({ id: c.id, name: c.name }))}
                       placeholder="Select Company"
                       showAllOption={false}
@@ -2207,6 +2260,32 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       className="w-full"
                     />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Applies the template's policy, components, statutory, tax regime & attendance.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Leave Template <span className="text-xs text-gray-500 font-normal">(company-wise)</span></label>
+                    <SearchableSelect
+                      value={String(formData.leaveTemplateId ?? '')}
+                      onChange={(v) => set({ leaveTemplateId: v === '' ? '' : String(v) })}
+                      options={(leaveTemplates as { id: number; name: string; company_id?: number }[]).map((t) => ({ id: String(t.id), name: t.name }))}
+                      placeholder={salaryCompanyId ? 'Select a leave template (recommended)' : 'Select a company first'}
+                      showAllOption={false}
+                      clearable
+                      className="w-full"
+                    />
+                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Yearly quotas resolve from this template instantly — no bulk initialize needed.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Attendance Template <span className="text-xs text-gray-500 font-normal">(company-wise)</span></label>
+                    <SearchableSelect
+                      value={String(formData.attendancePolicyId ?? '')}
+                      onChange={(v) => set({ attendancePolicyId: v === '' ? '' : String(v) })}
+                      options={companyAttendancePolicies.map((p: Record<string, unknown>) => ({ id: String(p.id), name: String(p.name || '') }))}
+                      placeholder={salaryCompanyId ? 'Select an attendance template' : 'Select a company first'}
+                      showAllOption={false}
+                      clearable
+                      className="w-full"
+                    />
+                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Workweek, timing rules & geo-fence used for attendance and payroll.</p>
                   </div>
                   {!formData.payrollTemplateId && (
                   <div>
@@ -2241,19 +2320,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Pro-ration, rounding & gratuity rules for this employee.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Attendance Policy <span className="text-xs text-gray-500 font-normal">(auto from template)</span></label>
-                    <SearchableSelect
-                      value={String(formData.attendancePolicyId ?? '')}
-                      onChange={(v) => set({ attendancePolicyId: v === '' ? '' : String(v) })}
-                      options={attendancePolicies.map((p: Record<string, unknown>) => ({ id: String(p.id), name: String(p.name || '') }))}
-                      placeholder="Inherit org default"
-                      showAllOption={false}
-                      clearable
-                      className="w-full"
-                    />
-                    <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Workweek, half-day & overtime rules used for payroll.</p>
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">Tax Regime <span className="text-xs text-gray-500 font-normal">(auto from template)</span></label>
                     <SearchableSelect
                       value={String(formData.taxRegimeId ?? '')}
@@ -2269,61 +2335,43 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   {salaryMode !== 'manual' && (
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">
-                        {salaryMode === 'annual' ? 'Annual Base Salary (CTC)' : 'Monthly Base Salary'}
+                        {salaryMode === 'annual' ? 'Annual Base Salary (CTC)' : salaryMode === 'daily' ? 'Daily Wage' : salaryMode === 'weekly' ? 'Weekly Wage' : 'Monthly Base Salary'}
                       </label>
                       <div className="relative">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8] text-sm">{currencySymbol}</span>
                         <input type="number" min="0" value={num(formData.baseSalary)} onChange={(e) => handleBaseSalaryChange(e.target.value, salaryMode)}
-                          className="w-full pl-8 pr-4 py-2.5 border border-[var(--border-color)] rounded-lg focus:outline-none focus:ring-2" style={{ ['--tw-ring-color' as string]: accent }} placeholder={salaryMode === 'annual' ? 'e.g. 1200000' : 'e.g. 120000'} />
+                          className="w-full pl-8 pr-4 py-2.5 border border-[var(--border-color)] rounded-lg focus:outline-none focus:ring-2" style={{ ['--tw-ring-color' as string]: accent }} placeholder={salaryMode === 'annual' ? 'e.g. 1200000' : salaryMode === 'daily' ? 'e.g. 500' : salaryMode === 'weekly' ? 'e.g. 3500' : 'e.g. 120000'} />
                       </div>
-                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">{salaryMode === 'annual' ? 'Enter annual CTC — auto-splits into monthly earnings & deductions below.' : 'Enter monthly salary — auto-splits into earnings & deductions below.'}</p>
+                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">{salaryMode === 'annual' ? 'Enter annual CTC — auto-splits into monthly earnings & deductions below.' : salaryMode === 'daily' ? 'Enter per-day wage — monthly equivalent (× 30 days) auto-splits below.' : salaryMode === 'weekly' ? 'Enter per-week wage — monthly equivalent (× 52/12) auto-splits below.' : 'Enter monthly salary — auto-splits into earnings & deductions below.'}</p>
                     </div>
                   )}
                 </div>
                 <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 space-y-4">
-                  {/* Mode selector: Monthly auto-split or Manual entry */}
+                  {/* Mode selector: daily / weekly / monthly / annual auto-split or manual entry */}
                   <div className="space-y-3">
                     <label className="block text-sm font-medium text-[var(--text-primary)]">Salary Entry Mode</label>
-                    <div className={empGridClass}>
-                      <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${salaryMode === 'monthly' ? 'border-[#1C64F2] bg-blue-50' : 'border-[#E2E8F0] bg-white hover:border-slate-300'}`}>
-                        <input
-                          type="radio"
-                          name="salaryMode"
-                          checked={salaryMode === 'monthly'}
-                          onChange={() => setSalaryMode('monthly')}
-                          className="mt-1 w-4 h-4 text-[#1C64F2] focus:ring-[#1C64F2]"
-                        />
-                        <div>
-                          <p className="text-sm font-semibold text-[#0F172A]">Monthly (Auto-calculate)</p>
-                          <p className="text-xs text-[#64748B] mt-0.5">Enter the monthly salary once and the earnings & deductions below are filled in automatically. You can still adjust any field afterwards.</p>
-                        </div>
-                      </label>
-                      <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${salaryMode === 'annual' ? 'border-[#1C64F2] bg-blue-50' : 'border-[#E2E8F0] bg-white hover:border-slate-300'}`}>
-                        <input
-                          type="radio"
-                          name="salaryMode"
-                          checked={salaryMode === 'annual'}
-                          onChange={() => setSalaryMode('annual')}
-                          className="mt-1 w-4 h-4 text-[#1C64F2] focus:ring-[#1C64F2]"
-                        />
-                        <div>
-                          <p className="text-sm font-semibold text-[#0F172A]">Annual (Auto-calculate)</p>
-                          <p className="text-xs text-[#64748B] mt-0.5">Enter the annual salary (CTC) once and the monthly earnings & deductions below are filled in automatically. You can still adjust any field afterwards.</p>
-                        </div>
-                      </label>
-                      <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${salaryMode === 'manual' ? 'border-[#1C64F2] bg-blue-50' : 'border-[#E2E8F0] bg-white hover:border-slate-300'}`}>
-                        <input
-                          type="radio"
-                          name="salaryMode"
-                          checked={salaryMode === 'manual'}
-                          onChange={() => setSalaryMode('manual')}
-                          className="mt-1 w-4 h-4 text-[#1C64F2] focus:ring-[#1C64F2]"
-                        />
-                        <div>
-                          <p className="text-sm font-semibold text-[#0F172A]">Manual Entry</p>
-                          <p className="text-xs text-[#64748B] mt-0.5">Enter each earning and deduction amount yourself — no auto-calculation is applied.</p>
-                        </div>
-                      </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {([
+                        { id: 'daily', title: 'Daily (Auto-calculate)', desc: 'Enter the per-day wage once — monthly equivalent (× 30 days) splits into earnings & deductions below.' },
+                        { id: 'weekly', title: 'Weekly (Auto-calculate)', desc: 'Enter the per-week wage once — monthly equivalent (× 52/12) splits into earnings & deductions below.' },
+                        { id: 'monthly', title: 'Monthly (Auto-calculate)', desc: 'Enter the monthly salary once and the earnings & deductions below are filled in automatically. You can still adjust any field afterwards.' },
+                        { id: 'annual', title: 'Annual (Auto-calculate)', desc: 'Enter the annual salary (CTC) once and the monthly earnings & deductions below are filled in automatically. You can still adjust any field afterwards.' },
+                        { id: 'manual', title: 'Manual Entry', desc: 'Enter each earning and deduction amount yourself — no auto-calculation is applied.' },
+                      ] as { id: SalaryMode; title: string; desc: string }[]).map((m) => (
+                        <label key={m.id} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${salaryMode === m.id ? 'border-[#1C64F2] bg-blue-50' : 'border-[#E2E8F0] bg-white hover:border-slate-300'}`}>
+                          <input
+                            type="radio"
+                            name="salaryMode"
+                            checked={salaryMode === m.id}
+                            onChange={() => switchSalaryMode(m.id)}
+                            className="mt-1 w-4 h-4 text-[#1C64F2] focus:ring-[#1C64F2]"
+                          />
+                          <div>
+                            <p className="text-sm font-semibold text-[#0F172A]">{m.title}</p>
+                            <p className="text-xs text-[#64748B] mt-0.5">{m.desc}</p>
+                          </div>
+                        </label>
+                      ))}
                     </div>
                   </div>
 
@@ -2332,7 +2380,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <p className="text-xs text-blue-700">Manual mode — enter each earning and deduction amount below yourself. No auto-calculation.</p>
                     </div>
                   )}
-                  <div className={empGridClass}>
+                  <div className="grid grid-cols-1 gap-4">
                     <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
                       <h5 className="text-sm font-semibold text-[#0F172A] mb-3 flex items-center gap-2">
                         <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><TrendingUp className="w-3.5 h-3.5" /></span>
@@ -2370,7 +2418,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       </div>
                     </div>
                     {/* Employer Contributions (cost-to-company) */}
-                    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 col-span-2">
+                    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
                       <h5 className="text-sm font-semibold text-[#0F172A] mb-3 flex items-center gap-2">
                         <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center"><Building2 className="w-3.5 h-3.5" /></span>
                         Employer Contributions (cost to company)
@@ -2382,7 +2430,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             onChange={(e) => setComp('employerPf', e.target.value)}
                             placeholder="e.g. 1800"
                             className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} />
-                          <p className="mt-1 text-xs text-[#94A3B8]">{pfEmployerRate}% of Basic (capped ₹{pfMaxMonthly.toLocaleString('en-IN')})</p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">{pfEmployerRate}% of Basic (capped {getCurrencySymbol(getAppCurrency())}{pfMaxMonthly.toLocaleString('en-IN')})</p>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-[#64748B] mb-1">Employer ESI</label>
@@ -2390,7 +2438,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             onChange={(e) => setComp('employerEsi', e.target.value)}
                             placeholder="e.g. 400"
                             className={formInputClass} style={{ ['--tw-ring-color' as string]: accent }} />
-                          <p className="mt-1 text-xs text-[#94A3B8]">{esiEmployerRate}% of gross (if ≤ ₹{esiGrossCeiling.toLocaleString('en-IN')})</p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">{esiEmployerRate}% of gross (if ≤ {getCurrencySymbol(getAppCurrency())}{esiGrossCeiling.toLocaleString('en-IN')})</p>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-[#64748B] mb-1">Gratuity (Employer)</label>
@@ -2846,6 +2894,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <PreviewItem label="Date of Birth" value={formData.dateOfBirth} />
                       <PreviewItem label="Blood Group" value={formData.bloodGroup} />
                       <PreviewItem label="Marital Status" value={formData.maritalStatus} />
+                      <PreviewItem label="Person with Disabilities" value={formData.isPersonWithDisability ? 'Yes' : 'No'} />
                       <PreviewItem label="Emergency Contact" value={formData.emergencyContact ? `${formData.emergencyContact}${formData.emergencyPhone ? ` · ${formData.emergencyPhone}` : ''}` : undefined} />
                     </PreviewSection>
                     <PreviewSection title="Contact & Address" icon={MapPin}>

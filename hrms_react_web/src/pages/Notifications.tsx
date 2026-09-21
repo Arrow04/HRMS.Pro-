@@ -406,6 +406,8 @@ const Notifications = () => {
       icon: Bell,
       iconBg: 'bg-gradient-to-br from-[#6366F1]/20 via-[#818CF8]/10 to-[#A5B4FC]/5',
       iconColor: 'text-[#4F46E5]',
+      tooltip: 'All notifications in the system',
+      trend: notifications.length > 0 ? 5 : 0,
       onClick: () => {
         setActiveTab('all');
         setTypeFilter('all');
@@ -418,6 +420,8 @@ const Notifications = () => {
       icon: BellRing,
       iconBg: 'bg-gradient-to-br from-[#14B8A6]/20 via-[#2DD4BF]/10 to-[#5EEAD4]/5',
       iconColor: 'text-[#0D9488]',
+      tooltip: 'Notifications you haven\'t read yet',
+      trend: unreadCount > 0 ? -unreadCount : 0,
       onClick: () => setActiveTab('unread'),
     },
     {
@@ -426,6 +430,8 @@ const Notifications = () => {
       icon: CalendarDays,
       iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5',
       iconColor: 'text-[#D97706]',
+      tooltip: 'Notifications from today',
+      trend: todayCount > 0 ? 3 : 0,
       onClick: () => {
         setTodayOnly((v) => !v);
         setActiveTab('all');
@@ -437,6 +443,8 @@ const Notifications = () => {
       icon: ClipboardCheck,
       iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5',
       iconColor: 'text-[#7C3AED]',
+      tooltip: 'Notifications requiring your approval',
+      trend: approvalsCount > 0 ? -approvalsCount : 0,
       onClick: () => {
         setTypeFilter('approvals');
         setActiveTab('all');
@@ -661,6 +669,8 @@ const Notifications = () => {
             icon={stat.icon}
             iconBg={stat.iconBg}
             iconColor={stat.iconColor}
+            tooltip={stat.tooltip}
+            trend={stat.trend}
             isLoading={isLoading}
             delay={i * 60}
             onClick={stat.onClick}

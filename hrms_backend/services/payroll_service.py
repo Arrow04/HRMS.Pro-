@@ -10,18 +10,27 @@ Every organization defines its own:
   - StatutorySetting  (PF/ESI/PT/LWF rates & thresholds)
   - TaxRegime + slabs (tax calculation rules)
   - AttendancePolicy  (how attendance → paid days)
+
+Statutory Rule Engine:
+  All statutory rates/formulas are resolved via StatutoryRuleEngine which
+  reads effective-dated rules from the statutory_rules table. When a rule
+  exists, it takes precedence over the legacy StatutorySetting fields.
+  This means EPFO/ESI/PT rate changes are handled by inserting new rules
+  — no code modifications needed.
 """
 
 import calendar
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, date as _date
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from data.state_compliance import resolve_state_key
+from services.statutory_rule_engine import StatutoryRuleEngine
 from models import (
     Attendance,
     AttendancePolicy,
@@ -67,19 +76,48 @@ def _round_val(value: float, method: str = "nearest", places: int = 2) -> float:
 
 
 def _safe_eval(expr: str, ctx: Dict[str, Any]) -> Any:
-    """Safely evaluate a simple arithmetic expression using only names from ctx."""
+    """Safely evaluate arithmetic, comparison, and conditional expressions.
+
+    Supports:
+      - Arithmetic: +, -, *, /, **, %
+      - Comparisons: >, <, >=, <=, ==, !=
+      - Logical: and, or, not
+      - Conditional: if X > 100 then 200 else 100  (ternary)
+      - Functions: max, min, abs, round, floor, ceil, ifnull
+      - Variable references: any key from ctx (basic, gross, component names, etc.)
+    """
     import ast
     import operator
+    import math
 
-    _OPS = {
+    _BINOPS = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
         ast.Div: operator.truediv,
         ast.Pow: operator.pow,
         ast.Mod: operator.mod,
+        ast.FloorDiv: operator.floordiv,
+    }
+
+    _CMPOPS = {
+        ast.Gt: operator.gt,
+        ast.Lt: operator.lt,
+        ast.GtE: operator.ge,
+        ast.LtE: operator.le,
+        ast.Eq: operator.eq,
+        ast.NotEq: operator.ne,
+    }
+
+    _UNARYOPS = {
         ast.USub: operator.neg,
         ast.UAdd: operator.pos,
+        ast.Not: operator.not_,
+    }
+
+    _BOOL_OPS = {
+        ast.And: lambda a, b: a and b,
+        ast.Or: lambda a, b: a or b,
     }
 
     _CALLS = {
@@ -87,36 +125,74 @@ def _safe_eval(expr: str, ctx: Dict[str, Any]) -> Any:
         "min": min,
         "abs": abs,
         "round": round,
+        "floor": math.floor,
+        "ceil": math.ceil,
+        "ifnull": lambda val, default: default if val is None else val,
     }
 
     def _eval(node):
         if isinstance(node, ast.Expression):
             return _eval(node.body)
+        # Numbers
         if isinstance(node, ast.Constant):
             if isinstance(node.value, (int, float)):
                 return node.value
             raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
+        # Variable names
         if isinstance(node, ast.Name):
             if node.id in ctx:
                 return ctx[node.id]
-            raise ValueError(f"Unknown name: {node.id}")
+            raise ValueError(f"Unknown variable: {node.id}")
+        # Binary arithmetic
         if isinstance(node, ast.BinOp):
             left = _eval(node.left)
             right = _eval(node.right)
             op_type = type(node.op)
-            if op_type not in _OPS:
-                raise ValueError(f"Unsupported operator: {op_type.__name__}")
-            return _OPS[op_type](left, right)
+            if op_type not in _BINOPS:
+                raise ValueError(f"Unsupported binary operator: {op_type.__name__}")
+            return _BINOPS[op_type](left, right)
+        # Comparisons (>, <, >=, <=, ==, !=)
+        if isinstance(node, ast.Compare):
+            result = True
+            left = _eval(node.left)
+            for op, comparator in zip(node.ops, node.comparators):
+                op_type = type(op)
+                if op_type not in _CMPOPS:
+                    raise ValueError(f"Unsupported comparison: {op_type.__name__}")
+                right = _eval(comparator)
+                if not _CMPOPS[op_type](left, right):
+                    result = False
+                    break
+                left = right
+            return 1.0 if result else 0.0
+        # Unary operators (-, +, not)
         if isinstance(node, ast.UnaryOp):
             operand = _eval(node.operand)
             op_type = type(node.op)
-            if op_type not in _OPS:
+            if op_type not in _UNARYOPS:
                 raise ValueError(f"Unsupported unary operator: {op_type.__name__}")
-            return _OPS[op_type](operand)
+            return _UNARYOPS[op_type](operand)
+        # Boolean operators (and, or)
+        if isinstance(node, ast.BoolOp):
+            op_type = type(node.op)
+            if op_type not in _BOOL_OPS:
+                raise ValueError(f"Unsupported boolean operator: {op_type.__name__}")
+            values = [_eval(v) for v in node.values]
+            result = values[0]
+            for v in values[1:]:
+                result = _BOOL_OPS[op_type](result, v)
+            return result
+        # if-else ternary: if <condition> then <expr> else <expr>
+        if isinstance(node, ast.IfExp):
+            cond = _eval(node.test)
+            if cond:
+                return _eval(node.body)
+            return _eval(node.orelse)
+        # Function calls: max(), min(), abs(), round(), floor(), ceil(), ifnull()
         if isinstance(node, ast.Call):
             func_name = getattr(node.func, "id", None)
             if func_name not in _CALLS:
-                raise ValueError(f"Unsupported function: {func_name}")
+                raise ValueError(f"Unsupported function: {func_name}. Allowed: {', '.join(_CALLS.keys())}")
             args = [_eval(a) for a in node.args]
             return _CALLS[func_name](*args)
         raise ValueError(f"Unsupported expression node: {type(node).__name__}")
@@ -128,25 +204,32 @@ def _safe_eval(expr: str, ctx: Dict[str, Any]) -> Any:
 # ── Policy Loaders ──
 
 def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int, gross: float, working_days: int) -> float:
-    """Statutory bonus per the Payment of Bonus Act (India), driven by StatutorySetting.
+    """Statutory bonus per the Payment of Bonus Act (India), driven by StatutoryRuleEngine.
 
     Applies when the org is in India, bonus_applicable is on, and gross wages are
     within the eligibility ceiling. Returns the minimum statutory bonus (8.33%)
     spread across 12 months.
+
+    Per the Act, bonus is payable on wages up to ₹21,000/month ceiling.
+    Employees earning above ₹21,000 still get bonus calculated on the ceiling.
     """
     try:
+        from datetime import date as _date
         country = _effective_country(employee).lower()
-        if country != "india":
-            return 0.0
+        as_of = _date(year, month, 1)
+        engine = _get_rule_engine(db, employee, as_of)
+        state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+        result = engine.calculate_bonus(gross, as_of, country, state_code, employee.organization_id)
+        if result['bonus_applicable']:
+            return result['bonus_amount']
+        # Fallback to legacy StatutorySetting
         stat = _get_statutory_settings(db, employee)
         if not getattr(stat, "bonus_applicable", False):
             return 0.0
         ceiling = float(getattr(stat, "bonus_wage_ceiling", None) or 21000.0)
-        if gross > ceiling:
-            return 0.0
         min_rate = float(getattr(stat, "bonus_min_rate", None) or 8.33)
-        # Minimum statutory bonus = min_rate% of annual wages; spread across 12 months.
-        return round(gross * min_rate / 100, 2)
+        bonus_wages = min(gross, ceiling)
+        return round(bonus_wages * min_rate / 100, 2)
     except Exception:
         return 0.0
 
@@ -249,7 +332,10 @@ def _get_leave_encashment(db: Session, employee: Employee, year: int, month: int
         encashable = sum(float(lb.remaining_days or 0) for lb, _ in rows)
         if max_days > 0:
             encashable = min(encashable, max_days)
-        daily = (monthly_basic or 0) / 30.0
+        # Daily rate divisor — configurable per company (30, 26, or actual working days)
+        pay_policy = _get_payroll_policy(db, employee)
+        daily_divisor = float(getattr(pay_policy, 'daily_rate_divisor', None) or 30.0)
+        daily = (monthly_basic or 0) / daily_divisor
         return round(encashable * daily, 2)
     except Exception:
         return 0.0
@@ -280,11 +366,20 @@ def _consume_encashed_leave(db: Session, employee: Employee, year: int) -> None:
         db.rollback()
 
 
+def _get_fy_start_month(db: Session, employee: Employee) -> int:
+    """Get financial year start month from PayrollPolicy. Default: 4 (April for India)."""
+    try:
+        pay_policy = _get_payroll_policy(db, employee)
+        return int(getattr(pay_policy, 'fy_start_month', None) or 4)
+    except Exception:
+        return 4
+
+
 def _get_effective_declaration(db: Session, employee: Employee, year: int, month: int):
     """Return the employee's active InvestmentDeclaration for the FY of this period.
     Falls back to the employee's most recent declaration if the exact FY has none
     (e.g. declaration submitted for the FY before payroll data exists)."""
-    fy_start_month = 4
+    fy_start_month = _get_fy_start_month(db, employee)
     fy_year = year if month >= fy_start_month else year - 1
     fy_label = f"{fy_year}-{str((fy_year + 1) % 100).zfill(2)}"
     try:
@@ -321,7 +416,7 @@ def _compute_cumulative_tds(
     Returns {tds, income_tax, surcharge, cess, base_tax, annual_taxable,
              projected_annual_gross, ytd_tds, declaration_used}.
     """
-    fy_start_month = 4
+    fy_start_month = _get_fy_start_month(db, employee)
     months_elapsed = (month - fy_start_month) % 12 + 1  # Apr=1 ... Mar=12
     ytd = _get_ytd_payroll_totals(db, employee, year, month)
     ytd_gross = ytd["gross"] + month_gross
@@ -335,7 +430,7 @@ def _compute_cumulative_tds(
     projected_annual_pt = ytd_pt + max(0, 12 - months_elapsed) * month_pt
 
     regime_is_new = tax_regime is not None and str(tax_regime.regime_type or "new").lower() == "new"
-    std_deduction = tax_regime.standard_deduction if tax_regime else 50000.0
+    std_deduction = getattr(tax_regime, 'standard_deduction', None) or 0.0 if tax_regime else 0.0
 
     # Employee's annual declaration + previous-employer carryforward
     declaration_used = None
@@ -376,13 +471,40 @@ def _compute_cumulative_tds(
     # org-level defaults configured via org.settings.payroll.tax_exemptions.
     deductions_total = 0.0
     if not regime_is_new:
+        # Read deduction caps from TaxRegime
+        cap_80c = float(getattr(regime, 'section_80c_old_cap', None) or 0)
+        cap_80d = float(getattr(regime, 'section_80d_cap', None) or 0)
+        cap_nps = float(getattr(regime, 'section_80ccd_1b_cap', None) or 0)
+        cap_home_loan = float(getattr(regime, 'section_24_home_loan_cap', None) or 0)
         if decl:
-            deductions_total += min(float(decl.deduction_80c or 0), 150000)
-            deductions_total += min(float(decl.deduction_80d or 0), 50000)
-            deductions_total += float(decl.hra_exemption or 0)
+            deductions_total += min(float(decl.deduction_80c or 0), cap_80c)
+            deductions_total += min(float(decl.deduction_80d or 0), cap_80d)
+            # HRA exemption: auto-calculate if rent data is provided (§10(13A))
+            hra_amount = float(decl.hra_exemption or 0)
+            monthly_rent = float(getattr(decl, "hra_monthly_rent", None) or 0)
+            if monthly_rent > 0 and projected_annual_gross > 0:
+                # Get monthly basic — read basic_pct_of_gross from TaxRegime
+                basic_pct = float(getattr(regime, 'basic_pct_of_gross', None) or 0) / 100
+                monthly_basic_for_hra = (projected_annual_gross / 12) * basic_pct
+                is_metro = getattr(decl, "hra_is_metro", False)
+                # Read metro/non-metro % from TaxRegime
+                metro_pct = float(getattr(regime, 'hra_metro_pct', None) or 0) / 100
+                non_metro_pct = float(getattr(regime, 'hra_non_metro_pct', None) or 0) / 100
+                pct_rate = metro_pct if is_metro else non_metro_pct
+                # (a) Actual HRA received (monthly, from salary components)
+                actual_hra_received = (projected_annual_gross / 12) * 0.25  # approximate
+                # (b) metro/non-metro % of basic
+                pct_of_basic = monthly_basic_for_hra * pct_rate
+                # (c) Rent paid minus rent_threshold_pct of basic (configurable, default 10%)
+                rent_threshold = float(getattr(regime, 'hra_rent_threshold_pct', None) or 0) / 100
+                rent_minus_pct = monthly_rent - (monthly_basic_for_hra * rent_threshold)
+                # HRA exemption = least of (a), (b), (c), annualized
+                hra_auto = max(0, min(actual_hra_received, pct_of_basic, rent_minus_pct)) * 12
+                hra_amount = max(hra_amount, hra_auto)  # take the higher of manual or auto
+            deductions_total += hra_amount
             deductions_total += float(decl.lta_exemption or 0)
-            deductions_total += min(float(decl.nps_deduction or 0), 50000)
-            deductions_total += min(float(decl.home_loan_interest or 0), 200000)
+            deductions_total += min(float(decl.nps_deduction or 0), cap_nps)
+            deductions_total += min(float(decl.home_loan_interest or 0), cap_home_loan)
         else:
             try:
                 exemptions = ((employee.organization.settings or {}).get("payroll", {}) or {}).get("tax_exemptions", {}) or {}
@@ -419,7 +541,9 @@ def _compute_cumulative_tds(
         if annual_taxable <= rebate_threshold and tax_regime.rebate_amount:
             base_tax = max(0.0, base_tax - tax_regime.rebate_amount)
         if tax_regime.surcharge_config:
-            for s_slab in tax_regime.surcharge_config:
+            # Sort by "from" threshold ascending; pick the highest applicable slab (marginal surcharge)
+            sorted_surcharge = sorted(tax_regime.surcharge_config, key=lambda s: float(s.get("from", 0)))
+            for s_slab in sorted_surcharge:
                 try:
                     if annual_taxable >= float(s_slab.get("from", 0)):
                         surcharge = base_tax * float(s_slab.get("rate", 0)) / 100.0
@@ -456,7 +580,7 @@ def _get_ytd_payroll_totals(db: Session, employee: Employee, year: int, month: i
     """Year-to-date payroll totals for the financial year (Apr-Mar), excluding the current month."""
     try:
         from models import Payroll
-        fy_start_month = 4  # April
+        fy_start_month = _get_fy_start_month(db, employee)
         fy_year = year if month >= fy_start_month else year - 1
         prior = db.query(
             func.coalesce(func.sum(Payroll.gross_salary), 0),
@@ -602,6 +726,64 @@ def _get_effective_annual_ctc(db: Session, employee: Employee, year: int, month:
     return float(employee.base_salary or 0)
 
 
+def monthly_from_rate(amount: float, frequency: Optional[str]) -> float:
+    """Convert a pay rate in its own frequency to the monthly equivalent.
+
+    Conventions (configurable via PayrollPolicy):
+      annual  -> /12            (legacy rows with no frequency: annual)
+      monthly -> as-is
+      weekly  -> x(monthly_divisor_for_weekly)  (default 4.33 = 52/12)
+      daily   -> x(daily_rate_divisor)          (default 30)
+    """
+    amount = float(amount or 0)
+    freq = (frequency or "annual").strip().lower()
+    if freq == "monthly":
+        return round(amount, 2)
+    if freq == "weekly":
+        try:
+            pay_policy = _get_payroll_policy(db, employee) if db and employee else None
+            weekly_to_monthly = float(getattr(pay_policy, 'monthly_divisor_for_weekly', None) or 4.33)
+        except Exception:
+            weekly_to_monthly = 4.33
+        return round(amount * weekly_to_monthly, 2)
+    if freq == "daily":
+        try:
+            pay_policy = _get_payroll_policy(db, employee) if db and employee else None
+            daily_divisor = float(getattr(pay_policy, 'daily_rate_divisor', None) or 30.0)
+        except Exception:
+            daily_divisor = 30.0
+        return round(amount * daily_divisor, 2)
+    return round(amount / 12, 2) if amount else 0.0
+
+
+def _get_effective_monthly_base(db: Session, employee: Employee, year: int, month: int) -> float:
+    """Monthly base salary in effect for an employee in a given month.
+
+    SalaryRevisions are annual-denominated by contract (/12). Otherwise the
+    employee's base_salary is interpreted by their pay_frequency (daily /
+    weekly / monthly / annual); rows with no frequency keep the legacy
+    annual assumption, so existing data calculates exactly as before.
+    """
+    from datetime import date as _date
+    try:
+        from models import SalaryRevision
+        end_of_month = _date(year, month, _days_in_month(year, month))
+        rev = (
+            db.query(SalaryRevision)
+            .filter(
+                SalaryRevision.employee_id == employee.id,
+                SalaryRevision.effective_from <= end_of_month,
+            )
+            .order_by(SalaryRevision.effective_from.desc(), SalaryRevision.id.desc())
+            .first()
+        )
+        if rev and rev.base_salary is not None:
+            return round(float(rev.base_salary) / 12, 2)
+    except Exception:
+        pass
+    return monthly_from_rate(employee.base_salary, getattr(employee, "pay_frequency", None))
+
+
 def _get_employee_template(db: Session, employee: Employee) -> Optional[PayrollTemplate]:
     """Resolve the employee's company-wise payroll template, if any.
 
@@ -645,19 +827,26 @@ def _get_payroll_policy(db: Session, employee: Employee) -> PayrollPolicy:
         decimal_places=2,
         round_net_salary=True,
         include_gratuity=False,
-        gratuity_rate=4.81,
-        default_currency="INR",
+        gratuity_rate=0.0,
+        default_currency="",
         allow_negative_net=False,
         status="active",
     )
 
 
-def _get_attendance_policy(db: Session, employee: Employee) -> AttendancePolicy:
+def _get_attendance_policy(db: Session, employee: Employee, as_of=None) -> AttendancePolicy:
     """Resolve effective AttendancePolicy for an employee.
 
     Priority: payroll template -> company-scoped policy (auto-applied to that
     company's employees) -> employee override -> org default.
+
+    Company policies are EFFECTIVE-DATED: the latest version with
+    effective_from <= as_of wins, so a future-dated policy change never leaks
+    into current calculations. Explicit pins (template link, employee
+    override) apply as chosen.
     """
+    from datetime import date as _date
+    as_of = as_of or _date.today()
     template = _get_employee_template(db, employee)
     pid = None
     if template and template.attendance_policy_id:
@@ -665,13 +854,18 @@ def _get_attendance_policy(db: Session, employee: Employee) -> AttendancePolicy:
     if not pid:
         # Company-scoped attendance policy: a company's own working-day/week
         # configuration (e.g. IT 5-day vs restaurant 7-day) auto-applies to its
-        # employees, independent of any payroll template.
+        # employees, independent of any payroll template. Effective-dated: the
+        # latest version in force at as_of wins (NULL = since forever).
         company_id = getattr(employee, "company_id", None)
         if company_id:
             company_policy = db.query(AttendancePolicy).filter(
                 AttendancePolicy.company_id == company_id,
                 AttendancePolicy.organization_id == employee.organization_id,
                 AttendancePolicy.status == "active",
+                (AttendancePolicy.effective_from.is_(None) | (AttendancePolicy.effective_from <= as_of)),
+            ).order_by(
+                AttendancePolicy.effective_from.desc().nullslast(),
+                AttendancePolicy.id.desc(),
             ).first()
             if company_policy:
                 return company_policy
@@ -722,7 +916,7 @@ def _effective_country(employee: Employee, scoped: Optional[dict] = None, templa
                 return str(comp.country).strip()
     except Exception:
         pass
-    return str(getattr(employee.organization, "country", None) or "India").strip()
+    return str(getattr(employee.organization, "country", None) or "").strip() or None
 
 
 def _get_statutory_settings(db: Session, employee: Employee,
@@ -740,45 +934,36 @@ def _get_statutory_settings(db: Session, employee: Employee,
         StatutorySetting.status == "active",
     ).first()
     country = _effective_country(employee, scoped, template)
-    india = country.lower() == "india"
     if not setting:
-        # Return fallback with explicit defaults (column defaults only apply on DB insert).
+        # Return a disabled default — user must configure StatutorySetting for their country.
+        # NO country-specific defaults here; the engine refuses to guess.
         setting = StatutorySetting(
             organization_id=employee.organization_id,
-            pf_applicable=india,
-            pf_employee_rate=12.0,
-            pf_employer_rate=12.0,
-            pf_max_monthly=1800.0,
-            pf_min_basic_for_exclusion=15000.0,
-            pf_edli_rate=0.5,
-            pf_edli_max_monthly=75.0,
-            pf_admin_rate=0.5,
-            pf_admin_min_monthly=75.0,
-            esi_applicable=india,
-            esi_employee_rate=0.75,
-            esi_employer_rate=3.25,
-            esi_gross_ceiling=21000.0,
-            pt_applicable=india,
-            pt_monthly_amount=200.0,
-            pt_min_gross=10000.0,
+            pf_applicable=False,
+            pf_employee_rate=0.0,
+            pf_employer_rate=0.0,
+            pf_max_monthly=0.0,
+            pf_min_basic_for_exclusion=0.0,
+            pf_edli_rate=0.0,
+            pf_edli_max_monthly=0.0,
+            pf_admin_rate=0.0,
+            pf_admin_min_monthly=0.0,
+            esi_applicable=False,
+            esi_employee_rate=0.0,
+            esi_employer_rate=0.0,
+            esi_gross_ceiling=0.0,
+            pt_applicable=False,
+            pt_monthly_amount=0.0,
+            pt_min_gross=0.0,
             lwf_applicable=False,
             lwf_employee_rate=0.0,
             lwf_employer_rate=0.0,
             gratuity_applicable=False,
-            gratuity_rate=4.81,
+            gratuity_rate=0.0,
         )
-    # Non-India jurisdiction: India-only statutory items are off unless the scoped
-    # config explicitly re-enables them (e.g. Singapore CPF via pf_applicable).
-    scoped_keys = set(scoped.keys()) if scoped else set()
-    if not india:
-        for attr, key in (
-            ("pf_applicable", "pfApplicable"),
-            ("esi_applicable", "esiApplicable"),
-            ("pt_applicable", "ptApplicable"),
-            ("lwf_applicable", "lwfApplicable"),
-        ):
-            if key not in scoped_keys:
-                setattr(setting, attr, False)
+    # Apply scoped overrides (company/branch level). The DB setting is the source
+    # of truth — no code overrides based on country. If the user configured
+    # pf_applicable=True in the DB, it stays True regardless of country.
     if scoped:
         for attr, key in (
             ("pf_applicable", "pfApplicable"),
@@ -803,8 +988,16 @@ def _get_statutory_settings(db: Session, employee: Employee,
                 pass
         if esi_pct is not None:
             try:
-                setting.esi_employee_rate = float(esi_pct) * 0.25
-                setting.esi_employer_rate = float(esi_pct) * 0.75
+                # Accept separate employee/employer rates or split a single total
+                esi_emp = scoped.get("esiEmployeeRate")
+                esi_er = scoped.get("esiEmployerRate")
+                if esi_emp is not None and esi_er is not None:
+                    setting.esi_employee_rate = float(esi_emp)
+                    setting.esi_employer_rate = float(esi_er)
+                else:
+                    # Legacy: split total ESI % into employee/employer (default 50/50 if unknown)
+                    setting.esi_employee_rate = float(esi_pct) * 0.5
+                    setting.esi_employer_rate = float(esi_pct) * 0.5
             except (TypeError, ValueError):
                 pass
         g_rate = scoped.get("gratuityRate")
@@ -846,6 +1039,56 @@ def _get_statutory_settings(db: Session, employee: Employee,
                 except (TypeError, ValueError):
                     pass
     return setting
+
+
+def _get_rule_engine(db: Session, employee: Employee, as_of: Optional[_date] = None) -> StatutoryRuleEngine:
+    """Get a StatutoryRuleEngine instance configured for the employee's context."""
+    return StatutoryRuleEngine(db)
+
+
+def _resolve_pf_from_rule_engine(
+    engine: StatutoryRuleEngine,
+    basic_full: float,
+    as_of: _date,
+    country: str,
+    state_code: Optional[str],
+    organization_id: int,
+) -> Optional[Dict[str, Any]]:
+    """Try to resolve PF calculation from the rule engine. Returns None if no rule found."""
+    rule = engine.resolve('pf_contribution', as_of, country, state_code, organization_id)
+    if rule:
+        return engine.calculate_pf(basic_full, as_of, country, state_code, organization_id)
+    return None
+
+
+def _resolve_esi_from_rule_engine(
+    engine: StatutoryRuleEngine,
+    gross_salary: float,
+    as_of: _date,
+    country: str,
+    state_code: Optional[str],
+    organization_id: int,
+) -> Optional[Dict[str, Any]]:
+    """Try to resolve ESI calculation from the rule engine. Returns None if no rule found."""
+    rule = engine.resolve('esi_contribution', as_of, country, state_code, organization_id)
+    if rule:
+        return engine.calculate_esi(gross_salary, as_of, country, state_code, organization_id)
+    return None
+
+
+def _resolve_pt_from_rule_engine(
+    engine: StatutoryRuleEngine,
+    gross_salary: float,
+    as_of: _date,
+    country: str,
+    state_code: Optional[str],
+    organization_id: int,
+) -> Optional[float]:
+    """Try to resolve Professional Tax from the rule engine. Returns None if no rule found."""
+    rule = engine.resolve('professional_tax', as_of, country, state_code, organization_id)
+    if rule:
+        return engine.calculate_professional_tax(gross_salary, as_of, country, state_code, organization_id)
+    return None
 
 
 def _employee_branch_ids(db: Session, employee_id: int) -> List[int]:
@@ -1099,16 +1342,18 @@ def _get_attendance_counts(
             )
             .all()
         )
-        # The leave TYPE is authoritative for paid/unpaid (Casual/Sick/Earned paid,
-        # LOP/Unpaid unpaid); the per-application is_paid is the fallback.
+        # Paid/unpaid resolves through template precedence (pinned template
+        # row -> payroll-template linked row -> LeaveType org default); the
+        # per-application is_paid is the final fallback.
         type_ids = {lv.leave_type_id for lv in leaves if lv.leave_type_id}
         lt_paid: Dict[int, bool] = {}
         if type_ids:
             try:
-                lt_paid = {
-                    t.id: bool(getattr(t, "is_paid", True))
-                    for t in db.query(LeaveType).filter(LeaveType.id.in_(type_ids)).all()
-                }
+                from utils.leave_balance_utils import resolve_type_flags
+                from datetime import date as _d
+                types = db.query(LeaveType).filter(LeaveType.id.in_(type_ids)).all()
+                flags = resolve_type_flags(db, employee, types, as_of=_d(year, month, 1)) if employee is not None else {}
+                lt_paid = {t.id: bool(flags.get(t.id, {}).get("paid", getattr(t, "is_paid", True))) for t in types}
             except Exception:
                 lt_paid = {}
         for lv in leaves:
@@ -1132,7 +1377,12 @@ def _get_attendance_counts(
     holiday = 0
     week_off = 0
     late = 0
+    early = 0
+    missing_checkout = 0
+    late_converted = 0
+    early_converted = 0
     overtime_hours = 0.0
+    WORKED_STATUSES = ("present", "late", "workfromhome", "workfromhomeapproved", "overtime", "earlydeparture", "early")
 
     # Working days from policy workweek schedule (0=Sun ... 6=Sat) — computed first
     # so holiday classification below can exclude weekend holidays.
@@ -1160,21 +1410,28 @@ def _get_attendance_counts(
         if exit_date and d > _as_date(exit_date):
             continue
         status = (r.status or "").strip().lower()
+        # Normalised status: strip every non-letter so "Sick Leave",
+        # "sick_leave", "sick" and "SICK-LEAVE " all classify identically.
+        # Leave sync stamps the leave TYPE NAME (with spaces); without this,
+        # paid leave like "Casual Leave" fell through uncounted/unpaid.
+        nstatus = re.sub(r"[^a-z]", "", status)
         # Recognised leave statuses (both linked-leave rows and standalone
         # leave statuses stamped on the attendance record).
         PAID_LEAVE_STATUSES = {
-            "on_leave", "casual_leave", "casual", "sick_leave", "sick",
-            "paid_leave", "earned_leave", "privilege_leave", "maternity",
-            "paternity", "bereavement", "comp_off",
+            "onleave", "casualleave", "casual", "sickleave", "sick",
+            "paidleave", "earnedleave", "privilegeleave", "maternity",
+            "maternityleave", "paternity", "paternityleave", "bereavement",
+            "bereavementleave", "compoff", "vacation", "vacationleave",
+            "personal", "personalleave", "personalcasualleave",
         }
-        UNPAID_LEAVE_STATUSES = {"unpaid_leave", "loss_of_pay", "lop", "unpaid"}
+        UNPAID_LEAVE_STATUSES = {"unpaidleave", "lossofpay", "lop", "unpaid", "leavewithoutpay", "withoutpay"}
         # A day is "leave" only when its attendance status is a leave status (or
         # the is_on_leave flag is set). This keeps the classification status-based
         # so payroll's present/absent matches the attendance screen exactly — a day
         # stamped "absent" stays absent even if a leave application is linked.
         is_leave = (
             bool(r.is_on_leave)
-            or status in PAID_LEAVE_STATUSES | UNPAID_LEAVE_STATUSES
+            or nstatus in PAID_LEAVE_STATUSES | UNPAID_LEAVE_STATUSES
         )
         if is_leave:
             on_leave += 1
@@ -1186,31 +1443,72 @@ def _get_attendance_counts(
             else:
                 # Standalone leave status stamped on the attendance row (no linked
                 # application) — classify paid/unpaid from the status type.
-                paid = status in PAID_LEAVE_STATUSES
+                paid = nstatus in PAID_LEAVE_STATUSES
             if paid:
                 paid_leave += 1
             else:
                 unpaid_leave += 1
-        elif status in ("present", "late", "work_from_home", "work_from_home_approved", "overtime"):
-            present += 1
-            if status == "late":
-                late += 1
-        elif status in ("holiday",):
+        elif nstatus in ("present", "late", "workfromhome", "workfromhomeapproved", "overtime", "earlydeparture", "early"):
+            # Missing checkout reclassifies the day BEFORE counting: a worked
+            # day with check-in but no check-out becomes whatever status the
+            # template's missing_checkout_rule names (default half-day).
+            # Unknown rules fall back to half-day — never silent full-present.
+            eff = nstatus
+            if getattr(r, "check_in", None) and not getattr(r, "check_out", None):
+                missing_checkout += 1
+                rule = re.sub(r"[^a-z]", "", str(getattr(att_policy, "missing_checkout_rule", None) or "half_day").strip().lower())
+                if rule == "absent":
+                    eff = "absent"
+                elif rule in ("halfday", "half"):
+                    eff = "halfday"
+                elif rule in ("weekoff", "weeklyoff", "weekoffday"):
+                    week_off += 1
+                    eff = "weekoff"
+                elif rule in PAID_LEAVE_STATUSES | UNPAID_LEAVE_STATUSES:
+                    on_leave += 1
+                    if rule in PAID_LEAVE_STATUSES:
+                        paid_leave += 1
+                    else:
+                        unpaid_leave += 1
+                    eff = "leave"
+                elif rule in ("present", "late", "workfromhome", "workfromhomeapproved", "overtime", "earlydeparture", "early"):
+                    eff = rule
+                else:
+                    eff = "halfday"
+            if eff == "absent":
+                absent += 1
+            elif eff == "halfday":
+                half_day += 1
+            elif eff in ("weekoff", "leave"):
+                pass  # already tallied above
+            else:
+                present += 1
+                if eff == "late" or (nstatus == "late" and eff in WORKED_STATUSES):
+                    late += 1
+                # Standalone early-departure status counts as early even without the flag.
+                if eff in ("earlydeparture", "early") or (getattr(r, "is_early_departure", False) and eff in WORKED_STATUSES):
+                    early += 1
+        elif nstatus in ("holiday",):
             # Holiday status stays a holiday (not present) so payroll matches the
             # attendance screen, where holidays are shown separately.
             holiday += 1
-        elif status in ("week_off", "weekoff", "weekly_off", "week off"):
+        elif nstatus in ("weekoff", "weeklyoff", "weekoffday", "week off"):
             # Weekly off day — neither present nor absent, and excluded from pay.
             week_off += 1
-        elif status in ("absent",):
+        elif nstatus in ("absent",):
             absent += 1
-        elif status in ("half_day", "half day"):
+        elif nstatus in ("halfday", "half day"):
             half_day += 1
-        if r.is_holiday and not is_leave and status != "holiday":
-            # Only count holidays that fall on a working day — a weekend holiday must
-            # not inflate paid_days and mask an unpaid absence. (A row whose status
-            # is already "holiday" is counted as a paid present day above, so it is
-            # not tallied here again.)
+        worked = nstatus in (
+            "present", "late", "workfromhome", "workfromhomeapproved",
+            "overtime", "earlydeparture", "early", "halfday", "half day",
+        )
+        if r.is_holiday and not is_leave and nstatus != "holiday" and not worked:
+            # A worked day flagged as holiday (e.g. present on a holiday) must
+            # NOT count twice — it is already paid as present above. Unworked
+            # flagged days (absent/week-off/unclassified) still earn the paid
+            # holiday credit. Weekend holidays stay excluded so they can't
+            # inflate paid_days and mask an unpaid absence.
             wd = (d.weekday() + 1) % 7
             if wd in working_weekdays or not working_weekdays:
                 holiday += 1
@@ -1219,19 +1517,24 @@ def _get_attendance_counts(
     # Auto-apply company-scoped holidays: an employee's own company's holiday (or
     # an org-wide holiday) counts as a paid holiday when it falls on a working day
     # and isn't already covered by an attendance/leave record for that date.
+    # Auto-apply company-scoped holidays: ONLY the employee's own company's
+    # holidays count (strict — no shared rows). Working-day flagged holidays
+    # are workdays, never credited.
     try:
         from models import Holiday
+        from sqlalchemy import or_ as _or
         seen_dates = {_as_date(r.date).isoformat() for r in records}
         hq = db.query(Holiday).filter(
             Holiday.deleted_at.is_(None),
             Holiday.date >= start,
             Holiday.date <= end,
+            _or_(Holiday.is_working_day.is_(False), Holiday.is_working_day.is_(None)),
         )
         if employee is not None:
             hq = hq.filter(Holiday.organization_id == employee.organization_id)
             cid = getattr(employee, "company_id", None)
             if cid:
-                hq = hq.filter((Holiday.company_id == cid) | (Holiday.company_id.is_(None)))
+                hq = hq.filter(Holiday.company_id == cid)
         for h in hq.all():
             hd = _as_date(h.date)
             ds = hd.isoformat()
@@ -1243,6 +1546,26 @@ def _get_attendance_counts(
                 seen_dates.add(ds)
     except Exception:
         pass
+
+    # Template conversion rules: N lates / early-departures become 1 absent.
+    # Applied AFTER missing-checkout reclassification so each day converts at
+    # most once; clamped so present never goes negative on overlapping flags.
+    try:
+        late_n = int(getattr(att_policy, "late_to_absent_count", None) or 0)
+    except (TypeError, ValueError):
+        late_n = 0
+    try:
+        early_n = int(getattr(att_policy, "early_to_absent_count", None) or 0)
+    except (TypeError, ValueError):
+        early_n = 0
+    if late_n > 0 and late > 0:
+        late_converted = min(late // late_n, present)
+        absent += late_converted
+        present -= late_converted
+    if early_n > 0 and early > 0:
+        early_converted = min(early // early_n, present)
+        absent += early_converted
+        present -= early_converted
 
     # Policy: treat half-day as full paid day?
     half_day_paid = half_day if att_policy.half_day_as_full_paid else half_day * 0.5
@@ -1294,6 +1617,10 @@ def _get_attendance_counts(
         "holiday_days": holiday,
         "week_off_days": week_off,
         "late_days": late,
+        "early_days": early,
+        "missing_checkout_days": missing_checkout,
+        "late_converted": late_converted,
+        "early_converted": early_converted,
         "paid_days": round(paid_days, 2),
         "unpaid_days": unpaid_days,
         "overtime_hours": round(overtime_hours, 2),
@@ -1330,8 +1657,23 @@ def _calc_component_value(
     comp: PayrollComponent,
     computed: Dict[str, float],
     monthly_basic: float,
+    input_vars: Optional[Dict[str, float]] = None,
+    attendance_data: Optional[Dict[str, Any]] = None,
 ) -> float:
-    """Compute a single component's value based on its configuration."""
+    """Compute a single component's value based on its configuration.
+
+    Supports:
+      - fixed: static amount
+      - percentage: base_value * calc_value / 100
+      - formula: free-form expression (conditionals, comparisons, functions)
+      - hourly: hourly_rate * hours_worked
+      - piece_rate: rate_per_unit * units_produced
+      - tiered: progressive brackets (tiers stored in tiered_config)
+      - shift_differential: differential multiplier for specific shift types
+    """
+    input_vars = input_vars or {}
+    attendance_data = attendance_data or {}
+
     # Determine the base value
     base_name = comp.calculation_base or "basic"
     base_val = computed.get(base_name, 0.0) if base_name in computed else monthly_basic
@@ -1342,23 +1684,71 @@ def _calc_component_value(
     elif base_name == "net" and "net_salary" in computed:
         base_val = computed["net_salary"]
 
-    if comp.calculation_type == "fixed":
+    calc_type = comp.calculation_type or "fixed"
+
+    # ── Fixed ──
+    if calc_type == "fixed":
         val = float(comp.calculation_value)
-    elif comp.calculation_type == "percentage":
+
+    # ── Percentage ──
+    elif calc_type == "percentage":
         val = base_val * float(comp.calculation_value) / 100.0
-    elif comp.calculation_type == "formula" and comp.formula:
+
+    # ── Formula (with conditionals, comparisons, functions) ──
+    elif calc_type == "formula" and comp.formula:
         try:
             ctx = {
                 "basic": monthly_basic,
                 "base": base_val,
                 "rate": float(comp.calculation_value),
                 **computed,
+                **input_vars,  # inject per-employee inputs (units_produced, hours_worked, etc.)
+                **attendance_data,  # inject overtime_hours, night_shift_hours, etc.
             }
             val = _safe_eval(comp.formula, ctx)
             val = float(val)
-        except Exception:
-            logger.warning("Formula evaluation failed for component %s", comp.name)
+        except Exception as e:
+            logger.warning("Formula evaluation failed for component %s: %s", comp.name, e)
             val = 0.0
+
+    # ── Hourly: hourly_rate * hours_worked ──
+    elif calc_type == "hourly":
+        hourly_rate = float(comp.calculation_value)  # rate per hour
+        hours = float(input_vars.get("hours_worked", 0) or attendance_data.get("hours_worked", 0))
+        val = hourly_rate * hours
+
+    # ── Piece Rate: rate_per_unit * units_produced ──
+    elif calc_type == "piece_rate":
+        rate_per_unit = float(comp.calculation_value)
+        units = float(input_vars.get("units_produced", 0))
+        val = rate_per_unit * units
+
+    # ── Tiered: progressive brackets ──
+    elif calc_type == "tiered" and comp.tiered_config:
+        tiers = comp.tiered_config  # [{"from": 0, "to": 40, "rate": 1.0}, ...]
+        quantity = float(input_vars.get("quantity", 0) or attendance_data.get("overtime_hours", 0))
+        val = 0.0
+        for tier in sorted(tiers, key=lambda t: t.get("from", 0)):
+            tier_from = float(tier.get("from", 0) or 0)
+            tier_to_raw = tier.get("to")
+            tier_to = float(tier_to_raw) if tier_to_raw is not None else float("inf")
+            tier_rate = float(tier.get("rate", 0))
+            if quantity > tier_from:
+                taxable = min(quantity, tier_to) - tier_from
+                val += taxable * tier_rate
+        # If tiers use percentage multipliers, apply to base
+        if comp.calculation_value and comp.calculation_value != 1.0:
+            val = base_val * val / 100.0 if comp.calculation_value <= 100 else val
+
+    # ── Shift Differential: apply multiplier based on shift type ──
+    elif calc_type == "shift_differential" and comp.shift_differential_config:
+        # shift_differential_config: {"day": 1.0, "evening": 1.15, "night": 1.25}
+        shift_name = attendance_data.get("shift_type", "day")
+        multiplier = float(comp.shift_differential_config.get(shift_name, 1.0))
+        hours = float(input_vars.get("hours_worked", 0) or attendance_data.get("hours_worked", 0))
+        hourly_rate = float(comp.calculation_value)  # base hourly rate
+        val = hourly_rate * hours * multiplier
+
     else:
         val = 0.0
 
@@ -1374,20 +1764,16 @@ def _calc_component_value(
 # ── Tax Calculation ──
 
 def _get_annual_tax(annual_taxable_income: float, regime: TaxRegime) -> float:
-    """Compute income tax using organization-defined tax regime and slabs."""
-    slabs = (
-        regime.slabs
-        if regime and regime.slabs
-        else [
-            TaxSlab(from_amount=0, to_amount=400000, rate=0, sort_order=0),
-            TaxSlab(from_amount=400000, to_amount=800000, rate=5, sort_order=1),
-            TaxSlab(from_amount=800000, to_amount=1200000, rate=10, sort_order=2),
-            TaxSlab(from_amount=1200000, to_amount=1600000, rate=15, sort_order=3),
-            TaxSlab(from_amount=1600000, to_amount=2000000, rate=20, sort_order=4),
-            TaxSlab(from_amount=2000000, to_amount=2400000, rate=25, sort_order=5),
-            TaxSlab(from_amount=2400000, to_amount=None, rate=30, sort_order=6),
-        ]
-    )
+    """Compute income tax using organization-defined tax regime and slabs.
+
+    When no TaxRegime is configured, returns 0.0 — no country's tax slabs
+    are used as a global default. The user MUST configure tax slabs for their
+    country/jurisdiction.
+    """
+    if not regime or not regime.slabs:
+        return 0.0
+
+    slabs = regime.slabs
 
     tax = 0.0
     prev = 0.0
@@ -1399,14 +1785,14 @@ def _get_annual_tax(annual_taxable_income: float, regime: TaxRegime) -> float:
                 tax += taxable * slab.rate / 100.0
         prev = upper
 
-    # Rebate
-    rebate_threshold = regime.rebate_threshold if regime else 700000
-    if annual_taxable_income <= rebate_threshold:
-        rebate = regime.rebate_amount if regime and regime.rebate_amount else tax
+    # Rebate (DB-driven, no hardcoded defaults)
+    rebate_threshold = getattr(regime, 'rebate_threshold', None)
+    if rebate_threshold and annual_taxable_income <= rebate_threshold:
+        rebate = getattr(regime, 'rebate_amount', None) or tax
         tax = max(0.0, tax - rebate)
 
-    # Cess
-    cess_rate = regime.cess_rate if regime else 4.0
+    # Cess (DB-driven, defaults to 0)
+    cess_rate = getattr(regime, 'cess_rate', None) or 0.0
     cess = tax * cess_rate / 100.0
     tax += cess
 
@@ -1477,6 +1863,11 @@ def _compute_attendance_payout(
         "paid_leave_days": float(att.get("paid_leave_days") or 0),
         "unpaid_leave_days": float(att.get("unpaid_leave_days") or 0),
         "holiday_days": float(att.get("holiday_days") or 0),
+        "late_days": float(att.get("late_days") or 0),
+        "early_days": float(att.get("early_days") or 0),
+        "missing_checkout_days": float(att.get("missing_checkout_days") or 0),
+        "late_converted": float(att.get("late_converted") or 0),
+        "early_converted": float(att.get("early_converted") or 0),
         "overtime_hours": float(att.get("overtime_hours") or 0),
         "paid_days": paid_days,
         "unpaid_days": float(att.get("unpaid_days") or 0),
@@ -1541,7 +1932,7 @@ def calculate_payroll(
     # ── Load Policies ──
     payroll_template = _get_employee_template(db, employee)
     pay_policy = _get_payroll_policy(db, employee)
-    att_policy = _get_attendance_policy(db, employee)
+    att_policy = _get_attendance_policy(db, employee, _date(year, month, dim))
     scoped_payroll = resolve_scoped_payroll_config(db, employee)
     stat_settings = _get_statutory_settings(db, employee, scoped_payroll, payroll_template)
     jurisdiction_country = _effective_country(employee, scoped_payroll, payroll_template)
@@ -1560,12 +1951,10 @@ def calculate_payroll(
     factor = payout["factor"]
 
     # ── Base Salary ──
-    # `base_salary` stores the ANNUAL CTC (matching the salary tab and candidate
-    # expected-salary flow). Convert to monthly for payroll calculations.
-    # Use the effective-dated salary revision in force for this month, if any,
-    # so historical payslips reflect the salary that applied at the time.
-    annual_ctc = _get_effective_annual_ctc(db, employee, year, month)
-    monthly_basic = round(annual_ctc / 12, 2) if annual_ctc else 0.0
+    # Monthly base in effect for this month: revision (annual-denominated) or
+    # the employee's base_salary interpreted by their pay_frequency
+    # (daily / weekly / monthly / annual). See _get_effective_monthly_base.
+    monthly_basic = _get_effective_monthly_base(db, employee, year, month)
 
     # ── Custom salary components from the Salary tab (if provided) ──
     # The employee form's Salary tab stores per-field monthly amounts in
@@ -1645,20 +2034,19 @@ def calculate_payroll(
         # ── Compute Components ──
         if template:
             basic = monthly_basic * (template.basic_percent / 100) if template.basic_percent else monthly_basic
-            hra = basic * (template.hra_percent / 100) if template.hra_percent else basic * 0.50
+            hra = basic * (template.hra_percent / 100) if template.hra_percent else 0
             special_allowance = monthly_basic * (template.special_allowance_percent / 100) if template.special_allowance_percent else 0
             other_allowance = monthly_basic * (template.other_allowance_percent / 100) if template.other_allowance_percent else 0
         else:
             basic = monthly_basic
-            hra = basic * 0.50
+            hra = 0  # No default — user must configure via PayrollComponent or SalaryTemplate
             special_allowance = 0
             other_allowance = 0
 
         da = 0.0
-        # India-standard fixed allowances; other countries default to 0 (configurable via components)
-        org_country = ((getattr(employee.organization, "country", None) or "India") or "").strip().lower()
-        conveyance = 1600.0 if org_country == "india" else 0.0
-        medical = 1250.0 if org_country == "india" else 0.0
+        # No country-specific fixed allowances — everything configurable via PayrollComponent
+        conveyance = 0.0
+        medical = 0.0
         basic_full = basic
 
         # Pro-rate
@@ -1696,8 +2084,52 @@ def calculate_payroll(
         basic_full = monthly_basic
         component_deduction_keys: List[str] = []
 
+        # Load per-employee per-period input variables (for piece-rate, hourly, commission, etc.)
+        input_vars: Dict[str, float] = {}
+        try:
+            from models import EmployeePayrollInput
+            emp_input = db.query(EmployeePayrollInput).filter(
+                EmployeePayrollInput.employee_id == employee.id,
+                EmployeePayrollInput.year == year,
+                EmployeePayrollInput.month == month,
+            ).first()
+            if emp_input and emp_input.inputs:
+                input_vars = {k: float(v) for k, v in emp_input.inputs.items() if v is not None}
+        except Exception:
+            pass
+
+        # Attendance data for shift differential and overtime tiers
+        attendance_data: Dict[str, Any] = {
+            "overtime_hours": att.get("overtime_hours", 0),
+            "hours_worked": att.get("hours_worked", 0),
+            "present_days": att.get("present_days", 0),
+            "absent_days": att.get("absent_days", 0),
+        }
+        # Try to get shift type from attendance records
+        try:
+            from models import Attendance as AttModel
+            shift_records = (
+                db.query(AttModel.shift_id)
+                .filter(
+                    AttModel.employee_id == employee.id,
+                    AttModel.date >= datetime(year, month, 1),
+                    AttModel.date <= _last_day(year, month),
+                    AttModel.shift_id.isnot(None),
+                )
+                .distinct()
+                .all()
+            )
+            if shift_records:
+                from models import Shift
+                shift_id = shift_records[0][0]
+                shift = db.query(Shift).filter(Shift.id == shift_id).first()
+                if shift:
+                    attendance_data["shift_type"] = shift.name.lower() if shift.name else "day"
+        except Exception:
+            pass
+
         for comp in components:
-            raw_val = _calc_component_value(comp, computed, monthly_basic)
+            raw_val = _calc_component_value(comp, computed, monthly_basic, input_vars, attendance_data)
             if comp.apply_pro_ration:
                 raw_val = raw_val * factor
             val = _round_val(raw_val, rounding, places)
@@ -1749,10 +2181,21 @@ def calculate_payroll(
     else:
         std_hours = float(att_policy.overtime_threshold_hours or 8.0)
         hourly_rate = (basic / working_days / std_hours) if (working_days > 0 and std_hours > 0) else 0.0
-        overtime_pay = _round_val(
-            att["overtime_hours"] * hourly_rate * float(att_policy.overtime_rate or 1.5),
-            rounding, places,
-        )
+        ot_hours = att["overtime_hours"]
+
+        # Check for tiered overtime first (e.g., first 2hrs 1.5x, next 2hrs 2x)
+        if att_policy.overtime_tiers:
+            overtime_pay = 0.0
+            for tier in sorted(att_policy.overtime_tiers, key=lambda t: t.get("from_hours", 0)):
+                tier_from = float(tier.get("from_hours", 0))
+                tier_to = float(tier.get("to_hours", float("inf")))
+                tier_rate = float(tier.get("rate", 1.0))
+                if ot_hours > tier_from:
+                    taxable = min(ot_hours, tier_to) - tier_from
+                    overtime_pay += taxable * hourly_rate * tier_rate
+        else:
+            overtime_pay = ot_hours * hourly_rate * float(att_policy.overtime_rate or 1.5)
+        overtime_pay = _round_val(overtime_pay, rounding, places)
 
     # Expense reimbursements flow into payroll automatically: any approved or
     # reimbursed expense dated in this pay period is added to the payslip as
@@ -1822,7 +2265,7 @@ def calculate_payroll(
     custom_esi = custom_comps.get("esi")
     custom_pt = custom_comps.get("professionalTax")
 
-    # PF
+    # PF — Rule Engine first, then fallback to legacy StatutorySetting
     pf_applicable = stat_settings.pf_applicable
     pf_edli = 0.0
     pf_admin = 0.0
@@ -1830,58 +2273,105 @@ def calculate_payroll(
         pf_employee = _round_val(float(custom_pf), rounding, places)
         pf_employer = _round_val(float(custom_pf), rounding, places)
     elif pf_applicable:
-        # PF exclusion: when the full (un-pro-rated) basic wage exceeds the configured
-        # threshold, the employee share is exempt; the employer still contributes on the capped wage.
-        pf_exempt = bool(stat_settings.pf_min_basic_for_exclusion and basic_full > stat_settings.pf_min_basic_for_exclusion)
-        pf_ceiling = float(getattr(stat_settings, "pf_wage_ceiling", None) or stat_settings.pf_min_basic_for_exclusion or 15000.0)
-        capped_basic = min(basic_full, pf_ceiling)
-        if pf_exempt:
-            pf_employee = 0.0
-        else:
-            pf_employee = min(basic * stat_settings.pf_employee_rate / 100, stat_settings.pf_max_monthly)
-        pf_employee = _round_val(pf_employee, rounding, places)
-        pf_employer = _round_val(
-            min(capped_basic * stat_settings.pf_employer_rate / 100, stat_settings.pf_max_monthly),
-            rounding, places,
+        _pf_as_of = month_start
+        _pf_rule_engine = _get_rule_engine(db, employee, _pf_as_of)
+        _pf_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+        _pf_result = _resolve_pf_from_rule_engine(
+            _pf_rule_engine, basic_full, _pf_as_of,
+            jurisdiction_country, _pf_state_code, employee.organization_id,
         )
-        # EDLI (insurance) + EPF admin charges — statutory employer outflows over and above the 12% PF.
-        pf_edli_rate = float(getattr(stat_settings, "pf_edli_rate", None) or 0.5)
-        pf_edli_max = float(getattr(stat_settings, "pf_edli_max_monthly", None) or 75.0)
-        pf_admin_rate = float(getattr(stat_settings, "pf_admin_rate", None) or 0.5)
-        pf_admin_min = float(getattr(stat_settings, "pf_admin_min_monthly", None) or 75.0)
-        pf_edli = _round_val(min(capped_basic * pf_edli_rate / 100, pf_edli_max), rounding, places)
-        pf_admin = _round_val(max(capped_basic * pf_admin_rate / 100, pf_admin_min), rounding, places)
-        # Employer split for compliance reporting (EPS 8.33% capped at the EPS wage ceiling, EDLIS 0.5% capped ₹75, Admin 0.5% min ₹75)
-        # Only appended when policy components drive the breakdown (keeps pure-override runs clean).
-        if component_detail:
-            try:
-                eps_ceiling = float(getattr(stat_settings, "eps_wage_ceiling", None) or 15000.0)
-                eps_cap = min(capped_basic, eps_ceiling)
-                pf_eps = _round_val(eps_cap * 8.33 / 100, rounding, places)
+        if _pf_result:
+            # Rule engine found an active rule — use it
+            pf_wages = _pf_result['pf_wages']
+            pf_exempt = _pf_result['pf_exempt']
+            pf_employee = _round_val(_pf_result['pf_employee'], rounding, places)
+            pf_employer = _round_val(_pf_result['pf_employer'], rounding, places)
+            pf_edli = _round_val(_pf_result['edli'], rounding, places)
+            pf_admin = _round_val(_pf_result['admin'], rounding, places)
+            # Employer split for compliance reporting
+            if component_detail and not pf_exempt:
                 component_detail.extend([
-                    {"component_id": None, "name": "PF Employer (EPS)", "display_name": "PF Employer (EPS)", "type": "employer_contribution", "value": pf_eps},
+                    {"component_id": None, "name": "PF Employer (EPS)", "display_name": "PF Employer (EPS)", "type": "employer_contribution", "value": _round_val(_pf_result['eps'], rounding, places)},
                     {"component_id": None, "name": "PF Employer (EDLIS)", "display_name": "PF Employer (EDLIS)", "type": "employer_contribution", "value": pf_edli},
                     {"component_id": None, "name": "PF Employer (Admin)", "display_name": "PF Employer (Admin)", "type": "employer_contribution", "value": pf_admin},
                 ])
-            except Exception:
-                pass
+        else:
+            # No rule engine rule — fall back to legacy StatutorySetting
+            pf_exempt = bool(stat_settings.pf_min_basic_for_exclusion and basic_full > stat_settings.pf_min_basic_for_exclusion)
+            pf_ceiling = float(getattr(stat_settings, "pf_wage_ceiling", None) or stat_settings.pf_min_basic_for_exclusion or 15000.0)
+            pf_wages = min(basic_full, pf_ceiling)
+            if pf_exempt:
+                pf_employee = 0.0
+                pf_employer = 0.0
+            else:
+                pf_employee = min(pf_wages * stat_settings.pf_employee_rate / 100, stat_settings.pf_max_monthly)
+                pf_employer = _round_val(
+                    min(pf_wages * stat_settings.pf_employer_rate / 100, stat_settings.pf_max_monthly),
+                    rounding, places,
+                )
+            pf_employee = _round_val(pf_employee, rounding, places)
+            pf_edli = 0.0
+            pf_admin = 0.0
+            if not pf_exempt:
+                pf_edli_rate = float(getattr(stat_settings, "pf_edli_rate", None) or 0.5)
+                pf_edli_max = float(getattr(stat_settings, "pf_edli_max_monthly", None) or 75.0)
+                pf_admin_rate = float(getattr(stat_settings, "pf_admin_rate", None) or 0.5)
+                pf_admin_min = float(getattr(stat_settings, "pf_admin_min_monthly", None) or 75.0)
+                pf_edli = _round_val(min(pf_wages * pf_edli_rate / 100, pf_edli_max), rounding, places)
+                pf_admin = _round_val(max(pf_wages * pf_admin_rate / 100, pf_admin_min), rounding, places)
+                if component_detail:
+                    try:
+                        eps_ceiling = float(getattr(stat_settings, "eps_wage_ceiling", None) or 15000.0)
+                        eps_rate_val = float(getattr(stat_settings, "eps_rate", None) or 8.33)
+                        eps_cap = min(pf_wages, eps_ceiling)
+                        pf_eps = _round_val(eps_cap * eps_rate_val / 100, rounding, places)
+                        component_detail.extend([
+                            {"component_id": None, "name": "PF Employer (EPS)", "display_name": "PF Employer (EPS)", "type": "employer_contribution", "value": pf_eps},
+                            {"component_id": None, "name": "PF Employer (EDLIS)", "display_name": "PF Employer (EDLIS)", "type": "employer_contribution", "value": pf_edli},
+                            {"component_id": None, "name": "PF Employer (Admin)", "display_name": "PF Employer (Admin)", "type": "employer_contribution", "value": pf_admin},
+                        ])
+                    except Exception:
+                        pass
     else:
         pf_employee = 0.0
         pf_employer = 0.0
     pf_employee = override_pf_deduction if override_pf_deduction is not None else pf_employee
 
-    # ESI
-    esi_applicable = stat_settings.esi_applicable and gross_salary <= stat_settings.esi_gross_ceiling
+    # ESI — Rule Engine first, then fallback to legacy StatutorySetting
+    _esi_rule_engine = _get_rule_engine(db, employee, month_start)
+    _esi_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+    _esi_result = _resolve_esi_from_rule_engine(
+        _esi_rule_engine, gross_salary, month_start,
+        jurisdiction_country, _esi_state_code, employee.organization_id,
+    )
+    if _esi_result:
+        esi_applicable = _esi_result['esi_applicable']
+    else:
+        esi_applicable = stat_settings.esi_applicable and gross_salary <= stat_settings.esi_gross_ceiling
     if custom_esi:
         esi = _round_val(float(custom_esi), rounding, places)
     else:
-        esi = _round_val(gross_salary * stat_settings.esi_employee_rate / 100, rounding, places) if esi_applicable else 0.0
+        if _esi_result:
+            esi = _round_val(_esi_result['esi_employee'], rounding, places)
+        else:
+            esi = _round_val(gross_salary * stat_settings.esi_employee_rate / 100, rounding, places) if esi_applicable else 0.0
     esi = override_esi_deduction if override_esi_deduction is not None else esi
-    esi_employer = _round_val(gross_salary * stat_settings.esi_employer_rate / 100, rounding, places) if esi_applicable else 0.0
+    if _esi_result:
+        esi_employer = _round_val(_esi_result['esi_employer'], rounding, places)
+    else:
+        esi_employer = _round_val(gross_salary * stat_settings.esi_employer_rate / 100, rounding, places) if esi_applicable else 0.0
 
-    # Professional Tax (auto from state compliance, fallback to static settings)
+    # Professional Tax — Rule Engine first, then fallback
+    _pt_rule_engine = _get_rule_engine(db, employee, month_start)
+    _pt_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+    _pt_from_re = _resolve_pt_from_rule_engine(
+        _pt_rule_engine, gross_salary, month_start,
+        jurisdiction_country, _pt_state_code, employee.organization_id,
+    )
     if custom_pt:
         professional_tax = _round_val(float(custom_pt), rounding, places)
+    elif _pt_from_re is not None:
+        professional_tax = _round_val(_pt_from_re, rounding, places)
     elif state_compliance["state_code"]:
         pt_applicable = state_compliance["pt_applicable"]
         professional_tax = state_compliance["pt_amount"]
@@ -1904,10 +2394,15 @@ def calculate_payroll(
             basic * stat_settings.lwf_employer_rate / 100, rounding, places
         ) if stat_settings.lwf_applicable else 0.0
 
-    # Gratuity
+    # Gratuity — Rule Engine first, then fallback
     gratuity_applicable = bool(pay_policy.include_gratuity or stat_settings.gratuity_applicable)
     gratuity_rate = pay_policy.gratuity_rate if pay_policy.gratuity_rate is not None else (stat_settings.gratuity_rate or 4.81)
-    gratuity = _round_val(basic * (gratuity_rate / 100), rounding, places) if gratuity_applicable else 0.0
+    _grat_engine = _get_rule_engine(db, employee, month_start)
+    _grat_rate_rule = _grat_engine.resolve('gratuity', month_start, jurisdiction_country, None, employee.organization_id)
+    if _grat_rate_rule:
+        gratuity = _round_val(_grat_engine.calculate_gratuity(basic, month_start, jurisdiction_country, employee.organization_id), rounding, places)
+    else:
+        gratuity = _round_val(basic * (gratuity_rate / 100), rounding, places) if gratuity_applicable else 0.0
 
     # ── Income Tax (TDS) — CUMULATIVE, declaration-aware ──
     # Projects the full financial year, applies the employee's investment

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from core.auth import get_current_user
 from core.cache import cached
 from core.tenant import validate_company_in_org, get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import get_db, get_read_db
 from models import Company, Notification, User
 
@@ -49,8 +50,7 @@ def get_announcements(
     current_user: User = Depends(get_current_user),
     request: Request = None,
 ):
-    if companyId is None and request is not None:
-        companyId = get_header_company_id(request)
+    companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(Notification).filter(
         Notification.deleted_at.is_(None),
         Notification.type.in_(["announcement", "notice"]),
@@ -62,6 +62,7 @@ def get_announcements(
     elif organizationId:
         query = query.filter(Notification.organization_id == organizationId)
     if companyId:
+        # Strict company match: org-wide broadcasts are NOT shared (admins see all by passing nothing).
         query = query.filter(Notification.company_id == companyId)
     rows = query.order_by(Notification.created_at.desc()).limit(200).all()
     return [_serialize(n) for n in rows]
@@ -94,7 +95,7 @@ def create_announcement(
             "expires_at": data.get("expiresAt"),
         },
         organization_id=current_user.organization_id,
-        company_id=data.get("companyId"),
+        company_id=require_write_company(db, current_user, data.get("companyId")),
     )
     db.add(notification)
     db.commit()
@@ -116,6 +117,7 @@ def update_announcement(
     ).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Announcement not found")
+    assert_company_allowed(db, current_user, notification.company_id)
     if data.get("title") is not None:
         notification.title = str(data["title"]).strip() or notification.title
     if data.get("body") is not None:
@@ -152,6 +154,7 @@ def delete_announcement(
     notification = db.query(Notification).filter(Notification.id == announcement_id).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Announcement not found")
+    assert_company_allowed(db, current_user, notification.company_id)
     notification.deleted_at = datetime.utcnow()
     db.commit()
     return {"message": "Announcement deleted", "id": announcement_id}

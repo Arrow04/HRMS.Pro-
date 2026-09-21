@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
+import InfoTooltip from './InfoTooltip';
 
 interface StatsCardProps {
   icon: React.ElementType;
-  label: string;
+  label: React.ReactNode;
   value: number | string;
   trend?: number | string;
+  tooltip?: string;
   isLoading?: boolean;
   /** Use `color` for built-in palette, or `iconBg`+`iconColor` for custom */
   color?: string;
@@ -52,7 +54,7 @@ const useCountUp = (target: number, active: boolean, duration = 700) => {
   return display;
 };
 
-const StatsCard = ({ icon: Icon, label, value, trend, isLoading, color, iconBg, iconColor, delay = 0, animate = true, onClick }: StatsCardProps) => {
+const StatsCard = ({ icon: Icon, label, value, trend, tooltip, isLoading, color, iconBg, iconColor, delay = 0, animate = true, onClick }: StatsCardProps) => {
   const numericValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
   const displayValue = useCountUp(numericValue, animate && !isLoading && typeof value === 'number', 800);
 
@@ -94,7 +96,10 @@ const StatsCard = ({ icon: Icon, label, value, trend, isLoading, color, iconBg, 
         )}
       </div>
       <div className="relative z-10 mt-3 min-w-0">
-        <p className="text-[13px] font-medium text-[#475569] truncate">{label}</p>
+        <p className="text-[13px] font-medium text-[#475569] truncate inline-flex items-center gap-1">
+          {label}
+          {tooltip && <InfoTooltip text={tooltip} />}
+        </p>
         <p className="text-2xl font-bold text-[#0F172A] leading-tight tracking-tight mt-0.5">
           {typeof value === 'number' ? displayValue.toLocaleString() : value}
         </p>

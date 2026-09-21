@@ -11,6 +11,7 @@ import SearchableSelect from './SearchableSelect';
 import { useAuth } from '../context/AuthContext';
 import { useAppConfig } from '../context/AppConfigContext';
 import api from '../services/api';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import * as ptApi from '../services/payrollTemplateApi';
 import { getStatePT, getStateLWF } from '../services/payrollConfigApi';
 import type {
@@ -32,7 +33,7 @@ const STATES = [
   'chandigarh', 'puducherry', 'other',
 ];
 
-const PAY_CYCLES = ['monthly', 'weekly', 'biweekly', 'quarterly'];
+const PAY_CYCLES = ['daily', 'weekly', 'monthly', 'yearly'];
 
 // Form 16 (Part B) heads — where each component sits in the salary computation.
 const TAX_CATEGORIES: Record<string, { value: string; label: string; help: string }[]> = {
@@ -69,98 +70,61 @@ function defaultTaxCategory(type: string): string {
 
 function defaultPolicy() {
   return {
-    name: 'Standard Policy', pro_ration_method: 'paid_days', rounding_method: 'nearest',
+    name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
-    gratuity_rate: 4.81, default_currency: 'INR', allow_negative_net: false,
+    gratuity_rate: null, default_currency: '', allow_negative_net: false,
   };
 }
 
 function defaultComponents(): PayrollTemplateComponent[] {
   const base = { max_cap: null as number | null, min_cap: null as number | null, is_tax_exempt: false, tax_exempt_limit: null as number | null };
-  // Zero-value components are pre-defined but opt-in — they only affect payroll once the HR sets a value.
   return [
     // ── Earnings ──
-    { ...base, name: 'Basic', display_name: 'Basic Salary', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 50, priority: 1, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'DA', display_name: 'Dearness Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0, priority: 2, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'HRA', display_name: 'House Rent Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 40, priority: 3, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'Conveyance', display_name: 'Conveyance Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 1600, priority: 4, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'Medical', display_name: 'Medical Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 1250, priority: 5, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'Special Allowance', display_name: 'Special Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 10, priority: 6, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'LTA', display_name: 'Leave Travel Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 7, is_taxable: false, is_tax_exempt: true, apply_pro_ration: false, tax_category: 'exempt_10' },
-    { ...base, name: 'Children Education Allowance', display_name: 'Children Education Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 8, is_taxable: false, is_tax_exempt: true, apply_pro_ration: false, tax_category: 'exempt_10' },
-    { ...base, name: 'Children Hostel Allowance', display_name: 'Children Hostel Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 9, is_taxable: false, is_tax_exempt: true, apply_pro_ration: false, tax_category: 'exempt_10' },
-    { ...base, name: 'Uniform Allowance', display_name: 'Uniform Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 10, is_taxable: false, is_tax_exempt: true, apply_pro_ration: false, tax_category: 'exempt_10' },
-    { ...base, name: 'Telephone / Internet', display_name: 'Telephone / Internet Reimbursement', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 11, is_taxable: false, is_tax_exempt: true, apply_pro_ration: false, tax_category: 'exempt_10' },
-    { ...base, name: 'Driver / Vehicle Allowance', display_name: 'Driver / Vehicle Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 12, is_taxable: true, apply_pro_ration: true, tax_category: 'perquisite_17_2' },
-    { ...base, name: 'Performance Bonus', display_name: 'Performance Bonus / Incentive', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 13, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
-    { ...base, name: 'Shift Allowance', display_name: 'Shift / Night Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: 0, priority: 14, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'Basic', display_name: 'Basic Salary', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 1, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'HRA', display_name: 'House Rent Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 3, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'Special Allowance', display_name: 'Special Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 6, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'Performance Bonus', display_name: 'Performance Bonus / Incentive', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 13, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
+    { ...base, name: 'Overtime', display_name: 'Overtime Pay', component_type: 'earning', calculation_type: 'formula', formula: '', calculation_value: null, priority: 14, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
 
     // ── Deductions (statutory) ──
-    { ...base, name: 'PF', display_name: 'Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 12, priority: 15, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
-    { ...base, name: 'VPF', display_name: 'Voluntary Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0, priority: 16, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'chapter_vi_a' },
-    { ...base, name: 'ESI', display_name: 'Employees\' State Insurance', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: 0.75, priority: 17, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
-    { ...base, name: 'Professional Tax', display_name: 'Professional Tax', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 200, priority: 18, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'professional_tax_16' },
-    { ...base, name: 'LWF', display_name: 'Labour Welfare Fund', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 19, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
-    { ...base, name: 'TDS', display_name: 'Tax Deducted at Source', component_type: 'deduction', calculation_type: 'formula', formula: 'tax', calculation_value: 0, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'tds_192' },
+    { ...base, name: 'PF', display_name: 'Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 15, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
+    { ...base, name: 'ESI', display_name: 'Employees State Insurance', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 17, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
+    { ...base, name: 'Professional Tax', display_name: 'Professional Tax', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 18, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'professional_tax_16' },
+    { ...base, name: 'Income Tax', display_name: 'Income Tax', component_type: 'deduction', calculation_type: 'formula', formula: '', calculation_value: null, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'tds_192' },
 
-    // ── Deductions (non-statutory / internal) ──
-    { ...base, name: 'LOP', display_name: 'Loss of Pay', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 21, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Notice Period Recovery', display_name: 'Notice Period Recovery', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 22, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Loan Recovery', display_name: 'Company Loan Recovery', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 23, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Advance Recovery', display_name: 'Salary Advance Recovery', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 24, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Asset Recovery', display_name: 'Asset Damage / Non-Return Recovery', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 25, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Insurance Premium', display_name: 'Health Insurance Top-Up / Dependent Premium', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 26, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
-    { ...base, name: 'Canteen / Transport', display_name: 'Canteen / Transport Charges', component_type: 'deduction', calculation_type: 'fixed', calculation_value: 0, priority: 27, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
+    // ── Deductions (non-statutory) ──
+    { ...base, name: 'LOP', display_name: 'Loss of Pay', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 21, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
 
     // ── Employer contributions ──
-    { ...base, name: 'EPF (Employer)', display_name: 'EPF Employer Matching', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 3.67, priority: 28, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
-    { ...base, name: 'EPS (Pension)', display_name: 'EPS Pension Scheme', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 8.33, max_cap: 1250, priority: 29, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
-    { ...base, name: 'EDLI (Insurance)', display_name: 'EDLI Insurance', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0.5, max_cap: 75, priority: 30, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
-    { ...base, name: 'EPF Admin Charges', display_name: 'EPF Admin Charges', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0.5, min_cap: 75, priority: 31, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
-    { ...base, name: 'Employer ESI', display_name: 'Employer ESIC', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: 3.25, priority: 32, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_esic' },
-    { ...base, name: 'Employer Gratuity', display_name: 'Employer Gratuity', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 4.81, priority: 33, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_gratuity' },
-    { ...base, name: 'NPS Corporate', display_name: 'NPS Corporate Contribution', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: 0, priority: 34, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_nps' },
-    { ...base, name: 'Group Medical / GPA', display_name: 'Group Medical Cover / GPA', component_type: 'employer_contribution', calculation_type: 'fixed', calculation_value: 0, priority: 35, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_gmc' },
+    { ...base, name: 'Employer PF', display_name: 'Employer PF Contribution', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 28, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
+    { ...base, name: 'Employer Gratuity', display_name: 'Employer Gratuity', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 33, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_gratuity' },
   ];
 }
 
 function defaultStatutory(): PayrollTemplateStatutory {
   return {
-    pf_applicable: true, pf_employee_rate: 12, pf_employer_rate: 12,
-    pf_wage_ceiling: 15000, pf_max_monthly: 1800, pf_min_basic_for_exclusion: 15000,
-    pf_edli_rate: 0.5, pf_edli_max_monthly: 75,
-    pf_admin_rate: 0.5, pf_admin_min_monthly: 75,
-    eps_wage_ceiling: 15000,
-    esi_applicable: true, esi_employee_rate: 0.75, esi_employer_rate: 3.25,
-    esi_gross_ceiling: 21000, esi_disabled_ceiling: 25000,
-    pt_applicable: true, pt_monthly_amount: 200, pt_min_gross: 10000,
-    lwf_applicable: false, lwf_employee_rate: 0, lwf_employer_rate: 0,
-    gratuity_applicable: false, gratuity_rate: 4.81,
-    gratuity_eligible_years: 5, gratuity_days_per_year: 15, gratuity_tax_exempt_ceiling: 2000000,
-    bonus_applicable: false, bonus_min_rate: 8.33, bonus_max_rate: 20, bonus_wage_ceiling: 21000,
+    pf_applicable: false, pf_employee_rate: null, pf_employer_rate: null,
+    pf_wage_ceiling: null, pf_max_monthly: null, pf_min_basic_for_exclusion: null,
+    pf_edli_rate: null, pf_edli_max_monthly: null,
+    pf_admin_rate: null, pf_admin_min_monthly: null,
+    eps_wage_ceiling: null,
+    esi_applicable: false, esi_employee_rate: null, esi_employer_rate: null,
+    esi_gross_ceiling: null, esi_disabled_ceiling: null,
+    pt_applicable: false, pt_monthly_amount: null, pt_min_gross: null,
+    lwf_applicable: false, lwf_employee_rate: null, lwf_employer_rate: null,
+    gratuity_applicable: false, gratuity_rate: null,
+    gratuity_eligible_years: null, gratuity_days_per_year: null, gratuity_tax_exempt_ceiling: null,
+    bonus_applicable: false, bonus_min_rate: null, bonus_max_rate: null, bonus_wage_ceiling: null,
   };
 }
 
 function defaultTax(): PayrollTemplateTaxRegime {
   return {
-    name: 'New Regime', regime_type: 'new', is_active: true, is_default: false,
-    financial_year: '2026-27',
-    standard_deduction: 75000, rebate_threshold: 1200000, rebate_amount: 60000,
-    cess_rate: 4, surcharge_config: [
-      { from: 5000000, rate: 10 },
-      { from: 10000000, rate: 15 },
-      { from: 20000000, rate: 25 },
-      { from: 50000000, rate: 37 },
-    ],
-    slabs: [
-      { from_amount: 0, to_amount: 400000, rate: 0, sort_order: 1 },
-      { from_amount: 400000, to_amount: 800000, rate: 5, sort_order: 2 },
-      { from_amount: 800000, to_amount: 1200000, rate: 10, sort_order: 3 },
-      { from_amount: 1200000, to_amount: 1600000, rate: 15, sort_order: 4 },
-      { from_amount: 1600000, to_amount: 2000000, rate: 20, sort_order: 5 },
-      { from_amount: 2000000, to_amount: 2400000, rate: 25, sort_order: 6 },
-      { from_amount: 2400000, to_amount: null, rate: 30, sort_order: 7 },
-    ],
+    name: '', regime_type: 'new', is_active: true, is_default: false,
+    financial_year: '',
+    standard_deduction: null, rebate_threshold: null, rebate_amount: null,
+    cess_rate: null, surcharge_config: [],
+    slabs: [],
   };
 }
 
@@ -184,6 +148,9 @@ interface WizardState {
   statutory: PayrollTemplateStatutory;
   taxRegime: PayrollTemplateTaxRegime;
   attendancePolicy: Record<string, any>;
+  attendancePolicyId: number | null;
+  attendanceLinked: boolean;
+  leaveTemplateId: number | null;
   payCycle: string;
   payDay: number | null;
   autoPayslip: boolean;
@@ -197,6 +164,9 @@ function blankWizard(): WizardState {
     payrollPolicy: defaultPolicy(), components: defaultComponents(),
     statutory: defaultStatutory(), taxRegime: defaultTax(),
     attendancePolicy: defaultAttendance(),
+    attendancePolicyId: null,
+    attendanceLinked: false,
+    leaveTemplateId: null,
     payCycle: 'monthly', payDay: null, autoPayslip: false, emailPayslip: false,
     status: 'active',
   };
@@ -218,6 +188,9 @@ function fromTemplate(t: PayrollTemplate): WizardState {
       slabs: (t.tax_regime?.slabs?.length ? t.tax_regime.slabs : defaultTax().slabs).map(s => ({ ...s })),
     },
     attendancePolicy: { ...defaultAttendance(), ...(t.attendance_policy || {}) },
+    attendancePolicyId: t.attendance_policy_id ?? null,
+    attendanceLinked: !!(t.attendance_policy_id ?? t.attendance_policy),
+    leaveTemplateId: (t as any).leave_template_id ?? null,
     payCycle: t.pay_cycle || 'monthly',
     payDay: t.pay_day ?? null,
     autoPayslip: !!t.auto_payslip,
@@ -236,6 +209,8 @@ function toPayload(w: WizardState): PayrollTemplatePayload {
     statutory: w.statutory,
     taxRegime: w.taxRegime,
     attendancePolicy: w.attendancePolicy as any,
+    attendancePolicyId: w.attendancePolicyId,
+    leaveTemplateId: w.leaveTemplateId,
     payCycle: w.payCycle,
     payDay: w.payDay,
     autoPayslip: w.autoPayslip,
@@ -369,19 +344,19 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
             <TextInput value={c.formula || ''} onChange={v => setComp(i, { formula: v })} placeholder="e.g. tax" />
           </Field>
         ) : (
-          <Field label="Amount (₹)" help="Number — flat amount for fixed-type components.">
-            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v ?? 0 })} />
+          <Field label="Amount" help="Number — flat amount for fixed-type components.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
         {c.calculation_type !== 'formula' && (
-          <Field label="Value" help="Number — the % or amount in ₹.">
-            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v ?? 0 })} />
+          <Field label="Value" help="Number — the % or amount.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
-        <Field label="Max cap (₹)" help="Number — upper limit of the value. Blank = no cap.">
+        <Field label={`Max cap (${getCurrencySymbol(getAppCurrency())})`} help="Number — upper limit of the value. Blank = no cap.">
           <NumInput value={c.max_cap ?? null} onChange={v => setComp(i, { max_cap: v })} />
         </Field>
-        <Field label="Min cap (₹)" help="Number — lower limit of the value. Blank = no floor.">
+        <Field label={`Min cap (${getCurrencySymbol(getAppCurrency())})`} help="Number — lower limit of the value. Blank = no floor.">
           <NumInput value={c.min_cap ?? null} onChange={v => setComp(i, { min_cap: v })} />
         </Field>
       </div>
@@ -395,7 +370,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
           <SearchableSelect value={rank} onChange={v => onPriority(Number(v))} placeholder="Select Priority" options={Array.from({ length: Math.max(groupCount, 1) }, (_, n) => ({ id: n + 1, name: String(n + 1) }))} showAllOption={false} />
         </Field>
         {c.is_tax_exempt && (
-          <Field label="Tax exempt limit (₹)" help="Number — amount exempt up to this ceiling.">
+          <Field label={`Tax exempt limit (${getCurrencySymbol(getAppCurrency())})`} help="Number — amount exempt up to this ceiling.">
             <NumInput value={c.tax_exempt_limit ?? null} onChange={v => setComp(i, { tax_exempt_limit: v })} />
           </Field>
         )}
@@ -500,71 +475,6 @@ function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) 
 }
 
 // ── Leave types (paid vs unpaid) — company-scoped, shown here so attendance stays in sync with payroll ──
-
-function LeaveTypesSection({ companyId }: { companyId: number | null }) {
-  const queryClient = useQueryClient();
-  const { data: leaveTypes = [], isLoading } = useQuery({
-    queryKey: ['leave-types', companyId ?? 'all'],
-    queryFn: async () => {
-      try {
-        const params = companyId != null ? { companyId } : {};
-        const r = await api.get('/leave-types', { params });
-        return r.data || [];
-      } catch { return []; }
-    },
-  });
-  const updateMutation = useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: Record<string, unknown> }) => api.put(`/leave-types/${id}`, patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['leave-types'] }),
-    onError: () => toast.error('Failed to update leave type'),
-  });
-
-  return (
-    <WizardSectionCard title="Leave types (paid vs unpaid)" icon={ShieldCheck}>
-      <p className="text-xs text-[var(--text-tertiary)]">
-        Paid leave (Casual, Sick, Earned, Maternity…) keeps salary flowing; unpaid leave (LOP) reduces paid days.
-        {companyId != null ? " This company's" : ' The organization'} leave types drive payroll — org-wide defaults are marked below.
-      </p>
-      {isLoading ? (
-        null
-      ) : leaveTypes.length === 0 ? (
-        <p className="text-sm text-[var(--text-disabled)] text-center py-4">No leave types configured — add them in Master Data → Leave Type.</p>
-      ) : (
-        <div className="space-y-2">
-          {leaveTypes.map((lt: any) => (
-            <div key={lt.id} className="flex items-center justify-between gap-3 border border-[var(--border-color)] rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: lt.color || '#1C64F2' }} />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-[var(--text-primary)] truncate">{lt.name}</div>
-                  <div className="text-[11px] text-[var(--text-tertiary)]">{lt.code || ''} · {lt.days_allowed || 0} days/yr</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 shrink-0">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <span className={`text-[11px] font-medium ${lt.is_paid ? 'text-emerald-600' : 'text-rose-500'}`}>{lt.is_paid ? 'Paid' : 'Unpaid'}</span>
-                  <button type="button" role="switch" aria-checked={!!lt.is_paid}
-                    onClick={() => updateMutation.mutate({ id: lt.id, patch: { isPaid: !lt.is_paid } })}
-                    className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${lt.is_paid ? 'bg-emerald-500' : 'bg-rose-400'}`}>
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${lt.is_paid ? 'translate-x-4' : ''}`} />
-                  </button>
-                </label>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <span className="text-[11px] text-[var(--text-tertiary)]">Encashable</span>
-                  <button type="button" role="switch" aria-checked={!!lt.is_encashable}
-                    onClick={() => updateMutation.mutate({ id: lt.id, patch: { isEncashable: !lt.is_encashable } })}
-                    className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${lt.is_encashable ? 'bg-[#1C64F2]' : 'bg-[#E2E8F0]'}`}>
-                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${lt.is_encashable ? 'translate-x-4' : ''}`} />
-                  </button>
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </WizardSectionCard>
-  );
-}
 
 // ── Component ──
 
@@ -735,7 +645,11 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
           companies={companies}
           editingId={editingId}
           saving={saveMutation.isPending}
-          onSave={() => saveMutation.mutate({ id: editingId, state: wizard })}
+          onSave={() => {
+            if (!wizard.attendancePolicyId) { toast.error('Select an Attendance Template first (Attendance & Leave tab)'); setWizardTab('attendance'); return; }
+            if (!wizard.leaveTemplateId) { toast.error('Select a Leave Template first (Attendance & Leave tab)'); setWizardTab('attendance'); return; }
+            saveMutation.mutate({ id: editingId, state: wizard });
+          }}
           onClose={() => { setWizard(null); setEditingId(null); }}
           userOrgName={(user as any)?.organizationName || 'Your Organization'}
         />
@@ -774,7 +688,7 @@ const WIZARD_TABS = [
   { id: 'policy', label: 'Payroll Policy', icon: SlidersHorizontal, color: 'text-violet-600' },
   { id: 'statutory', label: 'Statutory Settings', icon: ShieldCheck, color: 'text-emerald-600' },
   { id: 'tax', label: 'Tax Regimes', icon: Landmark, color: 'text-amber-600' },
-  { id: 'attendance', label: 'Attendance', icon: Clock, color: 'text-rose-600' },
+  { id: 'attendance', label: 'Attendance & Leave', icon: Clock, color: 'text-rose-600' },
   { id: 'compliance', label: 'State Compliance', icon: MapPin, color: 'text-indigo-600' },
   { id: 'earning', label: 'Earning Components', icon: TrendingUp, color: 'text-cyan-600' },
   { id: 'deduction', label: 'Deduction Components', icon: MinusCircle, color: 'text-rose-600' },
@@ -840,11 +754,11 @@ function WizardModal(props: {
   const setComponents = (next: PayrollTemplateComponent[]) => {
     setState({ components: next.map((c, idx) => ({ ...c, priority: idx + 1 })) });
   };
-  const addComp = (type: 'earning' | 'deduction' | 'employer_contribution' = 'earning') => setComponents([...w.components, { name: '', display_name: '', component_type: type, calculation_type: 'fixed', calculation_value: 0, max_cap: null, min_cap: null, priority: w.components.length + 1, is_taxable: true, is_tax_exempt: false, tax_exempt_limit: null, apply_pro_ration: true, tax_category: defaultTaxCategory(type) }]);
+  const addComp = (type: 'earning' | 'deduction' | 'employer_contribution' = 'earning') => setComponents([...w.components, { name: '', display_name: '', component_type: type, calculation_type: 'fixed', calculation_value: null, max_cap: null, min_cap: null, priority: w.components.length + 1, is_taxable: true, is_tax_exempt: false, tax_exempt_limit: null, apply_pro_ration: true, tax_category: defaultTaxCategory(type) }]);
   const removeComp = (i: number) => setComponents(w.components.filter((_, idx) => idx !== i));
   const addAfter = (i: number, type: 'earning' | 'deduction' | 'employer_contribution') => {
     const next = [...w.components];
-    next.splice(i + 1, 0, { name: '', display_name: '', component_type: type, calculation_type: 'fixed', calculation_value: 0, max_cap: null, min_cap: null, priority: w.components.length + 1, is_taxable: true, is_tax_exempt: false, tax_exempt_limit: null, apply_pro_ration: true, tax_category: defaultTaxCategory(type) });
+    next.splice(i + 1, 0, { name: '', display_name: '', component_type: type, calculation_type: 'fixed', calculation_value: null, max_cap: null, min_cap: null, priority: w.components.length + 1, is_taxable: true, is_tax_exempt: false, tax_exempt_limit: null, apply_pro_ration: true, tax_category: defaultTaxCategory(type) });
     setComponents(next);
   };
   const moveComp = (i: number, dir: -1 | 1) => {
@@ -884,6 +798,46 @@ function WizardModal(props: {
   };
   const addSurcharge = () => setState({ taxRegime: { ...w.taxRegime, surcharge_config: [...surcharges, { from: 5000000, rate: 10 }] } });
   const removeSurcharge = (i: number) => setState({ taxRegime: { ...w.taxRegime, surcharge_config: surcharges.filter((_, idx) => idx !== i) } });
+
+  // Linkable attendance + leave templates for the wizard's company.
+  // Picking one auto-applies its rules; the embedded fields below turn into a
+  // read-only preview while linked (shared templates are never overwritten).
+  const { data: attTemplates = [] } = useQuery({
+    queryKey: ['payroll-wizard-attendance', w.companyId],
+    queryFn: async () => {
+      const params = w.companyId ? { companyId: w.companyId } : {};
+      const r = await api.get('/payroll-config/attendance-policies', { params });
+      return (r.data || []).filter((p: any) => p.status !== 'inactive');
+    },
+    staleTime: 60 * 1000,
+  });
+  const { data: leaveTemplates = [] } = useQuery({
+    queryKey: ['payroll-wizard-leave', w.companyId],
+    queryFn: async () => {
+      const params = w.companyId ? { companyId: w.companyId } : {};
+      const r = await api.get('/api/leave-templates', { params });
+      return r.data || [];
+    },
+    staleTime: 60 * 1000,
+  });
+  const linkAttendance = (id: number | null) => {
+    if (!id) { setState({ attendanceLinked: false, attendancePolicyId: null }); return; }
+    const t = (attTemplates as any[]).find((p: any) => Number(p.id) === Number(id));
+    if (!t) return;
+    setState({
+      attendanceLinked: true,
+      attendancePolicyId: t.id,
+      attendancePolicy: {
+        ...defaultAttendance(),
+        name: t.name, working_days_per_week: t.working_days_per_week, working_days: t.working_days,
+        half_day_as_full_paid: t.half_day_as_full_paid, paid_leave_as_present: t.paid_leave_as_present,
+        holiday_as_present: t.holiday_as_present, overtime_threshold_hours: t.overtime_threshold_hours,
+        overtime_rate: t.overtime_rate, late_mark_threshold_minutes: t.late_mark_threshold_minutes,
+        half_day_threshold_hours: t.half_day_threshold_hours,
+      },
+    });
+  };
+  const linkedLeave = (leaveTemplates as any[]).find((t: any) => Number(t.id) === Number(w.leaveTemplateId));
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1006,7 +960,7 @@ function WizardModal(props: {
             <div className="space-y-4">
               <WizardSectionCard title="Pay run" icon={CalendarDays}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Pay cycle" help="How often payroll runs: monthly, weekly, bi-weekly or quarterly.">
+                  <Field label="Pay cycle" help="How often payroll runs: daily, weekly, monthly or yearly.">
                     <SearchableSelect value={w.payCycle || 'monthly'} onChange={v => setState({ payCycle: String(v) })} placeholder="Select Pay cycle" options={PAY_CYCLES.map(c => ({ id: c, name: c[0].toUpperCase() + c.slice(1) }))} showAllOption={false} />
                   </Field>
                   <Field label="Pay day (blank = last day of month)" help="Number (1-31) — the day salary is disbursed. Blank = last day of the month.">
@@ -1051,7 +1005,7 @@ function WizardModal(props: {
               </WizardSectionCard>
               <WizardSectionCard title="Gratuity" icon={SlidersHorizontal}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Gratuity rate (%)" help="Number — % of basic wage, default 4.81%."><NumInput value={w.payrollPolicy.gratuity_rate ?? 4.81} onChange={v => setNested('payrollPolicy', 'gratuity_rate', v ?? 0)} /></Field>
+                  <Field label="Gratuity rate (%)" help="Number — % of basic wage."><NumInput value={w.payrollPolicy.gratuity_rate} onChange={v => setNested('payrollPolicy', 'gratuity_rate', v)} /></Field>
                   <div className="pt-6"><Toggle label="Include gratuity" help="On = reserve a gratuity liability on each payslip." checked={!!w.payrollPolicy.include_gratuity} onChange={v => setNested('payrollPolicy', 'include_gratuity', v)} /></div>
                 </div>
               </WizardSectionCard>
@@ -1083,56 +1037,56 @@ function WizardModal(props: {
             <div className="space-y-4">
               <WizardSectionCard title="Provident Fund (PF)" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — % of basic deducted from the employee, default 12%."><NumInput value={w.statutory.pf_employee_rate ?? 12} onChange={v => setNested('statutory', 'pf_employee_rate', v ?? 0)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer PF contribution %, default 12% (3.67% EPF + 8.33% EPS)."><NumInput value={w.statutory.pf_employer_rate ?? 12} onChange={v => setNested('statutory', 'pf_employer_rate', v ?? 0)} /></Field>
-                  <Field label="PF wage ceiling (₹)" help="Number — EPF/EPS computed on min(Basic+DA, this), default ₹15,000."><NumInput value={w.statutory.pf_wage_ceiling ?? 15000} onChange={v => setNested('statutory', 'pf_wage_ceiling', v ?? 0)} /></Field>
-                  <Field label="EPS wage ceiling (₹)" help="Number — pension (EPS 8.33%) capped at this wage, default ₹15,000 (→ ₹1,250/mo)."><NumInput value={w.statutory.eps_wage_ceiling ?? 15000} onChange={v => setNested('statutory', 'eps_wage_ceiling', v ?? 0)} /></Field>
-                  <Field label="Max monthly (₹)" help="Number — PF capped at this amount per month, default ₹1,800."><NumInput value={w.statutory.pf_max_monthly ?? 1800} onChange={v => setNested('statutory', 'pf_max_monthly', v ?? 0)} /></Field>
-                  <Field label="Min basic for exclusion (₹)" help="Number — employees above this basic can opt out of PF, default ₹15,000."><NumInput value={w.statutory.pf_min_basic_for_exclusion ?? 15000} onChange={v => setNested('statutory', 'pf_min_basic_for_exclusion', v ?? 0)} /></Field>
-                  <Field label="EDLI rate (%)" help="Number — EDLI insurance on top of PF, default 0.5% of basic."><NumInput value={w.statutory.pf_edli_rate ?? 0.5} onChange={v => setNested('statutory', 'pf_edli_rate', v ?? 0)} /></Field>
-                  <Field label="EDLI max (₹)" help="Number — EDLI capped at this amount per month, default ₹75."><NumInput value={w.statutory.pf_edli_max_monthly ?? 75} onChange={v => setNested('statutory', 'pf_edli_max_monthly', v ?? 0)} /></Field>
-                  <Field label="Admin charges (%)" help="Number — EPF admin charges, default 0.5% of basic."><NumInput value={w.statutory.pf_admin_rate ?? 0.5} onChange={v => setNested('statutory', 'pf_admin_rate', v ?? 0)} /></Field>
-                  <Field label="Admin min (₹)" help="Number — admin charges minimum, default ₹75 per month."><NumInput value={w.statutory.pf_admin_min_monthly ?? 75} onChange={v => setNested('statutory', 'pf_admin_min_monthly', v ?? 0)} /></Field>
+                  <Field label="Employee rate (%)" help="Number — % of basic deducted from employee."><NumInput value={w.statutory.pf_employee_rate} onChange={v => setNested('statutory', 'pf_employee_rate', v)} /></Field>
+                  <Field label="Employer rate (%)" help="Number — employer PF contribution %."><NumInput value={w.statutory.pf_employer_rate} onChange={v => setNested('statutory', 'pf_employer_rate', v)} /></Field>
+                  <Field label="PF wage ceiling" help="Number — EPF/EPS computed on min(Basic+DA, this)."><NumInput value={w.statutory.pf_wage_ceiling} onChange={v => setNested('statutory', 'pf_wage_ceiling', v)} /></Field>
+                  <Field label="EPS wage ceiling" help="Number — pension (EPS) capped at this wage."><NumInput value={w.statutory.eps_wage_ceiling} onChange={v => setNested('statutory', 'eps_wage_ceiling', v)} /></Field>
+                  <Field label="Max monthly" help="Number — PF capped at this amount per month."><NumInput value={w.statutory.pf_max_monthly} onChange={v => setNested('statutory', 'pf_max_monthly', v)} /></Field>
+                  <Field label="Min basic for exclusion" help="Number — employees above this basic can opt out of PF."><NumInput value={w.statutory.pf_min_basic_for_exclusion} onChange={v => setNested('statutory', 'pf_min_basic_for_exclusion', v)} /></Field>
+                  <Field label="EDLI rate (%)" help="Number — EDLI insurance on top of PF."><NumInput value={w.statutory.pf_edli_rate} onChange={v => setNested('statutory', 'pf_edli_rate', v)} /></Field>
+                  <Field label="EDLI max" help="Number — EDLI capped at this amount per month."><NumInput value={w.statutory.pf_edli_max_monthly} onChange={v => setNested('statutory', 'pf_edli_max_monthly', v)} /></Field>
+                  <Field label="Admin charges (%)" help="Number — EPF admin charges."><NumInput value={w.statutory.pf_admin_rate} onChange={v => setNested('statutory', 'pf_admin_rate', v)} /></Field>
+                  <Field label="Admin min" help="Number — admin charges minimum per month."><NumInput value={w.statutory.pf_admin_min_monthly} onChange={v => setNested('statutory', 'pf_admin_min_monthly', v)} /></Field>
                   <div className="pt-6"><Toggle label="PF applicable" help="On = deduct Provident Fund from pay." checked={!!w.statutory.pf_applicable} onChange={v => setNested('statutory', 'pf_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="ESI" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — % of gross deducted, default 0.75%."><NumInput value={w.statutory.esi_employee_rate ?? 0.75} onChange={v => setNested('statutory', 'esi_employee_rate', v ?? 0)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer ESI %, default 3.25%."><NumInput value={w.statutory.esi_employer_rate ?? 3.25} onChange={v => setNested('statutory', 'esi_employer_rate', v ?? 0)} /></Field>
-                  <Field label="Gross ceiling (₹)" help="Number — ESI applies only below this monthly gross, default ₹21,000."><NumInput value={w.statutory.esi_gross_ceiling ?? 21000} onChange={v => setNested('statutory', 'esi_gross_ceiling', v ?? 0)} /></Field>
-                  <Field label="Disabled ceiling (₹)" help="Number — higher ceiling for persons with disabilities, default ₹25,000."><NumInput value={w.statutory.esi_disabled_ceiling ?? 25000} onChange={v => setNested('statutory', 'esi_disabled_ceiling', v ?? 0)} /></Field>
+                  <Field label="Employee rate (%)" help="Number — % of gross deducted."><NumInput value={w.statutory.esi_employee_rate} onChange={v => setNested('statutory', 'esi_employee_rate', v)} /></Field>
+                  <Field label="Employer rate (%)" help="Number — employer ESI %."><NumInput value={w.statutory.esi_employer_rate} onChange={v => setNested('statutory', 'esi_employer_rate', v)} /></Field>
+                  <Field label="Gross ceiling" help="Number — ESI applies only below this monthly gross."><NumInput value={w.statutory.esi_gross_ceiling} onChange={v => setNested('statutory', 'esi_gross_ceiling', v)} /></Field>
+                  <Field label="Disabled ceiling" help="Number — higher ceiling for persons with disabilities."><NumInput value={w.statutory.esi_disabled_ceiling} onChange={v => setNested('statutory', 'esi_disabled_ceiling', v)} /></Field>
                   <div className="pt-6"><Toggle label="ESI applicable" help="On = deduct Employees' State Insurance." checked={!!w.statutory.esi_applicable} onChange={v => setNested('statutory', 'esi_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="Professional Tax" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Flat amount (₹)" help="Number — fixed monthly PT, default ₹200. State slabs may override."><NumInput value={w.statutory.pt_monthly_amount ?? 200} onChange={v => setNested('statutory', 'pt_monthly_amount', v ?? 0)} /></Field>
-                  <Field label="Min gross (₹)" help="Number — PT deducted only above this gross, default ₹10,000."><NumInput value={w.statutory.pt_min_gross ?? 10000} onChange={v => setNested('statutory', 'pt_min_gross', v ?? 0)} /></Field>
+                  <Field label="Flat amount" help="Number — fixed monthly PT. State slabs may override."><NumInput value={w.statutory.pt_monthly_amount} onChange={v => setNested('statutory', 'pt_monthly_amount', v)} /></Field>
+                  <Field label="Min gross" help="Number — PT deducted only above this gross."><NumInput value={w.statutory.pt_min_gross} onChange={v => setNested('statutory', 'pt_min_gross', v)} /></Field>
                   <div className="pt-6"><Toggle label="PT applicable" help="On = deduct Professional Tax." checked={!!w.statutory.pt_applicable} onChange={v => setNested('statutory', 'pt_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="Labour Welfare Fund (LWF)" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — employee LWF contribution %."><NumInput value={w.statutory.lwf_employee_rate ?? 0} onChange={v => setNested('statutory', 'lwf_employee_rate', v ?? 0)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer LWF contribution %."><NumInput value={w.statutory.lwf_employer_rate ?? 0} onChange={v => setNested('statutory', 'lwf_employer_rate', v ?? 0)} /></Field>
+                  <Field label="Employee rate (%)" help="Number — employee LWF contribution %."><NumInput value={w.statutory.lwf_employee_rate} onChange={v => setNested('statutory', 'lwf_employee_rate', v)} /></Field>
+                  <Field label="Employer rate (%)" help="Number — employer LWF contribution %."><NumInput value={w.statutory.lwf_employer_rate} onChange={v => setNested('statutory', 'lwf_employer_rate', v)} /></Field>
                   <div className="pt-6"><Toggle label="LWF applicable" help="On = deduct Labour Welfare Fund." checked={!!w.statutory.lwf_applicable} onChange={v => setNested('statutory', 'lwf_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="Gratuity" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Rate (%)" help="Number — % of basic wage, default 4.81%."><NumInput value={w.statutory.gratuity_rate ?? 4.81} onChange={v => setNested('statutory', 'gratuity_rate', v ?? 0)} /></Field>
-                  <Field label="Eligibility years" help="Number — years of service for gratuity, default 5."><NumInput value={w.statutory.gratuity_eligible_years ?? 5} onChange={v => setNested('statutory', 'gratuity_eligible_years', v ?? 0)} /></Field>
-                  <Field label="Days per year" help="Number — gratuity days credited per year (15/26), default 15."><NumInput value={w.statutory.gratuity_days_per_year ?? 15} onChange={v => setNested('statutory', 'gratuity_days_per_year', v ?? 0)} /></Field>
-                  <Field label="Tax-exempt ceiling (₹)" help="Number — gratuity tax exemption limit, default ₹20,00,000."><NumInput value={w.statutory.gratuity_tax_exempt_ceiling ?? 2000000} onChange={v => setNested('statutory', 'gratuity_tax_exempt_ceiling', v ?? 0)} /></Field>
+                  <Field label="Rate (%)" help="Number — % of basic wage."><NumInput value={w.statutory.gratuity_rate} onChange={v => setNested('statutory', 'gratuity_rate', v)} /></Field>
+                  <Field label="Eligibility years" help="Number — years of service for gratuity."><NumInput value={w.statutory.gratuity_eligible_years} onChange={v => setNested('statutory', 'gratuity_eligible_years', v)} /></Field>
+                  <Field label="Days per year" help="Number — gratuity days credited per year."><NumInput value={w.statutory.gratuity_days_per_year} onChange={v => setNested('statutory', 'gratuity_days_per_year', v)} /></Field>
+                  <Field label="Tax-exempt ceiling" help="Number — gratuity tax exemption limit."><NumInput value={w.statutory.gratuity_tax_exempt_ceiling} onChange={v => setNested('statutory', 'gratuity_tax_exempt_ceiling', v)} /></Field>
                   <div className="pt-6"><Toggle label="Gratuity applicable" help="On = reserve a gratuity liability." checked={!!w.statutory.gratuity_applicable} onChange={v => setNested('statutory', 'gratuity_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="Statutory Bonus (Payment of Bonus Act)" icon={ShieldCheck}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Minimum rate (%)" help="Number — minimum bonus % of wages, default 8.33%."><NumInput value={w.statutory.bonus_min_rate ?? 8.33} onChange={v => setNested('statutory', 'bonus_min_rate', v ?? 0)} /></Field>
-                  <Field label="Maximum rate (%)" help="Number — maximum bonus % of wages, default 20%."><NumInput value={w.statutory.bonus_max_rate ?? 20} onChange={v => setNested('statutory', 'bonus_max_rate', v ?? 0)} /></Field>
-                  <Field label="Wage ceiling (₹)" help="Number — bonus applies only below this monthly wage, default ₹21,000."><NumInput value={w.statutory.bonus_wage_ceiling ?? 21000} onChange={v => setNested('statutory', 'bonus_wage_ceiling', v ?? 0)} /></Field>
+                  <Field label="Minimum rate (%)" help="Number — minimum bonus % of wages."><NumInput value={w.statutory.bonus_min_rate} onChange={v => setNested('statutory', 'bonus_min_rate', v)} /></Field>
+                  <Field label="Maximum rate (%)" help="Number — maximum bonus % of wages."><NumInput value={w.statutory.bonus_max_rate} onChange={v => setNested('statutory', 'bonus_max_rate', v)} /></Field>
+                  <Field label="Wage ceiling" help="Number — bonus applies only below this monthly wage."><NumInput value={w.statutory.bonus_wage_ceiling} onChange={v => setNested('statutory', 'bonus_wage_ceiling', v)} /></Field>
                   <div className="pt-6"><Toggle label="Bonus applicable" help="On = pay statutory bonus (min rate) to eligible employees." checked={!!w.statutory.bonus_applicable} onChange={v => setNested('statutory', 'bonus_applicable', v)} /></div>
                 </div>
               </WizardSectionCard>
@@ -1156,11 +1110,11 @@ function WizardModal(props: {
                       { id: 'custom', name: 'Custom' },
                     ]} showAllOption={false} />
                   </Field>
-                  <Field label="Financial year" help="Text — e.g. '2026-27'. Used for the TDS period."><TextInput value={w.taxRegime.financial_year || '2026-27'} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} /></Field>
-                  <Field label="Standard deduction (₹)" help="Number — flat deduction from taxable income. ₹75,000 (new regime), ₹50,000 (old)."><NumInput value={w.taxRegime.standard_deduction ?? 75000} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v ?? 0 } })} /></Field>
-                  <Field label="Rebate threshold (₹)" help="Number — income up to this is fully rebated. ₹12,00,000 under the new regime."><NumInput value={w.taxRegime.rebate_threshold ?? 1200000} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v ?? 0 } })} /></Field>
-                  <Field label="Rebate amount (₹)" help="Number — maximum tax rebated under §87A when the threshold applies, ₹60,000 (new regime)."><NumInput value={w.taxRegime.rebate_amount ?? 60000} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v ?? 0 } })} /></Field>
-                  <Field label="Cess rate (%)" help="Number — health &amp; education cess on tax, default 4%."><NumInput value={w.taxRegime.cess_rate ?? 4} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v ?? 0 } })} /></Field>
+                  <Field label="Financial year" help="Text — e.g. '2026-27'. Used for the TDS period."><TextInput value={w.taxRegime.financial_year || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} /></Field>
+                  <Field label="Standard deduction" help="Number — flat deduction from taxable income."><NumInput value={w.taxRegime.standard_deduction} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v } })} /></Field>
+                  <Field label="Rebate threshold" help="Number — income up to this is fully rebated."><NumInput value={w.taxRegime.rebate_threshold} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v } })} /></Field>
+                  <Field label="Rebate amount" help="Number — maximum tax rebated under §87A."><NumInput value={w.taxRegime.rebate_amount} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v } })} /></Field>
+                  <Field label="Cess rate (%)" help="Number — health & education cess on tax."><NumInput value={w.taxRegime.cess_rate} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v } })} /></Field>
                   <div className="flex flex-wrap items-start gap-x-8 gap-y-3 col-span-2 pt-6">
                     <Toggle label="Active" help="On = regime can be selected/used. Off = hidden from selection." checked={!!w.taxRegime.is_active} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_active: v } })} />
                     <Toggle label="Default regime" help="On = fallback regime when no other is chosen." checked={!!w.taxRegime.is_default} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_default: v } })} />
@@ -1178,8 +1132,8 @@ function WizardModal(props: {
                   {(w.taxRegime.slabs || []).map((s, i) => (
                     <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
-                        <Field label="From (₹)" help="Number — slab lower bound, inclusive."><NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} /></Field>
-                        <Field label="To (₹, blank = ∞)" help="Number — slab upper bound. Blank means 'and above'."><NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} /></Field>
+                        <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — slab lower bound, inclusive."><NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} /></Field>
+                        <Field label={`To (${getCurrencySymbol(getAppCurrency())}, blank = ∞)`} help="Number — slab upper bound. Blank means 'and above'."><NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} /></Field>
                         <Field label="Rate (%)" help="Number — tax percentage for this slab."><NumInput value={s.rate ?? 0} onChange={v => setSlab(i, { rate: v ?? 0 })} /></Field>
                       </div>
                       <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
@@ -1210,8 +1164,8 @@ function WizardModal(props: {
                     {surcharges.map((s, i) => (
                     <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
-                        <Field label="From (₹)" help="Number — taxable income threshold where this rate starts, e.g. 5000000."><NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} /></Field>
-                        <Field label="Rate (%)" help="Number — surcharge % on the tax amount, e.g. 10 for ₹50L-1Cr."><NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} /></Field>
+                        <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — taxable income threshold where this rate starts, e.g. 5000000."><NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} /></Field>
+                        <Field label="Rate (%)" help={`Number — surcharge % on the tax amount, e.g. 10 for ${getCurrencySymbol(getAppCurrency())}50L-1Cr.`}><NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} /></Field>
                       </div>
                       <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
                         <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
@@ -1231,41 +1185,76 @@ function WizardModal(props: {
 
           {tab === 'attendance' && (
             <div className="space-y-4">
-              <div className="text-xs text-[var(--text-tertiary)] bg-rose-50 border border-rose-200 rounded-lg p-3">
-                <b>How attendance flows into salary:</b> Present / Late / Work-from-home = full paid day ·
-                Absent = unpaid · Half-day = 50% (or full if toggled below) · Holiday = paid if toggled below ·
-                Leave = paid/unpaid per its type (see below). LOP is deducted as
-                <b> (Monthly Gross ÷ days in month) × LOP days</b>.
+              <div className="text-xs text-[var(--text-tertiary)] bg-rose-50 border border-rose-200 rounded-lg p-3 leading-relaxed">
+                <b>How attendance flows into salary:</b> the linked templates above drive everything —
+                Present / Late / Work-from-home = full paid day · Absent = unpaid · Half-day = full or 50% per the attendance template ·
+                Holiday = paid or unpaid per the attendance template · Leave = paid or unpaid per its type from the linked leave template ·
+                Week-offs are excluded from pay entirely. Unpaid days cut salary as <b>(Monthly Gross ÷ days in month) × unpaid days</b>.
+                To change any rule, edit the source template in Attendance / Leave → Configuration.
               </div>
-              <WizardSectionCard title="Work schedule" icon={Clock}>
+              <WizardSectionCard title="Linked templates" icon={Building2}>
+                <p className="text-[11px] text-[var(--text-tertiary)]">Pick the company templates once — their rules auto-apply here and to every employee on this payroll template. Shared templates stay read-only below; edit them in Attendance / Leave → Configuration.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Policy name" help="Text — internal label for this attendance policy."><TextInput value={w.attendancePolicy.name || ''} onChange={v => setNested('attendancePolicy', 'name', v)} /></Field>
-                  <Field label="Working days per week" help="Number — 4, 5, 6 or 7. Auto-sets the working days list.">
-                    <SearchableSelect value={(w.attendancePolicy.working_days || '').split(',').map((s: string) => s.trim()).filter(Boolean).length || 5} onChange={v => {
-                      const n = Number(v);
-                      setNested('attendancePolicy', 'working_days_per_week', n);
-                      const order = [1, 2, 3, 4, 5, 6, 0];
-                      setNested('attendancePolicy', 'working_days', order.slice(0, n).join(','));
-                    }} placeholder="Select Working days" options={[4, 5, 6, 7].map(n => ({ id: n, name: `${n} days` }))} showAllOption={false} />
+                  <Field label="Attendance Template *" help="Required — workweek, mapping, overtime and thresholds load from the template.">
+                    <SearchableSelect
+                      value={w.attendancePolicyId ?? ''}
+                      onChange={(v) => linkAttendance(v === '' ? null : Number(v))}
+                      options={(attTemplates as any[]).map((p: any) => ({ id: p.id, name: `${p.name}${p.is_shared_template ? '' : ' (custom)'}` }))}
+                      placeholder={w.companyId ? 'Select attendance template (required)' : 'Select a company first'}
+                      showAllOption={false} clearable />
+                  </Field>
+                  <Field label="Leave Template *" help="Required — yearly quotas for employees on this payroll template without their own pin.">
+                    <SearchableSelect
+                      value={w.leaveTemplateId ?? ''}
+                      onChange={(v) => setState({ leaveTemplateId: v === '' ? null : Number(v) })}
+                      options={(leaveTemplates as any[]).map((t: any) => ({ id: t.id, name: t.name }))}
+                      placeholder={w.companyId ? 'Select leave template (required)' : 'Select a company first'}
+                      showAllOption={false} clearable />
                   </Field>
                 </div>
+                {w.attendanceLinked && (
+                  <p className="text-[11px] text-[var(--primary-blue)] bg-blue-50 border border-blue-100 rounded-lg p-2.5">
+                    Rules below are a read-only preview of the linked template — edit them in Attendance → Configuration.
+                    <button type="button" onClick={() => linkAttendance(null)} className="ml-2 underline font-medium">Clear selection</button>
+                  </p>
+                )}
+                {linkedLeave && (
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    {((linkedLeave as any).body?.leaveTypes || []).filter((r: any) => r.active !== false).map((r: any) => (
+                      <span key={r.code || r.name} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {r.name}: {r.days}d{r.paid === false ? ' (unpaid)' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </WizardSectionCard>
-              <WizardSectionCard title="Attendance to payroll mapping" icon={Clock}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Toggle label="Half day as full paid" help="On = half-days count as full paid days." checked={!!w.attendancePolicy.half_day_as_full_paid} onChange={v => setNested('attendancePolicy', 'half_day_as_full_paid', v)} />
-                  <Toggle label="Paid leave as present" help="On = approved paid leave counts as present." checked={!!w.attendancePolicy.paid_leave_as_present} onChange={v => setNested('attendancePolicy', 'paid_leave_as_present', v)} />
-                  <Toggle label="Holiday as present" help="On = public holidays count as paid present days." checked={!!w.attendancePolicy.holiday_as_present} onChange={v => setNested('attendancePolicy', 'holiday_as_present', v)} />
+              {w.attendancePolicyId ? (
+                <WizardSectionCard title="Linked attendance rules" icon={Clock}>
+                  <p className="text-[11px] text-[var(--text-tertiary)]">Read-only summary of the linked template — edit it in Attendance → Configuration.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    {[
+                      { label: 'Workweek', value: (() => { const days = String(w.attendancePolicy.working_days || '').split(',').map((s: string) => s.trim()).filter(Boolean); const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; return days.length ? `${days.length} days (${days.map((d: string) => names[Number(d)] || d).join(', ')})` : '—'; })() },
+                      { label: 'Half day', value: w.attendancePolicy.half_day_as_full_paid ? 'Full paid' : 'Half paid' },
+                      { label: 'Paid leave', value: w.attendancePolicy.paid_leave_as_present ? 'As present' : 'Unpaid absence' },
+                      { label: 'Holiday', value: w.attendancePolicy.holiday_as_present ? 'Paid' : 'Unpaid' },
+                      { label: 'Overtime', value: `${w.attendancePolicy.overtime_threshold_hours ?? 8}h × ${w.attendancePolicy.overtime_rate ?? 1.5}` },
+                      { label: 'Late after', value: `${w.attendancePolicy.late_mark_threshold_minutes ?? 15} min` },
+                      { label: 'Half-day below', value: `${w.attendancePolicy.half_day_threshold_hours ?? 4}h` },
+                    ].map((m) => (
+                      <div key={m.label} className="bg-[var(--background)] rounded-lg px-3 py-2">
+                        <div className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">{m.label}</div>
+                        <div className="font-medium text-[var(--text-primary)]">{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </WizardSectionCard>
+              ) : (
+                <div className="text-center py-8 text-[var(--text-tertiary)] border border-dashed border-[var(--border-color)] rounded-xl">
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm font-medium">No attendance template linked</p>
+                  <p className="text-xs mt-1">Pick one above — its workweek, mapping and thresholds will apply to payroll.</p>
                 </div>
-              </WizardSectionCard>
-              <LeaveTypesSection companyId={w.companyId} />
-              <WizardSectionCard title="Overtime & thresholds" icon={Clock}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="OT threshold (hours)" help="Number — hours after which overtime starts, default 8."><NumInput value={w.attendancePolicy.overtime_threshold_hours ?? 8} onChange={v => setNested('attendancePolicy', 'overtime_threshold_hours', v ?? 0)} /></Field>
-                  <Field label="OT rate (x)" help="Number — overtime multiplier, default 1.5x."><NumInput value={w.attendancePolicy.overtime_rate ?? 1.5} onChange={v => setNested('attendancePolicy', 'overtime_rate', v ?? 0)} /></Field>
-                  <Field label="Late mark threshold (min)" help="Number — minutes late that marks a late-in, default 15."><NumInput value={w.attendancePolicy.late_mark_threshold_minutes ?? 15} onChange={v => setNested('attendancePolicy', 'late_mark_threshold_minutes', v ?? 0)} /></Field>
-                  <Field label="Half-day threshold (hours)" help="Number — hours present that still counts as a half day, default 4."><NumInput value={w.attendancePolicy.half_day_threshold_hours ?? 4} onChange={v => setNested('attendancePolicy', 'half_day_threshold_hours', v ?? 0)} /></Field>
-                </div>
-              </WizardSectionCard>
+              )}
             </div>
           )}
 
@@ -1301,25 +1290,25 @@ function WizardModal(props: {
                       <tbody>
                         {(ptDetail.slabs || []).map((slab: any, i: number) => (
                           <tr key={i} className="border-b border-[#F1F5F9]">
-                            <td className="py-2 pr-4 text-[var(--text-secondary)]">₹{slab.from_gross?.toLocaleString()}</td>
-                            <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `₹${slab.to_gross?.toLocaleString()}` : '∞'}</td>
-                            <td className="py-2 pr-4 font-medium text-[var(--text-primary)]">₹{slab.amount}</td>
+                            <td className="py-2 pr-4 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
+                            <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : '∞'}</td>
+                            <td className="py-2 pr-4 font-medium text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{slab.amount}</td>
                             <td className="py-2 text-xs text-[var(--text-tertiary)]">{slab.description}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-xs text-[var(--text-tertiary)] mt-2">Annual max: ₹{ptDetail.annual_max?.toLocaleString()} &middot; {ptDetail.notes}</p>
+                  <p className="text-xs text-[var(--text-tertiary)] mt-2">Annual max: {getCurrencySymbol(getAppCurrency())}{ptDetail.annual_max?.toLocaleString()} &middot; {ptDetail.notes}</p>
                 </WizardSectionCard>
               )}
 
               {w.registeredState && lwfDetail?.applicable && (
                 <WizardSectionCard title={`Labour Welfare Fund — ${lwfDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin}>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <Field label="Employee contribution" help="Employee LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">₹{lwfDetail.employee_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
-                    <Field label="Employer contribution" help="Employer LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">₹{lwfDetail.employer_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
-                    <Field label="Wage ceiling" help="LWF applies only below this monthly wage."><span className="block text-[var(--text-primary)] font-medium">₹{lwfDetail.max_wage_for_applicability?.toLocaleString()}</span></Field>
+                    <Field label="Employee contribution" help="Employee LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employee_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
+                    <Field label="Employer contribution" help="Employer LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employer_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
+                    <Field label="Wage ceiling" help="LWF applies only below this monthly wage."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.max_wage_for_applicability?.toLocaleString()}</span></Field>
                   </div>
                 </WizardSectionCard>
               )}

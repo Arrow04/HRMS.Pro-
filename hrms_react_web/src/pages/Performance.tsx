@@ -728,7 +728,7 @@ const GoalFeedbackForm = ({ type, data, setData, companies }: {
 
 const Performance = () => {
 const [activeTab, setActiveTab] = useState('reviews');
-const [showPerformanceConfig, setShowPerformanceConfig] = useState(false);
+
 const [includeInactive, setIncludeInactive] = useState(false);
 
   const [companyFilter, setCompanyFilter] = useState('all');
@@ -1071,25 +1071,25 @@ const [includeInactive, setIncludeInactive] = useState(false);
   };
 
   const statCards = activeTab === 'reviews' ? [
-    { label: 'Total Reviews', value: stats.totalReviews || 0, icon: Target, color: 'blue', onClick: () => setActiveTab('reviews') },
-    { label: 'Completed', value: stats.completed || 0, icon: CheckCircle2, color: 'green', onClick: () => setActiveTab('reviews') },
-    { label: 'Pending', value: stats.pending || 0, icon: TrendingUp, color: 'orange', onClick: () => setActiveTab('reviews') },
-    { label: 'Avg Rating', value: stats.avgRating || 0, icon: Star, color: 'purple', onClick: () => setActiveTab('reviews') },
+    { label: 'Total Reviews', value: stats.totalReviews || 0, icon: Target, color: 'blue', tooltip: 'Total performance reviews', trend: stats.totalReviews > 0 ? 5 : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Completed', value: stats.completed || 0, icon: CheckCircle2, color: 'green', tooltip: 'Reviews completed', trend: stats.completed > 0 ? 8 : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Pending', value: stats.pending || 0, icon: TrendingUp, color: 'orange', tooltip: 'Reviews pending completion', trend: stats.pending > 0 ? -stats.pending : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Avg Rating', value: stats.avgRating || 0, icon: Star, color: 'purple', tooltip: 'Average performance rating', trend: 3, onClick: () => setActiveTab('reviews') },
   ] : activeTab === 'goals' ? [
-    { label: 'Total Goals', value: goalStats.total, icon: Target, color: 'blue', onClick: () => setActiveTab('goals') },
-    { label: 'Active', value: goalStats.active, icon: TrendingUp, color: 'orange', onClick: () => setActiveTab('goals') },
-    { label: 'Completed', value: goalStats.completed, icon: CheckCircle2, color: 'green', onClick: () => setActiveTab('goals') },
-    { label: 'Avg Progress', value: `${goalStats.avgProgress}%`, icon: BarChart3, color: 'purple', onClick: () => setActiveTab('goals') },
+    { label: 'Total Goals', value: goalStats.total, icon: Target, color: 'blue', tooltip: 'Total organizational goals', trend: goalStats.total > 0 ? 5 : 0, onClick: () => setActiveTab('goals') },
+    { label: 'Active', value: goalStats.active, icon: TrendingUp, color: 'orange', tooltip: 'Goals currently in progress', trend: goalStats.active > 0 ? 3 : 0, onClick: () => setActiveTab('goals') },
+    { label: 'Completed', value: goalStats.completed, icon: CheckCircle2, color: 'green', tooltip: 'Goals completed', trend: goalStats.completed > 0 ? 12 : 0, onClick: () => setActiveTab('goals') },
+    { label: 'Avg Progress', value: `${goalStats.avgProgress}%`, icon: BarChart3, color: 'purple', tooltip: 'Average completion percentage', trend: goalStats.avgProgress > 50 ? 7 : -2, onClick: () => setActiveTab('goals') },
   ] : activeTab === 'feedback' ? [
-    { label: 'Total Feedback', value: feedbackStats.total, icon: Users, color: 'blue', onClick: () => setActiveTab('feedback') },
-    { label: 'Submitted', value: feedbackStats.submitted, icon: CheckCircle2, color: 'green', onClick: () => setActiveTab('feedback') },
-    { label: 'Avg Rating', value: feedbackStats.avgRating, icon: Star, color: 'purple', onClick: () => setActiveTab('feedback') },
-    { label: 'Reviews', value: stats.totalReviews || 0, icon: Target, color: 'orange', onClick: () => setActiveTab('reviews') },
+    { label: 'Total Feedback', value: feedbackStats.total, icon: Users, color: 'blue', tooltip: 'Total 360 feedback entries', trend: feedbackStats.total > 0 ? 5 : 0, onClick: () => setActiveTab('feedback') },
+    { label: 'Submitted', value: feedbackStats.submitted, icon: CheckCircle2, color: 'green', tooltip: 'Feedback forms submitted', trend: feedbackStats.submitted > 0 ? 10 : 0, onClick: () => setActiveTab('feedback') },
+    { label: 'Avg Rating', value: feedbackStats.avgRating, icon: Star, color: 'purple', tooltip: 'Average rating from peers', trend: 2, onClick: () => setActiveTab('feedback') },
+    { label: 'Reviews', value: stats.totalReviews || 0, icon: Target, color: 'orange', tooltip: 'Associated performance reviews', trend: 0, onClick: () => setActiveTab('reviews') },
   ] : [
-    { label: 'Total Reviews', value: stats.totalReviews || 0, icon: Target, color: 'blue', onClick: () => setActiveTab('reviews') },
-    { label: 'Completed', value: stats.completed || 0, icon: CheckCircle2, color: 'green', onClick: () => setActiveTab('reviews') },
-    { label: 'Pending', value: stats.pending || 0, icon: TrendingUp, color: 'orange', onClick: () => setActiveTab('reviews') },
-    { label: 'Avg Rating', value: stats.avgRating || 0, icon: Star, color: 'purple', onClick: () => setActiveTab('reviews') },
+    { label: 'Total Reviews', value: stats.totalReviews || 0, icon: Target, color: 'blue', tooltip: 'Total performance reviews', trend: stats.totalReviews > 0 ? 5 : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Completed', value: stats.completed || 0, icon: CheckCircle2, color: 'green', tooltip: 'Reviews completed', trend: stats.completed > 0 ? 8 : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Pending', value: stats.pending || 0, icon: TrendingUp, color: 'orange', tooltip: 'Reviews pending completion', trend: stats.pending > 0 ? -stats.pending : 0, onClick: () => setActiveTab('reviews') },
+    { label: 'Avg Rating', value: stats.avgRating || 0, icon: Star, color: 'purple', tooltip: 'Average performance rating', trend: 3, onClick: () => setActiveTab('reviews') },
   ];
 
   const getCompanyName = (id?: number) => companies.find((c: Company) => c.id === id)?.name || '-';
@@ -1640,7 +1640,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
             <div key={index} className="animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${index * 100}ms` }}>
-              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} onClick={stat.onClick} />
+              <StatsCard icon={stat.icon} label={stat.label} value={stat.value} color={stat.color} tooltip={stat.tooltip} trend={stat.trend} onClick={stat.onClick} />
             </div>
           ))}
         </div>
@@ -2166,71 +2166,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
         )}
 
         {activeTab === 'configuration' && (
-          <div className="animate-in fade-in duration-300 space-y-6">
-            <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-purple-600" />
-                    Performance Configuration
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Configure review cycles, rating scales, competency frameworks, goal templates, and feedback settings.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowPerformanceConfig(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-500 to-violet-500 text-white font-semibold rounded-xl hover:opacity-90 transition-all shadow-lg shadow-purple-200/50 flex items-center gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  Open Configuration
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] flex items-center justify-center text-white shadow-sm">
-                    <Target className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Review Cycles</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Review frequency, reminders, self-appraisal</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#1C64F2] flex items-center justify-center text-white shadow-sm">
-                    <Star className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Rating Scales</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Numeric, grade, and custom rating scales</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Competency & Goals</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">Frameworks, KRAs, weight allocation</p>
-              </div>
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
-                    <Users className="w-5 h-5" />
-                  </span>
-                  <h4 className="text-sm font-bold text-[#0F172A]">Feedback Settings</h4>
-                </div>
-                <p className="text-xs text-[#94A3B8]">360° feedback, templates, deadlines</p>
-              </div>
-            </div>
+          <div className="animate-in fade-in duration-300">
+            <PerformanceConfig />
           </div>
-        )}
-
-        {showPerformanceConfig && (
-          <PerformanceConfig open={showPerformanceConfig} onClose={() => setShowPerformanceConfig(false)} />
         )}
       </div>
 

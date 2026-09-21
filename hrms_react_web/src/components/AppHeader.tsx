@@ -226,11 +226,12 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
           </button>
         )}
 
-        {/* Company Selector */}
-        <div className="relative hidden sm:block">
+        {/* Company Selector (auto-locks when the server scopes you to one company) */}
+        <div className="relative hidden sm:block" title={companies.length === 1 ? `Locked to ${companies[0].name} by your access scope` : 'Switch company view'}>
           <SearchableSelect
-            value={localStorage.getItem('selectedCompanyId') || 'all'}
+            value={companies.length === 1 ? companies[0].id : (localStorage.getItem('selectedCompanyId') || 'all')}
             onChange={(val) => {
+              if (companies.length === 1) return;
               localStorage.setItem('selectedCompanyId', val.toString());
               window.location.reload();
             }}
@@ -238,6 +239,7 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
             placeholder="All Companies"
             allOption="All Companies"
             className="w-48"
+            disabled={companies.length === 1}
           />
         </div>
 

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
 from core.cache import invalidate_cache
-from core.tenant import get_header_company_id
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
+from core.tenant import get_header_company_id, org_owned
 from database import get_db
 from models import CompanyPolicy, User
 
@@ -64,6 +65,12 @@ def list_policies(
         q = q.filter(
             (CompanyPolicy.organization_id == current_user.organization_id)
             | (CompanyPolicy.organization_id.is_(None))
+        )
+    _pol_scope = resolve_company_scope(db, current_user, None)
+    if _pol_scope is not None:
+        q = q.filter(
+            (CompanyPolicy.company_id == _pol_scope)
+            | (CompanyPolicy.company_id.is_(None))
         )
     if current_user.role in ("employee",):
         q = q.filter(CompanyPolicy.status == "active")
@@ -119,6 +126,9 @@ def update_policy(
     ).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    if current_user.role != "superadmin":
+        org_owned(policy, current_user.organization_id)
+    assert_company_allowed(db, current_user, policy.company_id)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(policy, k, v)
     policy.updated_at = datetime.utcnow()
@@ -142,6 +152,9 @@ def delete_policy(
     ).first()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
+    if current_user.role != "superadmin":
+        org_owned(policy, current_user.organization_id)
+    assert_company_allowed(db, current_user, policy.company_id)
     policy.deleted_at = datetime.utcnow()
     db.commit()
     invalidate_cache("hrms:tenant:*")

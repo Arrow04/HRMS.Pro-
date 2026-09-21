@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.auth import check_role, get_current_user
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from data.industry_templates import INDUSTRY_TEMPLATES, get_industry_codes, get_template_summary
 from data.state_compliance import (
     PROFESSIONAL_TAX, LWF, get_all_state_codes, get_lwf_state_codes,
@@ -37,6 +38,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/payroll-config", tags=["Payroll Configuration"])
 
 
+def _company_id(companyId: Optional[int] = None) -> Optional[int]:
+    """Extract company_id from query param. None means org-wide."""
+    return companyId
+
+
 def _derive_working_days(per_week: Optional[int], explicit: Optional[str] = None) -> str:
     """Derive the comma-separated workweek day-set from working_days_per_week.
 
@@ -56,6 +62,7 @@ def _derive_working_days(per_week: Optional[int], explicit: Optional[str] = None
 
 class PayrollPolicyCreate(BaseModel):
     name: str = "Default Payroll Policy"
+    company_id: Optional[int] = None
     pro_ration_method: str = "paid_days"
     rounding_method: str = "nearest"
     decimal_places: int = 2
@@ -67,6 +74,7 @@ class PayrollPolicyCreate(BaseModel):
 
 class PayrollPolicyUpdate(BaseModel):
     name: Optional[str] = None
+    company_id: Optional[int] = None
     pro_ration_method: Optional[str] = None
     rounding_method: Optional[str] = None
     decimal_places: Optional[int] = None
@@ -212,29 +220,79 @@ class TaxRegimeUpdate(BaseModel):
 
 class AttendancePolicyCreate(BaseModel):
     name: str = "Default Attendance Policy"
+    description: Optional[str] = None
     working_days_per_week: int = 6
-    working_days: str = "0,1,2,3,4,5,6"  # Comma-separated: 0=Sun, 1=Mon, etc.
+    working_days: str = "0,1,2,3,4,5,6"
     half_day_as_full_paid: bool = True
     paid_leave_as_present: bool = True
     holiday_as_present: bool = True
     overtime_threshold_hours: float = 8.0
     overtime_rate: float = 1.5
+    overtime_tiers: Optional[list] = None
+    shift_differential_rates: Optional[dict] = None
     late_mark_threshold_minutes: int = 15
     half_day_threshold_hours: float = 4.0
-    company_id: Optional[int] = None  # None = org-wide default
+    wfh_allowed: bool = False
+    geofence_enabled: bool = False
+    geofence_radius: float = 100.0
+    effective_from: Optional[str] = None
+    shift_id: Optional[int] = None
+    late_to_absent_count: Optional[int] = None
+    early_to_absent_count: Optional[int] = None
+    missing_checkout_rule: Optional[str] = None
+    company_id: Optional[int] = None
+    check_in_time: str = "09:00"
+    check_out_time: str = "18:00"
+    break_hours: float = 1.0
+    comp_off_enabled: bool = False
+    max_comp_off_balance: int = 5
+    max_overtime_hours_per_month: Optional[float] = None
+    selfie_checkin_enabled: bool = False
+    ip_restriction_enabled: bool = False
+    allowed_ip_ranges: Optional[list] = None
+    wifi_checkin_enabled: bool = False
+    allowed_ssids: Optional[list] = None
+    auto_approve_if_no_mark: bool = False
+    min_hours_for_full_day: float = 8.0
+    shift_based_payroll: bool = False
 
 class AttendancePolicyUpdate(BaseModel):
     name: Optional[str] = None
+    description: Optional[str] = None
     working_days_per_week: Optional[int] = None
-    working_days: Optional[str] = None  # Comma-separated: 0=Sun, 1=Mon, etc.
+    working_days: Optional[str] = None
     half_day_as_full_paid: Optional[bool] = None
     paid_leave_as_present: Optional[bool] = None
     holiday_as_present: Optional[bool] = None
     overtime_threshold_hours: Optional[float] = None
     overtime_rate: Optional[float] = None
+    overtime_tiers: Optional[list] = None
+    shift_differential_rates: Optional[dict] = None
     late_mark_threshold_minutes: Optional[int] = None
     half_day_threshold_hours: Optional[float] = None
+    wfh_allowed: Optional[bool] = None
+    geofence_enabled: Optional[bool] = None
+    geofence_radius: Optional[float] = None
+    effective_from: Optional[str] = None
+    shift_id: Optional[int] = None
+    late_to_absent_count: Optional[int] = None
+    early_to_absent_count: Optional[int] = None
+    missing_checkout_rule: Optional[str] = None
     company_id: Optional[int] = None
+    check_in_time: Optional[str] = None
+    check_out_time: Optional[str] = None
+    break_hours: Optional[float] = None
+    comp_off_enabled: Optional[bool] = None
+    max_comp_off_balance: Optional[int] = None
+    max_overtime_hours_per_month: Optional[float] = None
+    selfie_checkin_enabled: Optional[bool] = None
+    ip_restriction_enabled: Optional[bool] = None
+    allowed_ip_ranges: Optional[list] = None
+    wifi_checkin_enabled: Optional[bool] = None
+    allowed_ssids: Optional[list] = None
+    auto_approve_if_no_mark: Optional[bool] = None
+    min_hours_for_full_day: Optional[float] = None
+    shift_based_payroll: Optional[bool] = None
 
 
 # ── Dependency ──
@@ -251,15 +309,23 @@ def _get_org(db: Session, user: User) -> Organization:
 # ════════════════════════════════════════════════════════════════
 
 @router.get("/policies", response_model=List[dict])
-def list_policies(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    policies = db.query(PayrollPolicy).filter(
+def list_policies(
+    companyId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(PayrollPolicy).filter(
         PayrollPolicy.organization_id == current_user.organization_id,
         PayrollPolicy.status != "inactive",
-    ).order_by(PayrollPolicy.id).all()
+    )
+    if companyId is not None:
+        q = q.filter(PayrollPolicy.company_id == companyId)
+    policies = q.order_by(PayrollPolicy.id).all()
     return [
         {
             "id": p.id,
             "name": p.name,
+            "company_id": p.company_id,
             "pro_ration_method": p.pro_ration_method,
             "rounding_method": p.rounding_method,
             "decimal_places": p.decimal_places,
@@ -278,7 +344,7 @@ def create_policy(
     current_user: User = Depends(get_current_user),
 ):
     org = _get_org(db, current_user)
-    policy = PayrollPolicy(organization_id=org.id, **data.model_dump())
+    policy = PayrollPolicy(organization_id=org.id, company_id=data.company_id, **{k: v for k, v in data.model_dump().items() if k != 'company_id'})
     db.add(policy)
     db.commit()
     db.refresh(policy)
@@ -327,6 +393,7 @@ def delete_policy(
 @router.get("/components", response_model=List[dict])
 def list_components(
     policy_id: Optional[int] = None,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -334,6 +401,8 @@ def list_components(
         PayrollComponent.organization_id == current_user.organization_id,
         PayrollComponent.status != "inactive",
     )
+    if companyId is not None:
+        query = query.filter(PayrollComponent.company_id == companyId)
     if policy_id:
         query = query.filter(PayrollComponent.payroll_policy_id == policy_id)
     components = query.order_by(PayrollComponent.priority).all()
@@ -341,6 +410,7 @@ def list_components(
         {
             "id": c.id,
             "payroll_policy_id": c.payroll_policy_id,
+            "company_id": c.company_id,
             "name": c.name,
             "display_name": c.display_name or c.name,
             "component_type": c.component_type,
@@ -362,38 +432,32 @@ def list_components(
 @router.post("/components", status_code=201)
 def create_component(
     data: PayrollComponentCreate,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     policy_id = data.payroll_policy_id
     if policy_id is None:
-        # Fall back to the org's default (or first active) payroll policy
-        default_policy = db.query(PayrollPolicy).filter(
+        q = db.query(PayrollPolicy).filter(
             PayrollPolicy.organization_id == current_user.organization_id,
             PayrollPolicy.status == "active",
-        ).order_by(PayrollPolicy.id).first()
+        )
+        if companyId is not None:
+            q = q.filter(PayrollPolicy.company_id == companyId)
+        default_policy = q.order_by(PayrollPolicy.id).first()
         if default_policy:
             policy_id = default_policy.id
         else:
-            # Create a default policy if none exists
             default_policy = PayrollPolicy(
                 organization_id=current_user.organization_id,
+                company_id=companyId,
                 name="Default Payroll Policy",
-                pro_ration_method="paid_days",
-                rounding_method="nearest",
-                decimal_places=2,
-                round_net_salary=True,
-                include_gratuity=False,
-                gratuity_rate=4.81,
-                default_currency="INR",
-                allow_negative_net=False,
                 status="active",
             )
             db.add(default_policy)
             db.flush()
             policy_id = default_policy.id
 
-    # Verify policy belongs to user's org
     policy = db.query(PayrollPolicy).filter(
         PayrollPolicy.id == policy_id,
         PayrollPolicy.organization_id == current_user.organization_id,
@@ -402,6 +466,7 @@ def create_component(
         raise HTTPException(status_code=404, detail="Payroll policy not found")
     payload = data.model_dump()
     payload["payroll_policy_id"] = policy_id
+    payload["company_id"] = companyId or policy.company_id
     comp = PayrollComponent(organization_id=current_user.organization_id, **payload)
     db.add(comp)
     db.commit()
@@ -453,20 +518,26 @@ def delete_component(
 
 @router.get("/statutory-settings")
 def get_statutory_settings(
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    setting = db.query(StatutorySetting).filter(
+    q = db.query(StatutorySetting).filter(
         StatutorySetting.organization_id == current_user.organization_id,
-    ).first()
+    )
+    if companyId is not None:
+        q = q.filter(StatutorySetting.company_id == companyId)
+    setting = q.first()
     if not setting:
         return {
             "id": None,
             "organization_id": current_user.organization_id,
-            "message": "No custom settings configured. Using system defaults.",
+            "company_id": companyId,
+            "message": "No custom settings configured. Defaults apply.",
         }
     return {
         "id": setting.id,
+        "company_id": setting.company_id,
         "pf_applicable": setting.pf_applicable,
         "pf_employee_rate": setting.pf_employee_rate,
         "pf_employer_rate": setting.pf_employer_rate,
@@ -503,12 +574,16 @@ def get_statutory_settings(
 @router.put("/statutory-settings")
 def upsert_statutory_settings(
     data: StatutorySettingUpdate,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    setting = db.query(StatutorySetting).filter(
+    q = db.query(StatutorySetting).filter(
         StatutorySetting.organization_id == current_user.organization_id,
-    ).first()
+    )
+    if companyId is not None:
+        q = q.filter(StatutorySetting.company_id == companyId)
+    setting = q.first()
     if setting:
         updates = {k: v for k, v in data.model_dump().items() if v is not None}
         for k, v in updates.items():
@@ -516,6 +591,7 @@ def upsert_statutory_settings(
     else:
         setting = StatutorySetting(
             organization_id=current_user.organization_id,
+            company_id=companyId,
             **{k: v for k, v in data.model_dump().items() if v is not None},
         )
         db.add(setting)
@@ -530,7 +606,11 @@ COUNTRY_STATUTORY_PRESETS = {
     "india": {
         "label": "India",
         "pf_applicable": True, "pf_employee_rate": 12.0, "pf_employer_rate": 12.0,
-        "pf_max_monthly": 1800.0, "pf_min_basic_for_exclusion": 15000.0,
+        "pf_max_monthly": 1800.0, "pf_min_basic_for_exclusion": 0,
+        # pf_min_basic_for_exclusion=0 means ALL employees are PF members (no exclusion).
+        # Per EPF Act, PF is mandatory for employees earning basic <= ₹15,000/month.
+        # Setting this to 0 enrolls all employees; set to 15000 to exclude high earners.
+        "pf_wage_ceiling": 15000.0,
         "esi_applicable": True, "esi_employee_rate": 0.75, "esi_employer_rate": 3.25,
         "esi_gross_ceiling": 21000.0,
         "pt_applicable": True, "pt_monthly_amount": 200.0, "pt_min_gross": 10000.0,
@@ -586,60 +666,33 @@ def apply_statutory_preset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Apply a country's statutory defaults to the organization's settings.
-
-    When companyId/branchId is provided, the preset is stored as a scoped
-    payroll config entry so that company/branch can run its own jurisdiction
-    (e.g. a UAE office under an Indian org).
-    """
+    """Apply a country's statutory defaults — optionally scoped to a company."""
     code = (payload.get("country") or "").strip().lower().replace(" ", "_")
     preset = COUNTRY_STATUTORY_PRESETS.get(code)
     if not preset:
         raise HTTPException(status_code=400, detail=f"No preset for country: {code}")
     company_id = payload.get("companyId")
-    branch_id = payload.get("branchId")
 
-    if company_id or branch_id:
-        org = db.query(Organization).filter(
-            Organization.deleted_at.is_(None),
-            Organization.id == current_user.organization_id,
-        ).first()
-        if not org:
-            raise HTTPException(status_code=404, detail="Organization not found")
-        data = json.loads(json.dumps(org.settings or {}))
-        configs = data.get("payroll_configs") or []
-        entry = {
-            "country": preset["label"],
-            "companyId": company_id,
-            "branchId": branch_id,
-            "pfApplicable": bool(preset.get("pf_applicable", False)),
-            "esiApplicable": bool(preset.get("esi_applicable", False)),
-            "ptApplicable": bool(preset.get("pt_applicable", False)),
-            "lwfApplicable": bool(preset.get("lwf_applicable", False)),
-            "gratuityApplicable": bool(preset.get("gratuity_applicable", False)),
-            "pfPercent": preset.get("pf_employee_rate"),
-            "esiPercent": preset.get("esi_employee_rate"),
-            "gratuityRate": preset.get("gratuity_rate"),
-        }
-        configs = [c for c in configs if (c.get("companyId") != company_id or c.get("branchId") != branch_id)]
-        configs.append(entry)
-        data["payroll_configs"] = configs
-        org.settings = data
-        db.commit()
-        return {"message": f"Applied {preset['label']} defaults to company/branch", "scoped": True}
-
-    setting = db.query(StatutorySetting).filter(
+    q = db.query(StatutorySetting).filter(
         StatutorySetting.organization_id == current_user.organization_id,
-    ).first()
+    )
+    if company_id is not None:
+        q = q.filter(StatutorySetting.company_id == company_id)
+    setting = q.first()
+
     fields = {k: v for k, v in preset.items() if k != "label"}
     if setting:
         for k, v in fields.items():
             setattr(setting, k, v)
     else:
-        setting = StatutorySetting(organization_id=current_user.organization_id, **fields)
+        setting = StatutorySetting(
+            organization_id=current_user.organization_id,
+            company_id=company_id,
+            **fields,
+        )
         db.add(setting)
     db.commit()
-    return {"message": f"Applied {preset['label']} statutory defaults", "id": setting.id}
+    return {"message": f"Applied {preset['label']} statutory defaults", "id": setting.id, "company_id": company_id}
 
 
 # ════════════════════════════════════════════════════════════════
@@ -648,12 +701,16 @@ def apply_statutory_preset(
 
 @router.get("/tax-regimes", response_model=List[dict])
 def list_tax_regimes(
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    regimes = db.query(TaxRegime).filter(
+    q = db.query(TaxRegime).filter(
         TaxRegime.organization_id == current_user.organization_id,
-    ).all()
+    )
+    if companyId is not None:
+        q = q.filter(TaxRegime.company_id == companyId)
+    regimes = q.all()
     result = []
     for r in regimes:
         slabs = [
@@ -663,6 +720,7 @@ def list_tax_regimes(
         ]
         result.append({
             "id": r.id,
+            "company_id": r.company_id,
             "name": r.name,
             "regime_type": r.regime_type,
             "is_active": r.is_active,
@@ -680,15 +738,23 @@ def list_tax_regimes(
 @router.post("/tax-regimes", status_code=201)
 def create_tax_regime(
     data: TaxRegimeCreate,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if data.is_default:
-        db.query(TaxRegime).filter(
+        fq = db.query(TaxRegime).filter(
             TaxRegime.organization_id == current_user.organization_id,
             TaxRegime.is_default.is_(True),
-        ).update({"is_default": False})
-    regime = TaxRegime(organization_id=current_user.organization_id, **data.model_dump(exclude={"slabs"}))
+        )
+        if companyId is not None:
+            fq = fq.filter(TaxRegime.company_id == companyId)
+        fq.update({"is_default": False})
+    regime = TaxRegime(
+        organization_id=current_user.organization_id,
+        company_id=companyId,
+        **data.model_dump(exclude={"slabs"})
+    )
     db.add(regime)
     db.flush()
     for slab_data in data.slabs:
@@ -811,14 +877,16 @@ def list_attendance_policies(
         AttendancePolicy.organization_id == current_user.organization_id,
         AttendancePolicy.status != "inactive",
     )
+    companyId = resolve_company_scope(db, current_user, companyId)
     if companyId is not None:
         from sqlalchemy import or_
-        q = q.filter(or_(AttendancePolicy.company_id == companyId, AttendancePolicy.company_id.is_(None)))
+        q = q.filter(AttendancePolicy.company_id == companyId)
     policies = q.all()
     return [
         {
             "id": p.id,
             "name": p.name,
+            "description": getattr(p, "description", None),
             "working_days_per_week": p.working_days_per_week,
             "working_days": p.working_days,
             "half_day_as_full_paid": p.half_day_as_full_paid,
@@ -826,8 +894,34 @@ def list_attendance_policies(
             "holiday_as_present": p.holiday_as_present,
             "overtime_threshold_hours": p.overtime_threshold_hours,
             "overtime_rate": p.overtime_rate,
+            "overtime_tiers": getattr(p, "overtime_tiers", None),
+            "shift_differential_rates": getattr(p, "shift_differential_rates", None),
             "late_mark_threshold_minutes": p.late_mark_threshold_minutes,
             "half_day_threshold_hours": p.half_day_threshold_hours,
+            "wfh_allowed": getattr(p, "wfh_allowed", False),
+            "geofence_enabled": getattr(p, "geofence_enabled", False),
+            "geofence_radius": getattr(p, "geofence_radius", 100.0),
+            "shift_id": getattr(p, "shift_id", None),
+            "is_shared_template": bool(getattr(p, "is_shared_template", False)),
+            "late_to_absent_count": getattr(p, "late_to_absent_count", None),
+            "early_to_absent_count": getattr(p, "early_to_absent_count", None),
+            "missing_checkout_rule": getattr(p, "missing_checkout_rule", None) or "half_day",
+            "check_in_time": getattr(p, "check_in_time", "09:00"),
+            "check_out_time": getattr(p, "check_out_time", "18:00"),
+            "break_hours": getattr(p, "break_hours", 1.0),
+            "comp_off_enabled": getattr(p, "comp_off_enabled", False),
+            "max_comp_off_balance": getattr(p, "max_comp_off_balance", 5),
+            "max_overtime_hours_per_month": getattr(p, "max_overtime_hours_per_month", None),
+            "selfie_checkin_enabled": getattr(p, "selfie_checkin_enabled", False),
+            "ip_restriction_enabled": getattr(p, "ip_restriction_enabled", False),
+            "allowed_ip_ranges": getattr(p, "allowed_ip_ranges", None),
+            "wifi_checkin_enabled": getattr(p, "wifi_checkin_enabled", False),
+            "allowed_ssids": getattr(p, "allowed_ssids", None),
+            "auto_approve_if_no_mark": getattr(p, "auto_approve_if_no_mark", False),
+            "min_hours_for_full_day": getattr(p, "min_hours_for_full_day", 8.0),
+            "shift_based_payroll": getattr(p, "shift_based_payroll", False),
+            "version": getattr(p, "version", 1),
+            "effective_from": p.effective_from.isoformat() if getattr(p, "effective_from", None) else None,
             "company_id": p.company_id,
             "status": p.status,
         }
@@ -837,15 +931,17 @@ def list_attendance_policies(
 @router.post("/attendance-policies", status_code=201)
 def create_attendance_policy(
     data: AttendancePolicyCreate,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     payload = data.model_dump()
-    # Derive the workweek day-set from working_days_per_week when not explicit
     payload["working_days"] = _derive_working_days(
         payload.get("working_days_per_week", 6), payload.get("working_days")
     )
+    payload["company_id"] = companyId or payload.get("company_id")
     policy = AttendancePolicy(organization_id=current_user.organization_id, **payload)
+    policy.is_shared_template = True
     db.add(policy)
     db.commit()
     db.refresh(policy)
@@ -910,16 +1006,11 @@ def list_industry_templates():
     return summaries
 
 
-def _apply_industry_to_org(db: Session, org_id: int, template_code: str) -> Dict[str, Any]:
-    """Apply an industry template to an organization.
+def _apply_industry_to_org(db: Session, org_id: int, template_code: str, company_id: int = None) -> Dict[str, Any]:
+    """Apply an industry template to an organization, optionally scoped to a company.
 
-    Creates:
-      1. PayrollPolicy with industry defaults
-      2. AttendancePolicy with industry work rules
-      3. StatutorySetting with industry compliance config
-      4. PayrollComponents (earnings + deductions) for the industry
-      5. TaxRegime + TaxSlabs for the industry
-      6. Updates Organization with default policy IDs
+    When company_id is set, all created records are stamped with it so the
+    company gets its own independent payroll/attendance/statutory/tax config.
     """
     tpl = INDUSTRY_TEMPLATES.get(template_code)
     if not tpl:
@@ -931,31 +1022,32 @@ def _apply_industry_to_org(db: Session, org_id: int, template_code: str) -> Dict
 
     created = {"payroll_policy": None, "attendance_policy": None,
                "statutory_settings": None, "tax_regime": None,
-               "components": []}
+               "components": [], "company_id": company_id}
 
     # 1. Payroll Policy
-    policy = PayrollPolicy(organization_id=org_id, **tpl["payroll_policy"])
+    policy = PayrollPolicy(organization_id=org_id, company_id=company_id, **tpl["payroll_policy"])
     db.add(policy)
     db.flush()
     created["payroll_policy"] = policy.id
 
     # 2. Attendance Policy
-    att = AttendancePolicy(organization_id=org_id, **tpl["attendance_policy"])
+    att = AttendancePolicy(organization_id=org_id, company_id=company_id, **tpl["attendance_policy"])
     db.add(att)
     db.flush()
     created["attendance_policy"] = att.id
 
-    # 3. Statutory Settings (upsert)
-    existing_stat = db.query(StatutorySetting).filter(
-        StatutorySetting.organization_id == org_id
-    ).first()
+    # 3. Statutory Settings (upsert by org+company)
+    q = db.query(StatutorySetting).filter(StatutorySetting.organization_id == org_id)
+    if company_id is not None:
+        q = q.filter(StatutorySetting.company_id == company_id)
+    existing_stat = q.first()
     if existing_stat:
         for k, v in tpl["statutory_settings"].items():
             setattr(existing_stat, k, v)
         db.flush()
         created["statutory_settings"] = existing_stat.id
     else:
-        stat = StatutorySetting(organization_id=org_id, **tpl["statutory_settings"])
+        stat = StatutorySetting(organization_id=org_id, company_id=company_id, **tpl["statutory_settings"])
         db.add(stat)
         db.flush()
         created["statutory_settings"] = stat.id
@@ -964,6 +1056,7 @@ def _apply_industry_to_org(db: Session, org_id: int, template_code: str) -> Dict
     for comp_data in tpl.get("components", []):
         comp = PayrollComponent(
             organization_id=org_id,
+            company_id=company_id,
             payroll_policy_id=policy.id,
             **comp_data,
         )
@@ -974,12 +1067,14 @@ def _apply_industry_to_org(db: Session, org_id: int, template_code: str) -> Dict
     # 5. Tax Regime + Slabs
     regime_data = tpl.get("tax_regime", {})
     slabs_data = regime_data.pop("slabs", [])
-    # Deactivate existing default regimes
-    db.query(TaxRegime).filter(
+    fq = db.query(TaxRegime).filter(
         TaxRegime.organization_id == org_id,
         TaxRegime.is_default.is_(True),
-    ).update({"is_default": False})
-    regime = TaxRegime(organization_id=org_id, **regime_data)
+    )
+    if company_id is not None:
+        fq = fq.filter(TaxRegime.company_id == company_id)
+    fq.update({"is_default": False})
+    regime = TaxRegime(organization_id=org_id, company_id=company_id, **regime_data)
     db.add(regime)
     db.flush()
     for slab_data in slabs_data:
@@ -1000,17 +1095,11 @@ def _apply_industry_to_org(db: Session, org_id: int, template_code: str) -> Dict
 @router.post("/industries/{industry_code}/apply")
 def apply_industry_template(
     industry_code: str,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Apply an industry template to the current user's organization.
-
-    This is one-click setup — in seconds, your org gets fully configured
-    payroll, attendance, compliance, and tax settings tailored to your industry.
-
-    Competitors (Keka, greytHR, Darwinbox) charge ₹40,000-₹1,50,000
-    for this configuration and take 4-12 weeks to implement.
-    """
+    """Apply an industry template to the current user's organization, optionally scoped to a company."""
     if industry_code not in get_industry_codes():
         available = ", ".join(get_industry_codes())
         raise HTTPException(
@@ -1024,15 +1113,14 @@ def apply_industry_template(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    # Check if already configured
-    if org.default_payroll_policy_id:
+    if companyId is None and org.default_payroll_policy_id:
         raise HTTPException(
             status_code=409,
-            detail="Organization already has a payroll policy configured. Delete existing policies first or use PUT /industries/{code}/reapply",
+            detail="Organization already has a payroll policy configured. Use reapply or specify companyId.",
         )
 
     try:
-        result = _apply_industry_to_org(db, org.id, industry_code)
+        result = _apply_industry_to_org(db, org.id, industry_code, company_id=companyId)
         tpl = INDUSTRY_TEMPLATES[industry_code]
         return {
             "message": f"Industry template '{tpl['name']}' applied successfully",
@@ -1050,14 +1138,11 @@ def apply_industry_template(
 @router.post("/industries/{industry_code}/reapply")
 def reapply_industry_template(
     industry_code: str,
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Reapply an industry template, replacing all existing policies.
-
-    Deactivates old policies and creates fresh ones from the template.
-    Use this when you want to switch industries or reset to defaults.
-    """
+    """Reapply an industry template for a specific company, replacing existing policies."""
     if industry_code not in get_industry_codes():
         available = ", ".join(get_industry_codes())
         raise HTTPException(
@@ -1071,30 +1156,31 @@ def reapply_industry_template(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    # Deactivate existing policies
-    db.query(PayrollPolicy).filter(
-        PayrollPolicy.organization_id == org.id,
-    ).update({"status": "inactive"})
-    db.query(AttendancePolicy).filter(
-        AttendancePolicy.organization_id == org.id,
-    ).update({"status": "inactive"})
-    db.query(PayrollComponent).filter(
-        PayrollComponent.organization_id == org.id,
-    ).update({"status": "inactive", "is_active": False})
+    dq = db.query(PayrollPolicy).filter(PayrollPolicy.organization_id == org.id)
+    if companyId is not None:
+        dq = dq.filter(PayrollPolicy.company_id == companyId)
+    dq.update({"status": "inactive"})
 
-    # Reset org defaults
-    org.default_payroll_policy_id = None
-    org.default_attendance_policy_id = None
-    org.default_tax_regime_id = None
+    dq = db.query(AttendancePolicy).filter(AttendancePolicy.organization_id == org.id)
+    if companyId is not None:
+        dq = dq.filter(AttendancePolicy.company_id == companyId)
+    dq.update({"status": "inactive"})
+
+    dq = db.query(PayrollComponent).filter(PayrollComponent.organization_id == org.id)
+    if companyId is not None:
+        dq = dq.filter(PayrollComponent.company_id == companyId)
+    dq.update({"status": "inactive", "is_active": False})
+
     db.flush()
 
     try:
-        result = _apply_industry_to_org(db, org.id, industry_code)
+        result = _apply_industry_to_org(db, org.id, industry_code, company_id=companyId)
         tpl = INDUSTRY_TEMPLATES[industry_code]
         return {
             "message": f"Industry template '{tpl['name']}' reapplied successfully",
             "industry": tpl["name"],
             "created": result,
+            "company_id": companyId,
         }
     except Exception as e:
         db.rollback()
@@ -1231,4 +1317,219 @@ def update_organization_state(req: OrgStateRequest, db: Session = Depends(get_db
         "message": f"Organization registered state set to '{req.state}'",
         "resolved_key": resolved,
         "note": "All future payroll runs will auto-calculate PT and LWF for this state.",
+    }
+
+
+# ── Per-Company Setup Wizard ────────────────────────────────────────────────
+
+class CompanySetupRequest(BaseModel):
+    company_id: int
+    industry_code: str  # it_ites, manufacturing, retail, healthcare, etc.
+    state: Optional[str] = None  # for PT/LWF
+    country: str = "India"
+    working_days_per_week: Optional[int] = None  # override industry default
+    custom_pf_rate: Optional[float] = None  # override if needed
+
+
+@router.get("/api/payroll-config/company-setup-status/{company_id}", tags=["Payroll Configuration"])
+def get_company_setup_status(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Check payroll setup completeness for a specific company.
+
+    Returns a checklist showing what's configured and what's missing.
+    This is the "am I ready to run payroll?" check for each company.
+    """
+    from services.payroll_preflight import PayrollPreFlight
+    from datetime import date as _date
+
+    # Use current month for validation
+    today = _date.today()
+    validator = PayrollPreFlight(db)
+    result = validator.validate_company(
+        current_user.organization_id, company_id, today.month, today.year
+    )
+
+    # Build setup checklist
+    checklist = [
+        {
+            "step": 1,
+            "name": "Company Profile",
+            "description": "Company details (country, state, registration)",
+            "status": "pass" if True else "fail",
+            "required": True,
+        },
+        {
+            "step": 2,
+            "name": "Payroll Policy",
+            "description": "Pro-ration method, rounding, currency",
+            "status": "pass" if not any(e["type"] == "payroll_policy" and e["severity"] == "critical" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 3,
+            "name": "Attendance Policy",
+            "description": "Working days, overtime, late rules",
+            "status": "pass" if not any(e["type"] == "attendance_policy" and e["severity"] == "critical" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 4,
+            "name": "Payroll Components",
+            "description": "Earnings (Basic, HRA, etc.) and Deductions (PF, ESI, etc.)",
+            "status": "pass" if not any(e["type"] == "payroll_components" and e["severity"] == "critical" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 5,
+            "name": "Statutory Settings",
+            "description": "PF/ESI/PT rates and ceilings",
+            "status": "pass" if not any(e["type"] == "statutory_setting" and e["severity"] == "critical" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 6,
+            "name": "Tax Configuration",
+            "description": "Tax regime, slabs, deduction caps",
+            "status": "pass" if not any(e["type"] == "tax_regime" and e["severity"] == "critical" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 7,
+            "name": "Employee Salaries",
+            "description": "All employees have base_salary configured",
+            "status": "pass" if not any(e["type"] == "employee_salary" and e["severity"] == "warning" for e in result["errors"] + result.get("warnings", [])) else "warn",
+            "required": True,
+        },
+        {
+            "step": 8,
+            "name": "Attendance Data",
+            "description": "Employees have attendance records for the payroll period",
+            "status": "pass" if not any(e["type"] == "attendance_data" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+        {
+            "step": 9,
+            "name": "Holiday Calendar",
+            "description": "Holidays configured for the payroll period",
+            "status": "pass" if not any(e["type"] == "holidays" for e in result["errors"]) else "info",
+            "required": False,
+        },
+        {
+            "step": 10,
+            "name": "Payroll Template",
+            "description": "Company-specific payroll template created",
+            "status": "pass" if not any(e["type"] == "payroll_template" for e in result["errors"]) else "fail",
+            "required": True,
+        },
+    ]
+
+    passed = sum(1 for s in checklist if s["status"] == "pass")
+    total = len(checklist)
+
+    return {
+        "company_id": company_id,
+        "ready_to_run_payroll": result["valid"],
+        "checklist": checklist,
+        "progress": f"{passed}/{total}",
+        "progress_pct": round(passed / total * 100),
+        "errors": result["errors"],
+        "warnings": result["warnings"],
+    }
+
+
+@router.post("/api/payroll-config/company-quick-setup", tags=["Payroll Configuration"])
+def company_quick_setup(
+    req: CompanySetupRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One-click setup for a specific company.
+
+    Applies an industry template to a specific company, creating:
+    - PayrollPolicy
+    - AttendancePolicy
+    - StatutorySetting
+    - PayrollComponents (earnings + deductions)
+    - TaxRegime + TaxSlabs
+    - PayrollTemplate (linking everything together)
+
+    This is the "I want my restaurant company ready in 1 click" endpoint.
+    """
+    from models import Company, PayrollTemplate
+
+    company = db.query(Company).filter(
+        Company.id == req.company_id,
+        Company.organization_id == current_user.organization_id,
+        Company.deleted_at.is_(None),
+    ).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Check if template already exists
+    existing = db.query(PayrollTemplate).filter(
+        PayrollTemplate.organization_id == current_user.organization_id,
+        PayrollTemplate.company_id == req.company_id,
+        PayrollTemplate.status == 'active',
+        PayrollTemplate.deleted_at.is_(None),
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Company already has a Payroll Template '{existing.name}'. "
+                   f"Use PUT to update it, or delete it first.",
+        )
+
+    # Apply industry template
+    template_data = INDUSTRY_TEMPLATES.get(req.industry_code)
+    if not template_data:
+        raise HTTPException(status_code=400, detail=f"Unknown industry: {req.industry_code}")
+
+    # Create all config objects for this company
+    from data.industry_templates import _apply_industry_to_org
+    try:
+        result = _apply_industry_to_org(db, current_user.organization_id, req.industry_code)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Override working days if specified
+    if req.working_days_per_week:
+        policy = db.query(PayrollPolicy).filter(
+            PayrollPolicy.organization_id == current_user.organization_id,
+            PayrollPolicy.status == 'active',
+        ).order_by(PayrollPolicy.id.desc()).first()
+        if policy:
+            policy.working_days_per_week = req.working_days_per_week
+            days = ",".join(str(i) for i in range(1, req.working_days_per_week + 1))
+            # Update the attendance policy
+            from models import AttendancePolicy
+            att = db.query(AttendancePolicy).filter(
+                AttendancePolicy.organization_id == current_user.organization_id,
+                AttendancePolicy.status == 'active',
+            ).order_by(AttendancePolicy.id.desc()).first()
+            if att:
+                att.working_days_per_week = req.working_days_per_week
+                att.working_days = days
+
+    # Set company country if not set
+    if not getattr(company, 'country', None):
+        company.country = req.country
+
+    # Set state if provided
+    if req.state:
+        org = db.query(Organization).filter(
+            Organization.id == current_user.organization_id
+        ).first()
+        if org:
+            org.registered_state = req.state
+
+    db.commit()
+
+    return {
+        "message": f"Company '{company.name}' configured with {req.industry_code} template",
+        "company_id": req.company_id,
+        "industry": req.industry_code,
+        "checklist": f"Run GET /api/payroll-config/company-setup-status/{req.company_id} to verify",
     }

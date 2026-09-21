@@ -96,7 +96,7 @@ const DashboardLayout = () => {
       if (features.includes('*') || features.includes('all')) return true;
       return features.includes(moduleId);
     };
-    if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'hr_admin' || user.role === 'hr_manager') {
+    if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'hr_admin' || user.role === 'hr_manager' || user.role === 'hr_executive') {
       return ALL_LINKS;
     }
     if (user.role === 'employee' && (!user.allowedModules || user.allowedModules.length === 0)) {

@@ -309,6 +309,7 @@ class Employee(Base):
     gender = Column(String(20))
     blood_group = Column(String(10))  # A+, B+, O+, AB+, A-, B-, O-, AB-
     marital_status = Column(String(20))  # single, married, divorced, widowed
+    is_person_with_disability = Column(Boolean, default=False)
     phone = Column(String(50))
     address = Column(String(500))
     current_address = Column(String(500))
@@ -377,6 +378,8 @@ class Employee(Base):
     base_salary = Column(Float, default=0)
     salary_components = Column(JSON, default=dict)
     salary_template_id = Column(Integer, ForeignKey('salary_templates.id'), nullable=True, index=True)
+    salary_currency = Column(String(10), default='INR')  # per-employee currency override (for multi-currency payroll)
+    currency_exchange_rate = Column(Float, nullable=True)  # employee_currency per 1 unit of policy default_currency; null = auto-fetch
 
     # Company whose salary policy / payroll templates apply to this employee
     # (independent of the org-level company_id; used to scope payroll templates)
@@ -390,6 +393,16 @@ class Employee(Base):
     # Company-wise payroll template (bundles policy + components + statutory +
     # tax regime + attendance + state compliance). Set from the employee form.
     payroll_template_id = Column(Integer, ForeignKey('payroll_templates.id'), nullable=True, index=True)
+
+    # Company-wise leave template (per-type quotas + accrual/carry/encash rules).
+    # Set from the employee form, alongside the attendance template picker.
+    leave_template_id = Column(Integer, ForeignKey('leave_templates.id'), nullable=True, index=True)
+
+    # Pay frequency: how the employee is paid (daily / weekly / monthly / annual CTC).
+    # base_salary always stores the MONTHLY equivalent so the payroll engine works
+    # unchanged; pay_rate keeps the original entered rate (e.g. 500/day).
+    pay_frequency = Column(String(20), default='monthly')
+    pay_rate = Column(Float, nullable=True)
 
     # Geofence: when enabled, check-in/out requires being within the branch geofence;
     # when disabled, the employee can check in/out from anywhere.
@@ -1308,11 +1321,12 @@ class SalaryTemplate(Base):
     special_allowance_percent = Column(Float, default=0)
     other_allowance_percent = Column(Float, default=0)
     organization_id = Column(Integer, ForeignKey('organizations.id'), index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     status = Column(String(50), default='active', index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def __repr__(self):
-        return f'<SalaryTemplate {self.name}>'
+        return f'<SalaryTemplate {self.name} org:{self.organization_id} company:{self.company_id}>'
 
 # ---------------------------------------------------------------------------
 # Multi-Tenant Customizable Payroll Configuration Models
@@ -1324,6 +1338,7 @@ class PayrollPolicy(Base):
 
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     name = Column(String(200), nullable=False, default='Default Payroll Policy')
 
     # Pro-ration settings
@@ -1339,15 +1354,28 @@ class PayrollPolicy(Base):
     # Currency & misc
     default_currency = Column(String(10), default='INR')
     allow_negative_net = Column(Boolean, default=False)
+    daily_rate_divisor = Column(Float, default=30.0)  # 30, 26, or actual working_days for daily rate calc
+    fy_start_month = Column(Integer, default=4)  # Financial year start month (1=Jan, 4=Apr for India)
+    monthly_divisor_for_weekly = Column(Float, default=4.33)  # weeks-to-month conversion factor
+
+    # Multi-currency support
+    # When an employee's salary_currency differs from the policy's default_currency,
+    # the payroll engine uses the exchange_rate to convert.
+    # exchange_rate = employee_currency per 1 unit of default_currency.
+    # e.g., if default_currency=INR and employee_currency=USD, exchange_rate=83.50 means 1 USD = 83.50 INR.
+    # If null, rates are fetched from a currency service or hardcoded fallback.
+    reporting_currency = Column(String(10), nullable=True)  # currency for company-level reports (defaults to default_currency)
+    allow_multi_currency = Column(Boolean, default=False)  # enable per-employee currency override
 
     status = Column(String(20), default='active', index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization = relationship('Organization', foreign_keys=[organization_id], backref='payroll_policies')
+    company = relationship('Company', foreign_keys=[company_id], backref='payroll_policies')
 
     def __repr__(self):
-        return f'<PayrollPolicy {self.name} (org:{self.organization_id})>'
+        return f'<PayrollPolicy {self.name} (org:{self.organization_id} company:{self.company_id})>'
 
 
 class PayrollComponent(Base):
@@ -1360,6 +1388,7 @@ class PayrollComponent(Base):
 
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     payroll_policy_id = Column(Integer, ForeignKey('payroll_policies.id'), nullable=True, index=True)
 
     name = Column(String(200), nullable=False)
@@ -1367,10 +1396,32 @@ class PayrollComponent(Base):
     component_type = Column(String(50), nullable=False)  # earning, deduction, employer_contribution
 
     # Calculation strategy
-    calculation_type = Column(String(50), nullable=False)  # percentage, fixed, formula
+    # Types:
+    #   fixed              — static amount
+    #   percentage         — base_value * calc_value / 100
+    #   formula            — free-form expression (supports conditionals)
+    #   hourly             — hourly_rate * hours_worked
+    #   piece_rate         — rate_per_unit * units_produced
+    #   tiered             — progressive brackets (tiers stored in tiered_config)
+    #   shift_differential — differential multiplier for specific shift types
+    calculation_type = Column(String(50), nullable=False)  # percentage, fixed, formula, hourly, piece_rate, tiered, shift_differential
     calculation_base = Column(String(200), nullable=True)  # basic, gross, net, or component name reference
     calculation_value = Column(Float, default=0)  # percentage or fixed amount
     formula = Column(Text, nullable=True)  # for formula-type calculations
+
+    # Tiered calculation config (for calculation_type='tiered')
+    # JSON array of brackets: [{"from": 0, "to": 40, "rate": 1.0}, {"from": 40, "to": 60, "rate": 1.5}, {"from": 60, "to": null, "rate": 2.0}]
+    # 'from' and 'to' are in the calculation_base units (e.g., overtime hours)
+    tiered_config = Column(JSON, nullable=True)
+
+    # Shift differential config (for calculation_type='shift_differential')
+    # JSON object mapping shift names to multipliers: {"day": 1.0, "evening": 1.1, "night": 1.25, "weekend": 1.5}
+    shift_differential_config = Column(JSON, nullable=True)
+
+    # Input variables needed for formula/piece_rate/hourly calculations
+    # JSON array of variable names that must be supplied per-employee per-period:
+    # e.g., ["units_produced", "hours_worked", "sales_amount"]
+    input_variables = Column(JSON, nullable=True)
 
     # Form 16 (Part B) head — categorizes where this component sits in the
     # salary computation hierarchy (income tax computation u/s 192).
@@ -1403,18 +1454,60 @@ class PayrollComponent(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization = relationship('Organization', backref='payroll_components')
+    company = relationship('Company', foreign_keys=[company_id], backref='payroll_components')
     policy = relationship('PayrollPolicy', backref='components')
 
     def __repr__(self):
         return f'<PayrollComponent {self.name} ({self.component_type})>'
 
 
+class EmployeePayrollInput(Base):
+    """Per-employee per-period variable pay inputs.
+
+    Stores external values needed for piece-rate, hourly, commission, and
+    other variable pay components.  One row per employee per pay period.
+
+    Example inputs:
+      - units_produced: 1500  (for piece_rate component)
+      - hours_worked: 176    (for hourly component)
+      - sales_amount: 500000 (for commission component)
+      - overtime_hours: 12   (for tiered overtime component)
+      - night_shift_hours: 40 (for shift differential component)
+    """
+    __tablename__ = 'employee_payroll_inputs'
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+
+    # JSON object: {"units_produced": 1500, "hours_worked": 176, "sales_amount": 500000}
+    inputs = Column(JSON, nullable=False, default=dict)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('employee_id', 'year', 'month', name='uq_emp_payroll_input_period'),
+    )
+
+    def __repr__(self):
+        return f'<EmployeePayrollInput emp={self.employee_id} {self.year}-{self.month}>'
+
+
 class StatutorySetting(Base):
-    """Per-organization statutory compliance settings (PF, ESI, PT, LWF, Gratuity)."""
+    """Per-organization/company statutory compliance settings (PF, ESI, PT, LWF, Gratuity).
+
+    company_id is nullable: NULL = org-wide default, value = company-specific override.
+    The unique constraint is (organization_id, COALESCE(company_id, 0)) so there can be
+    one org-wide row plus one per company.
+    """
     __tablename__ = 'statutory_settings'
 
     id = Column(Integer, primary_key=True)
-    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, unique=True, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
 
     # PF
     pf_applicable = Column(Boolean, default=True)
@@ -1429,7 +1522,8 @@ class StatutorySetting(Base):
     pf_edli_max_monthly = Column(Float, default=75.0)
     pf_admin_rate = Column(Float, default=0.5)
     pf_admin_min_monthly = Column(Float, default=75.0)
-    eps_wage_ceiling = Column(Float, default=15000.0)  # EPS (pension) capped at 8.33% of this ceiling
+    eps_rate = Column(Float, default=8.33)  # EPS (pension) contribution rate - configurable per company
+    eps_wage_ceiling = Column(Float, default=15000.0)  # EPS (pension) capped at eps_rate% of this ceiling
 
     # ESI
     esi_applicable = Column(Boolean, default=True)
@@ -1466,9 +1560,10 @@ class StatutorySetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization = relationship('Organization', backref='statutory_settings')
+    company = relationship('Company', foreign_keys=[company_id], backref='statutory_settings')
 
     def __repr__(self):
-        return f'<StatutorySetting org:{self.organization_id}>'
+        return f'<StatutorySetting org:{self.organization_id} company:{self.company_id}>'
 
 
 class TaxRegime(Base):
@@ -1480,6 +1575,7 @@ class TaxRegime(Base):
 
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     regime_type = Column(String(20), default='new')  # new, old, custom
     is_active = Column(Boolean, default=True)
@@ -1491,6 +1587,18 @@ class TaxRegime(Base):
     rebate_threshold = Column(Float, default=700000.0)
     rebate_amount = Column(Float, default=0.0)
 
+    # Section 80C/80D/NPS/Home Loan caps — fully configurable per regime
+    section_80c_cap = Column(Float, default=150000.0)
+    section_80d_cap = Column(Float, default=50000.0)  # basic health insurance
+    section_80d_senior_cap = Column(Float, default=100000.0)  # senior citizen health insurance
+    section_80ccd_1b_cap = Column(Float, default=50000.0)  # NPS additional
+    section_24_home_loan_cap = Column(Float, default=200000.0)  # home loan interest
+    section_80c_old_cap = Column(Float, default=150000.0)  # old regime 80C
+    hra_metro_pct = Column(Float, default=50.0)  # HRA exemption % for metro cities
+    hra_non_metro_pct = Column(Float, default=40.0)  # HRA exemption % for non-metro
+    hra_rent_threshold_pct = Column(Float, default=10.0)  # rent paid minus this % of basic
+    basic_pct_of_gross = Column(Float, default=50.0)  # assumed basic as % of gross for HRA auto-calc
+
     # Cess & surcharge
     cess_rate = Column(Float, default=4.0)
     surcharge_config = Column(JSON, nullable=True)  # e.g. [{"from": 5000000, "rate": 10}, ...]
@@ -1500,11 +1608,12 @@ class TaxRegime(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization = relationship('Organization', foreign_keys=[organization_id], backref='tax_regimes')
+    company = relationship('Company', foreign_keys=[company_id], backref='tax_regimes')
     slabs = relationship('TaxSlab', back_populates='tax_regime', cascade='all, delete-orphan',
                          order_by='TaxSlab.from_amount')
 
     def __repr__(self):
-        return f'<TaxRegime {self.name} ({self.financial_year})>'
+        return f'<TaxRegime {self.name} ({self.financial_year}) org:{self.organization_id} company:{self.company_id}>'
 
 
 class TaxSlab(Base):
@@ -1540,6 +1649,12 @@ class InvestmentDeclaration(Base):
     deduction_80c = Column(Float, default=0)       # capped at 150000 in old regime
     deduction_80d = Column(Float, default=0)       # capped at 50000 in old regime
     hra_exemption = Column(Float, default=0)
+    # HRA auto-calculation fields (per the Income Tax Act §10(13A)):
+    # If monthly_rent and basic_for_hra are filled, HRA exemption is auto-calculated
+    # as the minimum of: (a) actual HRA received, (b) 50%/40% of basic (metro/non-metro),
+    # (c) rent paid minus 10% of basic.
+    hra_monthly_rent = Column(Float, default=0)        # Monthly rent paid
+    hra_is_metro = Column(Boolean, default=False)      # Employee resides in metro (Delhi/Mumbai/Kolkata/Chennai)
     lta_exemption = Column(Float, default=0)
     nps_deduction = Column(Float, default=0)       # capped at 50000 (80CCD(1B))
     home_loan_interest = Column(Float, default=0)  # capped at 200000 in old regime
@@ -1642,11 +1757,69 @@ class AttendancePolicy(Base):
 
     # Overtime
     overtime_threshold_hours = Column(Float, default=8.0)
-    overtime_rate = Column(Float, default=1.5)
+    overtime_rate = Column(Float, default=1.5)  # flat rate (used when overtime_tiers is null)
+
+    # Tiered overtime (JSON array of brackets)
+    # e.g., [{"from_hours": 0, "to_hours": 2, "rate": 1.5}, {"from_hours": 2, "to_hours": 4, "rate": 2.0}, {"from_hours": 4, "to_hours": null, "rate": 3.0}]
+    # When set, overrides the flat overtime_rate.
+    overtime_tiers = Column(JSON, nullable=True)
+
+    # Shift differential rates (JSON mapping shift names to multipliers)
+    # e.g., {"day": 1.0, "evening": 1.15, "night": 1.25, "weekend": 1.5, "holiday": 2.0}
+    shift_differential_rates = Column(JSON, nullable=True)
 
     # Late / half-day thresholds
     late_mark_threshold_minutes = Column(Integer, default=15)
     half_day_threshold_hours = Column(Float, default=4.0)
+
+    # True when managed from Attendance -> Configuration (shared template that
+    # payroll templates link to). Payroll-owned copies keep False so the
+    # payroll wizard knows it may edit in place.
+    is_shared_template = Column(Boolean, default=False)
+
+    # Company attendance template fields (configured from the Attendance page)
+    description = Column(Text)
+    wfh_allowed = Column(Boolean, default=False)
+    geofence_enabled = Column(Boolean, default=False)
+    geofence_radius = Column(Float, default=100.0)
+
+    # Default shift for employees on this template (Shift master).
+    shift_id = Column(Integer, ForeignKey('shifts.id'), nullable=True, index=True)
+
+    # Attendance status conversion rules (configured from the Attendance page).
+    # N lates = 1 absent (None = rule off); same for early departures.
+    late_to_absent_count = Column(Integer, nullable=True)
+    early_to_absent_count = Column(Integer, nullable=True)
+    # How a day with check-in but no check-out counts: half_day | absent.
+    missing_checkout_rule = Column(String(20), default='half_day')
+
+    # Check-in / Check-out times
+    check_in_time = Column(String(10), default='09:00')
+    check_out_time = Column(String(10), default='18:00')
+    break_hours = Column(Float, default=1.0)
+
+    # Comp-off
+    comp_off_enabled = Column(Boolean, default=False)
+    max_comp_off_balance = Column(Integer, default=5)
+
+    # Overtime cap
+    max_overtime_hours_per_month = Column(Float, nullable=True)
+
+    # Verification
+    selfie_checkin_enabled = Column(Boolean, default=False)
+    ip_restriction_enabled = Column(Boolean, default=False)
+    allowed_ip_ranges = Column(JSON, nullable=True)
+    wifi_checkin_enabled = Column(Boolean, default=False)
+    allowed_ssids = Column(JSON, nullable=True)
+
+    # Auto rules
+    auto_approve_if_no_mark = Column(Boolean, default=False)
+    min_hours_for_full_day = Column(Float, default=8.0)
+    shift_based_payroll = Column(Boolean, default=False)
+
+    # Versioning: edits create a new effective version; history is read-only.
+    version = Column(Integer, default=1)
+    effective_from = Column(Date, nullable=True)
 
     status = Column(String(20), default='active', index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -1690,6 +1863,11 @@ class PayrollTemplate(Base):
     attendance_policy_id = Column(Integer, ForeignKey('attendance_policies.id'), nullable=True, index=True)
     tax_regime_id = Column(Integer, ForeignKey('tax_regimes.id'), nullable=True, index=True)
 
+    # Linked leave template (shared, from Leave -> Configuration). When set,
+    # employees on this payroll template without their own pinned leave
+    # template resolve quotas from it (see utils.leave_balance_utils).
+    leave_template_id = Column(Integer, ForeignKey('leave_templates.id'), nullable=True, index=True)
+
     # Statutory overrides layered on top of the org StatutorySetting.
     # Keys mirror StatutorySetting column names (snake_case).
     statutory = Column(JSON, default=dict)
@@ -1708,10 +1886,78 @@ class PayrollTemplate(Base):
     company = relationship('Company', backref='payroll_templates')
     payroll_policy = relationship('PayrollPolicy', foreign_keys=[payroll_policy_id])
     attendance_policy = relationship('AttendancePolicy', foreign_keys=[attendance_policy_id])
+    leave_template = relationship('LeaveTemplate', foreign_keys=[leave_template_id])
     tax_regime = relationship('TaxRegime', foreign_keys=[tax_regime_id])
 
     def __repr__(self):
         return f'<PayrollTemplate {self.name} (org:{self.organization_id})>'
+
+
+class LeaveTemplate(Base):
+    """Company-wise leave template: per-type quotas + accrual/carry/encash rules.
+
+    Created from Leave page -> Configuration (grid + wizard, like payroll
+    templates) and pinned on the employee form (Employee.leave_template_id).
+    Quota precedence: pinned template -> scoped config -> single policy ->
+    type Days/Year (see utils.leave_balance_utils).
+
+    Edits bump `version` with a new `effective_from`; past versions are
+    read-only history so payroll inputs never rewrite themselves.
+    """
+    __tablename__ = 'leave_templates'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)  # None = org-wide
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    status = Column(String(20), default='active', index=True)
+
+    # Body: {leaveTypes: [{leave_type_id, code, name, days, paid, encashable, active}],
+    #        accrual: {...}, carryForward: {...}, encashment: {...}, policies: [...]}
+    body = Column(JSON, default=dict)
+
+    # Accrual rules (top-level for easy querying)
+    accrual_method = Column(String(20), default='monthly')  # monthly, quarterly, yearly, frontloaded
+    accrual_day = Column(Integer, default=1)  # day of month for accrual
+    probation_accrual_rate = Column(Float, default=0.5)  # rate during probation
+    max_balance_cap = Column(Integer, nullable=True)  # max leave balance cap
+    lapse_unused = Column(Boolean, default=False)  # expire unused leaves at year end
+
+    # Carry forward rules
+    carry_forward_enabled = Column(Boolean, default=False)
+    carry_forward_max_days = Column(Integer, nullable=True)
+    carry_forward_expiry = Column(String(20), default='year_end')  # year_end, quarter, never
+    carry_forward_use_it_or_lose_it = Column(Boolean, default=False)
+
+    # Encashment rules
+    encashment_enabled = Column(Boolean, default=False)
+    encashment_min_balance = Column(Integer, nullable=True)
+    encashment_rate = Column(Float, nullable=True)  # e.g. 0.83 for 83%
+    encashment_taxable = Column(Boolean, default=False)
+
+    # Holiday rules
+    holiday_optional_limit = Column(Integer, nullable=True)  # max optional holidays per year
+    holiday_auto_apply_national = Column(Boolean, default=False)
+
+    # Application rules
+    enable_half_day = Column(Boolean, default=False)
+    min_leave_for_half_day = Column(Integer, nullable=True)  # min consecutive days to allow half-day
+    advance_notice_days = Column(Integer, nullable=True)  # days in advance to apply
+    max_consecutive_days = Column(Integer, nullable=True)  # max consecutive leave days
+
+    version = Column(Integer, default=1)
+    effective_from = Column(Date, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    organization = relationship('Organization', backref='leave_templates')
+    company = relationship('Company', backref='leave_templates')
+
+    def __repr__(self):
+        return f'<LeaveTemplate {self.name} (org:{self.organization_id})>'
 
 
 class Shift(Base):
@@ -3798,3 +4044,108 @@ class Grievance(Base):
 
     def __repr__(self):
         return f'<Grievance {self.id} {self.status}>'
+
+
+class StatutoryRule(Base):
+    """Versioned, effective-dated statutory rules for any country/state.
+
+    This is the core of the rule-engine architecture: instead of hardcoding
+    statutory rates and formulas, every PF/ESI/PT/LWF/Bonus/Tax rule is stored
+    as a JSON definition with an effective_from/effective_to date range.
+
+    When the government changes a rule (e.g., EPF Scheme 2026), we INSERT a new
+    row with effective_from = the notification date. The payroll engine always
+    resolves the ACTIVE rule for the pay period, so no code changes are needed.
+
+    Hierarchy: country-wide defaults < state-level overrides < org-level overrides.
+    """
+    __tablename__ = 'statutory_rules'
+    __table_args__ = (
+        Index('idx_sr_type_country_state', 'rule_type', 'country', 'state_code'),
+        Index('idx_sr_org_effective', 'organization_id', 'effective_from'),
+        Index('idx_sr_type_org_dates', 'rule_type', 'organization_id', 'effective_from', 'effective_to'),
+        Index('idx_sr_company_effective', 'company_id', 'effective_from'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
+
+    # Rule classification
+    rule_type = Column(String(50), nullable=False, index=True)
+    # Types: pf_contribution, pf_exclusion, esi_contribution, professional_tax,
+    #        lwf, bonus, gratuity, overtime, tax_slab, hra_exemption, etc.
+    rule_subtype = Column(String(50), nullable=True)  # e.g. 'employee', 'employer', 'eps', 'edli'
+
+    # Geographic scope
+    country = Column(String(50), nullable=False, default='India')
+    state_code = Column(String(10), nullable=True)  # NULL = applies to all states
+
+    # Effective dating
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)  # NULL = currently active
+
+    # Rule definition (the actual parameters)
+    # JSON structure varies by rule_type, e.g.:
+    # pf_contribution: {"rate": 12.0, "wage_ceiling": 15000, "max_monthly": 1800, "formula": "min(wages * rate / 100, max_monthly)"}
+    # pf_exclusion: {"enabled": true, "wage_threshold": 15000, "exclude_both": true}
+    # esi: {"employee_rate": 0.75, "employer_rate": 3.25, "gross_ceiling": 21000, "disabled_ceiling": 25000}
+    # professional_tax: {"slabs": [{"from_gross": 0, "to_gross": 15000, "amount": 0}, ...]}
+    # bonus: {"min_rate": 8.33, "max_rate": 20.0, "wage_ceiling": 21000, "annual_wage_ceiling": 252000}
+    # tax_slab: {"regime": "new", "slabs": [{"from": 0, "to": 400000, "rate": 0}, ...], "standard_deduction": 75000, "rebate_threshold": 1200000, "cess_rate": 4.0}
+    definition = Column(JSON, nullable=False, default=dict)
+
+    # Compliance metadata
+    notification_number = Column(String(200), nullable=True)  # e.g., "G.S.R. 525(E)"
+    notification_date = Column(Date, nullable=True)
+    gazette_url = Column(String(500), nullable=True)
+
+    # Status
+    status = Column(String(20), default='active', index=True)  # active, superseded, draft
+    notes = Column(Text)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    organization = relationship('Organization', backref='statutory_rules')
+    company = relationship('Company', foreign_keys=[company_id], backref='statutory_rules')
+
+    def __repr__(self):
+        return f'<StatutoryRule {self.rule_type} {self.country}/{self.state_code or "ALL"} {self.effective_from} org:{self.organization_id} company:{self.company_id}>'
+
+
+class EmployeeVoluntaryPF(Base):
+    """Employee's voluntary PF contribution declaration (EPF Scheme 2026 §12).
+
+    When an employee opts to contribute above the mandatory ₹15,000 ceiling,
+    they declare the voluntary amount here. Either party can reduce/stop at any
+    time (per the 2026 scheme).
+    """
+    __tablename__ = 'employee_voluntary_pf'
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+
+    # Voluntary contribution details
+    voluntary_rate = Column(Float, nullable=True)  # percentage above 12% (e.g. 13.5 means 13.5% total)
+    voluntary_amount = Column(Float, nullable=True)  # OR fixed amount per month
+    employer_matching = Column(Boolean, default=False)  # employer matches voluntary
+    employer_voluntary_rate = Column(Float, nullable=True)
+
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)  # NULL = active
+    status = Column(String(20), default='active', index=True)
+
+    # EPF 2026: either party can stop unilaterally
+    stopped_by_employee = Column(Boolean, default=False)
+    stopped_by_employer = Column(Boolean, default=False)
+    stopped_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    employee = relationship('Employee', backref='voluntary_pf_declarations')
+
