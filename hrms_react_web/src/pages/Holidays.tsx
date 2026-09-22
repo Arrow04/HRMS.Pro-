@@ -8,6 +8,7 @@ import api from '../services/api';
 import toast from 'react-hot-toast';
 import { formatAppDate } from '../services/appSettingsService';
 import { useMasterData } from '../hooks/useMasterData';
+import { useAuth } from '../context/AuthContext';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
 import DatePicker from '../components/DatePicker';
@@ -48,6 +49,7 @@ const HOLIDAY_FORM_TABS = [
 ];
 
 const Holidays = () => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // all | upcoming | past | recurring
@@ -242,7 +244,7 @@ const Holidays = () => {
     const payload = {
       ...newHoliday,
       companyId: newHoliday.companyId === 'all' || !newHoliday.companyId ? undefined : parseInt(newHoliday.companyId),
-      organizationId: 1  // Default organization ID
+      organizationId: user?.organizationId || 1
     };
     if (editingHoliday) {
       updateMutation.mutate({ id: editingHoliday.id, payload });
@@ -259,7 +261,7 @@ const Holidays = () => {
       type: holiday.type || 'public',
       description: holiday.description || '',
       companyId: holiday.companyId?.toString() || '',
-      organizationId: holiday.organizationId?.toString() || '1',
+      organizationId: holiday.organizationId?.toString() || user?.organizationId?.toString() || '1',
       year: holiday.year?.toString() || new Date().getFullYear().toString(),
       isRecurring: holiday.isRecurring || false,
       recurringPattern: holiday.recurringPattern || '',

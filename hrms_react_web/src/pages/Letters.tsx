@@ -1098,6 +1098,11 @@ const Letters = () => {
   }, [template, merged, letterhead, contextRows, contactLine]);
 
   const downloadPdf = useCallback(() => {
+    const missing = template.fields.filter((f: any) => f.required && !merged[f.key]);
+    if (missing.length > 0) {
+      toast.error(`Please fill in: ${missing.map((f: any) => f.label).join(', ')}`);
+      return;
+    }
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });
     const margin = 20;
     const width = 170;

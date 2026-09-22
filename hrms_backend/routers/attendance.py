@@ -435,10 +435,6 @@ def get_attendance(
     except Exception:
         pass
 
-    # Backward-compatible response: period-scoped UI calls expect a plain array.
-    if cursor is None and page == 1 and (period_scoped or limit == 500):
-        return result
-
     return {
         "data": result,
         "pagination": {
@@ -1127,7 +1123,7 @@ def create_manual_attendance(
     except Exception as e:
         tb = traceback.format_exc()
         _log(f"  FAILED: {e}\n{tb}")
-        raise HTTPException(status_code=500, detail=f"MANUAL_ATTENDANCE_ERROR: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create manual attendance record. Please try again.")
 
 
 @router.get("/api/attendance/template", tags=["Attendance"])

@@ -284,6 +284,7 @@ const EmployeeManagement = () => {
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [updateConfirmTarget, setUpdateConfirmTarget] = useState(false);
   const [restoreConfirmTarget, setRestoreConfirmTarget] = useState<ArchivedEmployee | null>(null);
+  const [restoreActiveConfirmId, setRestoreActiveConfirmId] = useState<number | null>(null);
 
   const user = getCurrentUser();
   const isSuperAdmin = user?.role === 'super_admin';
@@ -693,6 +694,7 @@ const EmployeeManagement = () => {
       queryClient.invalidateQueries({ queryKey: ['employeeStats', filterOrgId, filterCompanyId] });
       queryClient.invalidateQueries({ queryKey: ['exitEmployees'] });
     },
+    onSettled: () => setRestoreActiveConfirmId(null),
     onError: () => toast.error('Failed to restore employee'),
   });
 
@@ -895,9 +897,7 @@ const EmployeeManagement = () => {
   };
 
   const handleRestore = (id: number) => {
-    if (confirm('Are you sure you want to restore this employee?')) {
-      restoreMutation.mutate(id);
-    }
+    setRestoreActiveConfirmId(id);
   };
 
   const filteredData = useMemo(() => {
@@ -1460,6 +1460,22 @@ const EmployeeManagement = () => {
           isPending={false}
           onConfirm={confirmProcessExit}
           onCancel={() => setExitConfirmTarget(null)}
+        />
+        <ConfirmActionModal
+          isOpen={restoreActiveConfirmId !== null}
+          title="Restore Employee"
+          message="Are you sure you want to restore this employee? They will be moved back to the active employees list."
+          consequence="The employee will become active again and regain access to the system."
+          confirmLabel="Yes, Restore"
+          variant="success"
+          isPending={restoreMutation.isPending}
+          onConfirm={() => {
+            if (restoreActiveConfirmId !== null) {
+              restoreMutation.mutate(restoreActiveConfirmId);
+              setRestoreActiveConfirmId(null);
+            }
+          }}
+          onCancel={() => setRestoreActiveConfirmId(null)}
         />
     </div>
     </div>

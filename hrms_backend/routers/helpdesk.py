@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
 from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
+from core.datetime_utils import ist_now_naive
 from core.shared import _get_employee_id_for_user
 from database import get_db, get_read_db
 from models import Employee, SupportTicket, User
@@ -64,7 +65,7 @@ def _serialize(ticket: SupportTicket, db: Session, emp_map=None, user_map=None) 
 
 
 def _ticket_number(ticket_id: int) -> str:
-    return f"HD-{datetime.utcnow().year}-{ticket_id:05d}"
+    return f"HD-{ist_now_naive().year}-{ticket_id:05d}"
 
 
 @router.get("/api/helpdesk/tickets", tags=["Helpdesk"])
@@ -181,7 +182,7 @@ def update_ticket(
             raise HTTPException(status_code=403, detail="Only admins can resolve tickets")
         ticket.status = status
         if status in ("resolved", "closed") and not ticket.resolved_at:
-            ticket.resolved_at = datetime.utcnow()
+            ticket.resolved_at = ist_now_naive()
         if status not in ("resolved", "closed"):
             ticket.resolved_at = None
     if "assigned_to" in data and is_admin:
@@ -204,6 +205,6 @@ def delete_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     assert_company_allowed(db, current_user, ticket.company_id)
-    ticket.deleted_at = datetime.utcnow()
+    ticket.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Ticket deleted", "id": ticket_id}

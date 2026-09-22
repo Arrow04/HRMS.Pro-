@@ -240,8 +240,17 @@ def finalize_attendance(
     (employeeId); employee scope wins for a per-employee double-check.
     """
     org_id = current_user.organization_id
-    month = int(payload.get("month"))
-    year = int(payload.get("year"))
+    raw_month = payload.get("month")
+    raw_year = payload.get("year")
+    if raw_month is None or raw_year is None:
+        raise HTTPException(status_code=400, detail="month and year are required")
+    try:
+        month = int(raw_month)
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="month and year must be integers")
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="month must be between 1 and 12")
     company_id = payload.get("companyId")
     company_id = int(company_id) if company_id not in (None, "", "all") else None
     employee_id = payload.get("employeeId")
@@ -288,8 +297,17 @@ def reopen_attendance(
 ):
     """Reopen a finalized payroll period so corrections can be made."""
     org_id = current_user.organization_id
-    month = int(payload.get("month"))
-    year = int(payload.get("year"))
+    raw_month = payload.get("month")
+    raw_year = payload.get("year")
+    if raw_month is None or raw_year is None:
+        raise HTTPException(status_code=400, detail="month and year are required")
+    try:
+        month = int(raw_month)
+        year = int(raw_year)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="month and year must be integers")
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="month must be between 1 and 12")
     company_id = payload.get("companyId")
     company_id = int(company_id) if company_id not in (None, "", "all") else None
     employee_id = payload.get("employeeId")

@@ -209,56 +209,22 @@ const Attendance = () => {
   });
   const [mounted, setMounted] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
-  const [manualEntry, setManualEntry] = useState({
-    employeeId: '',
-    organizationId: '',
-    companyId: '',
-    branchId: '',
-    departmentId: '',
-    shiftId: '',
-    attendanceType: '',
-    date: new Date().toISOString().split('T')[0],
-    checkIn: '',
-    checkOut: '',
-    status: 'Present',
-    workHours: 0,
-    scheduledHours: 8,
-    overtimeHours: 0,
-    breakHours: 0,
-    isLate: false,
-    lateMinutes: 0,
-    isEarlyDeparture: false,
-    earlyDepartureMinutes: 0,
-    notes: '',
-    comments: '',
-    reason: '',
-    location: '',
-    checkInLocationName: '',
-    checkOutLocationName: '',
-    checkInLatitude: 0,
-    checkInLongitude: 0,
-    checkOutLatitude: 0,
-    checkOutLongitude: 0,
-    geofenceId: '',
-    isWithinGeofence: true,
-    checkInSelfieUrl: '',
-    checkOutSelfieUrl: '',
-    selfieVerified: false,
-    deviceId: '',
-    deviceType: 'web',
-    ipAddress: '',
-    userAgent: '',
-    isWorkFromHome: false,
-    wfhApprovalId: '',
-    wfhLocation: '',
-    isManualEntry: true,
-    approvedBy: '',
-    approvalComments: '',
-    leaveApplicationId: '',
-    isOnLeave: false,
-    isHoliday: false,
-    holidayId: ''
+  const blankManualEntry = () => ({
+    employeeId: '', organizationId: '', companyId: '', branchId: '', departmentId: '', shiftId: '',
+    attendanceType: '', date: new Date().toISOString().split('T')[0], checkIn: '', checkOut: '',
+    status: 'Present', workHours: 0, scheduledHours: 8, overtimeHours: 0, breakHours: 0,
+    isLate: false, lateMinutes: 0, isEarlyDeparture: false, earlyDepartureMinutes: 0,
+    notes: '', comments: '', reason: '', location: '',
+    checkInLocationName: '', checkOutLocationName: '', checkInLatitude: 0, checkInLongitude: 0,
+    checkOutLatitude: 0, checkOutLongitude: 0, geofenceId: '', isWithinGeofence: true,
+    checkInSelfieUrl: '', checkOutSelfieUrl: '', selfieVerified: false,
+    deviceId: '', deviceType: 'web', ipAddress: '', userAgent: '',
+    isWorkFromHome: false, wfhApprovalId: '', wfhLocation: '', isManualEntry: true,
+    approvedBy: '', approvalComments: '', leaveApplicationId: '',
+    isOnLeave: false, isHoliday: false, holidayId: '',
   });
+
+  const [manualEntry, setManualEntry] = useState(blankManualEntry);
 
   useEffect(() => {
     setMounted(true);
@@ -366,54 +332,7 @@ const Attendance = () => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setShowManualModal(false);
       setEditingAttendanceId(null);
-      setManualEntry({
-        employeeId: '',
-        organizationId: '',
-        companyId: '', branchId: '',
-        departmentId: '',
-        shiftId: '', attendanceType: '',
-        date: new Date().toISOString().split('T')[0],
-        checkIn: '',
-        checkOut: '',
-        status: 'Present',
-        workHours: 0,
-        scheduledHours: 8,
-        overtimeHours: 0,
-        breakHours: 0,
-        isLate: false,
-        lateMinutes: 0,
-        isEarlyDeparture: false,
-        earlyDepartureMinutes: 0,
-        notes: '',
-        comments: '',
-        reason: '',
-        location: '',
-        checkInLocationName: '',
-        checkOutLocationName: '',
-        checkInLatitude: 0,
-        checkInLongitude: 0,
-        checkOutLatitude: 0,
-        checkOutLongitude: 0,
-        geofenceId: '',
-        isWithinGeofence: true,
-        checkInSelfieUrl: '',
-        checkOutSelfieUrl: '',
-        selfieVerified: false,
-        deviceId: '',
-        deviceType: 'web',
-        ipAddress: '',
-        userAgent: '',
-        isWorkFromHome: false,
-        wfhApprovalId: '',
-        wfhLocation: '',
-        isManualEntry: true,
-        approvedBy: '',
-        approvalComments: '',
-        leaveApplicationId: '',
-        isOnLeave: false,
-        isHoliday: false,
-        holidayId: ''
-      });
+      setManualEntry(blankManualEntry());
     },
     onError: () => toast.error('Failed to record attendance')
   });
@@ -481,54 +400,7 @@ const Attendance = () => {
       setTimeout(() => {
       setIsClosing(false);
       setShowManualModal(false);
-      setManualEntry({
-        employeeId: '',
-        organizationId: '',
-        companyId: '', branchId: '',
-        departmentId: '',
-        shiftId: '', attendanceType: '',
-        date: new Date().toISOString().split('T')[0],
-        checkIn: '',
-        checkOut: '',
-        status: 'Present',
-        workHours: 0,
-        scheduledHours: 8,
-        overtimeHours: 0,
-        breakHours: 0,
-        isLate: false,
-        lateMinutes: 0,
-        isEarlyDeparture: false,
-        earlyDepartureMinutes: 0,
-        notes: '',
-        comments: '',
-        reason: '',
-        location: '',
-        checkInLocationName: '',
-        checkOutLocationName: '',
-        checkInLatitude: 0,
-        checkInLongitude: 0,
-        checkOutLatitude: 0,
-        checkOutLongitude: 0,
-        geofenceId: '',
-        isWithinGeofence: true,
-        checkInSelfieUrl: '',
-        checkOutSelfieUrl: '',
-        selfieVerified: false,
-        deviceId: '',
-        deviceType: 'web',
-        ipAddress: '',
-        userAgent: '',
-        isWorkFromHome: false,
-        wfhApprovalId: '',
-        wfhLocation: '',
-        isManualEntry: true,
-        approvedBy: '',
-        approvalComments: '',
-        leaveApplicationId: '',
-        isOnLeave: false,
-        isHoliday: false,
-        holidayId: ''
-      });
+      setManualEntry(blankManualEntry());
       setFormTab('basic');
     }, 300);
   };
@@ -998,7 +870,7 @@ const Attendance = () => {
                     <span className="hidden sm:inline">Upload</span>
                     </button>
                     <button
-                    onClick={() => { setShowManualModal(true); setManualEntry({ employeeId: '', organizationId: '', companyId: '', branchId: '', departmentId: '', shiftId: '', attendanceType: '', date: new Date().toISOString().split('T')[0], checkIn: '', checkOut: '', status: 'Present', workHours: 0, scheduledHours: 8, overtimeHours: 0, breakHours: 0, isLate: false, lateMinutes: 0, isEarlyDeparture: false, earlyDepartureMinutes: 0, notes: '', comments: '', reason: '', location: '', checkInLocationName: '', checkOutLocationName: '', checkInLatitude: 0, checkInLongitude: 0, checkOutLatitude: 0, checkOutLongitude: 0, geofenceId: '', isWithinGeofence: true, checkInSelfieUrl: '', checkOutSelfieUrl: '', selfieVerified: false, deviceId: '', deviceType: 'web', ipAddress: '', userAgent: '', isWorkFromHome: false, wfhApprovalId: '', wfhLocation: '', isManualEntry: true, approvedBy: '', approvalComments: '', leaveApplicationId: '', isOnLeave: false, isHoliday: false, holidayId: '' }); setFormTab('basic'); setIsClosing(false); }}
+                    onClick={() => { setShowManualModal(true); setManualEntry(blankManualEntry()); setFormTab('basic'); setIsClosing(false); }}
                     className="flex items-center gap-2 px-4 py-2.5 bg-white text-[#1C64F2] text-sm font-semibold rounded-xl shadow-lg shadow-black/20 transition-transform hover:scale-[1.02]"
                     >
                     <Plus className="w-4 h-4" />
@@ -1152,19 +1024,17 @@ const Attendance = () => {
               onEdit={(record) => {
                 setEditingAttendanceId(record.id as number);
                 setManualEntry({
+                  ...blankManualEntry(),
                   employeeId: record.employeeId?.toString() || '',
-                  organizationId: '',
                   companyId: (record.companyId || '').toString(),
                   branchId: (record.branchId || '').toString(),
                   departmentId: (record.departmentId || '').toString(),
                   shiftId: (record.shiftId || '').toString(),
-                  attendanceType: '',
                   date: record.date || '',
                   checkIn: record.checkIn || '',
                   checkOut: record.checkOut || '',
                   status: record.status || '',
                   workHours: record.workHours || 0,
-                  scheduledHours: 8,
                   overtimeHours: record.overtimeHours || 0,
                   breakHours: record.breakHours || 0,
                   isLate: record.isLate || false,
@@ -1181,25 +1051,6 @@ const Attendance = () => {
                   checkInLongitude: record.checkInLongitude || 0,
                   checkOutLatitude: record.checkOutLatitude || 0,
                   checkOutLongitude: record.checkOutLongitude || 0,
-                  geofenceId: '',
-                  isWithinGeofence: true,
-                  checkInSelfieUrl: '',
-                  checkOutSelfieUrl: '',
-                  selfieVerified: false,
-                  deviceId: '',
-                  deviceType: 'web',
-                  ipAddress: '',
-                  userAgent: '',
-                  isWorkFromHome: false,
-                  wfhApprovalId: '',
-                  wfhLocation: '',
-                  isManualEntry: true,
-                  approvedBy: '',
-                  approvalComments: '',
-                  leaveApplicationId: '',
-                  isOnLeave: false,
-                  isHoliday: false,
-                  holidayId: ''
                 });
                 setShowManualModal(true);
                 setFormTab('basic');
@@ -1253,18 +1104,14 @@ const Attendance = () => {
                           setFormTab('basic');
                           setIsClosing(false);
                           setManualEntry({
+                            ...blankManualEntry(),
                             employeeId: String(record.employeeId),
-                            organizationId: '',
-                            companyId: '', branchId: '',
-                            departmentId: '',
                             shiftId: (record.shiftId || '') as string,
-                            attendanceType: '',
                             date: record.date || new Date().toISOString().split('T')[0],
                             checkIn: record.checkIn || '',
                             checkOut: record.checkOut || '',
                             status: record.status || 'Present',
                             workHours: record.workHours || 0,
-                            scheduledHours: record.scheduledHours || 8,
                             overtimeHours: record.overtimeHours || 0,
                             breakHours: record.breakHours || 0,
                             isLate: record.isLate || false,
@@ -1281,25 +1128,6 @@ const Attendance = () => {
                             checkInLongitude: record.checkInLongitude || 0,
                             checkOutLatitude: record.checkOutLatitude || 0,
                             checkOutLongitude: record.checkOutLongitude || 0,
-                            geofenceId: '',
-                            isWithinGeofence: true,
-                            checkInSelfieUrl: '',
-                            checkOutSelfieUrl: '',
-                            selfieVerified: false,
-                            deviceId: '',
-                            deviceType: 'web',
-                            ipAddress: '',
-                            userAgent: '',
-                            isWorkFromHome: false,
-                            wfhApprovalId: '',
-                            wfhLocation: '',
-                            isManualEntry: true,
-                            approvedBy: '',
-                            approvalComments: '',
-                            leaveApplicationId: '',
-                            isOnLeave: false,
-                            isHoliday: false,
-                            holidayId: ''
                           });
                           setShowManualModal(true);
                         }}

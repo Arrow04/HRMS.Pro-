@@ -26,6 +26,7 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import EmptyState from '../components/EmptyState';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import type { Employee, Attendance, Payroll, LeaveApplication, Expense, Holiday, Department, Company } from '../types';
 
 
@@ -286,6 +287,7 @@ const Reports = () => {
   const [selectedCompany, setSelectedCompany] = useState('');
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [deleteScheduleTarget, setDeleteScheduleTarget] = useState<string | null>(null);
 
   const { data: modulesOptions = [] } = useMasterData('MODULES');
   const { data: auditModuleOptions = [] } = useMasterData('AUDIT_MODULE');
@@ -733,17 +735,21 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
   };
 
   const handleDeleteSchedule = async (scheduleId: string) => {
-    if (!confirm('Are you sure you want to delete this schedule?')) {
-      return;
-    }
+    setDeleteScheduleTarget(scheduleId);
+  };
+
+  const confirmDeleteSchedule = async () => {
+    if (!deleteScheduleTarget) return;
 
     try {
-      await api.delete(`/reports/schedules/${scheduleId}`);
+      await api.delete(`/reports/schedules/${deleteScheduleTarget}`);
       toast.success('Schedule deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['scheduled-reports'] });
     } catch (error) {
       // Error logged
       toast.error('Failed to delete schedule');
+    } finally {
+      setDeleteScheduleTarget(null);
     }
   };
 
@@ -2125,6 +2131,12 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
           {activeSection === 'ai-insights' && <AiInsightsPanel overviewData={overviewData} />}
         </div>
       </div>
+      <ConfirmDeleteModal
+        isOpen={deleteScheduleTarget !== null}
+        onConfirm={confirmDeleteSchedule}
+        onClose={() => setDeleteScheduleTarget(null)}
+        itemName="this schedule"
+      />
     </div>
   );
 };

@@ -356,11 +356,6 @@ async def serve_uploaded_file(path: str, current_user: User = Depends(get_curren
 # Health & Readiness
 # ---------------------------------------------------------------------------
 
-@app.get("/health/ready")
-def health_ready():
-    return {"status": "ready"}
-
-
 @app.get("/health/live")
 def health_live():
     return {"status": "live"}

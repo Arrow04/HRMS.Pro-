@@ -49,6 +49,23 @@ def notify_user(
     )
     db.add(n)
     db.flush()
+
+    # Send real-time notification via WebSocket
+    try:
+        import asyncio
+        from core.websocket_manager import manager
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(manager.send_to_user(user_id, {
+                "type": "notification",
+                "id": n.id,
+                "title": title,
+                "body": body,
+                "notification_type": type,
+            }))
+    except Exception:
+        pass  # WebSocket is best-effort
+
     return n
 
 
@@ -133,6 +150,29 @@ def notify_leave_decided(db: Session, lv, employee_name: str, action: str, appro
             reference_id=ref,
             data={"leaveId": lv.id, "status": status, "employeeName": employee_name},
         )
+
+    # 4. Send email to employee
+    try:
+        from services.email_service import EmailService, brand_header
+        emp = db.query(Employee).filter(Employee.id == getattr(lv, "employee_id", None)).first()
+        if emp and getattr(emp, "email", None):
+            start = _short_date(getattr(lv, "start_date", None))
+            end = _short_date(getattr(lv, "end_date", None))
+            color = "#059669" if status == "approved" else "#DC2626"
+            html = f"""{brand_header(f'Leave {status}', f'Your leave request has been {verb}')}
+<div style="padding:32px 40px;">
+  <p style="font-size:15px;color:#333;">Dear {employee_name},</p>
+  <p style="font-size:14px;color:#555;margin:12px 0;">Your leave request for <strong>{start} to {end}</strong> ({lv.total_days or 0} day(s)) has been <strong style="color:{color}">{verb}</strong> by {approver_name}.</p>
+  <div style="background:#f8fafc;border-radius:8px;padding:16px;margin:16px 0;">
+    <p style="font-size:13px;color:#666;margin:4px 0;"><strong>Status:</strong> <span style="color:{color}">{status.upper()}</span></p>
+    <p style="font-size:13px;color:#666;margin:4px 0;"><strong>Approved by:</strong> {approver_name}</p>
+    <p style="font-size:13px;color:#666;margin:4px 0;"><strong>Duration:</strong> {lv.total_days or 0} day(s)</p>
+  </div>
+  <p style="font-size:13px;color:#999;margin-top:20px;">This is an automated notification from HRMS.Pro!</p>
+</div>"""
+            EmailService.send_email(emp.email, f"Leave {status.capitalize()} — HRMS.Pro", html)
+    except Exception:
+        pass  # Email is best-effort
 
 
 def notify_expense_submitted(db: Session, exp, employee_name: str):

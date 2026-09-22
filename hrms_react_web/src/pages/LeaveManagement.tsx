@@ -157,6 +157,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: LeaveRow[] } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: LeaveRow[] } | null>(null);
+  const [deleteLeaveTypeTarget, setDeleteLeaveTypeTarget] = useState<LeaveTypeRow | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [historyLeaveId, setHistoryLeaveId] = useState<number | null>(null);
@@ -188,7 +189,12 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
       try { const r = await api.get('/leave-balances', { params: { year: filterYear || undefined, limit: 500, page: 1 } }); return r.data?.data ?? r.data ?? []; } catch { return []; }
     },
   });
-  const filteredBalances = balances;
+  const filteredBalances = balances.filter((b: any) => {
+    if (filterCompany !== 'all' && String(b.company_id) !== String(filterCompany)) return false;
+    if (filterBranch !== 'all' && String(b.branch_id) !== String(filterBranch)) return false;
+    if (filterDepartment !== 'all' && String(b.department_id) !== String(filterDepartment)) return false;
+    return true;
+  });
 
     const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
@@ -709,7 +715,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
     { label: 'Leave Applied', value: stats.total, icon: Calendar, color: 'purple', tooltip: 'Total leave applications', trend: stats.total > 0 ? 5 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('all'); } },
     { label: 'Approval Pending', value: stats.pending, icon: Clock, color: 'orange', tooltip: 'Leave requests awaiting approval', trend: stats.pending > 0 ? -stats.pending : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('pending'); } },
     { label: 'Approved', value: stats.approved, icon: CheckCircle2, color: 'green', tooltip: 'Approved leave requests', trend: stats.approved > 0 ? 12 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('approved'); } },
-    { label: 'Rejected', value: stats.rejected, icon: XCircle, RotateCcw, color: 'red', tooltip: 'Rejected leave requests', trend: stats.rejected > 0 ? -3 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('rejected'); } },
+    { label: 'Rejected', value: stats.rejected, icon: XCircle, color: 'red', tooltip: 'Rejected leave requests', trend: stats.rejected > 0 ? -3 : 0, onClick: () => { setActiveTab('requests'); setStatusFilter('rejected'); } },
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -1060,7 +1066,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                       <button onClick={() => openEditLeaveType(type)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
                     </Tooltip>
                     <Tooltip id={`delete-leave-${type.id}`} content="Delete Leave Type">
-                      <button onClick={() => { if (confirm(`Deactivate leave type "${type.name}"?`)) deleteLeaveTypeMutation.mutate(type.id); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => setDeleteLeaveTypeTarget(type)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                     </Tooltip>
                   </div>
                 )}
@@ -1425,6 +1431,17 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
             .finally(() => setInitBalanceState((p) => ({ ...p, loading: false })));
         }}
         onCancel={() => setShowInitBalanceConfirm(false)}
+      />
+      <ConfirmDeleteModal
+        isOpen={deleteLeaveTypeTarget !== null}
+        onConfirm={() => {
+          if (deleteLeaveTypeTarget) {
+            deleteLeaveTypeMutation.mutate(deleteLeaveTypeTarget.id);
+          }
+        }}
+        onClose={() => setDeleteLeaveTypeTarget(null)}
+        itemName={deleteLeaveTypeTarget?.name}
+        isDeleting={deleteLeaveTypeMutation.isPending}
       />
     </div>
   );

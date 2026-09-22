@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
 from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
+from core.datetime_utils import ist_now_naive
 from core.shared import _get_employee_id_for_user
 from database import get_db, get_read_db
 from models import Employee, Grievance, User
@@ -167,7 +168,7 @@ def update_grievance(
             raise HTTPException(status_code=403, detail="Only admins can resolve grievances")
         grievance.status = status
         if status in ("resolved", "closed") and not grievance.resolved_at:
-            grievance.resolved_at = datetime.utcnow()
+            grievance.resolved_at = ist_now_naive()
         if status not in ("resolved", "closed"):
             grievance.resolved_at = None
     db.commit()
@@ -186,6 +187,6 @@ def delete_grievance(
     if not grievance:
         raise HTTPException(status_code=404, detail="Grievance not found")
     assert_company_allowed(db, current_user, grievance.company_id)
-    grievance.deleted_at = datetime.utcnow()
+    grievance.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Grievance deleted", "id": grievance_id}

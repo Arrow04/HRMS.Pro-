@@ -766,6 +766,8 @@ def approve_leave(
         org_owned(lv, current_user.organization_id)
     _leave_company_guarded(db, lv, current_user)
 
+    previous_status = lv.status
+
     if approval_data.action == "approve":
         if approval_data.level >= (lv.total_approval_levels or 1):
             lv.status = "approved"
@@ -793,7 +795,7 @@ def approve_leave(
         approver_id=current_user.id,
         approval_level=approval_data.level or 1,
         action=approval_data.action,
-        previous_status=lv.status,
+        previous_status=previous_status,
         new_status=lv.status if approval_data.action == "approve" else "rejected",
         comments=approval_data.comments,
         ip_address=request.client.host if hasattr(request, 'client') and request.client else None,
@@ -807,6 +809,7 @@ def approve_leave(
 def _apply_leave_decision(db: Session, lv, action: str, current_user: User, comments: Optional[str] = None) -> LeaveApplication:
     """Shared leave approve/reject logic (used by POST and PUT endpoints)."""
     from datetime import timedelta
+    previous_status = lv.status
     if action == "approve":
         lv.status = "approved"
         lv.approved_at = ist_now_naive()
@@ -822,7 +825,7 @@ def _apply_leave_decision(db: Session, lv, action: str, current_user: User, comm
         approver_id=current_user.id,
         approval_level=1,
         action=action,
-        previous_status=lv.status,
+        previous_status=previous_status,
         new_status="approved" if action == "approve" else "rejected",
         comments=comments,
     )

@@ -215,7 +215,7 @@ def get_weekly_roster(
         Shift.end_time.label('shift_end_time')
     ).join(Employee, DutyRoster.employee_id == Employee.id
     ).join(Shift, DutyRoster.shift_id == Shift.id
-    ).filter(DutyRoster.week_start_date == week_start)
+    ).filter(DutyRoster.deleted_at.is_(None), DutyRoster.week_start_date == week_start)
     
     if current_user.role != "superadmin" and current_user.organization_id:
         query = query.filter(Employee.organization_id == current_user.organization_id)

@@ -1684,9 +1684,6 @@ class InvestmentDeclaration(Base):
     def __repr__(self):
         return f'<InvestmentDeclaration emp:{self.employee_id} FY:{self.financial_year} {self.status}>'
 
-    def __repr__(self):
-        return f'<TaxSlab {self.from_amount}-{self.to_amount or "inf"} @ {self.rate}%>'
-
 
 class StatePTSlab(Base):
     """Effective-dated Professional Tax slab per Indian state.

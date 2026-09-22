@@ -224,10 +224,22 @@ async def import_holidays(
     content = await file.read()
     reader = csv.DictReader(io.StringIO(content.decode()))
     count = 0
+    skipped = 0
     for row in reader:
+        name = row.get("name")
+        date = row.get("date")
+        existing = db.query(Holiday).filter(
+            Holiday.name == name,
+            Holiday.date == date,
+            Holiday.company_id == companyId,
+            Holiday.organization_id == current_user.organization_id,
+        ).first()
+        if existing:
+            skipped += 1
+            continue
         h = Holiday(
-            name=row.get("name"),
-            date=row.get("date"),
+            name=name,
+            date=date,
             type=row.get("type", "public"),
             description=row.get("description", ""),
             company_id=companyId,
@@ -238,5 +250,8 @@ async def import_holidays(
         db.add(h)
         count += 1
     db.commit()
-    return {"message": f"{count} holidays imported", "count": count}
+    msg = f"{count} holidays imported"
+    if skipped:
+        msg += f", {skipped} skipped (already exist)"
+    return {"message": msg, "count": count}
 

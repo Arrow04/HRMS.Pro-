@@ -102,6 +102,23 @@ def create_notification(
     db.add(n)
     db.commit()
     db.refresh(n)
+
+    # Send real-time notification via WebSocket
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(manager.send_to_user(data.userId, {
+                "type": "notification",
+                "id": n.id,
+                "title": n.title,
+                "body": n.body,
+                "notification_type": n.type,
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+            }))
+    except Exception:
+        pass  # WebSocket is best-effort
+    db.refresh(n)
     return {"message": "Notification created", "id": n.id}
 
 
@@ -152,4 +169,23 @@ def mark_all_notifications_read(
     ).update({"is_read": True, "read_at": now})
     db.commit()
     return {"message": "All notifications marked as read"}
+
+
+# ── WebSocket for real-time notifications ──
+
+from fastapi import WebSocket, WebSocketDisconnect
+from core.websocket_manager import manager
+
+
+@router.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: int):
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Client can send heartbeats or ack messages
+            if data == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
 

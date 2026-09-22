@@ -29,6 +29,7 @@ import PageHero from '../components/PageHero';
 import BillingPanel from '../components/BillingPanel';
 import ActivityLog from './ActivityLog';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import { getCountryDefaults } from '../utils/countryDefaults';
 import type { LucideIcon } from 'lucide-react';
@@ -294,6 +295,7 @@ const HRPoliciesPanel = () => {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', icon: 'document-text-outline', color: '#3B82F6', sortOrder: 0, bullets: [''] as string[] });
   const [saving, setSaving] = useState(false);
+  const [deletePolicyTarget, setDeletePolicyTarget] = useState<HRPolicy | null>(null);
 
   const load = async () => {
     try {
@@ -327,12 +329,17 @@ const HRPoliciesPanel = () => {
   };
 
   const handleDelete = async (p: HRPolicy) => {
-    if (!confirm(`Delete "${p.title}"?`)) return;
+    setDeletePolicyTarget(p);
+  };
+
+  const confirmDeletePolicy = async () => {
+    if (!deletePolicyTarget) return;
     try {
-      await api.delete(`/api/policies/${p.id}`);
+      await api.delete(`/api/policies/${deletePolicyTarget.id}`);
       toast.success('Policy deleted');
       load();
     } catch { toast.error('Failed to delete'); }
+    setDeletePolicyTarget(null);
   };
 
   const updateBullet = (i: number, val: string) => {
@@ -456,6 +463,12 @@ const HRPoliciesPanel = () => {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={deletePolicyTarget !== null}
+        onConfirm={confirmDeletePolicy}
+        onClose={() => setDeletePolicyTarget(null)}
+        itemName={deletePolicyTarget?.title}
+      />
     </div>
   );
 };
@@ -477,6 +490,7 @@ const UserManagementPanel = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserRow | null>(null);
   const [bulkDeleteConfirmItems, setBulkDeleteConfirmItems] = useState<UserRow[] | null>(null);
+  const [revokeDeviceTarget, setRevokeDeviceTarget] = useState<{ id: number; name: string } | null>(null);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [permissionsUser, setPermissionsUser] = useState<UserRow | null>(null);
 
@@ -1868,15 +1882,19 @@ const DeviceSettings = () => {
   };
 
   const handleRevoke = async (deviceId: number) => {
-    if (!confirm('Are you sure you want to revoke this device? You will need to login again from this device.')) return;
-    
+    setRevokeDeviceTarget({ id: deviceId, name: 'this device' });
+  };
+
+  const confirmRevokeDevice = async () => {
+    if (!revokeDeviceTarget) return;
     try {
-      await api.delete(`/api/auth/devices/${deviceId}`);
+      await api.delete(`/api/auth/devices/${revokeDeviceTarget.id}`);
       toast.success('Device revoked successfully');
       loadDevices();
     } catch (error) {
       toast.error('Failed to revoke device');
     }
+    setRevokeDeviceTarget(null);
   };
 
   if (loading) {
@@ -2520,6 +2538,12 @@ const Settings = () => {
           </div>
         </div>
       </div>
+      <ConfirmDeleteModal
+        isOpen={revokeDeviceTarget !== null}
+        onConfirm={confirmRevokeDevice}
+        onClose={() => setRevokeDeviceTarget(null)}
+        itemName={revokeDeviceTarget?.name}
+      />
     </div>
   );
 };
