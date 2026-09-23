@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
+import { useAuth } from './context/AuthContext';
+import { useWebSocket } from './hooks/useWebSocket';
 
 // Suppress React 19 dev warning about history.pushState({}, ...) used by React Router v7
 if (import.meta.env.DEV) {
@@ -85,6 +87,8 @@ const PageLoader = () => (
 );
 
 function App() {
+  const { user } = useAuth();
+  useWebSocket(user?.id);
    return (
      <BrowserRouter>
         <Suspense fallback={<PageLoader />}>
