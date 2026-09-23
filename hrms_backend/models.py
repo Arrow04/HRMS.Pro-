@@ -269,7 +269,7 @@ class Employee(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'), unique=True, index=True)
     full_name = Column(String(255), index=True)
-    first_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)
     last_name = Column(String(100))
     email = Column(String(255), nullable=False, index=True)
     employee_code = Column(String(50), unique=True)

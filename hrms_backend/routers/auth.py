@@ -163,7 +163,7 @@ def _record_otp_attempt(ip: str, phone: str, action: str) -> None:
 
 
 @router.post("/clear-brute-force", tags=["Auth"])
-def clear_brute_force():
+def clear_brute_force(current_user: User = Depends(get_current_user)):
     """Clear all brute-force lockouts. For testing only."""
     rc = get_redis()
     if rc is None:
@@ -556,7 +556,7 @@ def login_passkey(login_data: PasskeyLoginRequest, request: Request, db: Session
                 detail="Your account has been deactivated. Please contact your HR administrator.",
             )
 
-        if not user.passcode or passcode != user.passcode:
+        if not user.passcode or not verify_password(passcode, user.passcode):
             _record_failed_attempt(client_ip, identifier)
             raise HTTPException(status_code=401, detail="Invalid passkey")
 
