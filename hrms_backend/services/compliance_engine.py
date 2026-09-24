@@ -429,7 +429,6 @@ def _compute_salary_components(
         computed = {
             "basic": basic,
         }
-        }
         total_earnings = sum(computed.values())
 
     return {"components": computed, "gross": round(total_earnings, 2)}
