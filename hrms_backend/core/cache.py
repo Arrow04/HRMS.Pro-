@@ -17,6 +17,8 @@ from functools import wraps
 from typing import Any, Callable, Optional
 
 import redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +43,29 @@ def _build_pool() -> redis.ConnectionPool:
         socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT,
         socket_timeout=REDIS_SOCKET_TIMEOUT,
         health_check_interval=REDIS_HEALTH_CHECK_INTERVAL,
-        retry_on_timeout=True,
+        retry_on_timeout=False,
+        # Bound retries: a dead/half-open Redis must fail fast (sub-second
+        # timeouts, 2 retries) and degrade to the in-process fallback —
+        # never block a request or app startup.
+        retry=Retry(backoff=NoBackoff(), retries=2),
     )
+
+
+def _redis_reachable() -> bool:
+    """Fast TCP pre-check so a dead Redis can never block the app.
+
+    redis-py's connect() can sit in sock.connect far past its timeout on
+    some stacks; a plain socket probe (0.3s) keeps every fallback path
+    sub-second and redis-py is never invoked when the port is dead.
+    """
+    import socket as _socket
+    try:
+        hostport = REDIS_URL.split("://", 1)[-1].split("/", 1)[0].split("@")[-1]
+        host, _, port = hostport.partition(":")
+        with _socket.create_connection((host or "localhost", int(port or 6379)), timeout=0.3):
+            return True
+    except Exception:
+        return False
 
 
 def get_redis() -> Optional[redis.Redis]:
@@ -51,6 +74,11 @@ def get_redis() -> Optional[redis.Redis]:
 
     now = time.time()
     if now < _down_until:
+        return None
+
+    if not _redis_reachable():
+        CACHING_AVAILABLE = False
+        _down_until = now + 30
         return None
 
     if _client is None:

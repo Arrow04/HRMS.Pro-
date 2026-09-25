@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Loader2, Save, X, Check, Undo2, Clock, CalendarDays, CalendarRange, CalendarClock, CheckSquare, Pencil, TrendingUp, CalendarPlus, LayoutGrid, Download } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -601,7 +601,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     doc.text(`Attendance Calendar - ${personDisplayName(employee)}`, 14, 18);
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`${MONTHS[month]} ${year} · Generated ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`, 14, 25);
+    doc.text(`${MONTHS[month]} ${year} Â· Generated ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`, 14, 25);
     const rows: (string | number)[][] = [];
     const header = ['Date', 'Day', 'Status', 'Check-in', 'Check-out', 'Hours'];
     Array.from({ length: daysInMonth }, (_, i) => {
@@ -652,7 +652,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
   const viewLabel = view === 'month'
     ? `${MONTHS[month]} ${year}`
     : view === 'week'
-      ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()} – ${MONTHS[weekDays[6].getMonth()]} ${weekDays[6].getDate()}, ${year}`
+      ? `${MONTHS[weekStart.getMonth()]} ${weekStart.getDate()} â€“ ${MONTHS[weekDays[6].getMonth()]} ${weekDays[6].getDate()}, ${year}`
       : `${DAY_NAMES[focusDate.getDay()]}, ${MONTHS[month]} ${focusDate.getDate()}, ${year}`;
 
   return (
@@ -696,7 +696,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                   ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
                   : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
               }`}
-              title={finalizeStatus?.finalized ? 'Attendance finalized — click to reopen' : "Finalize this employee's attendance for the month"}
+              title={finalizeStatus?.finalized ? 'Attendance finalized â€” click to reopen' : "Finalize this employee's attendance for the month"}
             >
               {finalizeEmployeeMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : finalizeStatus?.finalized ? <Undo2 className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
               {finalizeStatus?.finalized ? 'Finalized' : 'Finalize'}
@@ -761,11 +761,11 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                 </div>
                 <div className="flex items-center justify-between mt-3 gap-2">
                   <button onClick={() => setFocusDate(d => new Date(d.getFullYear() - 1, d.getMonth(), d.getDate()))} className="px-2 py-1 rounded-lg text-xs text-[var(--text-tertiary)] hover:bg-[var(--background)] transition-colors">
-                    ‹ {year - 1}
+                    â€¹ {year - 1}
                   </button>
                   <span className="text-sm font-bold text-[var(--text-primary)]">{year}</span>
                   <button onClick={() => setFocusDate(d => new Date(d.getFullYear() + 1, d.getMonth(), d.getDate()))} className="px-2 py-1 rounded-lg text-xs text-[var(--text-tertiary)] hover:bg-[var(--background)] transition-colors">
-                    {year + 1} ›
+                    {year + 1} â€º
                   </button>
                 </div>
                 <button onClick={() => { jumpToday(); setShowJump(false); }} className="mt-3 w-full px-3 py-2 rounded-xl text-xs font-semibold bg-[var(--primary-blue)]/10 text-[var(--primary-blue)] hover:bg-[var(--primary-blue)]/20 transition-colors">
@@ -812,7 +812,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
             </>
           )}
           {view === 'month' && !multiSelect && (
-            <span className="text-xs text-[var(--text-tertiary)] hidden md:inline">Click a day to edit · use Bulk to apply to many</span>
+            <span className="text-xs text-[var(--text-tertiary)] hidden md:inline">Click a day to edit Â· use Bulk to apply to many</span>
           )}
           <button
             onClick={exportPDF}
@@ -829,7 +829,6 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
           <div className="flex-1 min-h-0 flex flex-col">
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center">
-              null
             </div>
           ) : (
             <>
@@ -977,7 +976,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                           )}
                           {!isSelected && dayData?.status?.toLowerCase() === 'present' && (
                             <span className="text-[11px] leading-tight font-semibold text-emerald-700 truncate max-w-full px-1">
-                              In: {dayData.checkIn ? formatTime(dayData.checkIn) : '•'}{dayData.checkOut ? ` · Out: ${formatTime(dayData.checkOut)}` : ''}
+                              In: {dayData.checkIn ? formatTime(dayData.checkIn) : 'â€¢'}{dayData.checkOut ? ` Â· Out: ${formatTime(dayData.checkOut)}` : ''}
                             </span>
                           )}
                           {!isSelected && dayData?.checkIn && !dayData?.checkOut && (
@@ -1044,7 +1043,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                               {status === 'present' && (
                                 <span className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
                                   <Clock className="w-3 h-3" />
-                                  {formatTime(dayData.checkIn) || '–'} → {formatTime(dayData.checkOut) || '–'}
+                                  {formatTime(dayData.checkIn) || 'â€“'} â†’ {formatTime(dayData.checkOut) || 'â€“'}
                                 </span>
                               )}
                               {dayData.isManualEntry && (
@@ -1091,7 +1090,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                             {DAY_NAMES[focusDate.getDay()]}, {MONTHS[month]} {focusDate.getDate()}
                           </h3>
                           <p className="text-sm text-[var(--text-tertiary)]">
-                            {year}{isToday ? ' · Today' : ''}{isWeekend ? ' · Weekend' : ''}{isHoliday ? ` · ${dayData.name}` : ''}
+                            {year}{isToday ? ' Â· Today' : ''}{isWeekend ? ' Â· Weekend' : ''}{isHoliday ? ` Â· ${dayData.name}` : ''}
                           </p>
                         </div>
                         {isHoliday ? (
@@ -1158,7 +1157,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
             <div className="w-80 flex-shrink-0 min-h-0 overflow-y-auto border-l border-[var(--border-color)] pl-4 py-2">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-[var(--primary-blue)]" />
-                <h3 className="text-sm font-bold text-[var(--text-primary)]">Analytics · {viewLabel}</h3>
+                <h3 className="text-sm font-bold text-[var(--text-primary)]">Analytics Â· {viewLabel}</h3>
               </div>
 
               <div className="bg-[var(--background)] rounded-2xl border border-[var(--border-color)] p-4 mb-3">
@@ -1224,7 +1223,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                   <p className="text-xs font-medium text-emerald-700">Attended days</p>
                   <p className="text-2xl font-bold text-emerald-700 mt-1">{attendedDays}</p>
                   <p className="text-[10px] text-emerald-600/70 mt-1">
-                    {presentDays} present · {(stats.counts['late'] || 0)} late · {(stats.counts['half_day'] || 0)} half day{(stats.counts['work_from_home'] || stats.counts['wfh'] || 0) ? ` · ${(stats.counts['work_from_home'] || 0) + (stats.counts['wfh'] || 0)} wfh` : ''}
+                    {presentDays} present Â· {(stats.counts['late'] || 0)} late Â· {(stats.counts['half_day'] || 0)} half day{(stats.counts['work_from_home'] || stats.counts['wfh'] || 0) ? ` Â· ${(stats.counts['work_from_home'] || 0) + (stats.counts['wfh'] || 0)} wfh` : ''}
                   </p>
                 </div>
                 <div className="bg-red-50 rounded-2xl p-3">
@@ -1241,10 +1240,10 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                 </div>
                 <div className="bg-slate-50 rounded-2xl p-3">
                   <p className="text-xs font-medium text-slate-600">Avg check-in</p>
-                  <p className="text-2xl font-bold text-slate-700 mt-1">{avgCheckIn || '–'}</p>
+                  <p className="text-2xl font-bold text-slate-700 mt-1">{avgCheckIn || 'â€“'}</p>
                 </div>
                 <div className="bg-indigo-50 rounded-2xl p-3">
-                  <p className="text-xs font-medium text-indigo-700">Total hours · {view === 'month' ? 'month' : view === 'week' ? 'week' : 'day'}</p>
+                  <p className="text-xs font-medium text-indigo-700">Total hours Â· {view === 'month' ? 'month' : view === 'week' ? 'week' : 'day'}</p>
                   <p className="text-2xl font-bold text-indigo-700 mt-1">{formatDuration(workHours.total)}</p>
                 </div>
                 <div className="bg-blue-50 rounded-2xl p-3 col-span-2">
@@ -1258,17 +1257,17 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                   </div>
                 </div>
                 <div className="bg-orange-50 rounded-2xl p-3">
-                  <p className="text-xs font-medium text-orange-700">Avg / day · {view === 'month' ? 'month' : view === 'week' ? 'week' : 'day'}</p>
+                  <p className="text-xs font-medium text-orange-700">Avg / day Â· {view === 'month' ? 'month' : view === 'week' ? 'week' : 'day'}</p>
                   <p className="text-2xl font-bold text-orange-700 mt-1">{formatDuration(workHours.avg)}</p>
                 </div>
                 <div className="bg-amber-50 rounded-2xl p-3">
                   <p className="text-xs font-medium text-amber-700">Avg check-out</p>
-                  <p className="text-2xl font-bold text-amber-700 mt-1">{avgCheckOut || '–'}</p>
+                  <p className="text-2xl font-bold text-amber-700 mt-1">{avgCheckOut || 'â€“'}</p>
                 </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mt-3">
-                <p className="text-xs font-semibold text-[var(--text-tertiary)] mb-2">Year at a glance · {year}</p>
+                <p className="text-xs font-semibold text-[var(--text-tertiary)] mb-2">Year at a glance Â· {year}</p>
                 <div className="h-40">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={yearPresentByMonth} barGap={2}>
@@ -1298,7 +1297,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                 <h3 className="text-lg font-bold text-[var(--text-primary)]">{editingInfo.label}</h3>
               </div>
               <p className="text-xs text-[var(--text-tertiary)] mb-5">
-                {editingInfo.isWeekend ? 'Weekend · ' : ''}Set status and work hours for this day
+                {editingInfo.isWeekend ? 'Weekend Â· ' : ''}Set status and work hours for this day
               </p>
               <div className="space-y-4">
                 <div>
@@ -1355,11 +1354,11 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
                             </p>
                             <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
                               {log.changedFields?.length ? log.changedFields.map(f => f.replace(/_/g, ' ')).join(', ') : 'fields'}
-                              {log.newValues?.status ? ` → ${statusDisplayName(String(log.newValues.status), attendanceStatusOptions)}` : ''}
+                              {log.newValues?.status ? ` â†’ ${statusDisplayName(String(log.newValues.status), attendanceStatusOptions)}` : ''}
                             </p>
                             <p className="text-[11px] text-[var(--text-tertiary)]/70 mt-0.5">
                               {log.createdAt ? new Date(log.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
-                              {log.reason ? ` · ${log.reason}` : ''}
+                              {log.reason ? ` Â· ${log.reason}` : ''}
                             </p>
                           </div>
                         </div>
@@ -1388,7 +1387,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
               </p>
               {isHoliday ? (
                 <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-500" /> Holiday · {d.name}
+                  <span className="w-2 h-2 rounded-full bg-blue-500" /> Holiday Â· {d.name}
                 </p>
               ) : s ? (
                 <>
@@ -1424,7 +1423,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
         title={finalizeStatus?.finalized ? 'Reopen Attendance' : 'Finalize Attendance'}
         confirmLabel={finalizeStatus?.finalized ? 'Yes, Reopen' : 'Yes, Finalize'}
         message={`You are about to ${finalizeStatus?.finalized ? 'reopen' : 'finalize'} this employee's attendance for ${MONTHS[month]} ${year}.`}
-        consequence="This will impact the employee's payroll for this period — salary is calculated from the finalized attendance, leave & holiday records."
+        consequence="This will impact the employee's payroll for this period â€” salary is calculated from the finalized attendance, leave & holiday records."
         isPending={finalizeEmployeeMutation.isPending}
       />
     </div>

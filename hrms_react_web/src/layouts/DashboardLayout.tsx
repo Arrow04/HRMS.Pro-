@@ -5,7 +5,7 @@ import {
   Settings, Building, Briefcase, Palmtree,
   FileBarChart, CreditCard, TrendingUp, Database,
   ShieldAlert, Wallet, LogOut, Monitor,
-  ChevronLeft, ChevronRight, Building2, Megaphone, AlertTriangle,
+  ChevronLeft, ChevronRight, Megaphone, AlertTriangle,
   Bell, Headset
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -32,7 +32,6 @@ const ALL_LINKS = [
   { path: '/grievances', label: 'Grievances', icon: AlertTriangle },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/helpdesk', label: 'Helpdesk', icon: Headset },
-  { path: '/master-data', label: 'Master Data', icon: Database },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -53,10 +52,10 @@ const DashboardLayout = () => {
   }, [location.pathname]);
 
   const routeToModule: Record<string, string> = {
-    '/dashboard': 'dashboard', '/company': 'company', '/employees': 'employees', '/letters': 'employees',
+    '/dashboard': 'dashboard', '/company': 'company', '/employees': 'employees', '/letters': 'letters',
     '/recruitment': 'recruitment', '/holidays': 'holidays', '/attendance': 'attendance',
     '/leaves': 'leaves', '/payroll': 'payroll', '/expenses': 'expenses',
-    '/performance': 'performance', '/reports': 'reports', '/master-data': 'master_data',
+    '/performance': 'performance', '/reports': 'reports',
     '/settings': 'settings', '/exit-management': 'exit', '/assets': 'assets',
     '/anomalies': 'anomalies', '/payroll/config': 'payroll_config',
     '/announcements': 'announcements', '/grievances': 'grievances', '/notifications': 'notifications',

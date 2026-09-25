@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import type { Attendance as AttendanceType, Employee, Shift, Holiday, LeaveApplication, AuditLog } from '../types';
 
 // Normalize snake_case API responses to camelCase for consistent frontend access
@@ -1010,7 +1010,7 @@ const Attendance = () => {
                   searchPlaceholder="Search attendance..."
                   emptyMessage="No attendance records found"
                   logEntityType="attendance"
-                  logFor={(record: AttendanceRow) => ({ id: record.id ?? `${record.employeeId}-${record.date}`, label: `${record.employeeName} — ${record.date}` })}
+                  logFor={(record: AttendanceRow) => ({ id: record.id ?? `${record.employeeId}-${record.date}`, label: `${record.employeeName} â€” ${record.date}` })}
                   selectable
                   bulkActions={[
                     {
@@ -1200,7 +1200,6 @@ const Attendance = () => {
             {/* Table */}
             {loadingShifts ? (
               <div className="py-8 px-4">
-                null
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1242,7 +1241,7 @@ const Attendance = () => {
                         return <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${colors[shift.shift_type] || 'bg-gray-100 text-gray-600'}`}>{shift.shift_type}</span>;
                       },
                     },
-                    { key: 'hours', header: 'Hours', render: (shift: ShiftRecord) => <div className="text-sm font-medium text-[#0F172A]">{shift.start_time} — {shift.end_time}</div> },
+                    { key: 'hours', header: 'Hours', render: (shift: ShiftRecord) => <div className="text-sm font-medium text-[#0F172A]">{shift.start_time} â€” {shift.end_time}</div> },
                     {
                       key: 'working_days', header: 'Working Days',
                       render: (shift: ShiftRecord) => {
@@ -1351,7 +1350,6 @@ const Attendance = () => {
             </div>
             {loadingRoster ? (
                 <div className="py-8 px-4">
-                  null
                 </div>
               ) : (() => {
                 const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -1415,10 +1413,10 @@ const Attendance = () => {
                                         style={{ backgroundColor: entry.shift_color || '#1C64F2' }}
                                       >
                                         <span>{entry.shift_name}</span>
-                                        <span className="opacity-80 text-[10px]">{entry.shift_start_time}—{entry.shift_end_time}</span>
+                                        <span className="opacity-80 text-[10px]">{entry.shift_start_time}â€”{entry.shift_end_time}</span>
                                       </div>
                                     ) : (
-                                      <span className="text-[#CBD5E1] text-xs">—</span>
+                                      <span className="text-[#CBD5E1] text-xs">â€”</span>
                                     )}
                                   </td>
                                 );

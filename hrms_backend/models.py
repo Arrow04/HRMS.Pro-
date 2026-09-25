@@ -21,9 +21,10 @@ class SuperAdminRoleEnum(str, enum.Enum):
 
 # HRMS Modules List
 MODULES_LIST = [
-    "dashboard", "company", "employees", "attendance", "holidays", 
+    "dashboard", "company", "employees", "letters", "attendance", "holidays", 
     "recruitment", "leaves", "payroll", "expenses", "performance", 
-    "reports", "master_data", "settings", "assets", "exit", "anomalies",
+    "reports", "settings", "assets", "exit", "anomalies",
+    "announcements", "grievances", "helpdesk", "notifications",
     "superadmin_console"
 ]
 
@@ -52,7 +53,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255))
     phone = Column(String(20), unique=True, nullable=True)
-    passcode = Column(String(10), nullable=True)
+    passcode = Column(String(255), nullable=True)
     role = Column(String(50), default='employee', index=True)  # admin, manager, employee
     organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
     is_active = Column(Boolean, default=True, index=True)
@@ -122,6 +123,7 @@ class Organization(Base):
     default_currency = Column(String(10), default='INR')
     timezone = Column(String(50), default='Asia/Kolkata')
     date_format = Column(String(20), default='YYYY-MM-DD')
+    time_format = Column(String(20), default='HH:mm')  # 24h 'HH:mm' or 12h 'hh:mm A'
     language_preference = Column(String(20), default='en')
     country = Column(String(50), default='India')  # Payroll & tax document country (India, USA, UK, UAE, etc.)
     
@@ -327,6 +329,8 @@ class Employee(Base):
     pf_number = Column(String(100))
     pf_uan = Column(String(100))
     esic_number = Column(String(100))
+    pran_number = Column(String(100))        # NPS PRAN / retirement reference
+    nps_applicable = Column(Boolean, default=False)
     mediclaim_number = Column(String(100))
     mediclaim_provider = Column(String(200))
     life_insurance_number = Column(String(100))
@@ -401,7 +405,10 @@ class Employee(Base):
     # Pay frequency: how the employee is paid (daily / weekly / monthly / annual CTC).
     # base_salary always stores the MONTHLY equivalent so the payroll engine works
     # unchanged; pay_rate keeps the original entered rate (e.g. 500/day).
-    pay_frequency = Column(String(20), default='monthly')
+    # Pay-rate frequency for base_salary: NULL/'annual' (the default — base
+    # salary is the annual CTC and payroll divides by 12), 'monthly', 'weekly'
+    # or 'daily'. See payroll_service.monthly_from_rate.
+    pay_frequency = Column(String(20), nullable=True)
     pay_rate = Column(Float, nullable=True)
 
     # Geofence: when enabled, check-in/out requires being within the branch geofence;
@@ -852,6 +859,244 @@ class Expense(Base):
         return f'<Expense {self.id}>'
 
 
+class PayrollResultLine(Base):
+    """Explainability line: one payslip figure and WHY it is that figure.
+
+    Every amount references its rule (id + version), the formula, the input
+    values, and the effective date - the mandated "why was this amount
+    calculated?" answer, preserved for history even after rules change.
+    """
+    __tablename__ = 'payroll_result_lines'
+
+    id = Column(Integer, primary_key=True)
+    payroll_id = Column(Integer, ForeignKey('payrolls.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+
+    component_code = Column(String(50), nullable=False)   # basic, hra, pf, esi, tds...
+    label = Column(String(200), nullable=False)
+    amount = Column(Float, nullable=False, default=0)
+    side = Column(String(30), nullable=False)             # earning | deduction | employer_contribution
+    sequence = Column(Integer, default=0)
+
+    # Rule provenance (NULL rule_id means a documented default/settings path)
+    source = Column(String(30), default='rule')           # rule | settings | component | fallback | override
+    rule_id = Column(Integer, ForeignKey('statutory_rules.id'), nullable=True)
+    rule_version = Column(Integer, nullable=True)
+    rule_type = Column(String(50), nullable=True)
+    formula = Column(Text, nullable=True)
+    inputs = Column(JSON, nullable=True)
+    wage_basis = Column(String(50), nullable=True)        # PF_WAGES, ESI_WAGES, ...
+    effective_date = Column(Date, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    payroll = relationship('Payroll', backref='result_lines')
+
+    def __repr__(self):
+        return f'<PayrollResultLine {self.component_code}={self.amount} src={self.source}>'
+
+
+class PayrollAdjustment(Base):
+    """Arrears / recovery created by retroactive rule changes or revisions.
+
+    Finalized payroll is NEVER modified: the original result stays untouched
+    and the delta lives here (mandate sections 33-34). Positive amount =
+    arrears payable to the employee; negative = recovery from the employee.
+    """
+    __tablename__ = 'payroll_adjustments'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    payroll_id = Column(Integer, ForeignKey('payrolls.id'), nullable=True)   # source payroll (original)
+
+    source = Column(String(30), nullable=False, default='retro_rule')  # retro_rule | salary_revision | correction | manual
+    reason = Column(Text)
+    # Affected period span
+    from_month = Column(Integer, nullable=False)
+    from_year = Column(Integer, nullable=False)
+    to_month = Column(Integer, nullable=False)
+    to_year = Column(Integer, nullable=False)
+
+    # Rule provenance of the change
+    rule_id = Column(Integer, ForeignKey('statutory_rules.id'), nullable=True)
+    rule_version_old = Column(Integer, nullable=True)
+    rule_version_new = Column(Integer, nullable=True)
+
+    # Comparison snapshots (original preserved verbatim)
+    original = Column(JSON, nullable=True)
+    revised = Column(JSON, nullable=True)
+    gross_delta = Column(Float, default=0)
+    deduction_delta = Column(Float, default=0)
+    net_delta = Column(Float, default=0)
+    amount = Column(Float, nullable=False, default=0)     # payable (+) / recoverable (-)
+
+    status = Column(String(20), default='draft', index=True)  # draft | confirmed | applied | cancelled
+    applied_payroll_id = Column(Integer, ForeignKey('payrolls.id'), nullable=True)
+
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    applied_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    employee = relationship('Employee', backref='payroll_adjustments')
+    payroll = relationship('Payroll', foreign_keys=[payroll_id], backref='adjustments')
+
+    def __repr__(self):
+        return f'<PayrollAdjustment {self.source} {self.amount} {self.status}>'
+
+
+class PayrollApproval(Base):
+    """Multi-level payroll approval step (mandate section 47).
+
+    One row per configured step per payroll: Payroll Processor -> HR Manager
+    -> Finance -> Authorized Approver (org-configurable). The payroll becomes
+    APPROVED only when every step approves.
+    """
+    __tablename__ = 'payroll_approvals'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    payroll_id = Column(Integer, ForeignKey('payrolls.id'), nullable=False, index=True)
+
+    step_order = Column(Integer, nullable=False, default=1)
+    step_name = Column(String(100), nullable=False)     # e.g. "HR Manager"
+    role = Column(String(50), nullable=False)           # role allowed to decide
+    approver_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    decision = Column(String(20), default='pending', index=True)  # pending|approved|rejected
+    comment = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    decided_at = Column(DateTime, nullable=True)
+
+    payroll = relationship('Payroll', backref='approvals')
+
+    def __repr__(self):
+        return f'<PayrollApproval payroll={self.payroll_id} step={self.step_order} {self.decision}>'
+
+
+class GratuityCalculation(Base):
+    """Gratuity accrual / settlement record (mandate section 23).
+
+    Every calculation is recorded with its service period and wage basis so
+    accruals and settlements reconcile and stay auditable.
+    """
+    __tablename__ = 'gratuity_calculations'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+
+    service_years = Column(Float, default=0)
+    wage_basis = Column(String(50))
+    wage_basis_value = Column(Float, default=0)
+    days_per_year = Column(Float, default=15)
+    divisor = Column(Float, default=26)
+    amount = Column(Float, default=0)
+    eligible = Column(Boolean, default=False)
+    capped = Column(Boolean, default=False)
+    status = Column(String(20), default='accrued', index=True)  # accrued | settled
+    settlement_ref = Column(String(100), nullable=True)
+    calculated_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship('Employee', backref='gratuity_calculations')
+
+    def __repr__(self):
+        return f'<GratuityCalculation emp={self.employee_id} {self.amount} {self.status}>'
+
+
+class PaymentBatch(Base):
+    """Bank payment batch (mandate section 49): one disbursement run.
+
+    Holds validated payment transactions for a payroll period, generates the
+    bank payment file (format configurable per org), tracks paid/failed
+    outcomes and reconciliation state.
+    """
+    __tablename__ = 'payment_batches'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=False, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True)
+    batch_ref = Column(String(50), nullable=False, index=True)
+    month = Column(Integer, nullable=False)
+    year = Column(Integer, nullable=False)
+
+    payment_mode = Column(String(30), default='bank_transfer')  # bank_transfer | cheque | upi
+    status = Column(String(20), default='draft', index=True)   # draft|generated|paid|partially_paid|failed|reconciled|cancelled
+    file_name = Column(String(200))
+    file_format = Column(String(20), default='csv')
+    total_amount = Column(Float, default=0)
+    employee_count = Column(Integer, default=0)
+
+    notes = Column(Text)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    reconciled_at = Column(DateTime, nullable=True)
+
+    transactions = relationship('PaymentTransaction', backref='batch',
+                                cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<PaymentBatch {self.batch_ref} {self.status} {self.total_amount}>'
+
+
+class PaymentTransaction(Base):
+    """One employee payment inside a batch, with bank validation + outcome."""
+    __tablename__ = 'payment_transactions'
+
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey('payment_batches.id'), nullable=False, index=True)
+    payroll_id = Column(Integer, ForeignKey('payrolls.id'), nullable=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+
+    amount = Column(Float, nullable=False, default=0)
+    bank_account = Column(String(100))
+    ifsc_code = Column(String(50))
+    status = Column(String(20), default='pending', index=True)  # pending|paid|failed|reprocessed
+    failure_reason = Column(String(255))
+    reference_no = Column(String(100))
+    paid_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<PaymentTransaction emp={self.employee_id} {self.amount} {self.status}>'
+
+
+class StatutoryReportDefinition(Base):
+    """Configurable statutory report/filing definition (mandate section 51).
+
+    Fields, data sources, formulas, period and format are CONFIGURATION -
+    the same renderer produces EPF ECR, ESI returns, PT statements and any
+    future filing without code changes.
+    """
+    __tablename__ = 'statutory_report_definitions'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+
+    code = Column(String(50), nullable=False, index=True)   # e.g. EPF_ECR, ESI_RETURN, PT_STATEMENT
+    name = Column(String(200), nullable=False)
+    country = Column(String(50), default='India')
+    state_code = Column(String(10), nullable=True)
+    authority = Column(String(200), nullable=True)          # EPFO, ESIC, State PT dept
+
+    fields = Column(JSON, nullable=False, default=list)     # [{key,label,source,formula}]
+    filters = Column(JSON, nullable=True)
+    period_type = Column(String(20), default='monthly')     # monthly | quarterly | annual
+    file_format = Column(String(20), default='csv')
+    validation = Column(JSON, nullable=True)
+
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+    status = Column(String(20), default='active', index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<StatutoryReportDefinition {self.code}>'
+
+
 class Payroll(Base):
     """Payroll model"""
     __tablename__ = 'payrolls'
@@ -899,6 +1144,9 @@ class Payroll(Base):
     lwf_deduction = Column(Float, default=0)  # Labour Welfare Fund (employee)
     lwf_employer_contribution = Column(Float, default=0)  # LWF employer contribution
     gratuity = Column(Float, default=0)
+    nps_deduction = Column(Float, default=0)               # NPS employee contribution
+    nps_employer_contribution = Column(Float, default=0)   # NPS employer contribution
+    taxable_perquisites = Column(Float, default=0)         # perquisite engine taxable total
     payroll_policy_id = Column(Integer, ForeignKey('payroll_policies.id'), nullable=True, index=True)
     component_breakdown = Column(JSON, nullable=True)
 
@@ -1441,6 +1689,18 @@ class PayrollComponent(Base):
     is_taxable = Column(Boolean, default=True)
     is_tax_exempt = Column(Boolean, default=False)
     tax_exempt_limit = Column(Float, nullable=True)
+
+    # Applicability matrix (mandate section 37) - which statutory bases this
+    # component feeds. Rule-driven classification lives in tax_category too;
+    # these flags are the per-component defaults.
+    taxability = Column(String(20), nullable=True)  # taxable|partially_taxable|non_taxable|conditional
+    pf_applicable = Column(Boolean, default=True)
+    esi_applicable = Column(Boolean, default=True)
+    pt_applicable = Column(Boolean, default=True)
+    lwf_applicable = Column(Boolean, default=True)
+    gratuity_applicable = Column(Boolean, default=False)
+    bonus_applicable = Column(Boolean, default=True)
+    nps_applicable = Column(Boolean, default=False)
 
     # Application rules
     apply_pro_ration = Column(Boolean, default=True)
@@ -4101,6 +4361,13 @@ class StatutoryRule(Base):
     status = Column(String(20), default='active', index=True)  # active, superseded, draft
     notes = Column(Text)
 
+    # Versioning / approval (mandate: never overwrite published rules)
+    version = Column(Integer, default=1, nullable=False)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    approved_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    government_notification_id = Column(Integer, ForeignKey('government_notifications.id'), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True, index=True)
@@ -4110,6 +4377,44 @@ class StatutoryRule(Base):
 
     def __repr__(self):
         return f'<StatutoryRule {self.rule_type} {self.country}/{self.state_code or "ALL"} {self.effective_from} org:{self.organization_id} company:{self.company_id}>'
+
+
+class GovernmentNotification(Base):
+    """A government notification that changes payroll law.
+
+    Workflow: notification -> compliance review -> affected rules -> draft rule
+    versions -> simulation -> approval -> publish -> automatic application.
+    The linked StatutoryRule rows carry government_notification_id back here,
+    so every rupee can be traced to the legal source (mandate sections 40-41).
+    """
+    __tablename__ = 'government_notifications'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+
+    authority = Column(String(200), nullable=False)          # e.g. EPFO, CBDT, State Government
+    notification_number = Column(String(200), nullable=True)  # e.g. "G.S.R. 525(E)"
+    title = Column(String(500), nullable=False)
+    summary = Column(Text)
+    publication_date = Column(Date, nullable=True)
+    effective_date = Column(Date, nullable=False)
+    source_url = Column(String(500))
+    affected_rules = Column(JSON, default=list)               # rule_type list (informational)
+
+    status = Column(String(20), default='draft', index=True)  # draft, review, approved, published
+    reviewed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    approved_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    notes = Column(Text)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    organization = relationship('Organization', backref='government_notifications')
+
+    def __repr__(self):
+        return f'<GovernmentNotification {self.notification_number or self.title} effective {self.effective_date}>'
 
 
 class EmployeeVoluntaryPF(Base):

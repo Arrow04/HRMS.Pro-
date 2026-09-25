@@ -101,12 +101,8 @@ async def list_users(
 # GET MY PERMISSIONS (for current user) — MUST be defined before /{user_id}
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# All available modules for reference
-ALL_MODULES = [
-    "dashboard", "company", "employees", "recruitment", "holidays",
-    "attendance", "leaves", "payroll", "expenses", "performance",
-    "reports", "settings"
-]
+# All available modules for reference (kept in sync with MODULES_LIST)
+ALL_MODULES = [m for m in MODULES_LIST if m != "superadmin_console"]
 
 @router.get("/me/current")
 async def get_my_permissions(

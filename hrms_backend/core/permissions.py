@@ -28,7 +28,6 @@ DEFAULT_PERMISSIONS = {
         "expenses": {"can_read": False, "can_write": False, "can_delete": False},
         "performance": {"can_read": False, "can_write": False, "can_delete": False},
         "reports": {"can_read": False, "can_write": False, "can_delete": False},
-        "master_data": {"can_read": False, "can_write": False, "can_delete": False},
         "settings": {"can_read": False, "can_write": False, "can_delete": False},
     },
     "admin": {
@@ -44,7 +43,6 @@ DEFAULT_PERMISSIONS = {
         "expenses": {"can_read": True, "can_write": True, "can_delete": True},
         "performance": {"can_read": True, "can_write": True, "can_delete": True},
         "reports": {"can_read": True, "can_write": True, "can_delete": True},
-        "master_data": {"can_read": True, "can_write": True, "can_delete": True},
         "settings": {"can_read": True, "can_write": True, "can_delete": True},
         # SuperAdmin Console: False
         "superadmin_console": {"can_read": False, "can_write": False, "can_delete": False},
@@ -72,7 +70,6 @@ DEFAULT_PERMISSIONS = {
         "holidays": {"can_read": False, "can_write": False, "can_delete": False},
         "recruitment": {"can_read": False, "can_write": False, "can_delete": False},
         "reports": {"can_read": False, "can_write": False, "can_delete": False},
-        "master_data": {"can_read": False, "can_write": False, "can_delete": False},
         "settings": {"can_read": False, "can_write": False, "can_delete": False},
         "superadmin_console": {"can_read": False, "can_write": False, "can_delete": False},
     }

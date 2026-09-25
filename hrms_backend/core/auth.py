@@ -95,6 +95,14 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
     if token_version != (user.token_version or 0):
         raise credentials_exception
 
+    # Tenant isolation: a non-superadmin session must belong to an org —
+    # a NULL-org account would otherwise bypass every org-scoped filter.
+    if user.role != "superadmin" and user.organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is not linked to an organization",
+        )
+
     client_host = request.client.host if request.client else "Unknown"
     user_agent = request.headers.get("user-agent", "Unknown")
 

@@ -97,8 +97,14 @@ def _approved_expenses(db: Session, employee_id: int, until_date) -> float:
         return 0.0
 
 
-def calculate_full_final_settlement(db: Session, employee_id: int) -> dict:
-    """Calculate Full & Final settlement for an exiting employee."""
+def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lieu: bool = False) -> dict:
+    """Calculate Full & Final settlement for an exiting employee.
+
+    Covers the mandate section 35 list: salary until last working day,
+    unpaid leave, notice recovery OR notice payout (employer-initiated),
+    leave encashment, statutory bonus, gratuity settlement, loans/advances
+    and reimbursements.
+    """
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise ValueError("Employee not found")
@@ -107,16 +113,19 @@ def calculate_full_final_settlement(db: Session, employee_id: int) -> dict:
     if not employee.join_date:
         return {"error": "Employee has no join date"}
 
-    # Calculate years of service
+    from services.gratuity_engine import (
+        calculate_gratuity_settlement,
+        record_gratuity,
+        service_years_act,
+    )
     leaving_date = employee.date_of_leaving or datetime.utcnow()
-    service_days = (leaving_date - employee.join_date).days
-    years_of_service = max(0, service_days // 365)
+    leaving_day = leaving_date.date() if isinstance(leaving_date, datetime) else leaving_date
+    years_of_service = service_years_act(employee.join_date, leaving_day)
 
     monthly_gross, monthly_basic = _monthly_salary(db, employee, leaving_date)
 
-    # Salary until last working day — prorated by the employee's ACTUAL
-    # attendance in the final month, using the SAME engine payroll uses so
-    # the F&F number always agrees with a payroll run for that period.
+    # Salary until last working day: prorated by the ACTUAL attendance in the
+    # final month using the same engine payroll uses.
     from services.payroll_service import (
         _get_attendance_policy,
         _get_payroll_policy,
@@ -132,38 +141,76 @@ def calculate_full_final_settlement(db: Session, employee_id: int) -> dict:
         factor = 0.0
     salary_until_lwd = round(monthly_gross * factor, 2)
 
-    # Gratuity
-    gratuity_result = calculate_gratuity(monthly_basic, years_of_service)
+    # Gratuity: rule-driven settlement, recorded for audit (section 23).
+    gratuity_result = calculate_gratuity_settlement(db, employee, as_of=leaving_day)
+    try:
+        record_gratuity(db, employee, gratuity_result, status="settled",
+                        settlement_ref=f"fnf:{employee_id}:{leaving_day.isoformat()}")
+    except Exception:
+        pass
 
-    # Notice period: deduct the shortfall when notice is NOT served; nothing owed when served.
+    # Notice: recovery when not served; payout in lieu on employer-initiated
+    # exits (ExitRecord.exit_type == 'terminated' or explicit notice_in_lieu).
     notice_period_days = int(getattr(employee, "notice_period_days", 0) or 0)
-    notice_pay = round((monthly_gross / 30) * notice_period_days, 2) if notice_period_days > 0 else 0.0
+    if notice_period_days <= 0:
+        try:
+            cfg = ((getattr(org, "settings", None) or {}).get("payroll") or {})
+            notice_period_days = int(cfg.get("noticePeriodDays", 0) or 0)
+        except Exception:
+            notice_period_days = 0
+    try:
+        from models import ExitRecord
+        rec = (db.query(ExitRecord)
+               .filter(ExitRecord.employee_id == employee_id,
+                       ExitRecord.deleted_at.is_(None))
+               .order_by(ExitRecord.exit_date.desc()).first())
+        if rec is not None and str(getattr(rec, "exit_type", "") or "").lower() == "terminated":
+            notice_in_lieu = True
+    except Exception:
+        pass
+    daily_rate = (monthly_gross / 30.0) if monthly_gross else 0.0
+    if notice_in_lieu and employee.notice_period_served in (None, "no"):
+        notice_payout = round(daily_rate * notice_period_days, 2)
+        notice_recovery = 0.0
+    elif employee.notice_period_served == "no":
+        notice_payout = 0.0
+        notice_recovery = round(daily_rate * notice_period_days, 2) if notice_period_days > 0 else 0.0
+    else:
+        notice_payout = 0.0
+        notice_recovery = 0.0
 
-    # Leave encashment from actual unused balance
     leave_encashment = _leave_encashment(db, employee, monthly_gross)
 
-    # Outstanding loan/advance recovery
-    outstanding_loans = _outstanding_loans(db, employee_id)
+    # Statutory bonus (Payment of Bonus Act) pro-rated for the exit year.
+    bonus_payable = 0.0
+    try:
+        cfg = ((getattr(org, "settings", None) or {}).get("payroll") or {})
+        if cfg.get("statutoryBonus", False):
+            from services.compliance_engine import calculate_bonus
+            months_worked = min(12, max(1, (leaving_day.timetuple().tm_yday // 30) or 1))
+            b = calculate_bonus(monthly_gross, months_worked)
+            if b.get("eligible"):
+                bonus_payable = round(float(b.get("minimum", 0) or 0) / 12.0, 2)
+    except Exception:
+        bonus_payable = 0.0
 
-    # Approved expenses due for reimbursement
+    outstanding_loans = _outstanding_loans(db, employee_id)
     approved_expenses = _approved_expenses(db, employee_id, leaving_date)
 
-    # Deductions
     deductions = {
-        "notice_period_shortfall": notice_pay if employee.notice_period_served == "no" else 0,
+        "notice_period_shortfall": notice_recovery,
         "pending_advances": outstanding_loans,
         "training_bond_penalty": 0,
         "other_deductions": 0,
     }
     total_deductions = sum(deductions.values())
 
-    # Payables
     payables = {
         "salary_until_last_working_day": salary_until_lwd,
         "leave_encashment": leave_encashment,
         "gratuity": gratuity_result["amount"],
-        "bonus_if_applicable": 0,
-        "notice_pay_in_lieu": 0,
+        "statutory_bonus": bonus_payable,
+        "notice_pay_in_lieu": notice_payout,
         "other_payables": 0,
         "expense_reimbursement": approved_expenses,
     }
@@ -184,6 +231,9 @@ def calculate_full_final_settlement(db: Session, employee_id: int) -> dict:
         "total_deductions": round(total_deductions, 2),
         "net_settlement": round(max(0, net_settlement), 2),
         "gratuity_eligible": gratuity_result["eligible"],
+        "gratuity_detail": gratuity_result,
+        "notice": {"days": notice_period_days, "served": employee.notice_period_served,
+                   "recovery": notice_recovery, "payout": notice_payout},
         "final_month_attendance": {
             "month": last_month,
             "year": last_year,

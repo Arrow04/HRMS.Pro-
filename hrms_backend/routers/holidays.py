@@ -81,6 +81,13 @@ def create_holiday(
     if current_user.role != "superadmin":
         data["organization_id"] = current_user.organization_id
         validate_company_in_org(db, Company, data.get("company_id"), current_user.organization_id)
+    else:
+        # Tenant isolation: superadmin must target an existing org explicitly.
+        if not data.get("organization_id"):
+            raise HTTPException(status_code=400, detail="organization_id is required for superadmin")
+        if not db.query(Organization).filter(Organization.id == data["organization_id"]).first():
+            raise HTTPException(status_code=404, detail="Organization not found")
+        validate_company_in_org(db, Company, data.get("company_id"), data["organization_id"])
     # Company isolation: holidays can only be created inside your own company
     # (org-wide holidays carry company_id NULL and stay visible to all).
     if data.get("company_id") not in (None, "", 0):

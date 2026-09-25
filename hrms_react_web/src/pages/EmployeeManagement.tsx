@@ -1398,7 +1398,6 @@ const EmployeeManagement = () => {
                   className="flex-1 px-4 py-2.5 bg-amber-500 text-white font-medium rounded-xl hover:bg-amber-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                   {isTogglingStatus ? (
                     <>
-                      null
                       Deactivating...
                     </>
                   ) : (
@@ -1435,7 +1434,6 @@ const EmployeeManagement = () => {
                   className="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                   {restoreArchivedMutation.isPending ? (
                     <>
-                      null
                       Restoring...
                     </>
                   ) : (

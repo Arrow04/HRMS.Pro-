@@ -23,7 +23,6 @@ import CommandPalette from './components/CommandPalette';
 
 // Lazy loaded pages
 const Login = lazy(() => import('./pages/Login'));
-const RegisterTenant = lazy(() => import('./pages/RegisterTenant'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Company = lazy(() => import('./pages/Company'));
 const EmployeeManagement = lazy(() => import('./pages/EmployeeManagement'));
@@ -41,7 +40,6 @@ const Announcements = lazy(() => import('./pages/Announcements'));
 const Grievances = lazy(() => import('./pages/Grievances'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Helpdesk = lazy(() => import('./pages/Helpdesk'));
-const MasterData = lazy(() => import('./pages/MasterData'));
 const MobileOnly = lazy(() => import('./pages/MobileOnly'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -97,7 +95,6 @@ function App() {
            {/* Public Auth Routes */}
            <Route element={<AuthLayout />}>
              <Route path="/login" element={<Login />} />
-             <Route path="/register-tenant" element={<RegisterTenant />} />
            </Route>
 
            {/* Standalone Pages (No Layout) */}
@@ -149,7 +146,6 @@ function App() {
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/helpdesk" element={<Helpdesk />} />
                 <Route path="/settings" element={<Settings />} />
-               <Route path="/master-data" element={<MasterData />} />
              </Route>
 
              {/* 404 Catch-all */}

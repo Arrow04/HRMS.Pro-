@@ -175,7 +175,7 @@ def check_employee_duplicate(
         raise HTTPException(status_code=400, detail="field must be email, employee_code or phone")
 
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
 
     # Compare case-insensitively for email / code, exact for phone
@@ -212,7 +212,7 @@ def get_employee_count(
     """Get employee count with optional filters (Redis-cached for 2 minutes)"""
     companyId = resolve_company_scope(db, current_user, companyId, request)
     query = db.query(Employee)
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
     if companyId:
         query = query.filter(Employee.company_id == companyId)
@@ -246,7 +246,7 @@ def get_employees(
     includeDeleted: bool = False,
     page: int = Query(1, ge=1),
     limit: int = Query(DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
-    view: str = Query("summary", pattern="^(summary|full)$"),
+    view: str = Query("full", pattern="^(summary|full)$"),
     cursor: Optional[int] = Query(None, description="Keyset cursor (employee id). Enables O(log n) deep pagination."),
     db: Session = Depends(get_read_db),
     current_user: User = Depends(get_current_user),
@@ -271,7 +271,7 @@ def get_employees(
 
     query = db.query(Employee).options(*load_opts)
     
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
     
     # Apply filters efficiently using indexed columns
@@ -541,7 +541,7 @@ def get_org_structure(
 ):
     """Return org structure as manager -> reportees tree (company-scoped for restricted roles)."""
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
     _scope_company = resolve_company_scope(db, current_user, None)
     if _scope_company is not None:
@@ -617,7 +617,7 @@ def get_employee_light_list(
     """Lightweight employee list for dropdowns — slim payload, read-replica safe."""
     companyId = resolve_company_scope(db, current_user, companyId)
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
     query = apply_picker_scope_filters(
         query,
@@ -778,7 +778,7 @@ def download_employee_template(current_user: User = Depends(get_current_user)):
 @router.get("/{employee_id}", response_model=dict)
 def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     employee_query = db.query(Employee).filter(Employee.id == employee_id)
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         employee_query = employee_query.filter(Employee.organization_id == current_user.organization_id)
     employee = employee_query.first()
     if not employee:
@@ -956,32 +956,6 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         if existing_user_phone:
             user_phone = None
 
-    new_user = User(
-        email=email,
-        password_hash=get_password_hash(password),
-        full_name=snake_case_data.get("full_name") or snake_case_data.get("first_name", ""),
-        role=snake_case_data.get("user_role", "employee"),
-        phone=user_phone,
-    )
-    db.add(new_user)
-    db.flush()
-
-    employee_code = snake_case_data.get("employee_code") or f"EMP-{new_user.id:06d}"
-
-    date_of_birth = None
-    if snake_case_data.get("date_of_birth"):
-        try:
-            date_of_birth = datetime.fromisoformat(snake_case_data["date_of_birth"])
-        except Exception:
-            date_of_birth = None
-
-    org_id = snake_case_data.get("organization_id")
-    if isinstance(org_id, str):
-        org = db.query(Organization).filter(Organization.code == org_id).first()
-        org_id = org.id if org else current_user.organization_id
-    elif org_id is None:
-        org_id = current_user.organization_id
-
     def _int_or_none(value):
         """Coerce blank form values to None so integer columns never receive ''."""
         if value is None:
@@ -995,9 +969,51 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         except (TypeError, ValueError):
             return None
 
+    # Tenant isolation: never trust a client-supplied organization id. A
+    # non-superadmin can only create into their own org; a superadmin must
+    # target one explicitly (org id or code) and it must exist.
+    if current_user.role == "superadmin":
+        raw_org = snake_case_data.get("organization_id")
+        if isinstance(raw_org, str) and not raw_org.strip().lstrip("-").isdigit():
+            _org = db.query(Organization).filter(Organization.code == raw_org.strip()).first()
+            org_id = _org.id if _org else None
+        else:
+            org_id = _int_or_none(raw_org)
+        if org_id is None or not db.query(Organization).filter(Organization.id == org_id).first():
+            raise HTTPException(
+                status_code=400,
+                detail="organization_id (an existing org id or code) is required for superadmin",
+            )
+    else:
+        org_id = current_user.organization_id
+        if org_id is None:
+            raise HTTPException(status_code=403, detail="Your account is not linked to an organization")
+
+    new_user = User(
+        email=email,
+        password_hash=get_password_hash(password),
+        full_name=snake_case_data.get("full_name") or snake_case_data.get("first_name", ""),
+        role=snake_case_data.get("user_role", "employee"),
+        phone=user_phone,
+        organization_id=org_id,
+    )
+    db.add(new_user)
+    db.flush()
+
+    employee_code = snake_case_data.get("employee_code") or f"EMP-{new_user.id:06d}"
+
+    date_of_birth = None
+    if snake_case_data.get("date_of_birth"):
+        try:
+            date_of_birth = datetime.fromisoformat(snake_case_data["date_of_birth"])
+        except Exception:
+            date_of_birth = None
+
     manager_id = _int_or_none(snake_case_data.get("reporting_manager_id"))
-    if manager_id is not None and not db.query(Employee).filter(Employee.id == manager_id).first():
-        raise HTTPException(status_code=400, detail="Selected reporting manager does not exist")
+    if manager_id is not None:
+        _mgr = db.query(Employee).filter(Employee.id == manager_id).first()
+        if _mgr is None or (org_id is not None and (_mgr.organization_id is None or int(_mgr.organization_id) != int(org_id))):
+            raise HTTPException(status_code=400, detail="Selected reporting manager does not exist")
     snake_case_data["reporting_manager_id"] = manager_id
 
     dept_id = snake_case_data.get("department_id")
@@ -1007,10 +1023,16 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         except (TypeError, ValueError):
             pass  # department name — resolved by name below
         else:
-            if not db.query(Department).filter(Department.id == dept_id).first():
+            _dept_q = db.query(Department).filter(Department.id == dept_id)
+            if org_id is not None:
+                _dept_q = _dept_q.filter(Department.organization_id == org_id)
+            if not _dept_q.first():
                 raise HTTPException(status_code=400, detail="Selected department does not exist")
     if isinstance(dept_id, str) and dept_id.strip():
-        dept = db.query(Department).filter(Department.name == dept_id).first()
+        _dept_q = db.query(Department).filter(Department.name == dept_id)
+        if org_id is not None:
+            _dept_q = _dept_q.filter(Department.organization_id == org_id)
+        dept = _dept_q.first()
         if dept:
             dept_id = dept.id
         elif org_id:
@@ -1022,7 +1044,10 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
             dept_id = None
     elif not dept_id and snake_case_data.get("department"):
         dept_name = snake_case_data.get("department")
-        dept = db.query(Department).filter(Department.name == dept_name).first()
+        _dept_q = db.query(Department).filter(Department.name == dept_name)
+        if org_id is not None:
+            _dept_q = _dept_q.filter(Department.organization_id == org_id)
+        dept = _dept_q.first()
         if dept:
             dept_id = dept.id
         elif org_id:
@@ -1214,7 +1239,7 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
     # Permission enforcement: only users with write access to employees can edit.
     _require_module_action(db, current_user, "employees", "write")
     employee_query = db.query(Employee).filter(Employee.id == employee_id)
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         employee_query = employee_query.filter(Employee.organization_id == current_user.organization_id)
     employee = employee_query.first()
     if not employee:
@@ -1272,11 +1297,38 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
     if "designation_id" in snake_case_data:
         employee.designation_id = _int_or_none(snake_case_data["designation_id"])
     if "department_id" in snake_case_data:
-        employee.department_id = _int_or_none(snake_case_data["department_id"])
+        _new_dept_id = _int_or_none(snake_case_data["department_id"])
+        if _new_dept_id is not None and current_user.role != "superadmin":
+            if not db.query(Department).filter(
+                Department.id == _new_dept_id,
+                Department.organization_id == current_user.organization_id,
+            ).first():
+                raise HTTPException(status_code=400, detail="Selected department does not exist")
+        employee.department_id = _new_dept_id
     if "organization_id" in snake_case_data:
-        employee.organization_id = _int_or_none(snake_case_data["organization_id"])
+        _requested_org = _int_or_none(snake_case_data["organization_id"])
+        if current_user.role == "superadmin":
+            if _requested_org is not None and not db.query(Organization).filter(
+                Organization.id == _requested_org
+            ).first():
+                raise HTTPException(status_code=404, detail="Organization not found")
+            employee.organization_id = _requested_org
+        elif (
+            _requested_org is not None
+            and employee.organization_id is not None
+            and int(_requested_org) != int(employee.organization_id)
+        ):
+            # Cross-tenant moves are never a direct edit operation.
+            raise HTTPException(status_code=403, detail="Cannot change organization")
     if "reporting_manager_id" in snake_case_data:
-        employee.reporting_manager_id = _int_or_none(snake_case_data["reporting_manager_id"])
+        _new_mgr_id = _int_or_none(snake_case_data["reporting_manager_id"])
+        if _new_mgr_id is not None:
+            _mgr_q = db.query(Employee).filter(Employee.id == _new_mgr_id)
+            if current_user.role != "superadmin":
+                _mgr_q = _mgr_q.filter(Employee.organization_id == current_user.organization_id)
+            if not _mgr_q.first():
+                raise HTTPException(status_code=400, detail="Selected reporting manager does not exist")
+        employee.reporting_manager_id = _new_mgr_id
     # Handle company assignment (many-to-many)
     if "company_ids" in snake_case_data:
         companies = db.query(Company).filter(Company.id.in_(snake_case_data["company_ids"])).all()
@@ -1804,7 +1856,7 @@ def cleanup_orphan_docs(db: Session = Depends(get_db), current_user: User = Depe
 def delete_employee(employee_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _require_module_action(db, current_user, "employees", "delete")
     employee_query = db.query(Employee).filter(Employee.id == employee_id)
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         employee_query = employee_query.filter(Employee.organization_id == current_user.organization_id)
     employee = employee_query.first()
     if not employee:
@@ -1835,7 +1887,7 @@ def export_employees(
 
     # Build query with filters (live employees only)
     query = db.query(Employee).filter(Employee.deleted_at.is_(None))
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         query = query.filter(Employee.organization_id == current_user.organization_id)
     if company_id:
         query = query.filter(Employee.company_id == company_id)
@@ -2221,7 +2273,7 @@ def get_employee_performance(
     current_user: User = Depends(get_current_user),
 ):
     employee_query = db.query(Employee).filter(Employee.id == employee_id)
-    if current_user.organization_id is not None:
+    if current_user.role != "superadmin":
         employee_query = employee_query.filter(Employee.organization_id == current_user.organization_id)
     employee = employee_query.first()
     if not employee:

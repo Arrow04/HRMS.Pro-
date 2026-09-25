@@ -209,26 +209,6 @@ export const updateAttendancePolicy = (id: number, data: AttendancePolicy) =>
 export const deleteAttendancePolicy = (id: number) =>
   api.delete(`/payroll-config/attendance-policies/${id}`).then(r => r.data);
 
-// ── Industry Templates ──
-
-export interface IndustryTemplate {
-  code: string;
-  name: string;
-  description: string;
-  recommended_for: string[] | string;
-  typical_headcount_range?: string;
-  headcount_range?: string;
-}
-
-export const getIndustries = () =>
-  api.get<IndustryTemplate[]>('/payroll-config/industries').then(r => r.data);
-
-export const applyIndustryTemplate = (code: string) =>
-  api.post(`/payroll-config/industries/${code}/apply`).then(r => r.data);
-
-export const reapplyIndustryTemplate = (code: string) =>
-  api.post(`/payroll-config/industries/${code}/reapply`).then(r => r.data);
-
 // ── State Compliance ──
 
 export interface StateInfo {

@@ -77,17 +77,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const bootstrap = async () => {
-      // Superadmin impersonation: the control hub stores a scoped tenant token
-      // and opens HRMS with ?impersonate=1. Use it and promote it to the session.
-      const impersonated = localStorage.getItem('impersonated_token');
-      const isImpersonating = new URLSearchParams(window.location.search).has('impersonate');
-      let token = localStorage.getItem('token');
-      if (impersonated && isImpersonating) {
-        token = impersonated;
-        localStorage.setItem('token', impersonated);
-        localStorage.removeItem('impersonated_token');
-        window.history.replaceState({}, '', window.location.pathname);
+      // Superadmin impersonation: the control hub hands a single-use code on
+      // the URL (localStorage is origin-scoped, so tokens can't be shared
+      // across apps). Exchange it for a real session token before anything else.
+      const params = new URLSearchParams(window.location.search);
+      const impCode = params.get('impersonate_code');
+      if (impCode) {
+        params.delete('impersonate_code');
+        const qs = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+        try {
+          const res = await api.post('/auth/impersonate-exchange', { code: impCode });
+          localStorage.setItem('token', res.data.token);
+        } catch {
+          // Invalid/expired code — fall through to the login screen below.
+        }
       }
+      const token = localStorage.getItem('token');
       if (!token) {
         setIsLoading(false);
         return;
@@ -99,6 +105,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Fetch user data
         const res = await api.get('/auth/me');
         const userData = res.data;
+
+        // Superadmins operate from the Tenant Control Hub, never the HRMS.
+        if (userData.role === 'superadmin') {
+          localStorage.clear();
+          const hubUrl = import.meta.env.VITE_TENANT_HUB_URL || 'http://localhost:3005';
+          window.location.href = `${hubUrl}/login`;
+          return;
+        }
 
         // Fetch permissions
         let permissions = [];
@@ -167,6 +181,14 @@ const generateDeviceFingerprint = (): string => {
   };
 
   const finishLogin = useCallback(async (token: string, userData: LoginUserData, isNewDevice: boolean) => {
+        // Superadmins operate from the Tenant Control Hub, never the HRMS.
+        if (userData.role === 'superadmin') {
+          const hubUrl = import.meta.env.VITE_TENANT_HUB_URL || 'http://localhost:3005';
+          toast.error('Superadmins sign in through the Tenant Control Hub');
+          window.location.href = `${hubUrl}/login`;
+          return;
+        }
+
         localStorage.setItem('token', token);
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
@@ -188,9 +210,6 @@ const generateDeviceFingerprint = (): string => {
 
           if (userData.role === 'admin') {
             allowedModules = ['dashboard', 'company', 'employees', 'recruitment', 'holidays', 'attendance', 'leaves', 'payroll', 'expenses', 'performance', 'reports', 'settings'];
-          } else if (userData.role === 'superadmin') {
-            allowedModules = ['dashboard', 'company', 'employees', 'recruitment', 'holidays', 'attendance', 'leaves', 'payroll', 'expenses', 'performance', 'reports', 'settings',
-              'tenants', 'permissions', 'audit', 'system_health', 'feature_flags', 'billing'];
           }
         }
 

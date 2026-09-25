@@ -33,7 +33,6 @@ DEFAULT_MODULES = [
     {"code": "expenses", "name": "Expenses", "category": "finance", "icon": "Receipt", "sort_order": 9},
     {"code": "performance", "name": "Performance", "category": "hr", "icon": "TrendingUp", "sort_order": 10},
     {"code": "reports", "name": "Reports", "category": "general", "icon": "FileText", "sort_order": 11},
-    {"code": "master_data", "name": "Master Data", "category": "admin", "icon": "Database", "sort_order": 12},
     {"code": "settings", "name": "Settings", "category": "admin", "icon": "Settings", "sort_order": 13},
     {"code": "superadmin_console", "name": "SuperAdmin Console", "category": "system", "icon": "Shield", "sort_order": 99, "is_system": True},
 ]
@@ -130,7 +129,6 @@ DEFAULT_PERMISSION_MATRIX = {
         "expenses": ["read", "write", "delete", "create", "approve"],
         "performance": ["read", "write", "delete", "create"],
         "reports": ["read", "export"],
-        "master_data": ["read", "write", "delete", "create"],
         "settings": ["read", "write", "delete", "create"],
     },
     "hr_admin": {

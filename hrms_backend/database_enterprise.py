@@ -12,6 +12,8 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.pool import QueuePool
 import os
 import redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 from typing import Optional
 
 # Database Configuration
@@ -19,7 +21,14 @@ DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///hrms_dev.db')
 
 # Redis Configuration for Caching
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+redis_client = redis.from_url(
+    REDIS_URL,
+    decode_responses=True,
+    socket_connect_timeout=1.0,
+    socket_timeout=2.0,
+    retry_on_timeout=False,
+    retry=Retry(backoff=NoBackoff(), retries=2),
+)
 
 # Enterprise Connection Pool Settings - Scaled for Trillions of Records
 # SQLite uses a simpler pool, PostgreSQL uses QueuePool

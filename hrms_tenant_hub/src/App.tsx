@@ -6,7 +6,6 @@ import AuthLayout from './layouts/AuthLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const Login = lazy(() => import('./pages/Login'));
-const RegisterTenant = lazy(() => import('./pages/RegisterTenant'));
 const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
 const TenantManagement = lazy(() => import('./pages/TenantManagement'));
 const TenantDetail = lazy(() => import('./pages/TenantDetail'));
@@ -46,7 +45,6 @@ function App() {
             <Route path="/superadmin/feature-flags" element={<FeatureFlags />} />
             <Route path="/superadmin/plans" element={<PlanManagement />} />
           </Route>
-          <Route path="/register-tenant" element={<RegisterTenant />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

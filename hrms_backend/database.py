@@ -617,6 +617,17 @@ def init_db():
     db = SessionLocal()
     
     try:
+        # Tenant isolation: never auto-adopt orphaned records into the default
+        # org. NULL-org rows stay quarantined — invisible to every org scope and
+        # blocked from login — so report them for explicit operator assignment.
+        orphan_users = db.query(User).filter(User.organization_id.is_(None)).count()
+        orphan_emps = db.query(Employee).filter(Employee.organization_id.is_(None)).count()
+        if orphan_users or orphan_emps:
+            print(
+                f"WARNING: {orphan_users} user(s) and {orphan_emps} employee(s) have no "
+                "organization_id — quarantined (not visible to any tenant; users cannot log in)."
+            )
+
         if not SEED_DEFAULT_USERS:
             print("Skipping default user seed. Set SEED_DEFAULT_USERS=true to seed local/dev users.")
             print(f"Database initialized successfully (URL: {DATABASE_URL})")
@@ -653,16 +664,6 @@ def init_db():
 
         # Check if admin user exists
         admin_user = db.query(User).filter(User.email == admin_email).first()
-
-        # Fix existing users and employees that don't have an org_id (migration from old seed)
-        for orphan in db.query(User).filter(User.organization_id.is_(None)).all():
-            orphan.organization_id = org.id
-        for orphan in db.query(Employee).filter(Employee.organization_id.is_(None)).all():
-            orphan.organization_id = org.id
-        db.commit()
-        fixed_users = db.query(User).filter(User.organization_id == org.id).count()
-        fixed_emps = db.query(Employee).filter(Employee.organization_id == org.id).count()
-        print(f"Org ID {org.id} assigned to {fixed_users} users, {fixed_emps} employees")
 
         if not admin_user:
             # Create admin user using pbkdf2_sha256 which has no password length limitation

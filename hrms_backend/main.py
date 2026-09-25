@@ -101,7 +101,6 @@ from routers.health import router as health_router
 from routers.lookup import router as lookup_router
 from routers.master_data import router as master_data_router
 from routers.organizations import router as organizations_router
-from routers.settings import router as settings_router
 from routers.shifts import router as shifts_router
 from routers.payroll_config import router as payroll_config_router
 from routers.payroll_templates import router as payroll_templates_router
@@ -121,6 +120,10 @@ from routers.companies import router as companies_router
 from routers.leaves import router as leaves_router
 from routers.leave_templates import router as leave_templates_router
 from routers.payroll import router as payroll_router
+from routers.payroll_rules import router as payroll_rules_router
+from routers.payroll_arrears import router as payroll_arrears_router
+from routers.payroll_lifecycle import router as payroll_lifecycle_router
+from routers.payroll_payments import router as payroll_payments_router
 from routers.notifications import router as notifications_router
 from routers.assets import router as assets_router
 from routers.attendance import router as attendance_router
@@ -411,11 +414,15 @@ except Exception as e:
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     request_id = getattr(request.state, "request_id", None)
+    detail = exc.detail
     return JSONResponse(
         status_code=exc.status_code,
         content={
+            # `detail` mirrors the FastAPI convention for API clients/tests;
+            # `error` is the structured envelope frontends read.
+            "detail": detail if isinstance(detail, str) else json.dumps(detail),
             "error": {
-                "message": exc.detail,
+                "message": detail,
                 "status_code": exc.status_code,
                 "request_id": request_id,
                 "timestamp": ist_now_naive().isoformat(),
@@ -661,7 +668,6 @@ app.include_router(organizations_router, prefix="/api", tags=["Organizations"])
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(master_data_router, prefix="/api/master-data", tags=["Master Data"])
 app.include_router(shifts_router, prefix="/api/shifts", tags=["Shifts"])
-app.include_router(settings_router, prefix="/api/settings", tags=["Settings"])
 app.include_router(superadmin_router, prefix="/api/superadmin/legacy", tags=["SuperAdmin"])
 app.include_router(superadmin_controller_router, prefix="/api/superadmin", tags=["SuperAdmin"])
 app.include_router(employee_controller_router, prefix="/api/employee-controller", tags=["EmployeeController"])
@@ -686,6 +692,12 @@ app.include_router(ai_automation_router)
 app.include_router(companies_router)
 app.include_router(leaves_router)
 app.include_router(leave_templates_router)
+# Payroll rules must register before payroll_router so /api/payroll/rules*
+# is not captured by /api/payroll/{payroll_id} routes.
+app.include_router(payroll_rules_router)
+app.include_router(payroll_arrears_router)
+app.include_router(payroll_lifecycle_router)
+app.include_router(payroll_payments_router)
 app.include_router(payroll_router)
 app.include_router(notifications_router)
 app.include_router(assets_router)

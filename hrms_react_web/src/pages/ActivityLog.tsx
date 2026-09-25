@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   History, Building2, Users, Calendar, Briefcase, Database,
   Clock, DollarSign, Receipt, Settings, FileBarChart, Filter, ChevronDown,
@@ -40,7 +40,6 @@ const ActivityLog = () => {
     { id: 'Employee', label: 'Employee', icon: Users },
     { id: 'Leave', label: 'Leave Management', icon: Calendar },
     { id: 'Recruitment', label: 'Recruitment', icon: Briefcase },
-    { id: 'MasterData', label: 'Master Data', icon: Database },
     { id: 'Attendance', label: 'Attendance', icon: Clock },
     { id: 'Payroll', label: 'Payroll', icon: DollarSign },
     { id: 'Expenses', label: 'Expenses', icon: Receipt },
@@ -157,7 +156,6 @@ const ActivityLog = () => {
           </div>
           {isLoading ? (
             <div className="py-4 px-2">
-              null
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -39,11 +39,19 @@ router = APIRouter(tags=["SuperAdmin"])
 import os
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-try:
-    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
-    redis_client.ping()
-except Exception as exc:
-    redis_client = None
+
+def _redis_client():
+    """Lazy Redis access through the shared, timeout-bounded pool.
+
+    Never connect at import time: a dead Redis used to block startup forever
+    on this module's unbounded ping(). core.cache.get_redis() fails fast and
+    returns None when Redis is down.
+    """
+    try:
+        from core.cache import get_redis
+        return get_redis()
+    except Exception:
+        return None
 
 
 # ============== AUTHENTICATION ==============
@@ -949,6 +957,7 @@ def system_health(
     
     # Check Redis
     redis_status = None
+    redis_client = _redis_client()
     if redis_client:
         redis_start = ist_now_naive()
         try:

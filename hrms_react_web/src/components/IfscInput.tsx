@@ -51,7 +51,6 @@ const IfscInput: React.FC<IfscInputProps> = ({
         />
         {status.checking && (
           <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
-            null
           </span>
         )}
         {!status.checking && status.ok && <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500 pointer-events-none" />}

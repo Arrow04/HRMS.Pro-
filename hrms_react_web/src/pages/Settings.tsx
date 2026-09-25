@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Building2, Users, Shield, MapPin,
+  Building2, Users, Shield,
   Save, RotateCcw, Plus, Trash2, Check,
   Download, Lock, Zap, Loader2, Edit2, Settings as SettingsIcon,
   Globe, Clock, CalendarDays, CalendarRange, X,
-  Briefcase, TrendingUp, Database, UserCog, ShieldCheck, Monitor, LogOut, Upload,
-  CreditCard, Crown, CalendarClock, Banknote, CheckCircle2, Info,
-  CalendarCheck, Palmtree, ShieldAlert, BarChart3, Building, Wallet, FileBarChart, Ban, Eye, EyeOff, Copy, UserPlus, Wand2, Phone, Power, ToggleRight,
+  Briefcase, TrendingUp, UserCog, ShieldCheck, Monitor, LogOut, Upload,
+  CreditCard, CheckCircle2, Info,
+  CalendarCheck, Palmtree, ShieldAlert, BarChart3, Building, Wallet, FileBarChart, Ban, Eye, EyeOff, Copy, UserPlus, Wand2, Phone, Power, ToggleRight, AlertTriangle,
+  Megaphone, Headset, Bell, FileText,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { useNavigate } from 'react-router-dom';
@@ -14,12 +15,11 @@ import toast from 'react-hot-toast';
 import * as settingsApi from '../services/settingsService';
 import { DEFAULT_NOTIFICATION_SETTINGS, normalizeNotificationSettings } from '../services/settingsService';
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning';
-import { syncAppSettings, formatAppDate, formatAppDateTime } from '../services/appSettingsService';
+import { syncAppSettings, formatAppDate } from '../services/appSettingsService';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { getCurrentUser } from '../services/authService';
 import { useMasterData } from '../hooks/useMasterData';
 import api from '../services/api';
-import TimePicker from '../components/TimePicker';
 import DataTable from '../components/DataTable';
 import ExportButton from '../components/ExportButton';
 import SearchableSelect from '../components/SearchableSelect';
@@ -30,10 +30,12 @@ import BillingPanel from '../components/BillingPanel';
 import ActivityLog from './ActivityLog';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import Modal from '../components/Modal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
-import { getCountryDefaults } from '../utils/countryDefaults';
+import { getCountryDefaults, COUNTRY_NAMES, CURRENCY_CODES, getTimezoneCodes, getCurrencySymbol } from '../utils/countryDefaults';
+import { DATE_FORMAT_OPTIONS, TIME_FORMAT_OPTIONS, FINANCIAL_YEAR_MONTHS } from '../utils/dateFormats';
 import type { LucideIcon } from 'lucide-react';
-import type { User, Company, Notification, Department, Shift } from '../types';
+import type { User } from '../types';
 
 
 // =============================================================================
@@ -93,6 +95,7 @@ const MODULES: { code: string; label: string; icon: LucideIcon }[] = [
   { code: 'dashboard', label: 'Dashboard', icon: BarChart3 },
   { code: 'company', label: 'Company', icon: Building },
   { code: 'employees', label: 'Employees', icon: Users },
+  { code: 'letters', label: 'Letters', icon: FileText },
   { code: 'recruitment', label: 'Recruitment', icon: Briefcase },
   { code: 'holidays', label: 'Holidays', icon: Palmtree },
   { code: 'attendance', label: 'Attendance', icon: Clock },
@@ -104,7 +107,11 @@ const MODULES: { code: string; label: string; icon: LucideIcon }[] = [
   { code: 'assets', label: 'Assets', icon: Monitor },
   { code: 'performance', label: 'Performance', icon: TrendingUp },
   { code: 'reports', label: 'Reports', icon: FileBarChart },
-  { code: 'master_data', label: 'Master Data', icon: Database },
+  { code: 'announcements', label: 'Announcements', icon: Megaphone },
+  { code: 'grievances', label: 'Grievances', icon: AlertTriangle },
+  { code: 'helpdesk', label: 'Helpdesk', icon: Headset },
+  { code: 'notifications', label: 'Notifications', icon: Bell },
+  { code: 'reports', label: 'Reports', icon: BarChart3 },
   { code: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -115,13 +122,6 @@ type DeviceRow = {
   ip_address: string;
   last_used?: string;
   is_current?: boolean;
-};
-
-type MasterDataOption = {
-  value?: string;
-  code?: string;
-  label?: string;
-  name?: string;
 };
 
 type NotificationRow = {
@@ -240,35 +240,6 @@ const ToggleRow = ({ label, subtitle, checked, onChange }: { label: string; subt
   </div>
 );
 
-const CheckboxRow = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) => (
-  <label className="flex items-center gap-2 cursor-pointer">
-    <input type="checkbox" checked={checked} onChange={onChange} className="w-4 h-4 rounded border-[var(--border-color)] text-[var(--primary-blue)]" />
-    <span className="text-sm text-[var(--text-secondary)]">{label}</span>
-  </label>
-);
-
-const StatusBadge = ({ module }: { module: string }) => {
-  const colors: Record<string, string> = {
-    'Attendance': 'bg-blue-100 text-blue-700',
-    'Leave': 'bg-green-100 text-green-700',
-    'Payroll': 'bg-orange-100 text-orange-700',
-    'Reports': 'bg-purple-100 text-purple-700',
-    'Settings': 'bg-gray-100 text-gray-700',
-    'Recruitment': 'bg-pink-100 text-pink-700',
-    'Performance': 'bg-teal-100 text-teal-700',
-  };
-  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[module] || 'bg-gray-100 text-gray-700'}`}>{module}</span>;
-};
-
-const RoleBadge = ({ role }: { role: 'Admin' | 'Manager' | 'Employee' }) => {
-  const styles = {
-    Admin: 'bg-purple-100 text-purple-700 border-purple-200',
-    Manager: 'bg-blue-100 text-blue-700 border-blue-200',
-    Employee: 'bg-green-100 text-green-700 border-green-200',
-  }[role];
-  return <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles}`}>{role}</span>;
-};
-
 // =============================================================================
 // HR POLICIES PANEL
 // =============================================================================
@@ -285,7 +256,6 @@ interface HRPolicy {
   status: string;
 }
 
-const POLICY_ICONS = ['document-text-outline', 'finger-print-outline', 'calendar-outline', 'wallet-outline', 'star-outline', 'shield-checkmark-outline', 'laptop-outline', 'people-outline', 'briefcase-outline', 'heart-outline'];
 const POLICY_COLORS = ['#3B82F6', '#4F46E5', '#059669', '#8B5CF6', '#DC2626', '#0D9488', '#D97706', '#EC4899', '#6366F1', '#14B8A6'];
 
 const HRPoliciesPanel = () => {
@@ -363,7 +333,7 @@ const HRPoliciesPanel = () => {
       </div>
 
       {policies.length === 0 ? (
-        <EmptyState icon="📋" title="No policies" message="Create your first HR policy." />
+        <EmptyState icon={FileBarChart} title="No policies" description="Create your first HR policy." />
       ) : (
         <div className="space-y-3">
           {policies.map(p => (
@@ -371,7 +341,7 @@ const HRPoliciesPanel = () => {
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-1">
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: p.color + '18' }}>
-                    <span className="text-lg" style={{ color: p.color }}>📋</span>
+                    <span className="text-lg" style={{ color: p.color }}>ðŸ“‹</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -457,7 +427,7 @@ const HRPoliciesPanel = () => {
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--border-color)] text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]">Cancel</button>
               <button onClick={handleSave} disabled={saving} className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] text-white text-sm font-semibold shadow-md hover:shadow-lg disabled:opacity-50">
-                {saving ? 'Saving…' : editItem ? 'Update' : 'Create'}
+                {saving ? 'Savingâ€¦' : editItem ? 'Update' : 'Create'}
               </button>
             </div>
           </div>
@@ -478,11 +448,11 @@ const HRPoliciesPanel = () => {
 // =============================================================================
 
 const UserManagementPanel = () => {
-  const { data: rolesOptions = [] } = useMasterData('ROLES');
+  // superadmin is a platform (tenant-hub) role â€” never offered inside a tenant
+  const { data: masterRoles = [] } = useMasterData('ROLES');
+  const rolesOptions = masterRoles.filter((opt: { code: string }) => opt.code !== 'superadmin');
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedUserId, setExpandedUserId] = useState<number | null>(null);
-  const [showPermissions, setShowPermissions] = useState(true);
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showEditModal, setShowEditModal] = useState(false);
@@ -490,7 +460,6 @@ const UserManagementPanel = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserRow | null>(null);
   const [bulkDeleteConfirmItems, setBulkDeleteConfirmItems] = useState<UserRow[] | null>(null);
-  const [revokeDeviceTarget, setRevokeDeviceTarget] = useState<{ id: number; name: string } | null>(null);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [permissionsUser, setPermissionsUser] = useState<UserRow | null>(null);
 
@@ -506,7 +475,7 @@ const UserManagementPanel = () => {
     hr_admin: {
       dashboard: 'full', company: 'view', employees: 'full', attendance: 'full',
       holidays: 'full', recruitment: 'full', leaves: 'full', payroll: 'view',
-      expenses: 'full', performance: 'full', reports: 'full', master_data: 'full',
+      expenses: 'full', performance: 'full', reports: 'full',
       settings: 'edit', assets: 'full', exit: 'full', anomalies: 'view',
     },
     hr_manager: {
@@ -554,7 +523,7 @@ const UserManagementPanel = () => {
     try {
       const response = await api.get('/api/users');
       setUsers(response.data?.items || response.data || []);
-    } catch (error) {
+    } catch {
       // Error logged
       toast.error('Failed to load users');
     } finally {
@@ -594,7 +563,7 @@ const UserManagementPanel = () => {
       toast.success('Permissions updated successfully');
       setShowPermissionsModal(false);
       setPermissionsUser(null);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update permissions');
     }
   };
@@ -621,16 +590,6 @@ const UserManagementPanel = () => {
     });
   };
 
-  const handleToggleActive = async (userId: number, currentStatus: boolean) => {
-    try {
-      await api.put(`/api/users/${userId}/status`, { isActive: !currentStatus });
-      toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
-      loadUsers();
-    } catch (error) {
-      toast.error('Failed to update user status');
-    }
-  };
-
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
     try {
@@ -639,7 +598,7 @@ const UserManagementPanel = () => {
       setShowDeleteModal(false);
       setUserToDelete(null);
       loadUsers();
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete user');
     }
   };
@@ -666,7 +625,7 @@ const UserManagementPanel = () => {
       await api.put(`/api/users/${user.id}/status`, { isActive: next });
       toast.success(next ? `${user.email} activated` : `${user.email} deactivated`);
       loadUsers();
-    } catch (error) {
+    } catch {
       toast.error('Failed to update user status');
     }
   };
@@ -690,7 +649,7 @@ const UserManagementPanel = () => {
       setShowEditModal(false);
       setSelectedUser(null);
       loadUsers();
-    } catch (error) {
+    } catch {
       toast.error('Failed to update user');
     }
   };
@@ -750,14 +709,34 @@ const UserManagementPanel = () => {
     }
   };
 
-  const handleProvisionOrphans = async () => {
+  const [provisionPreview, setProvisionPreview] = useState<{ count: number; skipped: number; employees: { id: number; name: string; email: string }[] } | null>(null);
+  const [provisionChecking, setProvisionChecking] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+
+  const handleProvisionClick = async () => {
+    setProvisionChecking(true);
+    try {
+      const res = await api.get('/api/users/provision-all/preview');
+      setProvisionPreview(res.data);
+    } catch {
+      toast.error((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to check orphan employees');
+    } finally {
+      setProvisionChecking(false);
+    }
+  };
+
+  const handleProvisionConfirm = async () => {
+    setProvisioning(true);
     try {
       const res = await api.post('/api/users/provision-all');
       const data = res.data;
-      toast.success(`${data.created} user accounts created (${data.skipped} skipped). Default password: ${data.defaultPassword}`);
+      setProvisionPreview(null);
+      toast.success(`${data.created} user account${data.created === 1 ? '' : 's'} created. Default password: ${data.defaultPassword}`);
       loadUsers();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.detail || 'Failed to provision users');
+    } catch {
+      toast.error((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to provision users');
+    } finally {
+      setProvisioning(false);
     }
   };
 
@@ -775,7 +754,7 @@ const UserManagementPanel = () => {
       setShowAddModal(false);
       setNewUser({ fullName: '', email: '', phone: '', password: '', passcode: '', role: '', isActive: null, dateJoined: '', joinTime: '', permissions: { ...defaultPermissions } });
       loadUsers();
-    } catch (error) {
+    } catch {
       toast.error('Failed to create user');
     }
   };
@@ -790,19 +769,6 @@ const UserManagementPanel = () => {
       'employee': 'bg-gray-100 text-gray-700 border-gray-200',
     };
     return colors[role] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  const getAvatarColor = (name: string) => {
-    const colors = ['#1C64F2', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-      hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return colors[Math.abs(hash) % colors.length];
   };
 
   const getPermissionBadge = (level: string) => {
@@ -829,7 +795,6 @@ const UserManagementPanel = () => {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="text-center">
-          null
           <p className="text-sm text-[var(--text-disabled)]">Loading users...</p>
         </div>
       </div>
@@ -851,9 +816,9 @@ const UserManagementPanel = () => {
             label="Export"
             variant="toolbar"
           />
-          <button onClick={handleProvisionOrphans} className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl hover:bg-amber-600 transition-colors shadow-sm">
+          <button onClick={handleProvisionClick} disabled={provisionChecking} className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-60">
             <Users className="w-4 h-4" />
-            Provision Orphans
+            {provisionChecking ? 'Checking...' : 'Provision Users'}
           </button>
           <button onClick={() => { setNewUser({ fullName: '', email: '', phone: '', password: '', passcode: '', role: '', isActive: null, dateJoined: nowISODate(), joinTime: nowISOTime(), permissions: { ...defaultPermissions } }); setShowAddModal(true); setShowAddPw(false); }} className="flex items-center gap-2 px-4 py-2.5 bg-[var(--primary-blue)] text-white text-sm font-medium rounded-xl hover:bg-[var(--primary-blue)]/90 transition-colors shadow-sm">
             <Plus className="w-4 h-4" />
@@ -870,7 +835,7 @@ const UserManagementPanel = () => {
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-purple-700">{roleCounts['admin'] + roleCounts['superadmin'] || 0}</p>
+              <p className="text-2xl font-bold text-purple-700">{roleCounts['admin'] || 0}</p>
               <p className="text-xs text-purple-600 font-medium">Admins</p>
             </div>
           </div>
@@ -881,7 +846,7 @@ const UserManagementPanel = () => {
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-blue-700">{roleCounts['hr_admin'] + roleCounts['hr_manager'] + roleCounts['hr_executive'] || 0}</p>
+              <p className="text-2xl font-bold text-blue-700">{(roleCounts['hr_admin'] || 0) + (roleCounts['hr_manager'] || 0) + (roleCounts['hr_executive'] || 0)}</p>
               <p className="text-xs text-blue-600 font-medium">HR Team</p>
             </div>
           </div>
@@ -911,44 +876,46 @@ const UserManagementPanel = () => {
       </div>
 
       {/* User Table */}
-      {filteredUsers.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No users found"
-          description="Try adjusting your search or add a new user"
-        />
-      ) : (
-        <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-          {/* Filters */}
-          <div className="p-4 border-b border-[var(--border-color)] bg-white flex flex-col sm:flex-row items-center gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <SearchableSelect
-                value={roleFilter === 'all' ? 'all' : roleFilter}
-                onChange={(val) => setRoleFilter(val.toString())}
-                options={rolesOptions.map((opt: { code: string; name: string }) => ({ id: opt.code, name: opt.name }))}
-                placeholder="All Roles"
-                allOption="All Roles"
-                className="w-44"
-              />
-              <SearchableSelect
-                value={statusFilter === 'all' ? 'all' : statusFilter}
-                onChange={(val) => setStatusFilter(val.toString())}
-                options={[{ id: 'active', name: 'Active' }, { id: 'inactive', name: 'Inactive' }]}
-                placeholder="All Status"
-                allOption="All Status"
-                className="w-44"
-              />
-              {(roleFilter !== 'all' || statusFilter !== 'all') && (
-                <button
-                  onClick={() => { setRoleFilter('all'); setStatusFilter('all'); }}
-                  className="px-3 py-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors text-sm font-medium"
-                  title="Clear Filters"
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+        {/* Filters */}
+        <div className="p-4 border-b border-[var(--border-color)] bg-white flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchableSelect
+              value={roleFilter === 'all' ? 'all' : roleFilter}
+              onChange={(val) => setRoleFilter(val.toString())}
+              options={rolesOptions.map((opt: { code: string; name: string }) => ({ id: opt.code, name: opt.name }))}
+              placeholder="All Roles"
+              allOption="All Roles"
+              className="w-44"
+            />
+            <SearchableSelect
+              value={statusFilter === 'all' ? 'all' : statusFilter}
+              onChange={(val) => setStatusFilter(val.toString())}
+              options={[{ id: 'active', name: 'Active' }, { id: 'inactive', name: 'Inactive' }]}
+              placeholder="All Status"
+              allOption="All Status"
+              className="w-44"
+            />
+            {(roleFilter !== 'all' || statusFilter !== 'all') && (
+              <button
+                onClick={() => { setRoleFilter('all'); setStatusFilter('all'); }}
+                className="px-3 py-2.5 text-[#C81E1E] bg-[#C81E1E]/10 hover:bg-[#C81E1E]/20 rounded-lg transition-colors text-sm font-medium"
+                title="Clear Filters"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
+        </div>
+        {filteredUsers.length === 0 ? (
+          <div className="p-8">
+            <EmptyState
+              icon={Users}
+              title="No users found"
+              description="Try adjusting your search or add a new user"
+            />
+          </div>
+        ) : (
           <div className="overflow-x-auto">
           <DataTable
             data={Array.isArray(filteredUsers) ? filteredUsers : []}
@@ -1024,8 +991,8 @@ const UserManagementPanel = () => {
             )}
           />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Permissions Modal */}
       {showPermissionsModal && permissionsUser && (
@@ -1043,7 +1010,7 @@ const UserManagementPanel = () => {
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold text-[var(--text-primary)] leading-tight">Module Permissions</h2>
-                    <p className="text-xs text-[var(--text-secondary)]">{permissionsUser.fullName || permissionsUser.email} � {permissionsUser.role?.replace('_', ' ').toUpperCase()}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{permissionsUser.fullName || permissionsUser.email} ï¿½ {permissionsUser.role?.replace('_', ' ').toUpperCase()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1086,7 +1053,6 @@ const UserManagementPanel = () => {
               <div className="flex-1 px-6 py-6">
                 {!permissionsUser._permLoaded && !permissionsUser._permLocked ? (
                   <div className="flex justify-center py-12">
-                    null
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
@@ -1211,7 +1177,7 @@ const UserManagementPanel = () => {
                     <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2 pt-2 border-t border-[var(--border-color)]">
                       <span className="w-1.5 h-4 rounded-full bg-[#1C64F2]" /> Login Credentials
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
                       <div>
                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">User Name <span className="text-red-500">*</span></label>
                         <input
@@ -1527,7 +1493,7 @@ const UserManagementPanel = () => {
                     <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2 pt-2 border-t border-[var(--border-color)]">
                       <span className="w-1.5 h-4 rounded-full bg-[#1C64F2]" /> Login Credentials
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
                       <div>
                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">User Name <span className="text-red-500">*</span></label>
                         <input
@@ -1675,7 +1641,7 @@ const UserManagementPanel = () => {
                             type="text"
                             autoComplete="new-password"
                             maxLength={7}
-                            placeholder="Enter passcode"
+                            placeholder="Leave blank to keep current"
                             value={selectedUser.passcode || ''}
                             onChange={(e) => setSelectedUser({ ...selectedUser, passcode: e.target.value })}
                             className="flex-1 px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm bg-[var(--background)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary-blue)]"
@@ -1683,12 +1649,13 @@ const UserManagementPanel = () => {
                           <button
                             type="button"
                             onClick={() => selectedUser.passcode ? resetPasscode('edit') : generatePasscode('edit')}
-                            title={selectedUser.passcode ? 'Reset passcode (clear and start over)' : 'Generate a random 7-character alphanumeric passcode'}
+                            title={selectedUser.passcode ? 'Discard the edit (the stored passcode is kept)' : 'Generate a random 7-character alphanumeric passcode'}
                             className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5 shadow-md ${selectedUser.passcode ? 'bg-gradient-to-r from-[#F59E0B] to-[#EA580C] hover:from-[#D97706] hover:to-[#C2410C] text-white shadow-orange-500/25' : 'bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] hover:from-[#1D4ED8] hover:to-[#4338CA] text-white shadow-blue-500/25'}`}
                           >
                             {selectedUser.passcode ? <RotateCcw className="w-4 h-4" /> : <Wand2 className="w-4 h-4" />} {selectedUser.passcode ? 'Reset' : 'Generate'}
                           </button>
                         </div>
+                        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">Stored passcodes are never shown again — leave blank to keep the current one.</p>
                         <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 relative overflow-hidden">
                           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-red-400 to-red-600" />
                           <div className="flex items-start gap-2.5 pl-1.5">
@@ -1842,15 +1809,78 @@ const UserManagementPanel = () => {
         }}
         onCancel={() => setBulkDeleteConfirmItems(null)}
       />
+      <Modal
+        isOpen={provisionPreview !== null}
+        onClose={() => { if (!provisioning) setProvisionPreview(null); }}
+        title="Provision user accounts"
+      >
+        {provisionPreview && (
+          <div className="space-y-4">
+            {provisionPreview.count === 0 ? (
+              <div className="text-center py-4">
+                <div className="w-14 h-14 mx-auto mb-3 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+                </div>
+                <p className="text-sm font-medium text-[#0F172A]">All employees already have accounts</p>
+                <p className="text-xs text-[#94A3B8] mt-1">There are no employees missing a login account right now.</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-800">
+                    <p className="font-semibold">{provisionPreview.count} employee{provisionPreview.count === 1 ? '' : 's'} will get a new login account</p>
+                    <p className="text-xs mt-1">
+                      They'll sign in with the default password <span className="font-mono font-semibold">TempPass123!</span> and can change it after first login.
+                      {provisionPreview.skipped > 0 && ` ${provisionPreview.skipped} employee${provisionPreview.skipped === 1 ? '' : 's'} will be skipped (missing or already used email).`}
+                    </p>
+                  </div>
+                </div>
+                <div className="border border-[#E2E8F0] rounded-xl divide-y divide-[#F1F5F9] max-h-64 overflow-y-auto">
+                  {provisionPreview.employees.map((emp) => (
+                    <div key={emp.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <span className="text-sm font-medium text-[#0F172A] truncate">{emp.name}</span>
+                      <span className="text-xs text-[#94A3B8] truncate">{emp.email}</span>
+                    </div>
+                  ))}
+                  {provisionPreview.count > 50 && (
+                    <div className="px-4 py-2.5 text-xs text-[#94A3B8] text-center">
+                      + {provisionPreview.count - 50} more
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={handleProvisionConfirm}
+                    disabled={provisioning}
+                    className="flex-1 px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-xl hover:bg-amber-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {provisioning ? 'Creating accounts...' : `Create ${provisionPreview.count} Account${provisionPreview.count === 1 ? '' : 's'}`}
+                  </button>
+                  <button
+                    onClick={() => setProvisionPreview(null)}
+                    disabled={provisioning}
+                    className="flex-1 px-4 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] text-sm font-medium rounded-xl hover:bg-[#F1F5F9] transition-colors disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
+
 const DeviceSettings = () => {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [allowMultiDevice, setAllowMultiDevice] = useState(false);
+  const [revokeDeviceTarget, setRevokeDeviceTarget] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     loadDevices();
@@ -1861,7 +1891,7 @@ const DeviceSettings = () => {
       const response = await api.get('/api/auth/devices');
       setDevices(response.data.devices || []);
       setAllowMultiDevice(response.data.allow_multi_device || false);
-    } catch (error) {
+    } catch {
       // Error logged
     } finally {
       setLoading(false);
@@ -1876,7 +1906,7 @@ const DeviceSettings = () => {
       toast.success('Device renamed successfully');
       setEditingId(null);
       loadDevices();
-    } catch (error) {
+    } catch {
       toast.error('Failed to rename device');
     }
   };
@@ -1891,7 +1921,7 @@ const DeviceSettings = () => {
       await api.delete(`/api/auth/devices/${revokeDeviceTarget.id}`);
       toast.success('Device revoked successfully');
       loadDevices();
-    } catch (error) {
+    } catch {
       toast.error('Failed to revoke device');
     }
     setRevokeDeviceTarget(null);
@@ -1988,6 +2018,12 @@ const DeviceSettings = () => {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={revokeDeviceTarget !== null}
+        onConfirm={confirmRevokeDevice}
+        onClose={() => setRevokeDeviceTarget(null)}
+        itemName={revokeDeviceTarget?.name}
+      />
     </div>
   );
 };
@@ -2002,14 +2038,41 @@ const Settings = () => {
 
   const markDirty = () => { if (!isDirty) setIsDirty(true); };
 
-  // Master data for dropdowns
-  const { data: timezoneOptions = [] } = useMasterData('TIMEZONE');
-  const { data: dateFormatOptions = [] } = useMasterData('DATE_FORMAT');
-  const { data: currencyOptions = [] } = useMasterData('CURRENCY');
-  const { data: financialYearOptions = [] } = useMasterData('FINANCIAL_YEAR');
-  const { data: countryOptions = [] } = useMasterData('COUNTRY');
-  const { data: rolesOptions = [] } = useMasterData('ROLES');
-  const { data: auditModuleOptions = [] } = useMasterData('AUDIT_MODULE');
+  // Country / timezone / currency come from the local catalog (all countries)
+  const countryOptions = useMemo(() => COUNTRY_NAMES.map((name) => ({ code: name, name })), []);
+  const timezoneOptions = useMemo(
+    () => getTimezoneCodes().map((tz) => ({ code: tz, name: tz })),
+    []
+  );
+  // "USD ($) - US Dollar" â€” CurrencySelect parses code, symbol, full name
+  const currencyOptions = useMemo(() => {
+    let names: Intl.DisplayNames | null = null;
+    try {
+      names = new Intl.DisplayNames(['en'], { type: 'currency' });
+    } catch { /* older browsers */ }
+    return CURRENCY_CODES.map((code) => {
+      const symbol = getCurrencySymbol(code);
+      let label = code;
+      try {
+        label = names?.of(code) || code;
+      } catch { /* unknown code */ }
+      if (label === code) return { code, name: `${code} (${symbol})` };
+      return { code, name: `${code} (${symbol}) - ${label}` };
+    });
+  }, []);
+  // Date formats: pattern is the stored code, example shown as dropdown detail
+  const dateFormatOptions = useMemo(
+    () => DATE_FORMAT_OPTIONS.map((opt) => ({ code: opt.code, name: `${opt.code} (${opt.example})` })),
+    []
+  );
+  const timeFormatOptions = useMemo(
+    () => TIME_FORMAT_OPTIONS.map((opt) => ({ code: opt.code, name: `${opt.name} (${opt.example})` })),
+    []
+  );
+  const financialYearOptions = useMemo(
+    () => FINANCIAL_YEAR_MONTHS.map((month) => ({ code: month, name: month })),
+    []
+  );
 
 
   // Load settings from API on mount
@@ -2026,6 +2089,7 @@ const Settings = () => {
         if (general.currency) localStorage.setItem('appCurrency', general.currency);
         syncAppSettings({
           dateFormat: general.dateFormat || 'DD/MM/YYYY',
+          timeFormat: general.timeFormat || 'HH:mm',
           timezone: general.timezone || 'Asia/Kolkata',
           financialYear: general.financialYear || 'April',
           country: general.country || 'India',
@@ -2048,7 +2112,7 @@ const Settings = () => {
         if (logo) setOrgLogo(logo);
       }).catch(() => {});
       if (integrations) setIntegrations(integrations);
-    } catch (err) {
+    } catch {
       // Error logged
     } finally {
       setMounted(true);
@@ -2067,6 +2131,7 @@ const Settings = () => {
     language: 'en',
     timezone: 'Asia/Kolkata',
     dateFormat: 'DD/MM/YYYY',
+    timeFormat: 'HH:mm',
     currency: 'INR',
     country: 'India',
     financialYear: 'April',
@@ -2096,31 +2161,6 @@ const Settings = () => {
     biometric: false,
   });
 
-  const [auditLogs, setAuditLogs] = useState<{ time: string; user: string; action: string; module: string }[]>([]);
-  const [auditModule, setAuditModule] = useState('all');
-  const [auditLoading, setAuditLoading] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setAuditLoading(true);
-    api.get<{ id: number; userName?: string; userEmail?: string; action?: string; entityType?: string; createdAt?: string }[]>('/settings/audit-log')
-      .then(res => {
-        if (!active) return;
-        const rows = Array.isArray(res.data) ? res.data : [];
-        setAuditLogs(rows.map(r => ({
-          time: r.createdAt ? formatAppDateTime(r.createdAt) : '',
-          user: r.userName || r.userEmail || 'System',
-          action: r.action || (r.entityType ? `Updated ${r.entityType}` : 'Action'),
-          module: r.entityType || 'System',
-        })));
-      })
-      .catch(() => { if (active) setAuditLogs([]); })
-      .finally(() => { if (active) setAuditLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const filteredAuditLogs = auditModule === 'all' ? auditLogs : auditLogs.filter(l => l.module.toLowerCase() === auditModule.toLowerCase());
-
   // =============================================================================
   // HANDLERS
   // =============================================================================
@@ -2142,6 +2182,7 @@ const Settings = () => {
         localStorage.setItem('appCurrency', general.currency || 'INR');
         syncAppSettings({
           dateFormat: general.dateFormat || 'DD/MM/YYYY',
+          timeFormat: general.timeFormat || 'HH:mm',
           timezone: general.timezone || 'Asia/Kolkata',
           financialYear: general.financialYear || 'April',
           country: general.country || 'India',
@@ -2215,75 +2256,6 @@ const Settings = () => {
       case 'general':
         return (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Organisation name" description="Managed at tenant registration and cannot be changed here">
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 border border-[#E2E8F0] rounded-xl bg-[#F8FAFC] text-[#64748B]">
-                  <Lock className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                  <span className="text-sm font-medium truncate">{general.orgName}</span>
-                </div>
-              </FormField>
-              <FormField label="Default language" description="Set to English for now. Full language support coming later.">
-                <div className="flex items-center gap-2.5 px-3.5 py-2.5 border border-[#E2E8F0] rounded-xl bg-[#F8FAFC] text-[#64748B]">
-                  <Lock className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                  <span className="text-sm font-medium truncate">English</span>
-                </div>
-              </FormField>
-              <FormField label="Timezone">
-                <MasterSelect
-                  value={general.timezone || 'all'}
-                  onChange={(code) => { markDirty(); setGeneral({ ...general, timezone: code === 'all' ? 'UTC' : code }); }}
-                  options={(timezoneOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
-                  icon={Clock}
-                  subtitle="Timezone"
-                  placeholder="Select timezone"
-                />
-                <p className="mt-1 text-xs text-gray-400">Company's primary timezone, e.g. Asia/Kolkata</p>
-              </FormField>
-              <FormField label="Date format">
-                <MasterSelect
-                  value={general.dateFormat || 'all'}
-                  onChange={(code) => {
-                    const dateFormat = code === 'all' ? 'DD/MM/YYYY' : code;
-                    setGeneral({ ...general, dateFormat });
-                    syncAppSettings({ dateFormat });
-                  }}
-                  options={(dateFormatOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
-                  icon={CalendarDays}
-                  subtitle="Date format"
-                  placeholder="Select date format"
-                />
-                <p className="mt-1 text-xs text-gray-400">How dates display, e.g. DD/MM/YYYY</p>
-              </FormField>
-              <FormField label="Currency">
-                <CurrencySelect
-                  value={general.currency || 'INR'}
-                  onChange={(code) => setGeneral({ ...general, currency: code })}
-                  options={(currencyOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
-                />
-                <p className="mt-1 text-xs text-gray-400">Default currency for salaries, e.g. INR</p>
-              </FormField>
-              <FormField label="Financial year start">
-                <MasterSelect
-                  value={general.financialYear || 'all'}
-                  onChange={(code) => setGeneral({ ...general, financialYear: code === 'all' ? 'April' : code })}
-                  options={(financialYearOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
-                  icon={CalendarRange}
-                  subtitle="Financial year"
-                  placeholder="Select financial year"
-                />
-                <p className="mt-1 text-xs text-gray-400">Start month of your financial year</p>
-              </FormField>
-              <FormField label="Country" description="Timezone, currency, financial year and date format update automatically when you change country">
-                <MasterSelect
-                  value={general.country || 'India'}
-                  onChange={handleCountryChange}
-                  options={(countryOptions || []).map((opt: MasterDataOption) => ({ code: opt.value || opt.code || '', name: opt.label || opt.name || '' }))}
-                  icon={Globe}
-                  subtitle="Country"
-                  placeholder="Select country"
-                />
-              </FormField>
-            </div>
             <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
               <h4 className="font-semibold text-[#0F172A] mb-1">Organisation logo</h4>
               <p className="text-xs text-[#94A3B8] mb-3">Shown on offer letters, payslips, and exit documents. PNG, JPG or WebP.</p>
@@ -2306,6 +2278,90 @@ const Settings = () => {
                   )}
                 </div>
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField label="Organisation name" description="Managed at tenant registration and cannot be changed here">
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 border border-[#E2E8F0] rounded-xl bg-[#F8FAFC] text-[#64748B]">
+                  <Lock className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                  <span className="text-sm font-medium truncate">{general.orgName}</span>
+                </div>
+              </FormField>
+              <FormField label="Default language" description="Set to English for now. Full language support coming later.">
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 border border-[#E2E8F0] rounded-xl bg-[#F8FAFC] text-[#64748B]">
+                  <Lock className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                  <span className="text-sm font-medium truncate">English</span>
+                </div>
+              </FormField>
+              <FormField label="Country" description="Timezone, currency, financial year and date format update automatically when you change country">
+                <MasterSelect
+                  value={general.country || 'India'}
+                  onChange={handleCountryChange}
+                  options={countryOptions}
+                  icon={Globe}
+                  subtitle="Country"
+                  placeholder="Select country"
+                />
+              </FormField>
+              <FormField label="Timezone">
+                <MasterSelect
+                  value={general.timezone || 'all'}
+                  onChange={(code) => { markDirty(); setGeneral({ ...general, timezone: code === 'all' ? 'UTC' : code }); }}
+                  options={timezoneOptions}
+                  icon={Clock}
+                  subtitle="Timezone"
+                  placeholder="Select timezone"
+                />
+                <p className="mt-1 text-xs text-gray-400">Company's primary timezone, e.g. Asia/Kolkata</p>
+              </FormField>
+              <FormField label="Date format">
+                <MasterSelect
+                  value={general.dateFormat || 'all'}
+                  onChange={(code) => {
+                    const dateFormat = code === 'all' ? 'DD/MM/YYYY' : code;
+                    setGeneral({ ...general, dateFormat });
+                    syncAppSettings({ dateFormat });
+                  }}
+                  options={dateFormatOptions}
+                  icon={CalendarDays}
+                  subtitle="Date format"
+                  placeholder="Select date format"
+                />
+                <p className="mt-1 text-xs text-gray-400">How dates display, e.g. DD/MM/YYYY</p>
+              </FormField>
+              <FormField label="Time format">
+                <MasterSelect
+                  value={general.timeFormat || 'HH:mm'}
+                  onChange={(code) => {
+                    const timeFormat = code === 'all' ? 'HH:mm' : code;
+                    setGeneral({ ...general, timeFormat });
+                    syncAppSettings({ timeFormat });
+                  }}
+                  options={timeFormatOptions}
+                  icon={Clock}
+                  subtitle="Time format"
+                  placeholder="Select time format"
+                />
+                <p className="mt-1 text-xs text-gray-400">How times display, e.g. 14:30 or 02:30 PM</p>
+              </FormField>
+              <FormField label="Currency">
+                <CurrencySelect
+                  value={general.currency || 'INR'}
+                  onChange={(code) => setGeneral({ ...general, currency: code })}
+                  options={currencyOptions}
+                />
+                <p className="mt-1 text-xs text-gray-400">Default currency for salaries, e.g. INR</p>
+              </FormField>
+              <FormField label="Financial year start">
+                <MasterSelect
+                  value={general.financialYear || 'all'}
+                  onChange={(code) => setGeneral({ ...general, financialYear: code === 'all' ? 'April' : code })}
+                  options={financialYearOptions}
+                  icon={CalendarRange}
+                  subtitle="Financial year"
+                  placeholder="Select financial year"
+                />
+                <p className="mt-1 text-xs text-gray-400">Start month of your financial year</p>
+              </FormField>
             </div>
             <div className="bg-white border border-[#E2E8F0] rounded-xl p-4">
               <h4 className="font-semibold text-[#0F172A] mb-1">Feature toggles</h4>
@@ -2411,7 +2467,7 @@ const Settings = () => {
         return <UserManagementPanel />;
 
       case 'devices':
-        return <DeviceManagementPanel />;
+        return <DeviceSettings />;
 
       case 'integrations':
         return (
@@ -2538,12 +2594,6 @@ const Settings = () => {
           </div>
         </div>
       </div>
-      <ConfirmDeleteModal
-        isOpen={revokeDeviceTarget !== null}
-        onConfirm={confirmRevokeDevice}
-        onClose={() => setRevokeDeviceTarget(null)}
-        itemName={revokeDeviceTarget?.name}
-      />
     </div>
   );
 };

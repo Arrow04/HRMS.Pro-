@@ -84,6 +84,7 @@ class TenantCreate(BaseModel):
     admin_phone: Optional[str] = None
     password: Optional[str] = Field(None, min_length=8)
     admin_password: Optional[str] = Field(None, min_length=8)
+    passcode: Optional[str] = Field(None, min_length=6, max_length=64)
     
     # Compliance & Security
     logo_url: Optional[str] = None

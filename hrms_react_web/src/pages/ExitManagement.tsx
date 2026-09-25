@@ -1648,7 +1648,6 @@ const statCards = [
                   className="flex-1 px-4 py-2.5 bg-[#0D9488] text-white font-medium rounded-xl hover:bg-[#0F766E] transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                   {archiveExit.isPending ? (
                     <>
-                      null
                       Archiving...
                     </>
                   ) : (

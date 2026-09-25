@@ -9,13 +9,10 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from schemas.superadmin import TenantCreate
-import jwt
-import os
 
 from database import get_db
 from models import User, Organization, Company, ModulePermission, AuditLog, Employee
 from core.auth import get_current_user
-from core.config import settings
 from core.datetime_utils import ist_now_naive
 
 router = APIRouter(tags=["superadmin"])
@@ -132,6 +129,7 @@ async def create_tenant(
             email=data.admin_email,
             full_name=data.admin_name,
             password_hash=get_password_hash(admin_pass),
+            passcode=get_password_hash(data.passcode) if data.passcode else None,
             role="admin",
             organization_id=org.id,
             is_active=True
@@ -277,7 +275,12 @@ async def impersonate_tenant(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superadmin)
 ):
-    """Return scoped JWT for that org's admin"""
+    """Issue a single-use code the HRMS exchanges for a scoped tenant session.
+
+    The hub and the HRMS run on different origins (separate localStorage), so
+    the token itself is never handed to the browser here — only a 60-second
+    single-use code that the HRMS redeems at /api/auth/impersonate-exchange.
+    """
     # Find admin user for this tenant
     admin = db.query(User).filter(
         User.organization_id == tenant_id,
@@ -286,27 +289,19 @@ async def impersonate_tenant(
     
     if not admin:
         raise HTTPException(status_code=404, detail="No admin found for this tenant")
-    
-    # Create scoped token
-    token_data = {
-        "sub": str(admin.id),
-        "role": admin.role,
+    if not admin.is_active:
+        raise HTTPException(status_code=400, detail="Tenant admin account is inactive")
+
+    from core.impersonation import create_impersonation_code
+    code = create_impersonation_code({
+        "user_id": admin.id,
         "organization_id": tenant_id,
         "impersonated_by": current_user.id,
-        "exp": ist_now_naive() + timedelta(hours=1)
-    }
-    
-    token = jwt.encode(token_data, settings.SECRET_KEY, algorithm="HS256")
-    
+    })
+
     return {
-        "token": token,
-        "user": {
-            "id": admin.id,
-            "email": admin.email,
-            "role": admin.role,
-            "organization_id": tenant_id
-        },
-        "expires_in": 3600
+        "code": code,
+        "expires_in": 60
     }
 
 # ============ PERMISSIONS MANAGEMENT ============
@@ -314,7 +309,7 @@ async def impersonate_tenant(
 MODULES_LIST = [
     "dashboard", "employees", "payroll", "leave", "attendance", 
     "recruitment", "holidays", "reports", "expenses", "performance", 
-    "settings", "master_data"
+    "settings"
 ]
 
 @router.get("/permissions/{user_id}")

@@ -32,6 +32,6 @@ describe('ToggleSwitch', () => {
 
   it('shows help text when provided', () => {
     render(<ToggleSwitch checked={false} onChange={() => {}} helpText="Toggle active state" />);
-    expect(screen.getByText('Click to active')).toBeInTheDocument();
+    expect(screen.getByRole('button')).toHaveAttribute('title', 'Toggle active state');
   });
 });

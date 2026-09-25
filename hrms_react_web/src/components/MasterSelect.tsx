@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search, Check, Globe, Clock, CalendarDays, CalendarRange, Tag } from 'lucide-react';
+import { ChevronDown, Search, Check, Tag } from 'lucide-react';
 
 export interface MasterSelectOption {
   code: string;
@@ -72,7 +72,8 @@ const MasterSelect = ({ value, onChange, options, icon: Icon = Tag, subtitle, pl
   }, [isOpen, computePos]);
 
   const parsed = options.map((o) => ({ code: o.code, ...splitLabel(o.name, o.code) }));
-  const current = parsed.find((p) => p.code === value) || parsed[0] || { code: value, label: value, detail: '' };
+  // Unknown value: show it as-is rather than silently displaying the first option
+  const current = parsed.find((p) => p.code === value) || { code: value, label: value, detail: '' };
 
   const filtered = parsed.filter((p) =>
     !search || p.code.toLowerCase().includes(search.toLowerCase()) || p.label.toLowerCase().includes(search.toLowerCase()) || p.detail.toLowerCase().includes(search.toLowerCase())

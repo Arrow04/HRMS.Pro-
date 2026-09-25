@@ -23,7 +23,6 @@ const MODULE_OPTIONS = [
   { id: 'assets', label: 'Assets', icon: Monitor },
   { id: 'performance', label: 'Performance', icon: TrendingUp },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
-  { id: 'master_data', label: 'Master Data', icon: Database },
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'exit', label: 'Exits', icon: LogOut },
   { id: 'anomalies', label: 'Anomalies', icon: ShieldAlert },

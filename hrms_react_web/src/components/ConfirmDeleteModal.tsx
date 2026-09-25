@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, X, Trash2 } from 'lucide-react';
+﻿import React, { useEffect, useRef } from 'react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import Modal from './Modal';
 import { DEMO_NO_GUARDS } from '../config/demo';
 
@@ -18,7 +18,7 @@ const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   itemName = 'this item',
   isDeleting = false,
 }) => {
-  // Demo mode: skip the dialog entirely — confirm the moment it opens.
+  // Demo mode: skip the dialog entirely â€” confirm the moment it opens.
   const confirmRef = useRef(onConfirm);
   useEffect(() => {
     confirmRef.current = onConfirm;
@@ -60,7 +60,6 @@ const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
             >
               {isDeleting ? (
                 <>
-                  null
                   Deleting...
                 </>
               ) : (

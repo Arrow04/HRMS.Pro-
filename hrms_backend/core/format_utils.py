@@ -22,17 +22,33 @@ CURRENCY_SYMBOLS = {
     "CLP": "CL$", "PEN": "S/",
 }
 
-# ── Date format mapping (display format → strftime) ────────────────────────
-DateFormatMap = {
-    "YYYY-MM-DD": "%Y-%m-%d",
-    "DD/MM/YYYY": "%d/%m/%Y",
-    "MM/DD/YYYY": "%m/%d/%Y",
-    "DD-MM-YYYY": "%d-%m-%Y",
-    "DD.MM.YYYY": "%d.%m.%Y",
-    "DD MMM YYYY": "%d %b %Y",
-    "MMM DD, YYYY": "%b %d, %Y",
-    "DD MMMM YYYY": "%d %B %Y",
-}
+# ── Date format rendering (token-based, matches frontend countryDefaults) ──
+# Supported tokens (longest match first): YYYY YY MMMM MMM MM M DD D EEEE EEE
+# Everything else in the pattern is a literal separator.
+_DATE_TOKENS = (
+    ("YYYY", lambda dt: f"{dt.year:04d}"),
+    ("YY", lambda dt: f"{dt.year % 100:02d}"),
+    ("MMMM", lambda dt: dt.strftime("%B")),
+    ("MMM", lambda dt: dt.strftime("%b")),
+    ("EEEE", lambda dt: dt.strftime("%A")),
+    ("EEE", lambda dt: dt.strftime("%a")),
+    ("MM", lambda dt: f"{dt.month:02d}"),
+    ("M", lambda dt: str(dt.month)),
+    ("DD", lambda dt: f"{dt.day:02d}"),
+    ("D", lambda dt: str(dt.day)),
+)
+
+DEFAULT_DATE_FORMAT = "YYYY-MM-DD"
+
+
+def render_date(dt, pattern: str = DEFAULT_DATE_FORMAT) -> str:
+    """Render a date/datetime with an org date_format pattern (e.g. 'DD MMM YYYY')."""
+    if not pattern:
+        pattern = DEFAULT_DATE_FORMAT
+    for token, fn in _DATE_TOKENS:
+        if token in pattern:
+            pattern = pattern.replace(token, fn(dt))
+    return pattern
 
 # ── Public helpers ──────────────────────────────────────────────────────────
 
@@ -79,40 +95,71 @@ def _indian_grouping(n: float) -> str:
     return negative + result
 
 
-def get_strftime(org=None) -> str:
-    """Return the strftime pattern for the org's date_format setting.
-
-    Defaults to '%Y-%m-%d' (ISO) if org is None or date_format not set.
-    """
+def get_date_format(org=None) -> str:
+    """Return the org's date_format pattern, defaulting to ISO (YYYY-MM-DD)."""
     fmt = None
     if org:
         fmt = getattr(org, "date_format", None)
-    return DateFormatMap.get(fmt, "%Y-%m-%d") if fmt else "%Y-%m-%d"
+    return fmt or DEFAULT_DATE_FORMAT
+
+
+# ── Time format rendering (tokens: HH H hh h mm ss A) ──────────────────────
+DEFAULT_TIME_FORMAT = "HH:mm"
+
+_TIME_TOKENS = (
+    ("HH", lambda dt: f"{dt.hour:02d}"),
+    ("hh", lambda dt: f"{((dt.hour + 11) % 12) + 1:02d}"),
+    ("mm", lambda dt: f"{dt.minute:02d}"),
+    ("ss", lambda dt: f"{dt.second:02d}"),
+    ("A", lambda dt: "AM" if dt.hour < 12 else "PM"),
+    ("H", lambda dt: str(dt.hour)),
+    ("h", lambda dt: str(((dt.hour + 11) % 12) + 1)),
+)
+
+
+def render_time(dt, pattern: str = DEFAULT_TIME_FORMAT) -> str:
+    """Render a time with an org time_format pattern (e.g. 'HH:mm' or 'hh:mm A')."""
+    if not pattern:
+        pattern = DEFAULT_TIME_FORMAT
+    for token, fn in _TIME_TOKENS:
+        if token in pattern:
+            pattern = pattern.replace(token, fn(dt))
+    return pattern
+
+
+def get_time_format(org=None) -> str:
+    """Return the org's time_format pattern, defaulting to 24h 'HH:mm'."""
+    fmt = None
+    if org:
+        fmt = getattr(org, "time_format", None)
+    return fmt or DEFAULT_TIME_FORMAT
+
+
+def format_time(dt, org=None) -> str:
+    """Format a time using the org's time_format setting."""
+    if dt is None:
+        return ""
+    return render_time(dt, get_time_format(org))
 
 
 def format_date(dt, org=None) -> str:
     """Format a datetime/date using the org's date_format setting.
 
-    Falls back to ISO (%Y-%m-%d) if org is None.
+    Falls back to ISO (YYYY-MM-DD) if org is None.
     """
     if dt is None:
         return ""
-    if isinstance(dt, datetime):
-        return dt.strftime(get_strftime(org))
-    # date object
-    return dt.strftime(get_strftime(org))
+    return render_date(dt, get_date_format(org))
 
 
 def format_datetime(dt, org=None) -> str:
     """Format a datetime with both date and time using org settings.
 
-    Time is always in HH:MM (24h). Date part follows org.date_format.
+    Date follows org.date_format, time follows org.time_format.
     """
     if dt is None:
         return ""
-    pattern = get_strftime(org)
-    # Append time
-    return dt.strftime(pattern + " %H:%M")
+    return f"{format_date(dt, org)} {format_time(dt, org)}"
 
 
 def org_currency_code(org) -> str:

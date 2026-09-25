@@ -2106,6 +2106,24 @@ def get_payroll_summary(
     return result
 
 
+@router.get("/api/payroll/{payroll_id}/explain", tags=["Payroll"])
+def get_payroll_explain(
+    payroll_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Explainability: every payslip figure with its rule, version, formula
+    and inputs (mandate section 43 - "why was this amount calculated?")."""
+    from models import Payroll
+    from services.payroll_explain import explain_payload
+
+    _assert_can_view_payroll(db, payroll_id, current_user)
+    payroll = db.query(Payroll).filter(Payroll.id == payroll_id).first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Payroll not found")
+    return explain_payload(db, payroll)
+
+
 @router.get("/api/payroll/{payroll_id}/payslip", tags=["Payroll"])
 def get_payslip_json(
     payroll_id: int,

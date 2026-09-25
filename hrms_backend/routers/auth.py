@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import uuid
 import hashlib
 import re
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -22,11 +23,10 @@ from core.auth import (
 )
 from core.tenant import org_owned
 from database import get_db
-from models import Employee, User, DeviceLog, DeviceBinding, ModulePermission, Organization, Plan, Subscription
+from models import Employee, User, DeviceLog, DeviceBinding, ModulePermission, Organization
 from services.otp_service import OTPService
 from services.sms_service import NotificationService
 from services.email_service import EmailService
-from services.notification_templates import tenant_welcome_email, new_tenant_signup_notification
 from core.datetime_utils import ist_now_naive
 from core.schemas import ThemeSettings
 
@@ -47,18 +47,6 @@ class RegisterRequest(BaseModel):
     fullName: Optional[str] = None
     phone: Optional[str] = None
     organizationId: Optional[int] = None
-
-
-class TenantRegistration(BaseModel):
-    admin_email: str
-    password: str
-    admin_name: str
-    phone: Optional[str] = None
-    company_name: str
-    industry: Optional[str] = None
-    company_size: Optional[str] = None
-    registered_state: Optional[str] = None
-    registered_city: Optional[str] = None
 
 
 class PasskeyLoginRequest(BaseModel):
@@ -289,110 +277,6 @@ def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
 
-@router.post("/register-tenant", response_model=dict)
-def register_tenant(data: TenantRegistration, db: Session = Depends(get_db)):
-    """Self-service tenant registration. Creates a pending organisation."""
-    try:
-        if db.query(User).filter(User.email == data.admin_email).first():
-            raise HTTPException(status_code=409, detail="Email already registered")
-
-        if data.phone and db.query(User).filter(User.phone == data.phone).first():
-            raise HTTPException(status_code=409, detail="Phone number already registered")
-
-        org_code = data.company_name[:3].upper() + str(int(ist_now_naive().timestamp()))[-6:]
-        existing = db.query(Organization).filter(Organization.code == org_code).first()
-        while existing:
-            org_code = data.company_name[:3].upper() + str(int(ist_now_naive().timestamp()))[-6:]
-            existing = db.query(Organization).filter(Organization.code == org_code).first()
-
-        org = Organization(
-            name=data.company_name,
-            code=org_code,
-            email=data.admin_email,
-            status="pending",
-            industry=data.industry,
-            company_size=data.company_size,
-            registered_state=data.registered_state,
-            registered_city=data.registered_city,
-        )
-        db.add(org)
-        db.flush()
-
-        admin = User(
-            email=data.admin_email,
-            full_name=data.admin_name,
-            password_hash=get_password_hash(data.password),
-            role="admin",
-            organization_id=org.id,
-            is_active=True,
-            phone=data.phone,
-        )
-        db.add(admin)
-        db.flush()
-
-        plan = db.query(Plan).filter(Plan.name == "free").first()
-        if not plan:
-            plan = Plan(
-                name="free",
-                display_name="Free Trial",
-                max_employees=10,
-                features=["basic_employees", "basic_attendance", "basic_payroll"],
-            )
-            db.add(plan)
-            db.flush()
-
-        subscription = Subscription(
-            organization_id=org.id,
-            plan_id=plan.id,
-            status="trial",
-            trial_ends_at=ist_now_naive() + timedelta(days=14),
-        )
-        db.add(subscription)
-
-        for module in ["employees", "attendance", "leave", "payroll"]:
-            perm = ModulePermission(
-                user_id=admin.id,
-                module=module,
-                can_read=True,
-                can_write=True,
-                can_delete=True,
-                granted_by=admin.id,
-            )
-            db.add(perm)
-
-        db.commit()
-
-        login_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-        email_svc = EmailService()
-        email_svc.send_email(
-            data.admin_email,
-            "Welcome to HRMS.Pro!",
-            tenant_welcome_email(data.company_name, data.admin_name, data.admin_email, login_url),
-        )
-
-        superadmins = db.query(User).filter(User.role == "superadmin", User.is_active == True).all()
-        dashboard_url = f"{login_url}/superadmin/tenants"
-        for sa in superadmins:
-            email_svc.send_email(
-                sa.email,
-                "New Organisation Registration",
-                new_tenant_signup_notification(data.company_name, data.admin_name, data.admin_email, dashboard_url),
-            )
-
-        return {
-            "message": "Organisation registered successfully. Pending super admin approval.",
-            "organisation_id": org.id,
-            "status": "pending",
-        }
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as exc:
-        db.rollback()
-        logger.exception("Tenant registration failed")
-        raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
-
-
 def detect_device_type(user_agent: str) -> str:
     user_agent = user_agent.lower()
     if 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent:
@@ -498,7 +382,7 @@ def _build_login_payload(user: User, db: Session) -> dict:
         plan_features = [
             "dashboard", "company", "employees", "recruitment", "holidays",
             "attendance", "leaves", "expenses", "payroll", "performance",
-            "reports", "assets", "exit", "anomalies", "master-data", "settings",
+            "reports", "assets", "exit", "anomalies", "settings",
         ]
 
     return {
@@ -509,6 +393,43 @@ def _build_login_payload(user: User, db: Session) -> dict:
         },
         "is_new_device": False,
     }
+
+
+class ImpersonationExchangeRequest(BaseModel):
+    code: str
+
+
+@router.post("/impersonate-exchange", response_model=dict)
+def impersonate_exchange(data: ImpersonationExchangeRequest, db: Session = Depends(get_db)):
+    """Redeem a hub-issued single-use code for a scoped tenant session.
+
+    The control hub creates the code (60s TTL, single use) when a superadmin
+    impersonates a tenant admin; the HRMS exchanges it here so the session
+    token never travels through another origin's storage or the URL.
+    """
+    from core.impersonation import consume_impersonation_code
+
+    payload = consume_impersonation_code(data.code)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Impersonation code is invalid or expired")
+
+    user = db.query(User).filter(User.id == payload.get("user_id")).first()
+    org_id = payload.get("organization_id")
+    if (
+        user is None
+        or not user.is_active
+        or user.role == "superadmin"
+        or not org_id
+        or user.organization_id is None
+        or int(user.organization_id) != int(org_id)
+    ):
+        raise HTTPException(status_code=401, detail="Impersonation code is invalid or expired")
+
+    logger.info(
+        "Impersonation session started",
+        extra={"user_id": user.id, "by_superadmin": payload.get("impersonated_by")},
+    )
+    return _build_login_payload(user, db)
 
 
 @router.post("/refresh", response_model=dict)
@@ -556,7 +477,16 @@ def login_passkey(login_data: PasskeyLoginRequest, request: Request, db: Session
                 detail="Your account has been deactivated. Please contact your HR administrator.",
             )
 
-        if not user.passcode or not verify_password(passcode, user.passcode):
+        stored = user.passcode or ""
+        if stored.startswith("$"):
+            passkey_ok = verify_password(passcode, stored)
+        else:
+            # Legacy rows stored the passcode in plaintext — accept once and
+            # upgrade the row to a hash transparently (committed with last_login).
+            passkey_ok = bool(stored) and secrets.compare_digest(passcode, stored)
+            if passkey_ok:
+                user.passcode = get_password_hash(passcode)
+        if not passkey_ok:
             _record_failed_attempt(client_ip, identifier)
             raise HTTPException(status_code=401, detail="Invalid passkey")
 

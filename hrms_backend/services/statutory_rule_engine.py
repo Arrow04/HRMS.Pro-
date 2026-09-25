@@ -66,7 +66,7 @@ class StatutoryRuleEngine:
             .filter(
                 StatutoryRule.rule_type == rule_type,
                 StatutoryRule.deleted_at.is_(None),
-                StatutoryRule.status == 'active',
+                StatutoryRule.status.in_(['active', 'superseded']),
                 StatutoryRule.country == country,
                 StatutoryRule.effective_from <= as_of,
                 (
@@ -122,7 +122,7 @@ class StatutoryRuleEngine:
                 has_company = 0 if r.company_id else 1
                 has_org = 0 if r.organization_id else 1
                 has_state = 0 if r.state_code else 1
-                return (has_company, has_org, has_state, -r.effective_from.toordinal())
+                return (has_company, has_org, has_state, -r.effective_from.toordinal(), -(getattr(r, 'version', 1) or 1))
             candidates.sort(key=specificity)
             result = candidates[0]
 
@@ -148,7 +148,7 @@ class StatutoryRuleEngine:
             .filter(
                 StatutoryRule.rule_type == rule_type,
                 StatutoryRule.deleted_at.is_(None),
-                StatutoryRule.status == 'active',
+                StatutoryRule.status.in_(['active', 'superseded']),
                 StatutoryRule.country == country,
                 StatutoryRule.effective_from <= as_of,
                 (
@@ -178,7 +178,7 @@ class StatutoryRuleEngine:
 
         if candidates:
             def specificity(r):
-                return (0 if r.company_id else 1, 0 if r.organization_id else 1, 0 if r.state_code else 1, -r.effective_from.toordinal())
+                return (0 if r.company_id else 1, 0 if r.organization_id else 1, 0 if r.state_code else 1, -r.effective_from.toordinal(), -(getattr(r, 'version', 1) or 1))
             candidates.sort(key=specificity)
             return candidates[0]
 
@@ -198,7 +198,7 @@ class StatutoryRuleEngine:
             self.db.query(StatutoryRule)
             .filter(
                 StatutoryRule.deleted_at.is_(None),
-                StatutoryRule.status == 'active',
+                StatutoryRule.status.in_(['active', 'superseded']),
                 StatutoryRule.country == country,
                 StatutoryRule.effective_from <= as_of,
                 (

@@ -1,4 +1,4 @@
-import { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
+﻿import { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import type { Employee, Branch, Department, Designation, Company } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -369,7 +369,7 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
     }
   };
 
-  // Save the current onboarding form data to the employee record without completing it —
+  // Save the current onboarding form data to the employee record without completing it â€”
   // the employee stays in the onboarding pipeline (status 'new') and can resume later.
   const handleSaveProgress = async () => {
     if (!selectedEmployee?.id) return;
@@ -465,7 +465,6 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
       <div className="bg-white overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            null
           </div>
         ) : (
           <DataTable

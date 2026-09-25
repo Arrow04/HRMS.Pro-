@@ -107,7 +107,7 @@ export default function AdminUsers() {
     attendance: 'Attendance', holidays: 'Holidays', recruitment: 'Recruitment',
     leaves: 'Leaves', payroll: 'Payroll', expenses: 'Expenses',
     assets: 'Assets', performance: 'Performance', reports: 'Reports',
-    master_data: 'Master Data', settings: 'Settings', exit: 'Exits',
+    settings: 'Settings', exit: 'Exits',
     anomalies: 'Anomalies', superadmin_console: 'SuperAdmin Console'
   };
 

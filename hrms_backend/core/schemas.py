@@ -158,6 +158,7 @@ class GeneralSettingsUpdate(BaseModel):
     timezone: Optional[str] = None
     language: Optional[str] = None
     dateFormat: Optional[str] = None
+    timeFormat: Optional[str] = None
     currency: Optional[str] = None
     country: Optional[str] = None
     financialYear: Optional[str] = None

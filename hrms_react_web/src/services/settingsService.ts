@@ -7,6 +7,7 @@ export interface GeneralSettings {
   language: string;
   timezone: string;
   dateFormat: string;
+  timeFormat: string;
   currency: string;
   country: string;
   financialYear: string;
@@ -68,14 +69,6 @@ export interface PerformanceSettings {
   selfAppraisal: boolean;
 }
 
-// Permission Entry
-export interface PermissionEntry {
-  module: string;
-  admin: boolean;
-  manager: boolean;
-  employee: boolean;
-}
-
 export interface NotificationEntry {
   event: string;
   inApp: boolean;
@@ -126,6 +119,7 @@ export const fetchGeneralSettings = async (): Promise<GeneralSettings> => {
     language: data.language || 'en',
     timezone: data.timezone || 'Asia/Kolkata',
     dateFormat: data.dateFormat || 'DD/MM/YYYY',
+    timeFormat: data.timeFormat || 'HH:mm',
     currency: data.currency || 'INR',
     country: data.country || 'India',
     financialYear: data.financialYear || 'April',
@@ -185,15 +179,6 @@ export const fetchPerformanceSettings = async (): Promise<PerformanceSettings> =
 
 export const savePerformanceSettings = async (settings: PerformanceSettings): Promise<void> => {
   await api.put('/settings/performance', settings);
-};
-
-export const fetchPermissions = async (): Promise<PermissionEntry[]> => {
-  const response = await api.get<PermissionEntry[]>('/settings/permissions');
-  return response.data;
-};
-
-export const savePermissions = async (permissions: PermissionEntry[]): Promise<void> => {
-  await api.put('/settings/permissions', { permissions });
 };
 
 export const fetchNotifications = async (): Promise<NotificationEntry[]> => {

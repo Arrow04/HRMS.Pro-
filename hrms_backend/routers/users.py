@@ -45,7 +45,6 @@ class UserResponse(BaseModel):
     email: str
     fullName: Optional[str] = Field(None, alias="full_name", serialization_alias="fullName")
     phone: Optional[str] = None
-    passcode: Optional[str] = None
     organizationId: Optional[int] = Field(None, alias="organization_id", serialization_alias="organizationId")
     isLockedToDevice: Optional[bool] = Field(False, alias="is_locked_to_device", serialization_alias="isLockedToDevice")
     deviceId: Optional[str] = Field(None, alias="device_id", serialization_alias="deviceId")
@@ -111,13 +110,17 @@ def create_user(
         if db.query(Candidate).filter(Candidate.phone == new_phone).first():
             raise HTTPException(status_code=409, detail="Phone number already exists")
 
+    # Passcodes are credentials: store only a hash (login-passkey verifies
+    # with passlib). A blank value means "no passkey".
+    _raw_passcode = (snake_case_data.get("passcode") or "").strip()
+
     new_user = User(
         email=snake_case_data.get("email"),
         password_hash=get_password_hash(snake_case_data.get("password")),
         full_name=snake_case_data.get("full_name") or snake_case_data.get("email").split('@')[0],
         role=snake_case_data.get("role", "employee"),
         phone=snake_case_data.get("phone"),
-        passcode=snake_case_data.get("passcode"),
+        passcode=get_password_hash(_raw_passcode) if _raw_passcode else None,
         organization_id=current_user.organization_id,
         is_active=snake_case_data.get("is_active", True),
         date_joined=_parse_date(snake_case_data.get("date_joined")),
@@ -194,7 +197,11 @@ def get_users(db: Session = Depends(get_db), current_user: User = Depends(get_cu
         )
     query = db.query(User).filter(User.deleted_at == None)
     if current_user.role != "superadmin":
-        query = query.filter(User.organization_id == current_user.organization_id)
+        # superadmin is a platform (tenant-hub) role — never listed inside a tenant
+        query = query.filter(
+            User.organization_id == current_user.organization_id,
+            User.role != "superadmin",
+        )
     return query.all()
 
 
@@ -241,7 +248,11 @@ def update_user(
         user.phone = snake_case_data["phone"]
 
     if snake_case_data.get("passcode") is not None:
-        user.passcode = snake_case_data["passcode"]
+        # None keeps the current value; blank keeps it too (the edit form
+        # cannot read stored hashes back); a non-blank value is re-hashed.
+        _new_passcode = str(snake_case_data["passcode"]).strip()
+        if _new_passcode:
+            user.passcode = get_password_hash(_new_passcode)
 
     if snake_case_data.get("password"):
         user.password_hash = get_password_hash(snake_case_data["password"])
@@ -426,6 +437,48 @@ def delete_user(
 # Provision User accounts for orphan employees (userId is NULL)
 # ---------------------------------------------------------------------------
 
+def _find_orphan_employees(db: Session):
+    """Split active employees without a linked user into provisionable/skipped."""
+    orphans = db.query(Employee).filter(
+        Employee.user_id.is_(None),
+        Employee.deleted_at.is_(None),
+    ).all()
+    provisionable, skipped = [], 0
+    for emp in orphans:
+        email = (emp.email or "").strip().lower()
+        if not email:
+            skipped += 1
+            continue
+        if db.query(User).filter(func.lower(User.email) == email).first():
+            skipped += 1
+            continue
+        provisionable.append(emp)
+    return provisionable, skipped
+
+
+@router.get("/provision-all/preview", response_model=dict)
+def provision_all_preview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dry-run: who would get an account, so the UI can ask for confirmation."""
+    if current_user.role not in USER_MANAGER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    provisionable, skipped = _find_orphan_employees(db)
+    return {
+        "count": len(provisionable),
+        "skipped": skipped,
+        "employees": [
+            {
+                "id": emp.id,
+                "name": emp.full_name or f"{emp.first_name or ''} {emp.last_name or ''}".strip() or emp.email,
+                "email": emp.email,
+            }
+            for emp in provisionable[:50]
+        ],
+    }
+
+
 @router.post("/provision-all", response_model=dict)
 def provision_all_orphan_employees(
     db: Session = Depends(get_db),
@@ -434,26 +487,12 @@ def provision_all_orphan_employees(
     if current_user.role not in USER_MANAGER_ROLES:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    orphans = db.query(Employee).filter(
-        Employee.user_id.is_(None),
-        Employee.deleted_at.is_(None),
-    ).all()
+    provisionable, skipped = _find_orphan_employees(db)
 
     default_password = "TempPass123!"
     created = 0
-    skipped = 0
-    errors = []
 
-    for emp in orphans:
-        email = (emp.email or "").strip().lower()
-        if not email:
-            skipped += 1
-            continue
-
-        if db.query(User).filter(func.lower(User.email) == email).first():
-            skipped += 1
-            continue
-
+    for emp in provisionable:
         user_phone = None
         if emp.phone:
             if not db.query(User).filter(User.phone == str(emp.phone).strip()).first():

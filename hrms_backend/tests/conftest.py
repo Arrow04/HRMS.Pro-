@@ -103,12 +103,16 @@ def client(db_session):
     def override_get_db():
         yield db_session
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
-        # Get admin user ID for test assertions
-        from models import User
-        admin_user = db_session.query(User).filter(User.email == os.getenv("ADMIN_EMAIL", "admin@hrms.com")).first()
-        c.admin_user_id = admin_user.id if admin_user else 1
-        yield c
+    # Plain TestClient (no `with`): the app lifespan starts process-wide
+    # background loops and only works once per process — re-entering it for
+    # every test hangs the second startup forever. Endpoint tests don't need
+    # the lifespan (test_company_scope uses this same pattern).
+    c = TestClient(app)
+    # Get admin user ID for test assertions
+    from models import User
+    admin_user = db_session.query(User).filter(User.email == os.getenv("ADMIN_EMAIL", "admin@hrms.com")).first()
+    c.admin_user_id = admin_user.id if admin_user else 1
+    yield c
     app.dependency_overrides.clear()
 
 

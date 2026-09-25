@@ -12,11 +12,14 @@ from core.datetime_utils import ist_now_naive
 
 router = APIRouter(tags=["health"])
 
-# Redis client for health checks
-redis_client = redis.from_url(
-    os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
-    decode_responses=True
-)
+# Lazy Redis access via the shared timeout-bounded pool (never at import:
+# an unreachable Redis must not block app startup).
+def _redis_client():
+    try:
+        from core.cache import get_redis
+        return get_redis()
+    except Exception:
+        return None
 
 @router.get("/health")
 async def health_check():
@@ -45,6 +48,9 @@ async def readiness_check(db: Session = Depends(get_db)):
     
     # Check Redis
     try:
+        redis_client = _redis_client()
+        if not redis_client:
+            raise RuntimeError("Redis unavailable")
         redis_client.ping()
         checks["redis"] = True
     except Exception as e:
@@ -87,6 +93,9 @@ async def detailed_health_check(db: Session = Depends(get_db)):
     # Redis health
     redis_health = {"status": "unknown"}
     try:
+        redis_client = _redis_client()
+        if not redis_client:
+            raise RuntimeError("Redis unavailable")
         redis_start = time.time()
         redis_client.ping()
         info = redis_client.info()

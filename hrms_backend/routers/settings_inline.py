@@ -85,6 +85,7 @@ def get_general_settings(
         "timezone": org.timezone or "UTC",
         "language": org.language_preference or "en",
         "dateFormat": org.date_format or "DD/MM/YYYY",
+        "timeFormat": getattr(org, "time_format", None) or "HH:mm",
         "currency": org.default_currency or "INR",
         "country": getattr(org, "country", None) or "India",
         "financialYear": (org.settings or {}).get("general", {}).get("financialYear", "April"),
@@ -769,6 +770,23 @@ def download_audit_log(
     )
 
 
+def _user_public_dict(user: User) -> dict:
+    """Serialize a user without ever exposing passcode/password hashes."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "fullName": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "isActive": user.is_active,
+        "organizationId": user.organization_id,
+        "isLockedToDevice": user.is_locked_to_device,
+        "deviceId": user.device_id,
+        "dateJoined": user.date_joined.isoformat() if user.date_joined else None,
+        "createdAt": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
 @router.get("/api/settings/users", tags=["Users"])
 def list_users(
     organizationId: Optional[int] = None,
@@ -780,7 +798,7 @@ def list_users(
         query = query.filter(User.organization_id == organizationId)
     elif current_user.role != "superadmin":
         query = query.filter(User.organization_id == current_user.organization_id)
-    return query.order_by(User.id.asc()).all()
+    return [_user_public_dict(u) for u in query.order_by(User.id.asc()).all()]
 
 
 @router.post("/api/settings/users", tags=["Users"])
@@ -808,7 +826,7 @@ def create_user(
     db.commit()
     db.refresh(user)
     logger.info("Created user", user_id=user.id, email=user.email)
-    return user
+    return _user_public_dict(user)
 
 
 @router.put("/api/settings/users/{user_id}", tags=["Users"])
@@ -836,7 +854,7 @@ def update_user(
 
     db.commit()
     db.refresh(user)
-    return user
+    return _user_public_dict(user)
 
 
 @router.delete("/api/settings/users/{user_id}", tags=["Users"])

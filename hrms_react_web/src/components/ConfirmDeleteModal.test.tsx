@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
+// Demo mode auto-confirms and renders nothing — disable it to test the dialog itself
+vi.mock('../config/demo', () => ({ DEMO_NO_GUARDS: false }));
+
 describe('ConfirmDeleteModal', () => {
   it('renders nothing when closed', () => {
     render(<ConfirmDeleteModal isOpen={false} onClose={() => {}} onConfirm={() => {}} />);

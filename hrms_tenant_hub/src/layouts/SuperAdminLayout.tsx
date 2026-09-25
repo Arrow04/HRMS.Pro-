@@ -107,7 +107,7 @@ export default function SuperAdminLayout() {
     }));
 
     const actions: CommandItem[] = [
-      { id: 'add-tenant', label: 'Add Tenant', hint: 'Create new tenant', icon: Building2, keywords: 'new tenant create add register', action: () => { closePalette(); navigate('/superadmin/tenants/create'); } },
+      { id: 'add-tenant', label: 'Add Tenant', hint: 'Create new tenant', icon: Building2, keywords: 'new tenant create add register', action: () => { closePalette(); navigate('/superadmin/tenants/new'); } },
       { id: 'manage-billing', label: 'Manage Billing', hint: 'Billing overview', icon: CreditCard, keywords: 'billing payment invoice manage', action: () => { closePalette(); navigate('/superadmin/billing'); } },
       { id: 'manage-plans', label: 'Manage Plans', hint: 'Subscription plans', icon: Tag, keywords: 'plan subscription pricing manage', action: () => { closePalette(); navigate('/superadmin/plans'); } },
       { id: 'view-audit', label: 'View Audit Logs', hint: 'System audit trail', icon: ClipboardList, keywords: 'audit log trail view', action: () => { closePalette(); navigate('/superadmin/audit-logs'); } },

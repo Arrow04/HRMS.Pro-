@@ -8,6 +8,7 @@ export const APP_SETTINGS_EVENT = 'hrms-app-settings-changed';
 
 const DEFAULTS = {
   dateFormat: 'DD/MM/YYYY',
+  timeFormat: 'HH:mm',
   timezone: 'Asia/Kolkata',
   financialYear: 'April',
   country: 'India',
@@ -15,6 +16,7 @@ const DEFAULTS = {
 
 export interface AppSettings {
   dateFormat: string;
+  timeFormat: string;
   timezone: string;
   financialYear: string;
   country: string;
@@ -22,6 +24,7 @@ export interface AppSettings {
 
 type ZonedDateParts = {
   weekday: string;
+  weekdayLong: string;
   monthShort: string;
   monthLong: string;
   month2: string;
@@ -48,6 +51,11 @@ const getZonedParts = (d: Date, timezone: string): ZonedDateParts => {
     month: 'long',
   }).format(d);
 
+  const longWeekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    weekday: 'long',
+  }).format(d);
+
   const map: Record<string, string> = {};
   base.forEach((part) => {
     if (part.type !== 'literal') map[part.type] = part.value;
@@ -62,6 +70,7 @@ const getZonedParts = (d: Date, timezone: string): ZonedDateParts => {
 
   return {
     weekday: map.weekday || '',
+    weekdayLong: longWeekday,
     monthShort: map.month || '',
     monthLong: longMonth,
     month2,
@@ -70,30 +79,34 @@ const getZonedParts = (d: Date, timezone: string): ZonedDateParts => {
   };
 };
 
-const formatWithPattern = (parts: ZonedDateParts, pattern: string): string => {
-  switch (pattern) {
-    case 'EEE MMM DD YYYY':
-      return `${parts.weekday} ${parts.monthShort} ${parts.day2} ${parts.year}`;
-    case 'MM/DD/YYYY':
-      return `${parts.month2}/${parts.day2}/${parts.year}`;
-    case 'YYYY-MM-DD':
-      return `${parts.year}-${parts.month2}-${parts.day2}`;
-    case 'DD-MMM-YYYY':
-      return `${parts.day2}-${parts.monthShort}-${parts.year}`;
-    case 'DD MMM YYYY':
-      return `${parts.day2} ${parts.monthShort} ${parts.year}`;
-    case 'DD MMMM YYYY':
-      return `${parts.day2} ${parts.monthLong} ${parts.year}`;
-    case 'DD/MM/YYYY':
-    default:
-      return `${parts.day2}/${parts.month2}/${parts.year}`;
+// Token-based date formatter. Supported tokens (longest match first):
+// YYYY YY MMMM MMM MM M DD D EEEE EEE — everything else is a literal.
+const renderToken = (token: string, parts: ZonedDateParts): string => {
+  switch (token) {
+    case 'YYYY': return parts.year;
+    case 'YY': return parts.year.slice(-2);
+    case 'MMMM': return parts.monthLong;
+    case 'MMM': return parts.monthShort;
+    case 'MM': return parts.month2;
+    case 'M': return String(Number(parts.month2));
+    case 'DD': return parts.day2;
+    case 'D': return String(Number(parts.day2));
+    case 'EEEE': return parts.weekdayLong;
+    case 'EEE': return parts.weekday;
+    default: return token;
   }
 };
+
+const TOKEN_PATTERN = /YYYY|YY|MMMM|MMM|EEEE|EEE|MM|M|DD|D/g;
+
+const formatWithPattern = (parts: ZonedDateParts, pattern: string): string =>
+  pattern.replace(TOKEN_PATTERN, (token) => renderToken(token, parts));
 
 // Persist the app settings to localStorage (called by the Settings page on save)
 export const syncAppSettings = (settings: Partial<AppSettings>): void => {
   try {
     if (settings.dateFormat !== undefined) localStorage.setItem('appDateFormat', settings.dateFormat);
+    if (settings.timeFormat !== undefined) localStorage.setItem('appTimeFormat', settings.timeFormat);
     if (settings.timezone !== undefined) localStorage.setItem('appTimezone', settings.timezone);
     if (settings.financialYear !== undefined) localStorage.setItem('appFinancialYear', settings.financialYear);
     if (settings.country !== undefined) localStorage.setItem('appCountry', settings.country);
@@ -105,6 +118,7 @@ export const getAppSettings = (): AppSettings => {
   try {
     return {
       dateFormat: localStorage.getItem('appDateFormat') || DEFAULTS.dateFormat,
+      timeFormat: localStorage.getItem('appTimeFormat') || DEFAULTS.timeFormat,
       timezone: localStorage.getItem('appTimezone') || DEFAULTS.timezone,
       financialYear: localStorage.getItem('appFinancialYear') || DEFAULTS.financialYear,
       country: localStorage.getItem('appCountry') || DEFAULTS.country,
@@ -115,6 +129,7 @@ export const getAppSettings = (): AppSettings => {
 };
 
 export const getAppDateFormat = (): string => getAppSettings().dateFormat;
+export const getAppTimeFormat = (): string => getAppSettings().timeFormat;
 export const getAppTimezone = (): string => getAppSettings().timezone;
 export const getAppFinancialYear = (): string => getAppSettings().financialYear;
 export const getAppCountry = (): string => getAppSettings().country;
@@ -143,17 +158,35 @@ export const formatAppDate = (input?: string | Date | null): string => {
   }
 };
 
+// Token-based time formatter. Supported tokens (longest match first):
+// HH hh mm ss A H h — everything else is a literal separator.
+const TIME_TOKEN_PATTERN = /HH|hh|mm|ss|A|H|h/g;
+
 export const formatAppTime = (input?: string | Date | null): string => {
   if (!input) return '-';
   try {
     const d = parseInputDate(input);
     if (!d) return '-';
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: getAppTimezone(),
+    const timezone = getAppTimezone();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
-      hour12: true,
-    }).format(d);
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
+    const hour24 = Number(get('hour') === '24' ? '00' : get('hour'));
+    const values: Record<string, string> = {
+      HH: String(hour24).padStart(2, '0'),
+      hh: String(((hour24 + 11) % 12) + 1).padStart(2, '0'),
+      mm: get('minute'),
+      ss: get('second'),
+      A: hour24 < 12 ? 'AM' : 'PM',
+      H: String(hour24),
+      h: String(((hour24 + 11) % 12) + 1),
+    };
+    return getAppTimeFormat().replace(TIME_TOKEN_PATTERN, (t) => values[t] ?? t);
   } catch {
     return '-';
   }

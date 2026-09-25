@@ -56,9 +56,9 @@ class PayrollPreFlight:
         self.errors = []
         self.warnings = []
 
-        # 1. Validate company exists and is active
+        # 1. Validate company exists and is active (skipped for org-wide runs)
         company = self._validate_company(organization_id, company_id)
-        if not company:
+        if company_id is not None and not company:
             return self._result()
 
         # 2. Validate PayrollTemplate exists for this company
@@ -93,7 +93,10 @@ class PayrollPreFlight:
 
         return self._result()
 
-    def _validate_company(self, org_id: int, company_id: int) -> Optional[Company]:
+    def _validate_company(self, org_id: int, company_id: Optional[int]) -> Optional[Company]:
+        if company_id is None:
+            # Org-wide run: no company filter, org-level config is checked below.
+            return None
         company = self.db.query(Company).filter(
             Company.id == company_id,
             Company.organization_id == org_id,
@@ -124,12 +127,12 @@ class PayrollPreFlight:
             PayrollTemplate.deleted_at.is_(None),
         ).first()
         if not template:
-            self.errors.append({
+            self.warnings.append({
                 "type": "payroll_template",
-                "severity": "critical",
-                "message": "No Payroll Template configured for this company",
-                "fix": "Create a Payroll Template for this company in Payroll > Setup > Templates, "
-                       "or apply an Industry Template (one-click setup)",
+                "severity": "warning",
+                "message": "No Payroll Template configured — the standard fallback salary structure will be used",
+                "fix": "Create a Payroll Template for this company in Payroll > Setup > Templates "
+                       "or configure policies directly in Payroll > Setup",
                 "company_id": company_id,
             })
         return template
@@ -151,10 +154,10 @@ class PayrollPreFlight:
                     "fix": "Create a company-specific Payroll Policy for different pro-ration, rounding, or currency rules",
                 })
                 return policy
-            self.errors.append({
+            self.warnings.append({
                 "type": "payroll_policy",
-                "severity": "critical",
-                "message": "No Payroll Policy configured",
+                "severity": "warning",
+                "message": "No Payroll Policy configured — engine defaults will be used",
                 "fix": "Create a Payroll Policy in Payroll > Setup > Policies",
             })
             return None
@@ -163,10 +166,10 @@ class PayrollPreFlight:
             PayrollPolicy.status == 'active',
         ).first()
         if not policy:
-            self.errors.append({
+            self.warnings.append({
                 "type": "payroll_policy",
-                "severity": "critical",
-                "message": f"Payroll Policy {policy_id} not found or inactive",
+                "severity": "warning",
+                "message": f"Payroll Policy {policy_id} not found or inactive — engine defaults will be used",
                 "fix": "Re-create or activate the Payroll Policy",
             })
         return policy
@@ -198,9 +201,9 @@ class PayrollPreFlight:
                     "fix": "Create a company-specific Attendance Policy (e.g., 5-day week for software, 6-day for restaurant)",
                 })
                 return att_policy
-            self.errors.append({
+            self.warnings.append({
                 "type": "attendance_policy",
-                "severity": "critical",
+                "severity": "warning",
                 "message": "No Attendance Policy configured — system will default to 6-day week",
                 "fix": "Create an Attendance Policy in Settings > Attendance > Policies",
             })
@@ -220,9 +223,9 @@ class PayrollPreFlight:
         if not setting:
             country = getattr(company, 'country', 'India') or 'India'
             if country.lower() == 'india':
-                self.errors.append({
+                self.warnings.append({
                     "type": "statutory_setting",
-                    "severity": "critical",
+                    "severity": "warning",
                     "message": "No Statutory Settings configured for India — PF/ESI/PT will use defaults",
                     "fix": "Configure Statutory Settings in Payroll > Setup > Statutory Settings, "
                            "or click 'Apply Country Preset' to auto-configure India defaults",
@@ -255,9 +258,9 @@ class PayrollPreFlight:
                     "fix": "Create a company-specific Tax Regime if different tax rules apply",
                 })
                 return regime
-            self.errors.append({
+            self.warnings.append({
                 "type": "tax_regime",
-                "severity": "critical",
+                "severity": "warning",
                 "message": "No Tax Regime configured — TDS will use hardcoded defaults",
                 "fix": "Create a Tax Regime with slabs in Payroll > Setup > Tax Configuration",
             })
@@ -276,10 +279,10 @@ class PayrollPreFlight:
             PayrollComponent.status == 'active',
         ).all()
         if not components:
-            self.errors.append({
+            self.warnings.append({
                 "type": "payroll_components",
-                "severity": "critical",
-                "message": "No Payroll Components configured — salary breakdown will use defaults",
+                "severity": "warning",
+                "message": "No Payroll Components configured — salary breakdown will use the standard fallback structure",
                 "fix": "Create Earnings and Deduction components in Payroll > Setup > Components",
             })
         else:
@@ -296,23 +299,26 @@ class PayrollPreFlight:
                 })
         return components
 
-    def _validate_employees(self, org_id: int, company_id: int,
+    def _validate_employees(self, org_id: int, company_id: Optional[int],
                              branch_id: Optional[int], department_id: Optional[int]) -> list:
         q = self.db.query(Employee).filter(
             Employee.organization_id == org_id,
-            Employee.company_id == company_id,
             Employee.status == 'active',
             Employee.deleted_at.is_(None),
         )
+        if company_id is not None:
+            q = q.filter(Employee.company_id == company_id)
         if branch_id:
-            q = q.filter(Employee.branch_id == branch_id)
+            # Branch assignment lives in the EmployeeBranchAssignment M2M.
+            from models import Branch as _Branch
+            q = q.filter(Employee.branches.any(_Branch.id == branch_id))
         if department_id:
             q = q.filter(Employee.department_id == department_id)
         employees = q.all()
         if not employees:
-            self.errors.append({
+            self.warnings.append({
                 "type": "employees",
-                "severity": "critical",
+                "severity": "warning",
                 "message": "No active employees found for this company/branch/department",
                 "fix": "Add employees or adjust the filter criteria",
             })
@@ -354,12 +360,12 @@ class PayrollPreFlight:
         if no_attendance:
             names = ", ".join(no_attendance[:5])
             suffix = f" and {len(no_attendance) - 5} more" if len(no_attendance) > 5 else ""
-            self.errors.append({
+            self.warnings.append({
                 "type": "attendance_data",
-                "severity": "critical",
+                "severity": "warning",
                 "message": f"{len(no_attendance)} employee(s) have NO attendance records for {year}-{month:02d}: {names}{suffix}",
                 "fix": "Mark attendance manually, or ensure employees have checked in/out, "
-                       "or use bulk attendance upload",
+                       "or use bulk attendance upload (no-attendance employees are paid 0 for the period)",
             })
 
     def _validate_holidays(self, org_id: int, company_id: int, year: int, month: int):

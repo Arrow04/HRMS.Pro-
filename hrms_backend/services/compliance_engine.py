@@ -281,7 +281,7 @@ def calculate_bonus(gross_salary: float, months_worked: int) -> dict:
     Applicable for salary <= ₹21,000/month
     """
     if gross_salary > 21000:
-        return {"amount": 0, "eligible": False}
+        return {"amount": 0, "minimum": 0, "maximum": 0, "eligible": False}
     
     annual_salary = gross_salary * months_worked
     min_bonus = round(annual_salary * 8.33 / 100, 2)

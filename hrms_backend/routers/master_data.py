@@ -340,22 +340,6 @@ DEFAULT_MASTER_DATA = {    "employee": [
             ]
         },
         {
-            "code": "COUNTRY",
-            "name": "Country",
-            "description": "Supported countries",
-            "icon": "Globe",
-            "values": [
-                {"code": "India", "name": "India", "description": "India"},
-                {"code": "United States", "name": "United States", "description": "USA"},
-                {"code": "United Kingdom", "name": "United Kingdom", "description": "UK"},
-                {"code": "Australia", "name": "Australia", "description": "Australia"},
-                {"code": "United Arab Emirates", "name": "United Arab Emirates", "description": "UAE"},
-                {"code": "Singapore", "name": "Singapore", "description": "Singapore"},
-                {"code": "Germany", "name": "Germany", "description": "Germany"},
-                {"code": "Canada", "name": "Canada", "description": "Canada"}
-            ]
-        },
-        {
             "code": "AUDIT_MODULE",
             "name": "Audit Module",
             "description": "Modules tracked in audit logs",
@@ -613,44 +597,6 @@ DEFAULT_MASTER_DATA = {    "employee": [
             ]
         },
         {
-            "code": "TIMEZONE",
-            "name": "Timezone",
-            "description": "System timezone options",
-            "icon": "Clock",
-            "values": [
-                {"code": "Asia/Kolkata", "name": "Asia/Kolkata (IST)", "description": "Indian Standard Time"},
-                {"code": "Asia/Dubai", "name": "Asia/Dubai (GST)", "description": "Gulf Standard Time"},
-                {"code": "America/New_York", "name": "America/New_York (EST)", "description": "Eastern Standard Time"},
-                {"code": "America/Los_Angeles", "name": "America/Los_Angeles (PST)", "description": "Pacific Standard Time"},
-                {"code": "Europe/London", "name": "Europe/London (GMT)", "description": "Greenwich Mean Time"},
-                {"code": "Asia/Tokyo", "name": "Asia/Tokyo (JST)", "description": "Japan Standard Time"}
-            ]
-        },
-        {
-            "code": "DATE_FORMAT",
-            "name": "Date Format",
-            "description": "Date format options",
-            "icon": "CalendarDays",
-            "values": [
-                {"code": "DD/MM/YYYY", "name": "DD/MM/YYYY", "description": "Day/Month/Year format"},
-                {"code": "MM/DD/YYYY", "name": "MM/DD/YYYY", "description": "Month/Day/Year format"},
-                {"code": "YYYY-MM-DD", "name": "YYYY-MM-DD", "description": "ISO format"},
-                {"code": "EEE MMM DD YYYY", "name": "Sat Aug 29 2026", "description": "Day Month Date Year"}
-            ]
-        },
-        {
-            "code": "FINANCIAL_YEAR",
-            "name": "Financial Year",
-            "description": "Financial year start month",
-            "icon": "CalendarRange",
-            "values": [
-                {"code": "January", "name": "January", "description": "Financial year starts in January"},
-                {"code": "April", "name": "April", "description": "Financial year starts in April"},
-                {"code": "July", "name": "July", "description": "Financial year starts in July"},
-                {"code": "October", "name": "October", "description": "Financial year starts in October"}
-            ]
-        },
-        {
             "code": "PAYROLL_CYCLE",
             "name": "Payroll Cycle",
             "description": "Payroll processing frequency",
@@ -671,19 +617,6 @@ DEFAULT_MASTER_DATA = {    "employee": [
                 {"code": "1st", "name": "1st of month", "description": "Pay on 1st"},
                 {"code": "15th", "name": "15th of month", "description": "Pay on 15th"},
                 {"code": "25th", "name": "25th of month", "description": "Pay on 25th"}
-            ]
-        },
-        {
-            "code": "CURRENCY",
-            "name": "Currency",
-            "description": "Currency options",
-            "icon": "DollarSign",
-            "values": [
-                {"code": "INR", "name": "INR (₹)", "description": "Indian Rupee"},
-                {"code": "USD", "name": "USD ($)", "description": "US Dollar"},
-                {"code": "EUR", "name": "EUR (€)", "description": "Euro"},
-                {"code": "GBP", "name": "GBP (£)", "description": "British Pound"},
-                {"code": "AED", "name": "AED (د.إ)", "description": "UAE Dirham"}
             ]
         },
         {
@@ -1118,7 +1051,6 @@ CATEGORY_GROUP_OVERRIDES = {
     "SCHEDULE_STATUS": "reports",
     "ROSTER_ASSIGN_LEVEL": "attendance",
     "DAY_OF_WEEK": "attendance",
-    "COUNTRY": "settings",
     "ROLES": "settings",
     "AUDIT_MODULE": "settings",
     "AUDIT_ACTION": "settings",
@@ -1877,9 +1809,35 @@ def import_master_data(data: list, db: Session = Depends(get_db), current_user =
     }
 
 # Public lookup endpoint (for dropdowns)
+def _system_lookup_values(category_code: str) -> dict:
+    """Built-in system values (gender, blood group, ...).
+
+    System values always come from the application itself — users never
+    manage them — so lookups work on a clean database with zero setup.
+    """
+    for group in DEFAULT_MASTER_DATA.values():
+        for cat in group:
+            if str(cat.get("code", "")).upper() == category_code.upper():
+                return {
+                    "category": {"code": cat["code"], "name": cat.get("name", cat["code"])},
+                    "values": [
+                        {
+                            "id": None,
+                            "code": v.get("code"),
+                            "name": v.get("name"),
+                            "description": v.get("description"),
+                            "is_active": True,
+                        }
+                        for v in cat.get("values", [])
+                    ],
+                    "source": "system",
+                }
+    return {"category": {"code": category_code, "name": category_code}, "values": [], "source": "system"}
+
+
 @router.get("/lookup/{category_code}")
 def get_lookup_by_code(category_code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Return lookup values from the database only (no runtime seed/fallback)."""
+    """Return lookup values: database rows when present, else built-in system values."""
     category_code = _resolve_lookup_category_code(category_code)
     cache_key = make_key("master_data", "lookup", category_code)
 
@@ -1897,7 +1855,7 @@ def get_lookup_by_code(category_code: str, db: Session = Depends(get_db), curren
     ).order_by(LookupValue.is_active.desc(), LookupValue.sort_order, LookupValue.name).all()
 
     if not result:
-        response = {"category": {"code": category_code, "name": category_code}, "values": []}
+        response = _system_lookup_values(category_code)
     else:
         category = result[0][0]
         values = [

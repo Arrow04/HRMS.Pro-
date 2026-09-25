@@ -65,12 +65,11 @@ export default function TenantDetail() {
   const impersonateMut = useMutation({
     mutationFn: () => api.post(`/superadmin/tenants/${id}/impersonate`),
     onSuccess: (res: any) => {
-      const token = res.data?.token;
-      if (!token) { toast.error('No impersonation token returned'); return; }
+      const code = res.data?.code;
+      if (!code) { toast.error('No impersonation code returned'); return; }
       const hrmsUrl = import.meta.env.VITE_HRMS_URL || 'http://localhost:5173';
-      localStorage.setItem('impersonated_token', token);
       toast.success('Opened HRMS as tenant admin');
-      window.open(`${hrmsUrl}?impersonate=1`, '_blank');
+      window.open(`${hrmsUrl}/login?impersonate_code=${code}`, '_blank');
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to impersonate'),
   });

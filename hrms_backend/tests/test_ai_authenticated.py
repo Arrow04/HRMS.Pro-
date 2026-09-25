@@ -44,7 +44,7 @@ def test_ai_chat_authenticated_leave_query(client, admin_token):
     assert resp.status_code == 200
     data = resp.json()
     assert "response" in data
-    assert data["intent"] == "leave_query"
+    assert data["intent"] == "leave_balance_query"
 
 
 def test_ai_chat_rejects_user_id_override(client, admin_token):
