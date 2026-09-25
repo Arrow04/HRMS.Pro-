@@ -140,6 +140,7 @@ const TABS = [
   { id: 'payslips', label: 'Payslips', icon: Wallet },
   { id: 'pay_items', label: 'Bonuses & Loans', icon: HandCoins },
   { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
+  { id: 'guide', label: 'How It Works', icon: Info },
   { id: 'config', label: 'Configuration', icon: Settings },
 ];
 
@@ -1620,11 +1621,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           ))}
         </div>
 
-        {/* How payroll works - guided journey for every user */}
-        <div className="mb-6">
-          <PayrollJourney activeTab={activeTab} onNavigate={(t) => setActiveTab(t)} />
-        </div>
-
         {/* TABS - Pill Style like Company Page */}
         <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-6">
           <div className="flex flex-wrap items-center gap-2">
@@ -2431,6 +2427,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         {activeTab === 'pay_items' && payItemsSub === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
 
         {activeTab === 'compliance' && <div className="animate-in fade-in duration-300"><PayrollConsole /></div>}
+        {activeTab === 'guide' && <div className="animate-in fade-in duration-300"><PayrollJourney activeTab={activeTab} onNavigate={(t) => setActiveTab(t)} /></div>}
 
       {/* Full Page Drawer Modal */}
       {showModal && (
