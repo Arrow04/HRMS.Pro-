@@ -6,7 +6,7 @@ import {
   FileBarChart, CreditCard, TrendingUp, Database,
   ShieldAlert, Wallet, LogOut, Monitor,
   ChevronLeft, ChevronRight, Megaphone, AlertTriangle,
-  Bell, Headset, Scale
+  Bell, Headset
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
@@ -25,7 +25,6 @@ const ALL_LINKS = [
   { path: '/assets', label: 'Assets', icon: Monitor },
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/payroll', label: 'Payroll', icon: Wallet },
-  { path: '/payroll/console', label: 'Payroll Console', icon: Scale },
   { path: '/exit-management', label: 'Exits', icon: LogOut },
   { path: '/anomalies', label: 'Anomalies', icon: ShieldAlert },
   { path: '/reports', label: 'Reports', icon: FileBarChart },
@@ -55,7 +54,7 @@ const DashboardLayout = () => {
   const routeToModule: Record<string, string> = {
     '/dashboard': 'dashboard', '/company': 'company', '/employees': 'employees', '/letters': 'letters',
     '/recruitment': 'recruitment', '/holidays': 'holidays', '/attendance': 'attendance',
-    '/leaves': 'leaves', '/payroll': 'payroll', '/expenses': 'expenses', '/payroll/console': 'payroll',
+    '/leaves': 'leaves', '/payroll': 'payroll', '/expenses': 'expenses',
     '/performance': 'performance', '/reports': 'reports',
     '/settings': 'settings', '/exit-management': 'exit', '/assets': 'assets',
     '/anomalies': 'anomalies', '/payroll/config': 'payroll_config',

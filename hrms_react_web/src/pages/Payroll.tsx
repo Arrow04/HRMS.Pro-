@@ -7,7 +7,7 @@ import {
   Plus, Coins, CheckCircle2, XCircle, RotateCcw, Clock, Search, CloudCog, X,
   BookOpen, ClipboardCheck,
   TrendingUp, Filter, Download, Upload, Users, Calendar, Wallet, FileText, Info, Loader2, CreditCard, MapPin, Award, Play, Settings, Sparkles,
-  Edit3, Edit2, Trash2, HandCoins, Mail, Send, UserPlus, Landmark, Lock, Unlock, Ban
+  Edit3, Edit2, Trash2, HandCoins, Mail, Send, UserPlus, Landmark, Lock, Unlock, Ban, Scale
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import api from '../services/api';
@@ -27,6 +27,7 @@ import DataTable, { type DataTableColumn } from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
+import PayrollConsole from './PayrollConsole';
 import AccountingPanel from '../components/AccountingPanel';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
@@ -140,6 +141,7 @@ const TABS = [
   { id: 'bonuses', label: 'Bonuses', icon: TrendingUp },
   { id: 'loans', label: 'Loans & Advances', icon: HandCoins },
   { id: 'accounting', label: 'Accounting', icon: BookOpen },
+  { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
   { id: 'config', label: 'Configuration', icon: Settings },
 ];
 
@@ -2413,6 +2415,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         {activeTab === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
 
         {activeTab === 'accounting' && <div className="animate-in fade-in duration-300"><AccountingPanel /></div>}
+        {activeTab === 'compliance' && <div className="animate-in fade-in duration-300"><PayrollConsole /></div>}
 
       {/* Full Page Drawer Modal */}
       {showModal && (

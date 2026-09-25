@@ -111,10 +111,10 @@ export default function PayrollConsole() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Payroll Console</h1>
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Compliance &amp; Rules</h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            Rule-driven payroll: statutory rules, arrears, payments, government filings and
-            explainability. The law changes; the rules change; the engine does not.
+            Statutory rules, arrears, payments, government filings and explainability.
+            The law changes; the rules change; the engine does not.
           </p>
         </div>
         {tab === 'arrears' && (

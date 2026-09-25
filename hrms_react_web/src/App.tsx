@@ -29,7 +29,6 @@ const EmployeeManagement = lazy(() => import('./pages/EmployeeManagement'));
 const LeaveManagement = lazy(() => import('./pages/LeaveManagement'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const PayrollSetup = lazy(() => import('./pages/PayrollSetup'));
-const PayrollConsole = lazy(() => import('./pages/PayrollConsole'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Recruitment = lazy(() => import('./pages/Recruitment'));
 const Holidays = lazy(() => import('./pages/Holidays'));
@@ -132,7 +131,6 @@ function App() {
                 <Route path="/payroll" element={<Payroll />} />
                 <Route path="/payroll/config" element={<Payroll initialTab="config" />} />
                 <Route path="/payroll/setup" element={<PayrollSetup />} />
-                <Route path="/payroll/console" element={<PayrollConsole />} />
 
                 <Route path="/anomalies" element={<AnomalyDetection />} />
                <Route path="/exit-management" element={<ExitManagement />} />
