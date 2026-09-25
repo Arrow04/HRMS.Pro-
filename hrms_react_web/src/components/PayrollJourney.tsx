@@ -183,7 +183,11 @@ export default function PayrollJourney({
                   }`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 pt-1.5">{step.title}</div>
+                  {/* Fixed 2-line title box: every card's title and body stay
+                      on the same baselines across the row. */}
+                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 pt-1.5 h-10 overflow-hidden">
+                    {step.title}
+                  </div>
                   {idx < JOURNEY_STEPS.length - 1 ? (
                     <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block pt-2" />
                   ) : (
