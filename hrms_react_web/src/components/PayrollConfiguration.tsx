@@ -47,7 +47,7 @@ const TAX_CATEGORIES: Record<string, { value: string; label: string; help: strin
     { value: 'exempt_10', label: 'Exempt allowance u/s 10', help: 'HRA u/s 10(13A), LTA u/s 10(5), etc. — excluded from gross before tax.' },
     { value: 'chapter_vi_a', label: 'Chapter VI-A u/s 80', help: 'EPF, ELSS, insurance u/s 80C, health u/s 80D, NPS u/s 80CCD(1) — subtracted from adjusted income.' },
     { value: 'professional_tax_16', label: 'Professional Tax u/s 16(iii)', help: 'State-level tax withheld from salary (up to ₹2,500/year).' },
-    { value: 'post_tax_statutory', label: 'Post-tax statutory (EPF/ESIC)', help: 'Employee EPF 12% of basic, ESIC 0.75% of gross (≤ ₹21,000) — deducted after tax.' },
+    { value: 'post_tax_statutory', label: 'Post-tax statutory (ESIC)', help: 'ESIC employee contribution 0.75% of gross (while under the ceiling) - deducted from net pay. Note: employee EPF is deductible u/s 80C (Chapter VI-A), not post-tax.' },
     { value: 'post_tax_other', label: 'Other post-tax deduction', help: 'LOP, notice recovery, loan/advance recovery, asset damage, insurance premium, canteen/transport — deducted from net pay.' },
     { value: 'tds_192', label: 'TDS u/s 192', help: 'Income tax withheld on salary under section 192.' },
   ],
@@ -93,7 +93,8 @@ function defaultComponents(): PayrollTemplateComponent[] {
     { ...base, name: 'Arrears', display_name: 'Salary Arrears', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 15, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
 
     // -- Deductions (statutory) --
-    { ...base, name: 'PF', display_name: 'Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
+    { ...base, name: 'PF', display_name: 'Provident Fund (u/s 80C)', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'chapter_vi_a' },
+    { ...base, name: 'Employee NPS', display_name: 'Employee NPS (u/s 80CCD(1))', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 24, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'chapter_vi_a' },
     { ...base, name: 'ESI', display_name: 'Employees State Insurance', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 21, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
     { ...base, name: 'Professional Tax', display_name: 'Professional Tax', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 22, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'professional_tax_16' },
     { ...base, name: 'Income Tax', display_name: 'Income Tax (TDS)', component_type: 'deduction', calculation_type: 'formula', formula: '', calculation_value: null, priority: 23, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'tds_192' },
@@ -473,7 +474,7 @@ function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) 
           { step: '5', label: 'Adjusted Income', detail: 'Net Salary − Deductions u/s 16 = Income under head Salaries', count: null },
           { step: '6', label: 'Chapter VI-A u/s 80', detail: '80C (EPF, ELSS, insurance), 80D, 80CCD(1) NPS — subtracted next', count: components.filter(c => c.tax_category === 'chapter_vi_a').length },
           { step: '7', label: 'Taxable Income', detail: 'Slab tax + surcharge + cess (Regime/Slabs/Surcharge tabs)', count: null },
-          { step: '8', label: 'Post-tax deductions', detail: 'Employee EPF, ESIC, TDS u/s 192 → Net Pay', count: components.filter(c => ['post_tax_statutory', 'tds_192'].includes(c.tax_category || '')).length },
+          { step: '8', label: 'TDS & post-tax deductions', detail: 'TDS u/s 192 plus ESIC, loan/advance recovery and other post-tax items, then Net Pay', count: components.filter(c => ['post_tax_statutory', 'post_tax_other', 'tds_192'].includes(c.tax_category || '')).length },
         ].map(row => (
           <div key={row.step} className="flex items-center gap-3">
             <span className="w-5 h-5 rounded-full bg-[var(--background)] border border-[var(--border-color)] flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] shrink-0">{row.step}</span>
