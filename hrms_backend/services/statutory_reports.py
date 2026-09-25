@@ -16,7 +16,9 @@ from services.rule_dsl import evaluate_expression
 
 __all__ = ["BUILTIN_REPORT_DEFINITIONS", "render_report", "ensure_builtin_definitions"]
 
-# Built-in filing templates - DATA, seeded per org on demand.
+# Built-in filing templates - DATA, seeded per org on demand. The
+# file_layout sections reproduce the government file layouts; a new or
+# revised format is a definition change (mandate section 51).
 BUILTIN_REPORT_DEFINITIONS: List[Dict[str, Any]] = [
     {
         "code": "EPF_ECR",
@@ -26,14 +28,32 @@ BUILTIN_REPORT_DEFINITIONS: List[Dict[str, Any]] = [
         "fields": [
             {"key": "uan", "label": "UAN", "source": "employee.pf_uan"},
             {"key": "name", "label": "Member Name", "source": "employee_name"},
+            {"key": "gross_wages", "label": "Gross Wages", "source": "payroll.gross_salary"},
             {"key": "epf_wages", "label": "EPF Wages", "source": "payroll.basic_salary"},
-            {"key": "employee_share", "label": "Employee Share", "source": "payroll.pf_deduction"},
-            {"key": "employer_share", "label": "Employer Share", "source": "payroll.pf_employer_contribution"},
+            {"key": "eps_wages", "label": "EPS Wages", "source": "payroll.basic_salary"},
+            {"key": "edli_wages", "label": "EDLI Wages", "source": "payroll.basic_salary"},
+            {"key": "epf_contribution", "label": "EPF Contribution", "source": "payroll.pf_deduction"},
+            {"key": "eps_contribution", "label": "EPS Contribution",
+             "formula": "MIN(basic_salary, 15000) * 0.0833"},
+            {"key": "epf_eps_diff", "label": "EPF EPS Difference",
+             "formula": "pf_deduction - MIN(basic_salary, 15000) * 0.0833"},
+            {"key": "ee_share", "label": "Employee Share", "source": "payroll.pf_deduction"},
+            {"key": "er_share", "label": "Employer Share", "source": "payroll.pf_employer_contribution"},
+            {"key": "ncp_days", "label": "NCP Days", "source": "payroll.unpaid_days"},
         ],
+        "file_layout": {
+            "type": "pipe",
+            "delimiter": "~",
+            "header": "#HDR#~{establishment_code}~{month:02d}-{year}~{record_count}",
+            "row": ("{uan}~{name}~{gross_wages}~{epf_wages}~{eps_wages}~{edli_wages}~"
+                    "{epf_contribution}~{eps_contribution}~{epf_eps_diff}~{ee_share}~"
+                    "{er_share}~{ncp_days}~0"),
+            "footer": "#TRL#~{record_count}~{total_gross_wages}~{total_epf_wages}~{total_ee_share}~{total_er_share}",
+        },
     },
     {
         "code": "ESI_RETURN",
-        "name": "ESI Half-Yearly Return",
+        "name": "ESI Monthly Return",
         "authority": "ESIC",
         "period_type": "monthly",
         "fields": [
@@ -44,7 +64,15 @@ BUILTIN_REPORT_DEFINITIONS: List[Dict[str, Any]] = [
              "source": "payroll.esi_deduction"},
             {"key": "employer_contribution", "label": "Employer Contribution",
              "source": "payroll.esi_employer_contribution"},
+            {"key": "days", "label": "Days", "source": "payroll.paid_days"},
         ],
+        "file_layout": {
+            "type": "pipe",
+            "delimiter": "~",
+            "header": "ESIRET~{establishment_code}~{month:02d}-{year}~{record_count}",
+            "row": "{esi_number}~{name}~{esi_wages}~{employee_contribution}~{employer_contribution}~{days}",
+            "footer": "ESITRL~{record_count}~{total_esi_wages}~{total_employee_contribution}~{total_employer_contribution}",
+        },
     },
     {
         "code": "PT_STATEMENT",
@@ -57,6 +85,11 @@ BUILTIN_REPORT_DEFINITIONS: List[Dict[str, Any]] = [
             {"key": "gross", "label": "Gross", "source": "payroll.gross_salary"},
             {"key": "pt", "label": "PT Deducted", "source": "payroll.professional_tax"},
         ],
+        "file_layout": {
+            "type": "csv",
+            "delimiter": ",",
+            "row": "{pan},{name},{gross},{pt}",
+        },
     },
 ]
 
@@ -123,6 +156,84 @@ def render_report(
         "columns": [{"key": f["key"], "label": f.get("label", f["key"])} for f in fields],
         "rows": rows,
         "rowCount": len(rows),
+    }
+
+
+def render_filing_file(
+    db: Session,
+    definition: Dict[str, Any],
+    organization_id: int,
+    month: int,
+    year: int,
+    employee_ids: Optional[List[int]] = None,
+    establishment_code: str = "",
+) -> Dict[str, Any]:
+    """Render the ACTUAL government filing file for a report definition.
+
+    The file layout is configuration (mandate section 51: never hard-code a
+    single report format):
+
+      "file_layout": {
+          "delimiter": "~",
+          "header": "#HDR#~{establishment_code}~{month:02d}-{year}~{record_count}",
+          "row": "{uan}~{name}~{gross_wages}~{epf_wages}~...",
+          "footer": "#TRL#~{record_count}~{total_epf_wages}~..."
+      }
+
+    Templates reference rendered row values ({key}) and summary aggregates
+    ({record_count}, {total_<key>}).
+    """
+    report = render_report(db, definition, organization_id, month, year,
+                           employee_ids=employee_ids)
+    layout = definition.get("file_layout") or {}
+    delimiter = layout.get("delimiter", ",")
+    rows = report["rows"]
+
+    totals: Dict[str, float] = {}
+    for r in rows:
+        for k, v in r.items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                totals[k] = round(totals.get(k, 0.0) + float(v), 2)
+    ctx_base = {
+        "establishment_code": establishment_code,
+        "month": month,
+        "year": year,
+        "record_count": len(rows),
+    }
+    for k, v in totals.items():
+        ctx_base[f"total_{k}"] = v
+
+    def _fill(template: str, ctx: Dict[str, Any]) -> str:
+        out = template
+        for k, v in ctx.items():
+            out = out.replace("{" + k + "}", "" if v is None else str(v))
+            out = out.replace("{" + k + ":02d}", f"{int(v):02d}" if isinstance(v, (int, float)) else str(v))
+        return out
+
+    lines = []
+    if layout.get("header"):
+        lines.append(_fill(layout["header"], ctx_base))
+    row_template = layout.get("row")
+    for r in rows:
+        ctx = dict(ctx_base)
+        ctx.update({k: ("" if v is None else v) for k, v in r.items()})
+        if row_template:
+            lines.append(_fill(row_template, ctx))
+        else:
+            lines.append(delimiter.join(str(r.get(c["key"], "")) for c in report["columns"]))
+    if layout.get("footer"):
+        lines.append(_fill(layout["footer"], ctx_base))
+
+    content = "\n".join(lines) + ("\n" if lines else "")
+    fmt = layout.get("type", "pipe" if layout else "csv")
+    ext = "csv" if fmt == "csv" else "txt"
+    filename = f"{definition.get('code', 'REPORT')}_{year}{int(month):02d}.{ext}"
+    return {
+        "filename": filename,
+        "content": content,
+        "rowCount": len(rows),
+        "totals": totals,
+        "format": fmt,
     }
 
 

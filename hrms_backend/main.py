@@ -124,6 +124,7 @@ from routers.payroll_rules import router as payroll_rules_router
 from routers.payroll_arrears import router as payroll_arrears_router
 from routers.payroll_lifecycle import router as payroll_lifecycle_router
 from routers.payroll_payments import router as payroll_payments_router
+from routers.payroll_reports import router as payroll_reports_router
 from routers.notifications import router as notifications_router
 from routers.assets import router as assets_router
 from routers.attendance import router as attendance_router
@@ -698,6 +699,7 @@ app.include_router(payroll_rules_router)
 app.include_router(payroll_arrears_router)
 app.include_router(payroll_lifecycle_router)
 app.include_router(payroll_payments_router)
+app.include_router(payroll_reports_router)
 app.include_router(payroll_router)
 app.include_router(notifications_router)
 app.include_router(assets_router)

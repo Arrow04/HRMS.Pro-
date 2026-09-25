@@ -190,7 +190,7 @@ class TestStatutoryReports:
         assert report["code"] == "EPF_ECR"
         assert report["rowCount"] >= 1
         row = report["rows"][0]
-        assert row["employee_share"] is not None
+        assert row["ee_share"] is not None
         assert "label" in report["columns"][0]
 
     def test_new_filing_format_is_configuration_only(self, env):
