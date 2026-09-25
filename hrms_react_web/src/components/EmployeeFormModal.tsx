@@ -354,9 +354,15 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     if (!branchOpen) return;
     // The menu is a fixed-position portal; keep it glued to the trigger every
     // frame so scrolling/resizing/layout shifts can never separate them.
+    // State only updates when the position actually changes (no re-render spam).
     let raf = 0;
     const tick = () => {
-      setBranchPos(computeBranchPos());
+      const p = computeBranchPos();
+      setBranchPos((prev) =>
+        prev && p && prev.top === p.top && prev.left === p.left && prev.width === p.width
+          ? prev
+          : p,
+      );
       raf = requestAnimationFrame(tick);
     };
     tick();
