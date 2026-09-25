@@ -140,8 +140,8 @@ const TABS = [
   { id: 'payslips', label: 'Payslips', icon: Wallet },
   { id: 'pay_items', label: 'Bonuses & Loans', icon: HandCoins },
   { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
-  { id: 'guide', label: 'How It Works', icon: Info },
   { id: 'config', label: 'Configuration', icon: Settings },
+  { id: 'guide', label: 'How It Works', icon: Info },
 ];
 
 // Form tabs for Payroll modal
