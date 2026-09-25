@@ -1,77 +1,21 @@
 import { useState } from 'react';
 import {
-  Settings, Play, ClipboardCheck, Wallet, FileDown, HelpCircle, ArrowRight,
+  Play, ClipboardCheck, Wallet, FileDown, HelpCircle, ArrowRight,
   ChevronDown, BookOpen, GraduationCap, Receipt, Landmark, Calculator,
-  ShieldCheck, MessageCircle,
+  ShieldCheck, MessageCircle, CalendarDays, ListChecks, FolderCheck,
 } from 'lucide-react';
 
 /**
- * PayrollJourney - the complete "how payroll works" training guide.
+ * PayrollJourney - the Learning Hub.
  *
- * Written to TEACH a new HR professional Indian payroll from first
- * principles: the monthly journey, how a salary is built, what statutory
- * deductions are, how TDS works, how corrections happen, and how to answer
- * any employee's "why is my salary X?" question.
+ * A complete, self-contained course that teaches any HR professional how
+ * payroll works END TO END - the process, the law (India), the calendar,
+ * the controls and the answers employees expect. Written as general
+ * payroll knowledge: the app is only mentioned once, at the very end.
  */
 
 // ────────────────────────────────────────────────────────────────────────────
-// 1. The monthly journey
-// ────────────────────────────────────────────────────────────────────────────
-
-interface JourneyStep {
-  id: string;
-  title: string;
-  what: string;
-  why: string;
-  icon: typeof Settings;
-  tab: string;
-}
-
-const JOURNEY_STEPS: JourneyStep[] = [
-  {
-    id: 'setup',
-    title: '1. Set up once',
-    what: 'Define salary components (Basic, HRA…), tax regime and statutory settings like PF, ESI and Professional Tax.',
-    why: 'Configuration is the law of your payroll. When the government changes a rule, only the rule changes - never the engine.',
-    icon: Settings,
-    tab: 'config',
-  },
-  {
-    id: 'run',
-    title: '2. Run payroll',
-    what: 'The engine computes every salary: attendance, overtime, bonuses, leave, PF/ESI/PT and income tax (TDS).',
-    why: 'One deterministic calculation for everyone - a daily worker, a manager and a director all go through the same engine.',
-    icon: Play,
-    tab: 'run',
-  },
-  {
-    id: 'review',
-    title: '3. Review & approve',
-    what: 'Check the numbers before any money moves. Filter by company, branch or department and approve.',
-    why: 'Finalised payroll is locked and immutable - corrections happen through arrears, never silent edits.',
-    icon: ClipboardCheck,
-    tab: 'review',
-  },
-  {
-    id: 'pay',
-    title: '4. Pay salaries',
-    what: 'Generate bank payment files, send the payouts and mark what was paid or failed.',
-    why: 'Every rupee is reconciled against the books - missing, duplicate or mismatched payments are detected automatically.',
-    icon: Wallet,
-    tab: 'compliance',
-  },
-  {
-    id: 'file',
-    title: '5. File statutory returns',
-    what: 'Download the EPF ECR, ESI return and Professional Tax statement in the exact government file formats.',
-    why: 'Compliance without spreadsheet gymnastics - the filings are generated from the same payroll numbers.',
-    icon: FileDown,
-    tab: 'compliance',
-  },
-];
-
-// ────────────────────────────────────────────────────────────────────────────
-// Reusable accordion + sections
+// Building blocks
 // ────────────────────────────────────────────────────────────────────────────
 
 function Section({
@@ -95,13 +39,13 @@ function Section({
         className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-[var(--background)] transition-colors"
       >
         <div className="w-9 h-9 rounded-xl bg-[var(--primary-blue)]/10 text-[var(--primary-blue)] flex items-center justify-center shrink-0">
-          <Icon className="w-4.5 h-4.5" />
+          <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
-          <p className="text-xs text-[var(--text-tertiary)] mt-0.5 truncate">{subtitle}</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{subtitle}</p>
         </div>
-        <ChevronDown className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-4 h-4 text-[var(--text-tertiary)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && <div className="px-5 pb-5 pt-1 space-y-4">{children}</div>}
     </div>
@@ -127,18 +71,20 @@ function Bullets({ items }: { items: React.ReactNode[] }) {
 
 function MiniTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
   return (
-    <div className="rounded-xl border border-[var(--border-color)] overflow-hidden">
-      <table className="w-full text-xs">
+    <div className="rounded-xl border border-[var(--border-color)] overflow-x-auto">
+      <table className="w-full text-xs min-w-[560px]">
         <thead>
           <tr className="bg-[var(--background)] text-[var(--text-tertiary)]">
-            {head.map(h => <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>)}
+            {head.map(h => (
+              <th key={h} className="px-3 py-2 text-left font-medium whitespace-normal break-words">{h}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} className="border-t border-[var(--border-color)] last:border-0">
+            <tr key={i} className="border-t border-[var(--border-color)] last:border-0 align-top">
               {r.map((c, j) => (
-                <td key={j} className={`px-3 py-2 text-[var(--text-secondary)] ${j === 0 ? 'font-medium text-[var(--text-primary)]' : ''}`}>{c}</td>
+                <td key={j} className={`px-3 py-2 text-[var(--text-secondary)] whitespace-normal break-words ${j === 0 ? 'font-medium text-[var(--text-primary)]' : ''}`}>{c}</td>
               ))}
             </tr>
           ))}
@@ -149,8 +95,44 @@ function MiniTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// The guide
+// Learning Hub
 // ────────────────────────────────────────────────────────────────────────────
+
+const JOURNEY_STEPS = [
+  {
+    id: 'setup', title: '1. Configure',
+    what: 'Payroll policy, salary components, tax regime and statutory settings are defined once for the organization.',
+    icon: Settings2Icon, tab: 'config',
+  },
+  {
+    id: 'run', title: '2. Process',
+    what: 'Attendance, leave, overtime, bonuses and revisions flow in; the engine computes every salary.',
+    icon: Play, tab: 'run',
+  },
+  {
+    id: 'review', title: '3. Review & approve',
+    what: 'HR and finance verify the numbers; approvals lock the payroll so nothing changes silently.',
+    icon: ClipboardCheck, tab: 'review',
+  },
+  {
+    id: 'pay', title: '4. Disburse',
+    what: 'Bank payment files go out; payments are tracked and reconciled.',
+    icon: Wallet, tab: 'compliance',
+  },
+  {
+    id: 'file', title: '5. File & report',
+    what: 'PF/ESI/PT returns are filed, TDS deposited, payslips issued, records archived.',
+    icon: FileDown, tab: 'compliance',
+  },
+];
+
+function Settings2Icon(props: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}>
+      <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
 
 export default function PayrollJourney({
   activeTab,
@@ -162,22 +144,25 @@ export default function PayrollJourney({
   return (
     <div className="space-y-4">
       {/* Hero */}
-      <div className="rounded-2xl border border-[var(--border-color)] bg-gradient-to-r from-[#1C64F2]/10 via-[#4F46E5]/5 to-transparent p-5">
+      <div className="rounded-2xl border border-[var(--border-color)] bg-gradient-to-r from-[#1C64F2]/10 via-[#4F46E5]/5 to-transparent p-6">
         <div className="flex items-center gap-2 mb-1">
           <GraduationCap className="w-5 h-5 text-[var(--primary-blue)]" />
-          <h2 className="text-base font-bold text-[var(--text-primary)]">Payroll, explained</h2>
+          <h2 className="text-base font-bold text-[var(--text-primary)]">Payroll Learning Hub</h2>
         </div>
         <p className="text-xs text-[var(--text-secondary)] leading-relaxed max-w-3xl">
-          Everything a new HR needs to understand how salaries are calculated, what the law
-          requires, and how to answer any employee's questions. Start with the journey below,
-          then dive into any topic. Click a step to jump straight to where it happens.
+          Everything about payroll - end to end. How the process works, how salaries are built,
+          what Indian law requires, when things are due, how corrections happen, and how to answer
+          any employee's question. Learn it once here; use it every month.
         </p>
       </div>
 
-      {/* 1. Journey */}
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-5">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">The monthly journey</h3>
-        <p className="text-xs text-[var(--text-tertiary)] mb-4">Five steps, every month, in this order.</p>
+      {/* 1. What is payroll */}
+      <Section icon={BookOpen} title="1. What payroll really is" subtitle="One monthly process, five stages, zero surprises" defaultOpen>
+        <P>
+          Payroll is the monthly business process that turns <b>attendance and contracts into money,
+          taxes and statutory filings</b>. It is not just "salary calculation" - it is a controlled
+          pipeline with legal obligations at every stage.
+        </P>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {JOURNEY_STEPS.map((step, idx) => {
             const Icon = step.icon;
@@ -204,179 +189,249 @@ export default function PayrollJourney({
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{step.what}</p>
-                <p className="text-[11px] text-[var(--text-tertiary)] leading-relaxed mt-2 italic">{step.why}</p>
               </button>
             );
           })}
         </div>
-      </div>
-
-      {/* 2. How a salary is built */}
-      <Section icon={Calculator} title="How a salary is built" subtitle="CTC → Gross → Deductions → Net pay, with a worked example" defaultOpen>
         <P>
-          <b>CTC (Cost to Company)</b> is the annual amount the company spends on an employee,
-          including employer contributions. <b>Gross salary</b> is what the employee earns each
-          month before deductions. <b>Net pay</b> is what reaches the bank.
+          <b>The golden rule of payroll:</b> once a month is processed and paid, its numbers are
+          <b> immutable</b>. Mistakes are fixed through <i>adjustments in later months</i>, never by
+          editing history. That is what keeps payslips, audits and filings trustworthy.
+        </P>
+      </Section>
+
+      {/* 2. The payroll calendar */}
+      <Section icon={CalendarDays} title="2. The payroll calendar & compliance due dates" subtitle="What is due, when - the dates every payroll HR must know">
+        <P>
+          A typical month runs on a cycle: <b>cut-off → process → approve → pay → file</b>. Missing a
+          statutory due date attracts interest and damages, so this calendar is the backbone of the job.
         </P>
         <MiniTable
-          head={['Component', 'What it is', 'Example']}
+          head={['Obligation', 'Due date', 'Notes']}
           rows={[
-            ['Basic Salary', 'The core of pay; PF, gratuity and encashment are calculated on it. Commonly 40-50% of CTC.', '₹50,000'],
-            ['DA (Dearness Allowance)', 'Cost-of-living allowance (common in government/PSU pay).', '₹0'],
-            ['HRA', 'House rent allowance; partially tax-exempt when rent is actually paid (typically 50% of basic in metros).', '₹25,000'],
-            ['Conveyance / Medical / Special', 'Allowances configured by the company.', '₹1,600 + ₹1,250'],
-            ['Overtime / Bonus / Incentive', 'Variable pay for the month.', '₹0'],
-            ['Gross earnings', 'Sum of everything earned.', '₹77,850'],
-            ['(-) PF', 'Provident Fund - see statutory section.', '₹1,800'],
-            ['(-) Professional Tax', 'State tax on employment.', '₹200'],
-            ['(-) TDS', 'Income tax for the month.', '₹2,500'],
-            ['= Net pay', 'What the employee receives.', '₹73,350'],
+            ['Salary payment', 'As per policy (usually last working day)', 'Contractual; delayed salary can attract claims under the Payment of Wages Act'],
+            ['PF / EPS / EDLI remittance', '15th of the following month', 'Wages for the month; electronic challan (ECR) filed on the EPFO portal'],
+            ['ESI contribution', '15th of the following month', 'Half-yearly return follows the contribution periods'],
+            ['TDS deposit', '7th of the following month', 'Tax deducted from salaries must reach the government'],
+            ['Professional Tax', 'Per state (often monthly, ~20th-22nd)', 'e.g. Karnataka & Maharashtra monthly; some states half-yearly'],
+            ['Quarterly TDS return (24Q)', '31 Jul / 31 Oct / 31 Jan / 31 May', 'Quarterly statement of salary TDS'],
+            ['Form 16 to employees', '15 June (for the prior FY)', 'Part B from employer; Part A downloaded from TRACES'],
+            ['Gratuity payment', 'Within 30 days of it becoming due', 'On exit/retirement for eligible employees (5+ years)'],
+          ]}
+        />
+        <div className="flex items-start gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-4">
+          <ListChecks className="w-4 h-4 text-[var(--primary-blue)] mt-0.5 shrink-0" />
+          <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            <b className="text-[var(--text-primary)]">Month-end HR checklist:</b> freeze attendance →
+            validate leave & LOP → capture revisions/arrears/loans → run payroll → review variances
+            against last month → obtain approvals → release bank file → file PF/ESI/PT → deposit TDS →
+            publish payslips → archive the payroll register.
+          </div>
+        </div>
+      </Section>
+
+      {/* 3. Salary structure */}
+      <Section icon={Calculator} title="3. How a salary is built" subtitle="CTC → Gross → Deductions → Net, with a worked example">
+        <Bullets
+          items={[
+            <><b>CTC (Cost to Company)</b> - the annual employer spend, including employer PF/ESI and
+            gratuity accrual. What the offer letter shows.</>,
+            <><b>Gross salary</b> - monthly earnings before deductions (basic + allowances + variable pay).</>,
+            <><b>Net pay</b> - what reaches the bank after deductions.</>,
+            <><b>Basic + DA</b> - the foundation for PF, gratuity and leave encashment. Commonly 40-50%
+            of CTC, but every company configures its own structure.</>,
+          ]}
+        />
+        <MiniTable
+          head={['Line', 'What it is', 'Example / month']}
+          rows={[
+            ['Basic Salary', 'Core pay; PF, gratuity and encashment are calculated on it.', '₹50,000'],
+            ['DA', 'Dearness Allowance - cost-of-living pay, common in government/PSU structures.', '₹0'],
+            ['HRA', 'House rent allowance; partially tax-exempt when rent is actually paid (50% of basic in metros).', '₹25,000'],
+            ['Conveyance / Medical / Special', 'Company-configured allowances, each with its own tax treatment.', '₹2,850'],
+            ['Overtime / Bonus / Incentive', 'Variable earnings for the period.', '₹0'],
+            ['Gross earnings', 'Total earned before deductions.', '₹77,850'],
+            ['(-) EPF', 'Employee provident fund (12% of PF wages).', '-₹1,800'],
+            ['(-) Professional Tax', 'State tax on employment.', '-₹200'],
+            ['(-) TDS', 'Income tax for the month.', '-₹2,500'],
+            ['= Net pay', 'Take-home salary.', '₹73,350'],
           ]}
         />
         <P>
-          <b>Pro-ration:</b> employees joining or leaving mid-month are paid only for the days
-          worked. If someone joins on the 16th of a 30-day month, every earning is multiplied by
-          15/30 - and statutory deductions follow the reduced wages.
+          <b>Pro-ration:</b> joiners and leavers are paid only for days employed. Every earning is
+          multiplied by <i>paid days ÷ working days</i>, and statutory contributions follow the
+          reduced <i>earned</i> wages.
         </P>
       </Section>
 
-      {/* 3. Attendance drives pay */}
-      <Section icon={Play} title="Attendance drives pay" subtitle="Present days, half days, leave and how they change the payslip">
+      {/* 4. Attendance & leave */}
+      <Section icon={Play} title="4. Attendance and leave drive pay" subtitle="The inputs that decide how much anyone earns">
         <Bullets
           items={[
-            <>Pay = salary × <b>paid days ÷ working days</b> (the pro-ration factor). Present days, paid
-            leave and holidays count as paid; unpaid leave (LOP) does not.</>,
-            <><b>Half days</b> count as half a paid day (configurable). A day shorter than the policy's
-            half-day threshold hours is auto-detected.</>,
-            <><b>Leave without pay (LOP)</b> reduces that month's salary - and reduces the PF/ESI wages
-            accordingly, because those are charged on earned wages.</>,
-            <><b>Overtime</b> pays extra: hours × rate × multiplier (e.g. 1.5× on normal days, 2× on
-            holidays - configurable per policy).</>,
-            <><b>Holidays on weekly offs</b> never inflate paid days - they can't hide an absence.</>,
-            <>An employee with <b>zero attendance</b> and no approved leave gets zero pay for the month -
-            the system never silently pays a full month.</>,
+            <><b>Pay factor</b> = paid days ÷ working days. Present, paid leave and holidays count as
+            paid; unpaid leave (LOP) does not.</>,
+            <><b>Half days</b> typically count as half a paid day; many policies auto-detect a half day
+            when worked hours fall below a threshold.</>,
+            <><b>LOP (loss of pay)</b> reduces gross for the month - and reduces PF/ESI wages, because
+            those are charged on earned wages.</>,
+            <><b>Overtime</b> pays hours × rate × multiplier (commonly 1.5× on normal days, 2× on
+            holidays/weekly offs - per the Factories Act / state shops & establishments rules).</>,
+            <><b>Weekly-off and holiday rules:</b> a holiday falling on a weekly off must never inflate
+            paid days - otherwise it hides an absence.</>,
+            <><b>Zero attendance, zero pay</b> - the engine never silently pays a month with no
+            attendance and no approved leave.</>,
           ]}
         />
       </Section>
 
-      {/* 4. Statutory deductions */}
-      <Section icon={Landmark} title="Statutory deductions (India)" subtitle="PF, ESI, Professional Tax, LWF, Bonus and Gratuity - what the law requires">
+      {/* 5. Statutory compliance */}
+      <Section icon={Landmark} title="5. Indian statutory compliance (2026 schemes)" subtitle="EPF/EPS/EDLI, ESI, Professional Tax, LWF, Bonus, Gratuity - the real rates">
+        <P>
+          Under the <b>Code on Social Security, 2020</b>, the EPF, EPS and EDLI Schemes, 2026 govern
+          provident fund, pension and insurance. The numbers every payroll HR must know:
+        </P>
         <MiniTable
           head={['Scheme', 'Employee pays', 'Employer pays', 'Key rules']}
           rows={[
-            ['EPF (Provident Fund)', '12% of PF wages', '12% (8.33% to pension + rest to PF)', 'PF wages capped at ₹15,000/month by default; EPF/EPS/EDLI all under the EPF Act'],
+            ['EPF + EPS + EDLI', '12% of PF wages', '12% (8.33% to pension + 3.67% to PF) + 0.5% EDLI + 0.5% admin charges → in practice ~13% of PF wages', 'PF wage ceiling ₹15,000/month by default; contributions on higher wages are voluntary. EPS higher-pension opt-ins pay 9.49%.'],
             ['ESI', '0.75% of gross', '3.25% of gross', 'Applies only while monthly gross ≤ ₹21,000'],
-            ['Professional Tax', 'State slab (e.g. ₹200/month)', '—', 'Deducted monthly; every state has its own slab table'],
-            ['LWF (Labour Welfare Fund)', 'Small state contribution', 'Matching contribution', 'State-specific, often half-yearly'],
-            ['Statutory Bonus', '—', '8.33% - 20% of bonus wages', 'Payable when salary ≤ ₹21,000/month; can be spread monthly'],
-            ['Gratuity', '—', 'Accrued, paid at exit', '15/26 × last basic+DA × years of service; eligible after 5 years (>240 days counts as a year)'],
+            ['Professional Tax', 'State slab (e.g. ₹200/month)', '—', 'Deducted monthly; every state has its own slab table and due date'],
+            ['LWF', 'Small state contribution', 'Matching contribution', 'State-specific, often half-yearly'],
+            ['Statutory Bonus', '—', '8.33% - 20% of bonus wages', 'Payment of Bonus Act: payable when salary ≤ ₹21,000/month; may be spread monthly'],
+            ['Gratuity', '—', 'Accrued; paid at exit', '15/26 × last basic+DA × years of service; 5 years of service (over 240 days counts as a year); tax-free up to ₹20 lakh'],
           ]}
         />
         <P>
-          <b>Why caps matter:</b> PF is calculated on <i>PF wages</i>, not the full salary. If PF
-          wages are capped at ₹15,000, an employee earning ₹50,000 still has PF of ₹1,800
-          (12% × ₹15,000). These caps and rates are <b>versioned rules</b> - when the government
-          revises them, a new rule version applies from its effective date and history stays intact.
+          <b>Why employer cost is "13%":</b> the headline employer rate is 12% (split 8.33% pension +
+          3.67% provident fund), but the employer also pays <b>0.5% EDLI insurance</b> and{' '}
+          <b>0.5% EPF administrative charges</b> - so budget ~13% of PF wages. With PF wages capped at
+          ₹15,000, that is about ₹1,950 per employee per month at the ceiling.
+        </P>
+        <P>
+          <b>Why caps matter:</b> contributions apply to <i>PF wages</i> (usually basic+DA), not the
+          full salary - often capped at ₹15,000. An employee earning ₹50,000 may still have PF of just
+          ₹1,800 (12% × ₹15,000). Employees can contribute voluntarily above the ceiling (no employer
+          match required unless offered).
         </P>
       </Section>
 
-      {/* 5. Income tax / TDS */}
-      <Section icon={Calculator} title="Income tax (TDS) made simple" subtitle="Regimes, declarations, and why TDS changes during the year">
+      {/* 6. TDS */}
+      <Section icon={Calculator} title="6. Income tax (TDS) on salary" subtitle="Regimes, declarations, and why TDS changes during the year">
         <Bullets
           items={[
-            <><b>Tax regime:</b> employees choose the <b>New regime</b> (lower slabs, almost no
-            deductions) or the <b>Old regime</b> (higher slabs, allows 80C/80D/NPS/HRA exemptions).
-            The choice is configuration - both are computed by the same engine.</>,
-            <><b>Standard deduction</b> (₹50,000 old regime / ₹75,000 new regime) is subtracted
+            <><b>Two regimes:</b> the <b>New regime</b> (default; lower slabs, almost no deductions) and
+            the <b>Old regime</b> (higher slabs; allows 80C/80D/NPS/HRA exemptions). Employees may opt
+            out of the new regime each year.</>,
+            <><b>Standard deduction</b> (₹75,000 new regime / ₹50,000 old regime) reduces salary income
             automatically.</>,
-            <><b>Investment declarations</b> (80C, 80D, NPS, home loan, HRA rent proof) reduce taxable
-            income in the old regime. HR verifies proofs; unverified declarations can be excluded.</>,
-            <><b>Monthly TDS = annual tax ÷ remaining months</b>, adjusted for tax already deducted
-            (YTD) and previous-employer income. This is why TDS rises in later months if salary
-            components change.</>,
-            <><b>Form 16</b> is the annual TDS certificate (Part B is generated here; Part A comes
-            from TRACES after the employer files Form 24Q). Employees with zero TDS get a Salary
-            Certificate instead.</>,
+            <><b>Declarations & proofs:</b> employees declare investments (80C ₹1.5L, 80D, NPS ₹50k
+            extra under 80CCD(1B), home loan interest, HRA rent) at the start of the year; HR verifies
+            proofs around Jan-Feb. Unverified declarations can be excluded - which raises TDS in the
+            final months.</>,
+            <><b>Monthly TDS</b> = projected annual tax minus tax already deducted (YTD), divided by
+            remaining months. Bonuses and revisions raise the projection mid-year.</>,
+            <><b>Filing:</b> deposit TDS by the 7th of the next month; file Form 24Q quarterly; issue
+            Form 16 by 15 June. Employees with zero TDS receive a Salary Certificate instead.</>,
           ]}
         />
       </Section>
 
-      {/* 6. Lifecycle & corrections */}
-      <Section icon={ShieldCheck} title="Payroll lifecycle & corrections" subtitle="Why payroll is locked, and how mistakes get fixed">
+      {/* 7. Lifecycle & controls */}
+      <Section icon={ShieldCheck} title="7. Payroll lifecycle and internal controls" subtitle="How serious payroll teams keep errors out">
         <P>
-          Payroll moves through: <b>Draft → Calculated → Validation → Pending Approval → Approved →
-          Locked → Processed → Paid</b>. Once locked, the numbers are <b>immutable</b> - this is what
-          makes the audit trail trustworthy.
-        </P>
-        <P>
-          <b>Fixing mistakes:</b> never edit a processed month. Instead:
+          Payroll moves through <b>Draft → Calculated → Validation → Pending Approval → Approved →
+          Locked → Processed → Paid</b>. Maker-checker (preparer ≠ approver) is the standard control;
+          approvals are logged with who, when and why.
         </P>
         <Bullets
           items={[
-            <><b>Arrears / recovery</b> - the difference is booked as an adjustment in a later month
-            (positive = arrears payable, negative = recovery).</>,
-            <><b>Retro rule changes</b> - if the government notifies a change in August effective from
-            April, the system identifies the affected months, recomputes them, and creates the
-            arrears automatically. The original payrolls stay untouched.</>,
-            <><b>Reversal</b> - a wrongly processed month can be reversed with a compensating entry.</>,
+            <><b>Validation before approval:</b> missing salary, missing bank details, negative net,
+            excessive deductions (e.g. over 60% of gross), duplicate payroll for the same period, and
+            minimum-wage shortfalls must be flagged before money moves.</>,
+            <><b>Variance review:</b> compare this month with last month per employee; unexpected
+            spikes usually mean data errors, not salary changes.</>,
+            <><b>Immutability:</b> locked payroll cannot be edited. Corrections use arrears or
+            reversal - preserving the audit trail that auditors and courts expect.</>,
+            <><b>Minimum wages:</b> payable wages must meet the state/zone/skill minimums under the
+            Code on Wages - the system should warn, never silently underpay.</>,
           ]}
         />
       </Section>
 
-      {/* 7. Payments & filings */}
-      <Section icon={Receipt} title="Payments & government filings" subtitle="Getting money out and staying compliant">
+      {/* 8. Revisions & arrears */}
+      <Section icon={Receipt} title="8. Revisions, arrears and retroactive changes" subtitle="When the past has to be recalculated">
         <Bullets
           items={[
-            <><b>Payment batches:</b> collect all net pays for a period into one batch, generate the
-            bank file (columns configurable per bank), then mark each payment paid or failed. The
-            system reconciles books vs bank and flags missing, duplicate or mismatched amounts.</>,
-            <><b>EPF ECR:</b> the monthly Electronic Challan cum Return (pipe-delimited file) is
-            generated from the same payroll numbers and uploaded to the EPFO portal.</>,
-            <><b>ESI return</b> and <b>Professional Tax statement</b> are generated the same way.</>,
-            <><b>Accounting:</b> salary expense, employer contributions and the payables (salary,
-            TDS, PF, ESI) post as journal entries for your accounting system.</>,
+            <><b>Salary revisions</b> (increments, promotions) take effect from a date. Months already
+            processed get an <b>arrear</b>: difference between the revised and original pay, paid in a
+            later month - with the correct tax and statutory impact.</>,
+            <><b>Government notifications with back dates</b> are the classic trap: a rate change
+            notified in August but effective from April. The correct process is to identify affected
+            months, recompute them under the new rule, compute arrears/recovery, book adjustments and
+            keep the original payroll untouched.</>,
+            <><b>Recovery</b> is the mirror of arrears - negative adjustments recovered from later
+            salaries, always with employee communication.</>,
           ]}
         />
       </Section>
 
-      {/* 8. Answering employees */}
-      <Section icon={MessageCircle} title="Answering 'why is my salary X?'" subtitle="The Explain feature - your 10-second answer to any salary question">
+      {/* 9. F&F */}
+      <Section icon={FolderCheck} title="9. Full & Final settlement (F&F)" subtitle="Everything owed and deducted when someone exits">
+        <Bullets
+          items={[
+            <><b>Payables:</b> salary until the last working day (pro-rated), leave encashment,
+            statutory bonus (pro-rata), gratuity (if eligible), pending reimbursements, notice pay
+            (when the employer waives notice).</>,
+            <><b>Deductions:</b> notice-period shortfall (when the employee leaves without serving
+            notice), outstanding loans/advances, bond/notice recovery, tax on taxable components.</>,
+            <><b>Gratuity:</b> 15/26 × last drawn basic+DA × completed years of service, payable
+            within 30 days of it becoming due.</>,
+            <><b>Timeline best practice:</b> complete F&F within the state-mandated or policy window
+            (commonly 7-45 days after the last working day) and issue the full statement.</>,
+          ]}
+        />
+      </Section>
+
+      {/* 10. Answering employees */}
+      <Section icon={MessageCircle} title="10. Answering employee salary questions" subtitle="The 10-second answer to 'why is my salary X?'">
         <P>
-          Go to <b>Compliance &amp; Rules → Explain</b>, enter the payroll ID, and the system shows
-          every figure with the exact reason: which rule applied, its version, the formula and the
-          input values. Example:
+          The best payroll teams answer every question with <b>evidence, not estimates</b>. For any
+          payslip line you should be able to show: the wage base it applied to, the rule (rate/cap/
+          slab) that applied, and the exact inputs (paid days, gross, declarations).
         </P>
         <div className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-4 text-xs text-[var(--text-secondary)] leading-relaxed">
-          <b>PF ₹1,800</b> ← rule #12 v7 (G.S.R. 999(E)), formula{' '}
-          <code className="px-1 rounded bg-[var(--card-bg)]">MIN(PF_WAGES × 12%, cap)</code>,
-          inputs {'{'}BASIC: 50,000, paid_days: 30, wage_basis: PF_WAGES{'}'}
+          <b>Worked answer:</b> "Your PF is ₹1,800 because PF is 12% of <i>PF wages</i> - your basic
+          (₹50,000) is capped at the ₹15,000 wage ceiling, and 12% of ₹15,000 = ₹1,800. Your employer
+          also pays ~13% on the same wages (pension + insurance + admin charges)."
         </div>
         <P>
-          Because explanations are stored with each payroll, even after a rule changes you can still
-          show an employee why last month's number was what it was.
+          Keep a rule-version history: when a rate changes mid-year, employees' old months must still
+          be explainable with the rules that were in force then.
         </P>
       </Section>
 
-      {/* 9. FAQ */}
-      <Section icon={HelpCircle} title="HR's payroll FAQ" subtitle="The questions you will actually be asked">
+      {/* 11. FAQ */}
+      <Section icon={HelpCircle} title="11. The HR payroll FAQ" subtitle="The questions you will actually be asked">
         <div className="space-y-3">
           {[
             ['An employee joined on the 16th. What do we pay?',
-             'Half a month. Every earning is pro-rated by days employed ÷ working days, and PF/ESI apply to the reduced earned wages. Just run payroll - the engine handles the pro-ration from their join date.'],
+             'Half a month. Every earning is pro-rated by days employed ÷ working days, and PF/ESI apply to the reduced earned wages.'],
             ['An employee took 3 days LOP. What changes?',
-             'Their paid days drop by 3, so gross pay reduces proportionally. PF/ESI reduce too (they are charged on earned wages); Professional Tax usually stays a flat monthly amount.'],
-            ['Someone resigned mid-month with 10 leave days pending.',
-             'Use Full & Final settlement (Exit Management): final salary until the last working day + leave encashment + gratuity (if 5+ years) - minus any loans or notice-period shortfall.'],
+             'Paid days drop by 3, so gross reduces proportionally. PF/ESI reduce too (charged on earned wages); Professional Tax usually stays a flat monthly amount.'],
+            ['Someone resigned mid-month with pending leave.',
+             'Full & Final settlement covers final salary until the last working day, leave encashment, and gratuity if 5+ years - minus loans and any notice shortfall.'],
             ['The government revised PF rates. Do we change code?',
-             'No. Publish a new PF rule version with the effective date. Future months use it automatically; past months keep the old rules and their payslips stay explainable.'],
-            ['Salary was revised mid-year. What about past months?',
-             'The revision takes effect from its date. If you want the difference for months already processed, run a retro adjustment - the system computes arrears per month and books them as adjustments.'],
+             'No. A new rule version is published with the effective date. Future months use it automatically; past months keep the old rules and remain explainable.'],
+            ['Salary was revised mid-year. What about months already paid?',
+             'The revision applies from its effective date. The difference for processed months is paid as arrears in the next cycle, with tax and statutory adjustments.'],
             ['Why did TDS increase this month?',
-             'TDS is recomputed monthly on projected annual income minus what is already deducted. A bonus, a revised salary or exhausted exemptions raises the projection - ask Explain for the exact inputs.'],
-            ['Employee says their PF is wrong.',
-             'Open Explain for that payroll. It shows the PF wage basis and cap used. Common explanation: PF is on basic (or PF wages capped at ₹15,000), not on the full salary.'],
+             'TDS follows projected annual income minus what is already deducted. A bonus, a revision, or exhausted exemptions raises the projection - check the TDS inputs for that month.'],
+            ['An employee says their PF is wrong.',
+             'Show them the wage base and cap. The usual explanation: PF applies to basic/DA (often capped at ₹15,000), not to gross salary.'],
             ['Can we edit a processed payroll?',
-             'No - processed payroll is immutable by design. Corrections go through arrears adjustments or reversal, which keeps the audit trail intact.'],
+             'No - processed payroll is immutable by design. Corrections run through arrears adjustments or reversal so the audit trail stays intact.'],
+            ['What is the employer\'s real PF cost?',
+             'About 13% of PF wages: 12% (8.33% pension + 3.67% PF) plus 0.5% EDLI insurance and 0.5% administration charges.'],
           ].map(([q, a]) => (
             <div key={q} className="rounded-xl border border-[var(--border-color)] p-4">
               <div className="text-xs font-semibold text-[var(--text-primary)] mb-1.5">{q}</div>
@@ -386,8 +441,8 @@ export default function PayrollJourney({
         </div>
       </Section>
 
-      {/* 10. Glossary */}
-      <Section icon={BookOpen} title="Glossary" subtitle="Every payroll term in one place">
+      {/* 12. Glossary */}
+      <Section icon={BookOpen} title="12. Glossary" subtitle="Every payroll term in one place">
         <MiniTable
           head={['Term', 'Meaning']}
           rows={[
@@ -395,45 +450,40 @@ export default function PayrollJourney({
             ['Gross salary', 'Total earnings for the month before deductions.'],
             ['Net pay', 'Amount paid to the bank after all deductions.'],
             ['Basic + DA', 'The base on which PF, gratuity and encashment are calculated.'],
-            ['HRA', 'House Rent Allowance - partially exempt from tax when rent is paid.'],
-            ['PF wages', 'The wage base PF applies to (usually basic+DA, often capped).'],
+            ['HRA', 'House Rent Allowance - partially exempt from tax when rent is actually paid.'],
+            ['PF wages', 'The wage base PF applies to (usually basic+DA, often capped at ₹15,000).'],
             ['ESI wages', 'The wage base for ESI (usually gross, while under the ceiling).'],
-            ['Bonus wages', 'The wage base for statutory bonus (usually gross, capped).'],
-            ['TDS', 'Tax Deducted at Source - the monthly income tax withheld.'],
+            ['Bonus wages', 'The wage base for statutory bonus (usually gross, capped at ₹21,000).'],
+            ['TDS', 'Tax Deducted at Source - monthly income tax withheld from salary.'],
             ['LOP', 'Loss of Pay - unpaid leave; reduces paid days and pay.'],
-            ['Pro-ration', 'Scaling pay for partial months (joiners/leavers).'],
-            ['Arrears', 'Pay owed for past months (revision or rule change), paid in a later month.'],
+            ['Pro-ration', 'Scaling pay for partial months (joiners and leavers).'],
+            ['Arrears', 'Pay owed for past months (revision or rule change), paid later.'],
             ['Recovery', 'Negative arrears - amount recovered from a later salary.'],
-            ['F&F', 'Full & Final settlement - everything owed/deducted when an employee exits.'],
+            ['F&F', 'Full & Final settlement - everything owed/deducted at exit.'],
             ['Form 16', 'Annual TDS certificate (Part B from employer, Part A from TRACES).'],
             ['ECR', 'EPF Electronic Challan cum Return - the monthly EPFO filing.'],
             ['Gratuity', 'Exit benefit after 5+ years: 15/26 × last basic+DA × years.'],
+            ['EDLI', 'Deposit-linked insurance for employees (0.5% employer).'],
             ['Employer cost', 'Net pay + employer contributions (PF/ESI/gratuity) - the true cost.'],
           ]}
         />
       </Section>
 
-      {/* 11. Key concepts strip (quick reference) */}
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-5">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Six things to remember</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-3">
-          {[
-            ['Gross earnings', 'Everything earned: basic, allowances, overtime and bonus - before any deduction.'],
-            ['Statutory deductions', 'PF, ESI, Professional Tax and LWF - contributions the law requires.'],
-            ['TDS', 'Income tax deducted at source, computed from the tax regime and declarations.'],
-            ['Net pay', 'What lands in the bank: gross earnings minus all deductions.'],
-            ['Employer cost', "The company's true cost: net pay + employer PF/ESI/gratuity."],
-            ['Rules, not hard-coding', 'Every rate and slab is versioned data - history always stays correct.'],
-          ].map(([term, meaning]) => (
-            <div key={term} className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--primary-blue)] mt-1.5 shrink-0" />
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                <span className="font-semibold text-[var(--text-primary)]">{term}</span> — {meaning}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* 13. In this app */}
+      <Section icon={GraduationCap} title="13. Putting it to work in this HRMS" subtitle="Where each part of this knowledge lives in the product">
+        <Bullets
+          items={[
+            <><b>Configuration</b> tab - salary components, tax regime, PF/ESI/PT settings.</>,
+            <><b>Run Payroll</b> tab - process the month; pro-ration, overtime and TDS are automatic.</>,
+            <><b>Review & Approve</b> tab - validate and lock payroll (maker-checker).</>,
+            <><b>Bonuses & Loans</b> tab - variable pay and advances.</>,
+            <><b>Compliance & Rules</b> tab - statutory rules and their versions, arrears/retro,
+            payment batches and bank files, government filings (EPF ECR, ESI, PT), accounting, and{' '}
+            <b>Explain</b> - enter a payroll ID to see the rule, version, formula and inputs behind
+            every figure.</>,
+          ]}
+        />
+      </Section>
     </div>
   );
 }

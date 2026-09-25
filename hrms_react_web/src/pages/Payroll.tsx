@@ -7,7 +7,7 @@ import {
   Plus, Coins, CheckCircle2, XCircle, RotateCcw, Clock, Search, CloudCog, X,
   BookOpen, ClipboardCheck,
   TrendingUp, Filter, Download, Upload, Users, Calendar, Wallet, FileText, Info, Loader2, CreditCard, MapPin, Award, Play, Settings, Sparkles,
-  Edit3, Edit2, Trash2, HandCoins, Mail, Send, UserPlus, Landmark, Lock, Unlock, Ban, Scale
+  Edit3, Edit2, Trash2, HandCoins, Mail, Send, UserPlus, Landmark, Lock, Unlock, Ban, Scale, GraduationCap
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import api from '../services/api';
@@ -141,7 +141,7 @@ const TABS = [
   { id: 'pay_items', label: 'Bonuses & Loans', icon: HandCoins },
   { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
   { id: 'config', label: 'Configuration', icon: Settings },
-  { id: 'guide', label: 'How It Works', icon: Info },
+  { id: 'guide', label: 'Learning Hub', icon: GraduationCap },
 ];
 
 // Form tabs for Payroll modal
