@@ -98,31 +98,31 @@ function MiniTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
 // Learning Hub
 // ────────────────────────────────────────────────────────────────────────────
 
-const JOURNEY_STEPS = [
+// The universal payroll cycle - generic knowledge, no product specifics.
+const PAYROLL_CYCLE = [
   {
-    id: 'setup', title: '1. Configure',
-    what: 'Payroll policy, salary components, tax regime and statutory settings are defined once for the organization.',
-    icon: Settings, tab: 'config',
+    title: '1. Collect the inputs',
+    what: 'Everything that changes pay: joiners and leavers, attendance, leave (paid and unpaid), overtime, bonuses, loans and advances, salary revisions, and employee declarations.',
   },
   {
-    id: 'run', title: '2. Process',
-    what: 'Attendance, leave, overtime, bonuses and revisions flow in; the engine computes every salary.',
-    icon: Play, tab: 'run',
+    title: '2. Compute the pay',
+    what: 'Convert inputs into money: salary structure (basic, allowances), pro-ration for partial months, variable pay, and any one-time payments or recoveries.',
   },
   {
-    id: 'review', title: '3. Review & approve',
-    what: 'HR and finance verify the numbers; approvals lock the payroll so nothing changes silently.',
-    icon: ClipboardCheck, tab: 'review',
+    title: '3. Apply statutory and tax rules',
+    what: 'Deduct and accrue what the law requires: provident fund, pension, insurance, professional tax, welfare fund - and withhold income tax (TDS) per the applicable regime.',
   },
   {
-    id: 'pay', title: '4. Disburse',
-    what: 'Bank payment files go out; payments are tracked and reconciled.',
-    icon: Wallet, tab: 'compliance',
+    title: '4. Validate and approve',
+    what: 'Verify against last month, check for data errors, run validations (missing bank details, negative pay, excessive deductions, minimum-wage shortfalls) and obtain approvals.',
   },
   {
-    id: 'file', title: '5. File & report',
-    what: 'PF/ESI/PT returns are filed, TDS deposited, payslips issued, records archived.',
-    icon: FileDown, tab: 'compliance',
+    title: '5. Disburse',
+    what: 'Pay employees through the bank, track what succeeded or failed, and reconcile payments against the books.',
+  },
+  {
+    title: '6. File, report and keep records',
+    what: 'Deposit taxes and contributions, file statutory returns, issue payslips, post accounting entries, and archive an immutable payroll register.',
   },
 ];
 
@@ -148,52 +148,39 @@ export default function PayrollJourney({
         </p>
       </div>
 
-      {/* 1. What is payroll */}
-      <Section icon={BookOpen} title="1. What payroll really is" subtitle="One monthly process, five stages, zero surprises" defaultOpen>
+      {/* 1. What payroll really is - universal knowledge */}
+      <Section icon={BookOpen} title="1. What payroll really is" subtitle="The universal process every organization runs - in every industry and country" defaultOpen>
         <P>
-          Payroll is the monthly business process that turns <b>attendance and contracts into money,
-          taxes and statutory filings</b>. It is not just "salary calculation" - it is a controlled
-          pipeline with legal obligations at every stage.
+          <b>Payroll</b> is the recurring business process that computes what employees have earned,
+          deducts what the law and the employee owe, pays the remainder, and reports all of it to the
+          authorities. Whether the organization is a startup, a factory, a hospital or a government
+          department - and whether workers are monthly-salaried, daily-wage, hourly or contract -
+          the process is the same six stages.
         </P>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          {JOURNEY_STEPS.map((step, idx) => {
-            const Icon = step.icon;
-            const isActive = step.tab === activeTab;
-            return (
-              <button
-                key={step.id}
-                onClick={() => onNavigate(step.tab)}
-                className={`text-left rounded-xl border p-4 transition-all flex flex-col ${
-                  isActive
-                    ? 'border-[var(--primary-blue)] bg-blue-50/60 shadow-md'
-                    : 'border-[var(--border-color)] bg-[var(--background)] hover:border-[var(--primary-blue)]/50 hover:shadow-sm'
-                }`}
-              >
-                <div className="grid grid-cols-[2rem_1fr_1.25rem] items-center gap-2 mb-2 h-10">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    isActive ? 'bg-[var(--primary-blue)] text-white' : 'bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]'
-                  }`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  {/* Uniform centered row: every card's title sits on the same line */}
-                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 flex items-center h-full">
-                    {step.title}
-                  </div>
-                  {idx < JOURNEY_STEPS.length - 1 ? (
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block mx-auto" />
-                  ) : (
-                    <div className="hidden md:block" />
-                  )}
-                </div>
-                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{step.what}</p>
-              </button>
-            );
-          })}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {PAYROLL_CYCLE.map((stage) => (
+            <div key={stage.title} className="rounded-xl border border-[var(--border-color)] bg-[var(--background)] p-4">
+              <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 mb-1.5">{stage.title}</div>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{stage.what}</p>
+            </div>
+          ))}
         </div>
         <P>
-          <b>The golden rule of payroll:</b> once a month is processed and paid, its numbers are
-          <b> immutable</b>. Mistakes are fixed through <i>adjustments in later months</i>, never by
-          editing history. That is what keeps payslips, audits and filings trustworthy.
+          <b>Why payroll is hard:</b> it must be <b>accurate</b> (people's livelihoods), <b>on time</b>
+          (contractual and legal), <b>compliant</b> (statutory contributions and tax filings),{' '}
+          <b>confidential</b> (salary data is sensitive), and <b>auditable</b> (every figure must be
+          explainable months later).
+        </P>
+        <P>
+          <b>Who owns payroll:</b> HR or a payroll officer prepares it, finance validates and releases
+          payments, a statutory compliance owner files returns, and management approves. Separation of
+          duties (the person who prepares cannot be the person who approves) is the standard control.
+        </P>
+        <P>
+          <b>One process, every kind of worker:</b> a monthly salaried employee earns a structured
+          salary; a daily-wage worker earns a rate times eligible days; an hourly worker earns a rate
+          times paid hours; a piece-rate worker earns units times a rate. All of them feed the same
+          pipeline - the difference is only how the earnings are computed.
         </P>
       </Section>
 
@@ -468,14 +455,35 @@ export default function PayrollJourney({
 
       {/* 13. In this app */}
       <Section icon={GraduationCap} title="13. Putting it to work in this HRMS" subtitle="Where each part of this knowledge lives in the product">
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['config', 'Configuration', Settings],
+            ['run', 'Run Payroll', Play],
+            ['review', 'Review & Approve', ClipboardCheck],
+            ['pay_items', 'Bonuses & Loans', Wallet],
+            ['compliance', 'Compliance & Rules', FileDown],
+          ].map(([tab, label, Icon]) => {
+            const TabIcon = Icon as typeof Settings;
+            return (
+              <button key={String(tab)} onClick={() => onNavigate(String(tab))}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border transition-all ${
+                  activeTab === String(tab)
+                    ? 'border-[var(--primary-blue)] bg-blue-50/60 text-[var(--primary-blue)]'
+                    : 'border-[var(--border-color)] bg-[var(--background)] text-[var(--text-secondary)] hover:border-[var(--primary-blue)]/60 hover:text-[var(--primary-blue)]'
+                }`}>
+                <TabIcon className="w-3.5 h-3.5" /> {String(label)}
+              </button>
+            );
+          })}
+        </div>
         <Bullets
           items={[
-            <><b>Configuration</b> tab - salary components, tax regime, PF/ESI/PT settings.</>,
-            <><b>Run Payroll</b> tab - process the month; pro-ration, overtime and TDS are automatic.</>,
-            <><b>Review & Approve</b> tab - validate and lock payroll (maker-checker).</>,
-            <><b>Bonuses & Loans</b> tab - variable pay and advances.</>,
-            <><b>Compliance & Rules</b> tab - statutory rules and their versions, arrears/retro,
-            payment batches and bank files, government filings (EPF ECR, ESI, PT), accounting, and{' '}
+            <><b>Configuration</b> - salary components, tax regime, PF/ESI/PT settings.</>,
+            <><b>Run Payroll</b> - process the month; pro-ration, overtime and TDS are automatic.</>,
+            <><b>Review & Approve</b> - validate and lock payroll (maker-checker).</>,
+            <><b>Bonuses & Loans</b> - variable pay and advances.</>,
+            <><b>Compliance & Rules</b> - statutory rules and versions, arrears/retro, payment
+            batches and bank files, government filings (EPF ECR, ESI, PT), accounting, and{' '}
             <b>Explain</b> - enter a payroll ID to see the rule, version, formula and inputs behind
             every figure.</>,
           ]}
