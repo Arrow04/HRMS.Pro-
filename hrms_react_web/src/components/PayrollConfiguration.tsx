@@ -80,24 +80,33 @@ function defaultPolicy() {
 function defaultComponents(): PayrollTemplateComponent[] {
   const base = { max_cap: null as number | null, min_cap: null as number | null, is_tax_exempt: false, tax_exempt_limit: null as number | null };
   return [
-    // ── Earnings ──
+    // -- Earnings (standard Indian salary structure) --
     { ...base, name: 'Basic', display_name: 'Basic Salary', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 1, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'HRA', display_name: 'House Rent Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 3, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
-    { ...base, name: 'Special Allowance', display_name: 'Special Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 6, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'DA', display_name: 'Dearness Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 2, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
+    { ...base, name: 'HRA', display_name: 'House Rent Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 3, is_taxable: true, apply_pro_ration: true, tax_category: 'exempt_10' },
+    { ...base, name: 'Conveyance', display_name: 'Conveyance Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 4, is_taxable: true, apply_pro_ration: true, tax_category: 'exempt_10' },
+    { ...base, name: 'Medical', display_name: 'Medical Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 5, is_taxable: true, apply_pro_ration: true, tax_category: 'exempt_10' },
+    { ...base, name: 'Education', display_name: 'Education Allowance', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 6, is_taxable: true, apply_pro_ration: true, tax_category: 'exempt_10' },
+    { ...base, name: 'Special Allowance', display_name: 'Special Allowance', component_type: 'earning', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 7, is_taxable: true, apply_pro_ration: true, tax_category: 'salary_17_1' },
     { ...base, name: 'Performance Bonus', display_name: 'Performance Bonus / Incentive', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 13, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
     { ...base, name: 'Overtime', display_name: 'Overtime Pay', component_type: 'earning', calculation_type: 'formula', formula: '', calculation_value: null, priority: 14, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
+    { ...base, name: 'Arrears', display_name: 'Salary Arrears', component_type: 'earning', calculation_type: 'fixed', calculation_value: null, priority: 15, is_taxable: true, apply_pro_ration: false, tax_category: 'salary_17_1' },
 
-    // ── Deductions (statutory) ──
-    { ...base, name: 'PF', display_name: 'Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 15, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
-    { ...base, name: 'ESI', display_name: 'Employees State Insurance', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 17, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
-    { ...base, name: 'Professional Tax', display_name: 'Professional Tax', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 18, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'professional_tax_16' },
-    { ...base, name: 'Income Tax', display_name: 'Income Tax', component_type: 'deduction', calculation_type: 'formula', formula: '', calculation_value: null, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'tds_192' },
+    // -- Deductions (statutory) --
+    { ...base, name: 'PF', display_name: 'Provident Fund', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 20, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
+    { ...base, name: 'ESI', display_name: 'Employees State Insurance', component_type: 'deduction', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 21, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'post_tax_statutory' },
+    { ...base, name: 'Professional Tax', display_name: 'Professional Tax', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 22, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'professional_tax_16' },
+    { ...base, name: 'Income Tax', display_name: 'Income Tax (TDS)', component_type: 'deduction', calculation_type: 'formula', formula: '', calculation_value: null, priority: 23, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'tds_192' },
 
-    // ── Deductions (non-statutory) ──
-    { ...base, name: 'LOP', display_name: 'Loss of Pay', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 21, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
+    // -- Deductions (other) --
+    { ...base, name: 'LOP', display_name: 'Loss of Pay', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 24, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
+    { ...base, name: 'Loan Recovery', display_name: 'Loan / Advance Recovery', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 25, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
+    { ...base, name: 'Other Deduction', display_name: 'Other Deduction', component_type: 'deduction', calculation_type: 'fixed', calculation_value: null, priority: 26, is_statutory: false, is_taxable: false, apply_pro_ration: false, tax_category: 'post_tax_other' },
 
-    // ── Employer contributions ──
-    { ...base, name: 'Employer PF', display_name: 'Employer PF Contribution', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 28, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
+    // -- Employer contributions --
+    { ...base, name: 'Employer PF', display_name: 'Employer PF Contribution', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 30, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_epf' },
+    { ...base, name: 'Employer ESI', display_name: 'Employer ESI Contribution', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'gross', calculation_value: null, priority: 31, is_statutory: true, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_esic' },
+    { ...base, name: 'Employer NPS', display_name: 'Employer NPS (u/s 80CCD(2))', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 32, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_nps' },
     { ...base, name: 'Employer Gratuity', display_name: 'Employer Gratuity', component_type: 'employer_contribution', calculation_type: 'percentage', calculation_base: 'basic', calculation_value: null, priority: 33, is_statutory: false, is_taxable: false, apply_pro_ration: true, tax_category: 'employer_gratuity' },
   ];
 }
