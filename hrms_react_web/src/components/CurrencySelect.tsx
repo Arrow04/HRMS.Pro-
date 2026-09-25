@@ -26,7 +26,7 @@ const parseOption = (opt: CurrencyOption) => {
 const CurrencySelect = ({ value, onChange, options }: CurrencySelectProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,8 +49,12 @@ const CurrencySelect = ({ value, onChange, options }: CurrencySelectProps) => {
     const top = rect.bottom + 6;
     const menuH = Math.min(320, 280);
     const bottom = top + menuH;
-    const finalTop = bottom > window.innerHeight ? Math.max(8, rect.top - menuH - 6) : top;
-    return { top: finalTop, left: rect.left, width: rect.width };
+    // Flip upward by anchoring the menu's BOTTOM edge to the field so it
+    // sits flush above the trigger instead of floating far away.
+    if (bottom > window.innerHeight) {
+      return { bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width };
+    }
+    return { top: top, left: rect.left, width: rect.width };
   }, []);
 
   // Re-position the menu if the page scrolls or resizes while open
@@ -106,7 +110,7 @@ const CurrencySelect = ({ value, onChange, options }: CurrencySelectProps) => {
       {isOpen && menuPos && createPortal(
         <div
           ref={menuRef}
-          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width, zIndex: 9999 }}
+          style={{ position: 'fixed', top: menuPos.top, bottom: (menuPos as { bottom?: number }).bottom, left: menuPos.left, width: menuPos.width, zIndex: 9999 }}
           className="bg-white border border-[#E2E8F0] rounded-xl shadow-xl overflow-hidden"
         >
           <div className="p-2 border-b border-[#F1F5F9] bg-white">

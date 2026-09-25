@@ -250,15 +250,6 @@ function getMonday(d: Date) {
   return date;
 }
 
-const ROSTER_DAYS: { key: string; label: string }[] = [
-  { key: '1', label: 'Mon' },
-  { key: '2', label: 'Tue' },
-  { key: '3', label: 'Wed' },
-  { key: '4', label: 'Thu' },
-  { key: '5', label: 'Fri' },
-  { key: '6', label: 'Sat' },
-  { key: '0', label: 'Sun' },
-];
 
 const TAB_HELP: Record<string, string> = {
   employment: 'Select the company, department, designation, and branches this employee belongs to.',
@@ -316,7 +307,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
   const [branchSearch, setBranchSearch] = useState('');
   const [branchOpen, setBranchOpen] = useState(false);
-  const [branchPos, setBranchPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [branchPos, setBranchPos] = useState<{ top?: number; bottom?: number; left: number; width: number; menuH?: number } | null>(null);
   const branchRef = useRef<HTMLDivElement>(null);
   const branchMenuRef = useRef<HTMLDivElement>(null);
 
@@ -346,8 +337,10 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     const menuH = openBelow
       ? Math.max(80, Math.min(320, spaceBelow))
       : Math.max(80, Math.min(320, spaceAbove));
-    const top = openBelow ? rect.bottom + 4 : Math.max(8, rect.top - menuH - 4);
-    return { top, left: rect.left, width: rect.width };
+    if (openBelow) {
+      return { top: rect.bottom + 4, left: rect.left, width: rect.width, menuH };
+    }
+    return { bottom: viewportH - rect.top + 4, left: rect.left, width: rect.width, menuH };
   }, []);
 
   useEffect(() => {
@@ -359,7 +352,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     const tick = () => {
       const p = computeBranchPos();
       setBranchPos((prev) =>
-        prev && p && prev.top === p.top && prev.left === p.left && prev.width === p.width
+        prev && p && prev.top === p.top && prev.bottom === p.bottom && prev.left === p.left && prev.width === p.width
           ? prev
           : p,
       );
@@ -373,9 +366,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   useLayoutEffect(() => {
     if (branchOpen) setBranchPos(computeBranchPos());
   }, [branchOpen, computeBranchPos]);
-  const [rosterDays, setRosterDays] = useState<Record<string, string>>({
-    '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '0': ''
-  });
   const [salaryMode, setSalaryMode] = useState<SalaryMode>('monthly');
   // Pay-frequency conversions to the monthly figure the payroll engine works on.
   // Daily × 30 (monthly/30 = daily rate is the standard payroll divisor).
@@ -461,19 +451,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       setFormData((prev) => ({ ...prev, itAssignedBy: currentUserName }));
     }
   }, [open, currentUserName, formData.itAssignedBy, setFormData]);
-
-  useEffect(() => {
-    if (currentRoster && currentRoster.length > 0) {
-      const days: Record<string, string> = { '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '0': '' };
-      for (const entry of currentRoster) {
-        const dow = String(entry.day_of_week);
-        if (dow in days) {
-          days[dow] = String(entry.shift_id ?? '');
-        }
-      }
-      setRosterDays(days);
-    }
-  }, [currentRoster]);
 
   if (!open) return null;
 
@@ -825,24 +802,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     // No frontend guards — save always goes through, the server validates.
     onSubmit();
 
-    const employeeIdForRoster = docEmployeeId;
-    if (employeeIdForRoster) {
-      const rosterPayload = Object.entries(rosterDays)
-        .filter(([_, shiftId]) => shiftId)
-        .map(([dayOfWeek, shiftId]) => ({
-          employee_id: employeeIdForRoster,
-          shift_id: parseInt(shiftId),
-          day_of_week: parseInt(dayOfWeek),
-          week_start_date: getMonday(new Date()).toISOString(),
-        }));
-      if (rosterPayload.length > 0) {
-        try {
-          await api.post('/shifts/roster/assign-bulk', { assignments: rosterPayload });
-        } catch {
-          // roster save is best-effort; employee was already saved
-        }
-      }
-    }
   };
 
   const updateField = (key: string, value: unknown) => {
@@ -1034,19 +993,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select employment contract type</p>
                   </div>
                    <div>
-                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Default Shift</label>
-                     <SearchableSelect
-                       value={input(formData.shiftId)}
-                       onChange={(v) => set({ shiftId: String(v) })}
-                       options={(shifts || []).map((s: any) => ({ id: s.id, name: `${s.name} (${s.start_time} - ${s.end_time})` }))}
-                       placeholder="Select default shift"
-                       showAllOption={false}
-                       clearable
-                       className="w-full"
-                     />
-                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Default shift for attendance calculations</p>
-                   </div>
-                   <div>
                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Reporting Manager</label>
                      <SearchableSelect
                        value={input(formData.reportingManagerId)}
@@ -1062,26 +1008,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                      <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Employee’s direct supervisor for org hierarchy</p>
                    </div>
                  </div>
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4">
-                  <h5 className="text-sm font-semibold text-[#0F172A] mb-3">Weekly Roster</h5>
-                  <p className="text-xs text-[#64748B] mb-3">Assign a shift for each day of the week. Leave blank for days off.</p>
-                  <div className="grid grid-cols-7 gap-2">
-                    {ROSTER_DAYS.map(({ key, label }) => (
-                      <div key={key}>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1 text-center">{label}</label>
-                        <SearchableSelect
-                          value={rosterDays[key] || ''}
-                          onChange={(v) => setRosterDays((prev) => ({ ...prev, [key]: String(v) }))}
-                          options={(shifts || []).map((s: any) => ({ id: s.id, name: `${s.name}` }))}
-                          placeholder="Off"
-                          showAllOption={false}
-                          clearable
-                          className="w-full"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
                 <div className={empGridClass}>
                   <div>
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Branches (Multiple Selection)</label>
@@ -1114,7 +1040,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       </button>
                       {branchOpen && branchPos && createPortal(
                         <div ref={branchMenuRef} className="fixed z-[9999] bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-auto"
-                          style={{ top: branchPos.top, left: branchPos.left, width: branchPos.width, maxHeight: 320 }}>
+                          style={{ top: branchPos.top, bottom: branchPos.bottom, left: branchPos.left, width: branchPos.width, maxHeight: branchPos.menuH ?? 320 }}>
                           <div className="p-2 border-b border-[#E2E8F0] sticky top-0 bg-white">
                             <div className="relative">
                               <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-[#94A3B8]" />
@@ -2922,7 +2848,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <PreviewItem label="Department" value={(departmentsList || []).find((d: Department) => String(d.id) === String(formData.departmentId))?.name} />
                       <PreviewItem label="Designation" value={(designations || []).find((d: Designation) => String(d.id) === String(formData.designationId))?.title} />
                       <PreviewItem label="Employment Type" value={formData.employmentType} />
-                      <PreviewItem label="Default Shift" value={(shifts || []).find((s: any) => String(s.id) === String(formData.shiftId)) ? `${(shifts || []).find((s: any) => String(s.id) === String(formData.shiftId))?.name} (${(shifts || []).find((s: any) => String(s.id) === String(formData.shiftId))?.start_time} - ${(shifts || []).find((s: any) => String(s.id) === String(formData.shiftId))?.end_time})` : undefined} />
                       <PreviewItem label="Join Date" value={formData.joinDate} />
                       <PreviewItem label="Status" value={formData.status} />
                     </PreviewSection>

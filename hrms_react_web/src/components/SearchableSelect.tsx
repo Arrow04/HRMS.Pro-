@@ -49,7 +49,7 @@ const SearchableSelect = ({
 }: SearchableSelectProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,15 +105,19 @@ const SearchableSelect = ({
     const menuH = openBelow
       ? Math.max(120, Math.min(Math.round(viewportH * 0.6), spaceBelow))
       : Math.max(120, Math.min(Math.round(viewportH * 0.6), spaceAbove));
-    const top = openBelow ? rect.bottom + 6 : Math.max(8, rect.top - menuH - 6);
-    return { top, left: rect.left, width: rect.width, menuH };
+    // When opening upward, anchor the menu's BOTTOM edge to the field so the
+    // menu sits flush above it - no matter how tall its content turns out to be.
+    if (openBelow) {
+      return { top: rect.bottom + 6, left: rect.left, width: rect.width, menuH };
+    }
+    return { bottom: viewportH - rect.top + 6, left: rect.left, width: rect.width, menuH };
   }, []);
 
   const [menuH, setMenuH] = useState(240);
   const applyPos = useCallback(() => {
     const p = computePos();
     if (p) {
-      setMenuPos({ top: p.top, left: p.left, width: p.width });
+      setMenuPos({ top: p.top, bottom: (p as { bottom?: number }).bottom, left: p.left, width: p.width });
       setMenuH(p.menuH);
     }
   }, [computePos]);
@@ -166,7 +170,7 @@ const SearchableSelect = ({
       {isOpen && menuPos && createPortal(
         <div
           ref={menuRef}
-          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width, maxHeight: menuH, zIndex: 9999 }}
+          style={{ position: 'fixed', top: menuPos.top, bottom: menuPos.bottom, left: menuPos.left, width: menuPos.width, maxHeight: menuH, zIndex: 9999 }}
           className="bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-auto"
         >
           <div className="p-2 border-b border-[#E2E8F0] sticky top-0 bg-white">
