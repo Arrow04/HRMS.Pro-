@@ -1234,8 +1234,25 @@ function WizardModal(props: {
               </div>
               <WizardSectionCard title="Linked templates" icon={Building2}>
                 <p className="text-[11px] text-[var(--text-tertiary)]">Pick the company templates once — their rules auto-apply here and to every employee on this payroll template. Shared templates stay read-only below; edit them in Attendance / Leave → Configuration.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Attendance Template *" help="Required — workweek, mapping, overtime and thresholds load from the template.">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Field label="Company *" help="Required - picks which company's templates you can link.">
+                    <SearchableSelect
+                      value={w.companyId ?? ''}
+                      onChange={(v) => {
+                        const id = v === '' ? null : Number(v);
+                        setState({
+                          companyId: id,
+                          attendancePolicyId: null,
+                          leaveTemplateId: null,
+                          attendanceLinked: false,
+                          attendancePolicy: defaultAttendance(),
+                        });
+                      }}
+                      options={(companies || []).map((c: any) => ({ id: c.id, name: c.name }))}
+                      placeholder="Select company (required)"
+                      showAllOption={false} clearable />
+                  </Field>
+                  <Field label="Attendance Template *" help="Required - workweek, mapping, overtime and thresholds load from the template.">
                     <SearchableSelect
                       value={w.attendancePolicyId ?? ''}
                       onChange={(v) => linkAttendance(v === '' ? null : Number(v))}
@@ -1243,7 +1260,7 @@ function WizardModal(props: {
                       placeholder={w.companyId ? 'Select attendance template (required)' : 'Select a company first'}
                       showAllOption={false} clearable />
                   </Field>
-                  <Field label="Leave Template *" help="Required — yearly quotas for employees on this payroll template without their own pin.">
+                  <Field label="Leave Template *" help="Required - yearly quotas for employees on this payroll template without their own pin.">
                     <SearchableSelect
                       value={w.leaveTemplateId ?? ''}
                       onChange={(v) => setState({ leaveTemplateId: v === '' ? null : Number(v) })}
