@@ -28,6 +28,7 @@ import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
 import PayrollConsole from './PayrollConsole';
+import PayrollJourney from '../components/PayrollJourney';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import FormGrid, { formGridClass } from '../components/FormGrid';
@@ -1619,13 +1620,18 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           ))}
         </div>
 
+        {/* How payroll works - guided journey for every user */}
+        <div className="mb-6">
+          <PayrollJourney activeTab={activeTab} onNavigate={(t) => setActiveTab(t)} />
+        </div>
+
         {/* TABS - Pill Style like Company Page */}
         <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-6">
           <div className="flex flex-wrap items-center gap-2">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'run' | 'review' | 'payslips' | 'bonuses' | 'loans' | 'config')}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-[#1C64F2]/20'
