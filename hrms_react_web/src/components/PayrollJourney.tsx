@@ -177,15 +177,17 @@ export default function PayrollJourney({
                     : 'border-[var(--border-color)] bg-[var(--background)] hover:border-[var(--primary-blue)]/50 hover:shadow-sm'
                 }`}
               >
-                <div className="flex items-center gap-2 mb-2">
+                <div className="grid grid-cols-[2rem_1fr_1.25rem] items-start gap-2 mb-2">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                     isActive ? 'bg-[var(--primary-blue)] text-white' : 'bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]'
                   }`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  <div className="text-xs font-semibold text-[var(--text-primary)]">{step.title}</div>
-                  {idx < JOURNEY_STEPS.length - 1 && (
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block ml-auto" />
+                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 pt-1.5">{step.title}</div>
+                  {idx < JOURNEY_STEPS.length - 1 ? (
+                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block pt-2" />
+                  ) : (
+                    <div className="hidden md:block" />
                   )}
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{step.what}</p>
