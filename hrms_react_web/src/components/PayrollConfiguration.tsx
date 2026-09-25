@@ -73,6 +73,7 @@ function defaultPolicy() {
     name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
     gratuity_rate: null, default_currency: '', allow_negative_net: false,
+    daily_rate_divisor: 30, monthly_divisor_for_weekly: 4.33,
   };
 }
 
@@ -125,6 +126,10 @@ function defaultTax(): PayrollTemplateTaxRegime {
     standard_deduction: null, rebate_threshold: null, rebate_amount: null,
     cess_rate: null, surcharge_config: [],
     slabs: [],
+    section_80c_cap: null, section_80d_cap: null, section_80d_senior_cap: null,
+    section_80ccd_1b_cap: null, section_24_home_loan_cap: null, section_80c_old_cap: null,
+    hra_metro_pct: null, hra_non_metro_pct: null, hra_rent_threshold_pct: null,
+    basic_pct_of_gross: null,
   };
 }
 
@@ -134,6 +139,7 @@ function defaultAttendance() {
     half_day_as_full_paid: true, paid_leave_as_present: true, holiday_as_present: true,
     overtime_threshold_hours: 8, overtime_rate: 1.5, late_mark_threshold_minutes: 15,
     half_day_threshold_hours: 4,
+    late_to_absent_count: null, early_to_absent_count: null, missing_checkout_rule: 'half_day',
   };
 }
 
@@ -834,6 +840,9 @@ function WizardModal(props: {
         holiday_as_present: t.holiday_as_present, overtime_threshold_hours: t.overtime_threshold_hours,
         overtime_rate: t.overtime_rate, late_mark_threshold_minutes: t.late_mark_threshold_minutes,
         half_day_threshold_hours: t.half_day_threshold_hours,
+        late_to_absent_count: t.late_to_absent_count ?? null,
+        early_to_absent_count: t.early_to_absent_count ?? null,
+        missing_checkout_rule: t.missing_checkout_rule || 'half_day',
       },
     });
   };
@@ -980,6 +989,12 @@ function WizardModal(props: {
               </WizardSectionCard>
               <WizardSectionCard title="Pro-ration & Rounding" icon={SlidersHorizontal}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                  <Field label="Daily rate divisor" help="Divides monthly salary to get the daily rate (30 calendar days, or 26 working days).">
+                    <NumInput value={w.payrollPolicy.daily_rate_divisor} onChange={v => setNested('payrollPolicy', 'daily_rate_divisor', v)} placeholder="30" />
+                  </Field>
+                  <Field label="Weekly to monthly divisor" help="Converts a weekly rate to monthly (52 weeks / 12 months = 4.33).">
+                    <NumInput value={w.payrollPolicy.monthly_divisor_for_weekly} onChange={v => setNested('payrollPolicy', 'monthly_divisor_for_weekly', v)} placeholder="4.33" />
+                  </Field>
                   <Field label="Pro-ration method" help="How salary is split for partial months: paid days, calendar days, working days or none.">
                     <SearchableSelect value={w.payrollPolicy.pro_ration_method || 'paid_days'} onChange={v => setNested('payrollPolicy', 'pro_ration_method', String(v))} placeholder="Select Pro-ration method" options={[
                       { id: 'paid_days', name: 'Paid days' },
@@ -1121,6 +1136,21 @@ function WizardModal(props: {
                   </div>
                 </div>
               </WizardSectionCard>
+              <WizardSectionCard title="Exemptions & HRA caps" icon={Landmark}>
+                <p className="text-xs text-[var(--text-tertiary)] mb-3">Old-regime Chapter VI-A caps and House Rent Allowance exemption rules (section 10(13A)).</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                  <Field label="80C cap" help="Max deduction for life insurance, ELSS, PF, tuition fees etc."><NumInput value={w.taxRegime.section_80c_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_cap: v } })} placeholder="150000" /></Field>
+                  <Field label="80C cap (old regime)" help="Legacy 80C cap if it differs from the standard cap."><NumInput value={w.taxRegime.section_80c_old_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_old_cap: v } })} placeholder="150000" /></Field>
+                  <Field label="80D cap" help="Health insurance premium - self & family."><NumInput value={w.taxRegime.section_80d_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_cap: v } })} placeholder="50000" /></Field>
+                  <Field label="80D cap (senior citizen)" help="Health insurance premium - senior citizens."><NumInput value={w.taxRegime.section_80d_senior_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_senior_cap: v } })} placeholder="100000" /></Field>
+                  <Field label="80CCD(1B) NPS cap" help="Additional NPS deduction over and above 80C."><NumInput value={w.taxRegime.section_80ccd_1b_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80ccd_1b_cap: v } })} placeholder="50000" /></Field>
+                  <Field label="Home loan interest cap (u/s 24)" help="Max interest deduction on self-occupied property."><NumInput value={w.taxRegime.section_24_home_loan_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_24_home_loan_cap: v } })} placeholder="200000" /></Field>
+                  <Field label="HRA exemption - metro (%)" help="Delhi, Mumbai, Kolkata, Chennai - % of basic eligible for exemption."><NumInput value={w.taxRegime.hra_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_metro_pct: v } })} placeholder="50" /></Field>
+                  <Field label="HRA exemption - non-metro (%)" help="% of basic eligible for exemption outside metro cities."><NumInput value={w.taxRegime.hra_non_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_non_metro_pct: v } })} placeholder="40" /></Field>
+                  <Field label="Rent threshold (% of basic)" help="Exemption = rent paid minus this % of salary."><NumInput value={w.taxRegime.hra_rent_threshold_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_rent_threshold_pct: v } })} placeholder="10" /></Field>
+                  <Field label="Assumed basic (% of gross)" help="Used for HRA auto-calculation when basic is not separately available."><NumInput value={w.taxRegime.basic_pct_of_gross} onChange={v => setState({ taxRegime: { ...w.taxRegime, basic_pct_of_gross: v } })} placeholder="50" /></Field>
+                </div>
+              </WizardSectionCard>
               <WizardSectionCard title="Slabs" icon={Landmark}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm text-[var(--text-tertiary)]">Income tax slabs (to = blank means "and above").</p>
@@ -1240,6 +1270,9 @@ function WizardModal(props: {
                       { label: 'Overtime', value: `${w.attendancePolicy.overtime_threshold_hours ?? 8}h × ${w.attendancePolicy.overtime_rate ?? 1.5}` },
                       { label: 'Late after', value: `${w.attendancePolicy.late_mark_threshold_minutes ?? 15} min` },
                       { label: 'Half-day below', value: `${w.attendancePolicy.half_day_threshold_hours ?? 4}h` },
+                      { label: 'Missing checkout', value: String(w.attendancePolicy.missing_checkout_rule || 'half_day').replace(/_/g, ' ') },
+                      { label: 'Lates to absent', value: w.attendancePolicy.late_to_absent_count ? `every ${w.attendancePolicy.late_to_absent_count}` : 'not set' },
+                      { label: 'Early exits to absent', value: w.attendancePolicy.early_to_absent_count ? `every ${w.attendancePolicy.early_to_absent_count}` : 'not set' },
                     ].map((m) => (
                       <div key={m.label} className="bg-[var(--background)] rounded-lg px-3 py-2">
                         <div className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">{m.label}</div>

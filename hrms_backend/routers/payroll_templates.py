@@ -276,13 +276,19 @@ class PayrollTemplatePayload(BaseModel):
 
 POLICY_KEYS = ("name", "pro_ration_method", "rounding_method", "decimal_places",
                "round_net_salary", "include_gratuity", "gratuity_rate",
-               "default_currency", "allow_negative_net")
+               "default_currency", "allow_negative_net",
+               "daily_rate_divisor", "monthly_divisor_for_weekly")
 ATT_KEYS = ("name", "working_days_per_week", "working_days", "half_day_as_full_paid",
             "paid_leave_as_present", "holiday_as_present", "overtime_threshold_hours",
-            "overtime_rate", "late_mark_threshold_minutes", "half_day_threshold_hours")
+            "overtime_rate", "late_mark_threshold_minutes", "half_day_threshold_hours",
+            "late_to_absent_count", "early_to_absent_count", "missing_checkout_rule")
 TAX_KEYS = ("name", "regime_type", "is_active", "is_default", "financial_year",
             "standard_deduction", "rebate_threshold", "rebate_amount", "cess_rate",
-            "surcharge_config")
+            "surcharge_config",
+            "section_80c_cap", "section_80d_cap", "section_80d_senior_cap",
+            "section_80ccd_1b_cap", "section_24_home_loan_cap", "section_80c_old_cap",
+            "hra_metro_pct", "hra_non_metro_pct", "hra_rent_threshold_pct",
+            "basic_pct_of_gross")
 COMPONENT_KEYS = ("name", "display_name", "component_type", "calculation_type",
                   "calculation_base", "calculation_value", "formula", "max_cap",
                   "min_cap", "is_statutory", "is_taxable", "is_tax_exempt",

@@ -53,6 +53,17 @@ export interface PayrollTemplateTaxRegime {
   cess_rate?: number;
   surcharge_config?: unknown[];
   slabs?: TaxSlabInput[];
+  // Exemption caps (old regime) & HRA exemption rules
+  section_80c_cap?: number;
+  section_80d_cap?: number;
+  section_80d_senior_cap?: number;
+  section_80ccd_1b_cap?: number;
+  section_24_home_loan_cap?: number;
+  section_80c_old_cap?: number;
+  hra_metro_pct?: number;
+  hra_non_metro_pct?: number;
+  hra_rent_threshold_pct?: number;
+  basic_pct_of_gross?: number;
 }
 
 export interface PayrollTemplateAttendance {
@@ -64,6 +75,9 @@ export interface PayrollTemplateAttendance {
   holiday_as_present?: boolean;
   overtime_threshold_hours?: number;
   overtime_rate?: number;
+  late_to_absent_count?: number;
+  early_to_absent_count?: number;
+  missing_checkout_rule?: string;
   late_mark_threshold_minutes?: number;
   half_day_threshold_hours?: number;
 }
