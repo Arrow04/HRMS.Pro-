@@ -102,7 +102,7 @@ const JOURNEY_STEPS = [
   {
     id: 'setup', title: '1. Configure',
     what: 'Payroll policy, salary components, tax regime and statutory settings are defined once for the organization.',
-    icon: Settings2Icon, tab: 'config',
+    icon: Settings, tab: 'config',
   },
   {
     id: 'run', title: '2. Process',
@@ -177,19 +177,18 @@ export default function PayrollJourney({
                     : 'border-[var(--border-color)] bg-[var(--background)] hover:border-[var(--primary-blue)]/50 hover:shadow-sm'
                 }`}
               >
-                <div className="grid grid-cols-[2rem_1fr_1.25rem] items-start gap-2 mb-2">
+                <div className="grid grid-cols-[2rem_1fr_1.25rem] items-center gap-2 mb-2 h-10">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                     isActive ? 'bg-[var(--primary-blue)] text-white' : 'bg-[var(--primary-blue)]/10 text-[var(--primary-blue)]'
                   }`}>
                     <Icon className="w-4 h-4" />
                   </div>
-                  {/* Fixed 2-line title box: every card's title and body stay
-                      on the same baselines across the row. */}
-                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 pt-1.5 h-10 overflow-hidden">
+                  {/* Uniform centered row: every card's title sits on the same line */}
+                  <div className="text-xs font-semibold text-[var(--text-primary)] leading-5 flex items-center h-full">
                     {step.title}
                   </div>
                   {idx < JOURNEY_STEPS.length - 1 ? (
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block pt-2" />
+                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-tertiary)] hidden md:block mx-auto" />
                   ) : (
                     <div className="hidden md:block" />
                   )}
