@@ -163,7 +163,7 @@ export default function PayrollJourney({
               <button
                 key={step.id}
                 onClick={() => onNavigate(step.tab)}
-                className={`text-left rounded-xl border p-4 transition-all ${
+                className={`text-left rounded-xl border p-4 transition-all flex flex-col ${
                   isActive
                     ? 'border-[var(--primary-blue)] bg-blue-50/60 shadow-md'
                     : 'border-[var(--border-color)] bg-[var(--background)] hover:border-[var(--primary-blue)]/50 hover:shadow-sm'
