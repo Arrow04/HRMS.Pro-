@@ -28,7 +28,6 @@ import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
 import PayrollConsole from './PayrollConsole';
-import AccountingPanel from '../components/AccountingPanel';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import FormGrid, { formGridClass } from '../components/FormGrid';
@@ -136,11 +135,9 @@ const FormSectionTitle = ({ title }: { title: string }) => (
 
 const TABS = [
   { id: 'run', label: 'Run Payroll', icon: Play },
-  { id: 'review', label: 'Payroll Review', icon: ClipboardCheck },
+  { id: 'review', label: 'Review & Approve', icon: ClipboardCheck },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
-  { id: 'bonuses', label: 'Bonuses', icon: TrendingUp },
-  { id: 'loans', label: 'Loans & Advances', icon: HandCoins },
-  { id: 'accounting', label: 'Accounting', icon: BookOpen },
+  { id: 'pay_items', label: 'Bonuses & Loans', icon: HandCoins },
   { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
   { id: 'config', label: 'Configuration', icon: Settings },
 ];
@@ -790,6 +787,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const [showRerunConfirm, setShowRerunConfirm] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [runSubTab, setRunSubTab] = useState<'review' | 'history'>('review');
+  const [payItemsSub, setPayItemsSub] = useState<'bonuses' | 'loans'>('bonuses');
   const [pendingRunAction, setPendingRunAction] = useState<'submit' | 'approve' | 'process' | null>(null);
 
   const finalizeMutation = useMutation({
@@ -2323,7 +2321,19 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         )}
 
         {/* BONUSES TAB */}
-        {activeTab === 'bonuses' && (
+        {activeTab === 'pay_items' && (
+          <div className="flex gap-2 mb-4">
+            {([['bonuses', 'Bonuses'], ['loans', 'Loans & Advances']] as const).map(([id, label]) => (
+              <button key={id} onClick={() => setPayItemsSub(id)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  payItemsSub === id
+                    ? 'bg-[var(--primary-blue)] text-white shadow-md'
+                    : 'bg-[var(--card-bg)] text-[var(--text-secondary)] border border-[var(--border-color)]'
+                }`}>{label}</button>
+            ))}
+          </div>
+        )}
+        {activeTab === 'pay_items' && payItemsSub === 'bonuses' && (
           <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)] bg-gradient-to-r from-[#F8FAFC] to-white">
               <div className="flex items-center gap-3">
@@ -2412,9 +2422,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           </div>
         )}
 
-        {activeTab === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
+        {activeTab === 'pay_items' && payItemsSub === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
 
-        {activeTab === 'accounting' && <div className="animate-in fade-in duration-300"><AccountingPanel /></div>}
         {activeTab === 'compliance' && <div className="animate-in fade-in duration-300"><PayrollConsole /></div>}
 
       {/* Full Page Drawer Modal */}

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Scale, FileDown, Wallet, Receipt, HelpCircle, Upload, CheckCircle2, AlertTriangle,
+  Scale, FileDown, Wallet, Receipt, HelpCircle, Upload, CheckCircle2, AlertTriangle, BookOpen,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import AccountingPanel from '../components/AccountingPanel';
 import type { PayrollRule, ExplainPayload } from '../services/payrollEngineService';
 import {
   listPayrollRules, publishPayrollRule, getRuleTrace,
@@ -12,13 +13,14 @@ import {
   getPayrollExplain,
 } from '../services/payrollEngineService';
 
-type Tab = 'rules' | 'arrears' | 'payments' | 'filings' | 'explain';
+type Tab = 'rules' | 'arrears' | 'payments' | 'filings' | 'accounting' | 'explain';
 
 const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
   { id: 'rules', label: 'Rules', icon: Scale },
   { id: 'arrears', label: 'Arrears', icon: Receipt },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'filings', label: 'Filings', icon: FileDown },
+  { id: 'accounting', label: 'Accounting', icon: BookOpen },
   { id: 'explain', label: 'Explain', icon: HelpCircle },
 ];
 
@@ -334,6 +336,10 @@ export default function PayrollConsole() {
             </div>
           ))}
         </div>
+      )}
+
+      {tab === 'accounting' && (
+        <div className="animate-in fade-in duration-300"><AccountingPanel /></div>
       )}
 
       {tab === 'explain' && (
