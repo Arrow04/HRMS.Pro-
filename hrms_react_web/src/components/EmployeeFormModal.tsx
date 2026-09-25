@@ -352,19 +352,18 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
   useEffect(() => {
     if (!branchOpen) return;
-    const onScroll = () => setBranchPos(computeBranchPos());
-    const onResize = () => setBranchPos(computeBranchPos());
-    document.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onResize);
-    return () => {
-      document.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onResize);
+    // The menu is a fixed-position portal; keep it glued to the trigger every
+    // frame so scrolling/resizing/layout shifts can never separate them.
+    let raf = 0;
+    const tick = () => {
+      setBranchPos(computeBranchPos());
+      raf = requestAnimationFrame(tick);
     };
+    tick();
+    return () => cancelAnimationFrame(raf);
   }, [branchOpen, computeBranchPos]);
 
-  // Anchor the menu to the field with the freshest rect AFTER open (computing
-  // it inside a setState updater races the modal's own scrolling and renders
-  // the popup far from its trigger).
+  // Anchor with a fresh rect immediately on open.
   useLayoutEffect(() => {
     if (branchOpen) setBranchPos(computeBranchPos());
   }, [branchOpen, computeBranchPos]);
