@@ -1092,7 +1092,6 @@ def create_manual_attendance(
             att = Attendance(
                 employee_id=data.employeeId,
                 organization_id=scope.get("organizationId"),
-                company_id=scope.get("companyId"),
                 date=parsed_date,
                 **vals,
             )

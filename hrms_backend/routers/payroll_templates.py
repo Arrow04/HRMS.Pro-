@@ -127,6 +127,8 @@ def _ser_policy(p: PayrollPolicy) -> dict:
         "gratuity_rate": p.gratuity_rate,
         "default_currency": p.default_currency,
         "allow_negative_net": p.allow_negative_net,
+        "daily_rate_divisor": p.daily_rate_divisor,
+        "monthly_divisor_for_weekly": p.monthly_divisor_for_weekly,
     }
 
 
@@ -151,6 +153,14 @@ def _ser_component(c: PayrollComponent) -> dict:
         "is_system": c.is_system,
         "priority": c.priority,
         "tax_category": c.tax_category,
+        "taxability": getattr(c, "taxability", None),
+        "pf_applicable": getattr(c, "pf_applicable", None),
+        "esi_applicable": getattr(c, "esi_applicable", None),
+        "pt_applicable": getattr(c, "pt_applicable", None),
+        "lwf_applicable": getattr(c, "lwf_applicable", None),
+        "gratuity_applicable": getattr(c, "gratuity_applicable", None),
+        "bonus_applicable": getattr(c, "bonus_applicable", None),
+        "nps_applicable": getattr(c, "nps_applicable", None),
     }
 
 
@@ -167,6 +177,9 @@ def _ser_attendance(a: AttendancePolicy) -> dict:
         "overtime_rate": a.overtime_rate,
         "late_mark_threshold_minutes": a.late_mark_threshold_minutes,
         "half_day_threshold_hours": a.half_day_threshold_hours,
+        "late_to_absent_count": getattr(a, "late_to_absent_count", None),
+        "early_to_absent_count": getattr(a, "early_to_absent_count", None),
+        "missing_checkout_rule": getattr(a, "missing_checkout_rule", None),
         "is_shared_template": bool(getattr(a, "is_shared_template", False)),
     }
 
@@ -184,6 +197,16 @@ def _ser_tax(t: TaxRegime) -> dict:
         "rebate_amount": t.rebate_amount,
         "cess_rate": t.cess_rate,
         "surcharge_config": t.surcharge_config or [],
+        "section_80c_cap": t.section_80c_cap,
+        "section_80d_cap": t.section_80d_cap,
+        "section_80d_senior_cap": t.section_80d_senior_cap,
+        "section_80ccd_1b_cap": t.section_80ccd_1b_cap,
+        "section_24_home_loan_cap": t.section_24_home_loan_cap,
+        "section_80c_old_cap": t.section_80c_old_cap,
+        "hra_metro_pct": t.hra_metro_pct,
+        "hra_non_metro_pct": t.hra_non_metro_pct,
+        "hra_rent_threshold_pct": t.hra_rent_threshold_pct,
+        "basic_pct_of_gross": t.basic_pct_of_gross,
         "slabs": [
             {"from_amount": s.from_amount, "to_amount": s.to_amount,
              "rate": s.rate, "sort_order": s.sort_order}
@@ -293,7 +316,9 @@ COMPONENT_KEYS = ("name", "display_name", "component_type", "calculation_type",
                   "calculation_base", "calculation_value", "formula", "max_cap",
                   "min_cap", "is_statutory", "is_taxable", "is_tax_exempt",
                   "tax_exempt_limit", "apply_pro_ration", "is_active", "priority",
-                  "tax_category")
+                  "tax_category", "taxability", "pf_applicable", "esi_applicable",
+                  "pt_applicable", "lwf_applicable", "gratuity_applicable",
+                  "bonus_applicable", "nps_applicable")
 STATUTORY_KEYS = ("pf_applicable", "pf_employee_rate", "pf_employer_rate",
                   "pf_wage_ceiling", "pf_max_monthly", "pf_min_basic_for_exclusion",
                   "pf_edli_rate", "pf_edli_max_monthly", "pf_admin_rate", "pf_admin_min_monthly",
