@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+﻿import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
@@ -360,6 +360,13 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       document.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onResize);
     };
+  }, [branchOpen, computeBranchPos]);
+
+  // Anchor the menu to the field with the freshest rect AFTER open (computing
+  // it inside a setState updater races the modal's own scrolling and renders
+  // the popup far from its trigger).
+  useLayoutEffect(() => {
+    if (branchOpen) setBranchPos(computeBranchPos());
   }, [branchOpen, computeBranchPos]);
   const [rosterDays, setRosterDays] = useState<Record<string, string>>({
     '1': '', '2': '', '3': '', '4': '', '5': '', '6': '', '0': ''
@@ -1083,10 +1090,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         type="button"
                         onClick={() => {
                           setBranchSearch('');
-                          setBranchOpen(o => {
-                            if (!o) setBranchPos(computeBranchPos());
-                            return !o;
-                          });
+                          setBranchOpen(o => !o);
                         }}
                         className={`${formInputClass} text-left flex items-center justify-between`}
                       >
