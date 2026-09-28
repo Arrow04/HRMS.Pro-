@@ -85,6 +85,105 @@ from core.employee_filters import apply_picker_scope_filters
 
 router = APIRouter(tags=["employees"])
 
+# IT setup checklist columns: (camelCase API key, snake_case column)
+IT_CHECKLIST_COLUMNS = [
+    ("itEmailCreated", "it_email_created"),
+    ("itSystemAccess", "it_system_access"),
+    ("itErpAccess", "it_erp_access"),
+    ("itCloudApps", "it_cloud_apps"),
+    ("itSharedDrives", "it_shared_drives"),
+    ("itHrmsAccount", "it_hrms_account"),
+    ("itGroupMemberships", "it_group_memberships"),
+    ("itCredentialsIssued", "it_credentials_issued"),
+    ("itVpnAccess", "it_vpn_access"),
+    ("itMfaEnabled", "it_mfa_enabled"),
+    ("itPasswordManager", "it_password_manager"),
+    ("itRoleAssigned", "it_role_assigned"),
+    ("itEndpointProtection", "it_endpoint_protection"),
+    ("itHardwareAssigned", "it_hardware_assigned"),
+    ("itPolicySigned", "it_policy_signed"),
+    ("itTrainingDone", "it_training_done"),
+    ("itAssetTag", "it_asset_tag"),
+    ("itLaptopEncryption", "it_laptop_encryption"),
+    ("itWorkPhone", "it_work_phone"),
+]
+IT_DATE_FIELDS = ("it_assigned_date", "it_grant_date", "it_completion_date")
+IT_TEXT_FIELDS = ("it_assigned_by", "it_notes")
+
+
+def _date_or_none(v):
+    if v in (None, ""):
+        return None
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "")).date()
+    except Exception:
+        try:
+            return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+
+def _pv(v) -> bool:
+    """Mirror of the frontend isFilled() in utils/profileCompletion.ts."""
+    if v is None:
+        return False
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        return v.strip() != ""
+    if isinstance(v, (list, dict, tuple)):
+        return len(v) > 0
+    return True  # numbers, dates
+
+
+def profile_completion(emp) -> int:
+    """Profile completion % — server-side mirror of utils/profileCompletion.ts.
+
+    The onboarding table gets its rows from the slim picker endpoint, so the
+    percentage has to be computed here where the full ORM row is available.
+    Field lists must stay in sync with the frontend util.
+    """
+    from utils.name_utils import employee_display_name
+
+    static = [
+        employee_display_name(emp), emp.employee_code, emp.gender, emp.date_of_birth,
+        emp.blood_group, emp.marital_status, emp.emergency_contact, emp.emergency_phone,
+        emp.father_name, emp.mother_name, emp.sibling_name, emp.spouse_name,
+        emp.spouse_phone, emp.number_of_children, emp.children_names,
+        emp.current_address, emp.permanent_address, emp.landmark, emp.permanent_landmark,
+        emp.current_state, emp.current_pincode, emp.permanent_state, emp.permanent_pincode,
+        emp.aadhar_number, emp.pan_number, emp.voter_id, emp.driving_license, emp.passport_number,
+        emp.company_id, emp.department_id, emp.designation_id,
+        emp.branches or [], emp.join_date,
+        emp.pf_number, emp.pf_uan, emp.esic_number,
+        bool(emp.gratuity_applicable), emp.mediclaim_number, emp.mediclaim_provider,
+        emp.life_insurance_number, emp.life_insurance_provider,
+        emp.nominee_name, emp.nominee_relationship,
+        emp.bank_name, emp.bank_account_number, emp.ifsc_code, emp.account_holder_name,
+        emp.base_salary or 0, emp.salary_template_id,
+        emp.email, emp.phone, emp.device_name, emp.device_type,
+        emp.device_serial_number, emp.device_ip_address, emp.device_mac_address,
+        emp.it_assigned_date, emp.it_completion_date, emp.it_assigned_by, emp.it_notes,
+    ] + [bool(getattr(emp, col, False)) for _, col in IT_CHECKLIST_COLUMNS]
+
+    filled = sum(1 for v in static if _pv(v))
+    total = len(static)
+    for items, reqs in (
+        (emp.education_details or [], ("educationLevel", "institution", "degree")),
+        (emp.certifications or [], ("name",)),
+        (emp.languages or [], ("name",)),
+        (emp.skills_list or [], ("name",)),
+        (emp.experience_details or [], ("company", "designation")),
+        (emp.achievements_details or [], ("title",)),
+        (emp.activities_details or [], ("name",)),
+    ):
+        total += len(items)
+        filled += sum(
+            1 for it in items
+            if isinstance(it, dict) and any(_pv(it.get(r)) for r in reqs)
+        )
+    return int(100 * filled / total + 0.5) if total else 0
+
 
 def _bust_employee_cache(user: User) -> None:
     from core.cache import invalidate_employee_caches
@@ -362,6 +461,7 @@ def get_employees(
             "reportingManagerId": emp.reporting_manager_id,
             "phone": emp.phone,
             "photoUrl": emp.photo_url,
+            "payrollTemplateId": emp.payroll_template_id,
         }
 
     if view == "summary":
@@ -444,6 +544,8 @@ def get_employees(
             "idDocuments": emp.id_documents or {},
             # Salary
             "baseSalary": emp.base_salary or 0,
+            "salaryCurrency": emp.salary_currency or "INR",
+            "currencyExchangeRate": emp.currency_exchange_rate,
             "salaryComponents": emp.salary_components or {},
             "salaryCompanyId": emp.salary_company_id,
             "salaryTemplateId": emp.salary_template_id,
@@ -460,6 +562,8 @@ def get_employees(
             # Benefits
             "pfNumber": emp.pf_number,
             "pfUan": emp.pf_uan,
+            "esicNumber": emp.esic_number,
+            "gratuityApplicable": bool(emp.gratuity_applicable),
             "mediclaimNumber": emp.mediclaim_number,
             "mediclaimProvider": emp.mediclaim_provider,
             "lifeInsuranceNumber": emp.life_insurance_number,
@@ -471,6 +575,7 @@ def get_employees(
             "spouseName": emp.spouse_name,
             "spousePhone": emp.spouse_phone,
             "numberOfChildren": emp.number_of_children,
+            "childrenNames": emp.children_names,
             "nomineeName": emp.nominee_name,
             "nomineeRelationship": emp.nominee_relationship,
             "familyInfo": getattr(emp, "family_info", []) or [],
@@ -486,6 +591,13 @@ def get_employees(
             "deviceMacAddress": emp.device_mac_address,
             "deviceSerialNumber": emp.device_serial_number,
             "deviceAssignedDate": emp.device_assigned_date.isoformat() if emp.device_assigned_date else None,
+            # IT setup
+            "itAssignedBy": emp.it_assigned_by,
+            "itAssignedDate": emp.it_assigned_date.isoformat() if emp.it_assigned_date else None,
+            "itGrantDate": emp.it_grant_date.isoformat() if emp.it_grant_date else None,
+            "itCompletionDate": emp.it_completion_date.isoformat() if emp.it_completion_date else None,
+            "itNotes": emp.it_notes,
+            **{camel: bool(getattr(emp, col, False)) for camel, col in IT_CHECKLIST_COLUMNS},
             # Designation
             "designationName": emp.designation_obj.title if emp.designation_obj else None,
         }
@@ -683,6 +795,7 @@ def get_employee_light_list(
                 "status": e.status,
                 "phone": e.phone,
                 "companyId": e.company_id,
+                "profileCompletion": profile_completion(e),
             }
             for e in employees
         ],
@@ -823,6 +936,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "bankAccountNumber": employee.bank_account_number,
         "ifscCode": employee.ifsc_code,
         "accountHolderName": employee.account_holder_name,
+        "bankAccounts": employee.bank_accounts or [],
         "experienceDetails": employee.experience_details or [],
         "achievementsDetails": employee.achievements_details or [],
         "activitiesDetails": employee.activities_details or [],
@@ -832,6 +946,8 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "skillsList": employee.skills_list or [],
         "idDocuments": employee.id_documents or {},
         "baseSalary": employee.base_salary or 0,
+        "salaryCurrency": employee.salary_currency or "INR",
+        "currencyExchangeRate": employee.currency_exchange_rate,
         "salaryComponents": employee.salary_components or {},
         "salaryCompanyId": employee.salary_company_id,
         "salaryTemplateId": employee.salary_template_id,
@@ -870,6 +986,8 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         # Benefits
         "pfNumber": employee.pf_number,
         "pfUan": employee.pf_uan,
+        "esicNumber": employee.esic_number,
+        "gratuityApplicable": bool(employee.gratuity_applicable),
         "mediclaimNumber": employee.mediclaim_number,
         "mediclaimProvider": employee.mediclaim_provider,
         "lifeInsuranceNumber": employee.life_insurance_number,
@@ -881,6 +999,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "spouseName": employee.spouse_name,
         "spousePhone": employee.spouse_phone,
         "numberOfChildren": employee.number_of_children,
+        "childrenNames": employee.children_names,
         "nomineeName": employee.nominee_name,
         "nomineeRelationship": employee.nominee_relationship,
         "familyInfo": getattr(employee, "family_info", []) or [],
@@ -895,6 +1014,13 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "deviceMacAddress": employee.device_mac_address,
         "deviceSerialNumber": employee.device_serial_number,
         "deviceAssignedDate": employee.device_assigned_date.isoformat() if employee.device_assigned_date else None,
+        # IT setup
+        "itAssignedBy": employee.it_assigned_by,
+        "itAssignedDate": employee.it_assigned_date.isoformat() if employee.it_assigned_date else None,
+        "itGrantDate": employee.it_grant_date.isoformat() if employee.it_grant_date else None,
+        "itCompletionDate": employee.it_completion_date.isoformat() if employee.it_completion_date else None,
+        "itNotes": employee.it_notes,
+        **{camel: bool(getattr(employee, col)) for camel, col in IT_CHECKLIST_COLUMNS},
     }
 
 
@@ -1116,6 +1242,8 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         # Salary
         base_salary=snake_case_data.get("base_salary") or 0,
         salary_components=snake_case_data.get("salary_components", {}),
+        salary_currency=(snake_case_data.get("salary_currency") or "INR"),
+        currency_exchange_rate=float(snake_case_data["currency_exchange_rate"]) if snake_case_data.get("currency_exchange_rate") not in (None, "") else None,
         salary_company_id=snake_case_data.get("salary_company_id") if snake_case_data.get("salary_company_id") not in (None, "", 0) else None,
         salary_template_id=snake_case_data.get("salary_template_id") if snake_case_data.get("salary_template_id") not in (None, "", 0) else None,
         payroll_policy_id=snake_case_data.get("payroll_policy_id") if snake_case_data.get("payroll_policy_id") not in (None, "", 0) else None,
@@ -1131,6 +1259,8 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         # Benefits
         pf_number=snake_case_data.get("pf_number"),
         pf_uan=snake_case_data.get("pf_uan"),
+        esic_number=snake_case_data.get("esic_number"),
+        gratuity_applicable=bool(snake_case_data.get("gratuity_applicable") or False),
         mediclaim_number=snake_case_data.get("mediclaim_number"),
         mediclaim_provider=snake_case_data.get("mediclaim_provider"),
         life_insurance_number=snake_case_data.get("life_insurance_number"),
@@ -1142,12 +1272,17 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         spouse_name=snake_case_data.get("spouse_name"),
         spouse_phone=snake_case_data.get("spouse_phone"),
         number_of_children=_int_or_none(snake_case_data.get("number_of_children")),
+        children_names=snake_case_data.get("children_names"),
         nominee_name=snake_case_data.get("nominee_name"),
         nominee_relationship=snake_case_data.get("nominee_relationship"),
         family_info=snake_case_data.get("family_info", []),
         education_details=snake_case_data.get("education_details", []),
         certifications=snake_case_data.get("certifications", []),
         languages=snake_case_data.get("languages", []),
+        skills_list=snake_case_data.get("skills_list", []),
+        experience_details=snake_case_data.get("experience_details", []),
+        achievements_details=snake_case_data.get("achievements_details", []),
+        activities_details=snake_case_data.get("activities_details", []),
         # Login
         user_role=snake_case_data.get("user_role", "employee"),
         login_email=snake_case_data.get("login_email"),
@@ -1160,6 +1295,13 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         device_mac_address=snake_case_data.get("device_mac_address"),
         device_serial_number=snake_case_data.get("device_serial_number"),
         device_assigned_date=datetime.fromisoformat(snake_case_data.get("device_assigned_date")) if snake_case_data.get("device_assigned_date") else None,
+        # IT setup
+        it_assigned_by=snake_case_data.get("it_assigned_by"),
+        it_assigned_date=_date_or_none(snake_case_data.get("it_assigned_date")),
+        it_grant_date=_date_or_none(snake_case_data.get("it_grant_date")),
+        it_completion_date=_date_or_none(snake_case_data.get("it_completion_date")),
+        it_notes=snake_case_data.get("it_notes"),
+        **{col: bool(snake_case_data.get(col, False)) for _, col in IT_CHECKLIST_COLUMNS},
     )
     db.add(employee)
 
@@ -1236,6 +1378,16 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
 
 @router.put("/{employee_id}", response_model=dict)
 def update_employee(employee_id: int, employee_data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # TEMP DEBUG — remove after diagnosing achievements save issue
+    try:
+        import json as _json
+        with open(r"C:\Users\sayak\AppData\Local\Temp\opencode\update_debug.log", "a", encoding="utf-8") as _f:
+            _f.write("\n=== PUT /employees/%s keys=%s\n" % (employee_id, sorted(employee_data.keys())))
+            for _k in ("achievementsDetails", "activitiesDetails", "experienceDetails", "achievements_details", "activities_details", "experience_details"):
+                if _k in employee_data:
+                    _f.write("  %s = %s\n" % (_k, _json.dumps(employee_data[_k])[:300]))
+    except Exception:
+        pass
     # Permission enforcement: only users with write access to employees can edit.
     _require_module_action(db, current_user, "employees", "write")
     employee_query = db.query(Employee).filter(Employee.id == employee_id)
@@ -1524,6 +1676,16 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
     for f in ("experience_details", "achievements_details", "activities_details", "education_details", "skills_list", "certifications", "languages"):
         if f in snake_case_data and isinstance(snake_case_data[f], list):
             setattr(employee, f, snake_case_data[f])
+    # IT setup fields
+    for f in IT_TEXT_FIELDS:
+        if f in snake_case_data:
+            setattr(employee, f, snake_case_data[f] or None)
+    for f in IT_DATE_FIELDS:
+        if f in snake_case_data:
+            setattr(employee, f, _date_or_none(snake_case_data[f]))
+    for _, col in IT_CHECKLIST_COLUMNS:
+        if col in snake_case_data:
+            setattr(employee, col, bool(snake_case_data[col]))
     # Salary
     if "base_salary" in snake_case_data and snake_case_data["base_salary"] is not None:
         try:
@@ -1532,6 +1694,13 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
             pass
     if "salary_components" in snake_case_data and isinstance(snake_case_data["salary_components"], dict):
         employee.salary_components = snake_case_data["salary_components"]
+    if "salary_currency" in snake_case_data and snake_case_data["salary_currency"]:
+        employee.salary_currency = str(snake_case_data["salary_currency"]).upper()
+    if "currency_exchange_rate" in snake_case_data:
+        try:
+            employee.currency_exchange_rate = float(snake_case_data["currency_exchange_rate"]) if snake_case_data["currency_exchange_rate"] not in (None, "") else None
+        except (TypeError, ValueError):
+            pass
     if "salary_template_id" in snake_case_data:
         try:
             employee.salary_template_id = int(snake_case_data["salary_template_id"]) if snake_case_data["salary_template_id"] not in (None, "", 0) else None
@@ -1591,6 +1760,11 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.pf_number = snake_case_data["pf_number"]
     if "pf_uan" in snake_case_data:
         employee.pf_uan = snake_case_data["pf_uan"]
+    if "esic_number" in snake_case_data:
+        employee.esic_number = snake_case_data["esic_number"]
+    if "gratuity_applicable" in snake_case_data:
+        _gv = snake_case_data["gratuity_applicable"]
+        employee.gratuity_applicable = _gv if isinstance(_gv, bool) else str(_gv).lower() in ("1", "true", "yes", "on")
     if "mediclaim_number" in snake_case_data:
         employee.mediclaim_number = snake_case_data["mediclaim_number"]
     if "mediclaim_provider" in snake_case_data:
@@ -1612,6 +1786,8 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
         employee.spouse_phone = snake_case_data["spouse_phone"]
     if "number_of_children" in snake_case_data:
         employee.number_of_children = _int_or_none(snake_case_data["number_of_children"])
+    if "children_names" in snake_case_data:
+        employee.children_names = snake_case_data["children_names"]
     if "nominee_name" in snake_case_data:
         employee.nominee_name = snake_case_data["nominee_name"]
     if "nominee_relationship" in snake_case_data:
@@ -1757,8 +1933,8 @@ def delete_employee_document(
     current_user: User = Depends(get_current_user),
 ):
     """Remove a stored identity/HR document (aadhar, pan, voter, drivingLicense,
-    passport, photo, resume, birthCertificate, certificate) from the employee."""
-    valid_types = ("aadhar", "pan", "voter", "drivingLicense", "passport", "photo", "resume", "birthCertificate", "certificate")
+    passport, photo, resume, birthCertificate, certificate, relievingLetter) from the employee."""
+    valid_types = ("aadhar", "pan", "voter", "drivingLicense", "passport", "photo", "resume", "birthCertificate", "certificate", "relievingLetter")
     if docType not in valid_types:
         raise HTTPException(status_code=400, detail=f"docType must be one of {', '.join(valid_types)}")
 
@@ -1925,6 +2101,8 @@ def export_employees(
             "voter_id",
             "pf_number",
             "pf_uan",
+            "esic_number",
+            "gratuity_applicable",
             "mediclaim_number",
             "mediclaim_provider",
             "father_name",
@@ -1932,6 +2110,7 @@ def export_employees(
             "spouse_name",
             "spouse_phone",
             "number_of_children",
+            "children_names",
             "nominee_name",
             "nominee_relationship",
             "join_date",
@@ -1995,6 +2174,8 @@ def export_employees(
             emp.voter_id or "",
             emp.pf_number or "",
             emp.pf_uan or "",
+            emp.esic_number or "",
+            "Yes" if emp.gratuity_applicable else "No",
             emp.mediclaim_number or "",
             emp.mediclaim_provider or "",
             emp.father_name or "",
@@ -2002,6 +2183,7 @@ def export_employees(
             emp.spouse_name or "",
             emp.spouse_phone or "",
             emp.number_of_children or "",
+            emp.children_names or "",
             emp.nominee_name or "",
             emp.nominee_relationship or "",
             str(emp.join_date) if emp.join_date else "",
@@ -2330,8 +2512,13 @@ async def upload_employee_photo(
     upload_dir = os.path.join(os.path.dirname(__file__), "uploads", "employees")
     os.makedirs(upload_dir, exist_ok=True)
     save_path = os.path.join(upload_dir, filename)
+    content = await file.read()
+    if len(content) > EMPLOYEE_DOC_MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {EMPLOYEE_DOC_MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+        )
     with open(save_path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     photo_url = f"/uploads/employees/{filename}"
@@ -2358,13 +2545,23 @@ async def upload_employee_document(
 
     Stores the URL in the employee's `id_documents` JSON map keyed by docType.
     """
-    valid_types = ("aadhar", "pan", "voter", "drivingLicense", "passport", "photo", "resume", "birthCertificate", "certificate")
+    valid_types = ("aadhar", "pan", "voter", "drivingLicense", "passport", "photo", "resume", "birthCertificate", "certificate", "relievingLetter")
     if docType not in valid_types:
         raise HTTPException(status_code=400, detail=f"docType must be one of {', '.join(valid_types)}")
 
     ext = os.path.splitext(file.filename or "")[1] or ".jpg"
-    if ext.lower() not in (".jpg", ".jpeg", ".png", ".pdf", ".webp"):
-        raise HTTPException(status_code=400, detail="Unsupported file type. Use JPG, PNG, PDF or WebP.")
+    allowed_exts = (
+        # Images
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff",
+        # Documents
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".txt", ".csv", ".rtf",
+    )
+    if ext.lower() not in allowed_exts:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Images: JPG, PNG, GIF, BMP, WebP, TIFF. Documents: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT, CSV, RTF.",
+        )
 
     filename = f"emp_doc_{docType}_{uuid.uuid4().hex[:12]}{ext}"
     upload_dir = os.path.join(os.path.dirname(__file__), "uploads", "employees")

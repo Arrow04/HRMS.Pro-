@@ -130,19 +130,16 @@ def get_form16_data(db: Session, employee_id: int, financial_year: Optional[str]
             base_tax += taxable * slab.rate / 100.0
         prev = upper
     rebate = 0.0
-    if regime:
-        rebate_threshold = regime.rebate_threshold or 0
-        if total_income <= rebate_threshold and regime.rebate_amount:
-            rebate = min(base_tax, regime.rebate_amount)
-            base_tax = max(0.0, base_tax - regime.rebate_amount)
     surcharge = 0.0
-    if regime and regime.surcharge_config:
-        for s_slab in regime.surcharge_config:
-            try:
-                if total_income >= float(s_slab.get("from", 0)):
-                    surcharge = base_tax * float(s_slab.get("rate", 0)) / 100.0
-            except (TypeError, ValueError):
-                continue
+    if regime:
+        from services.compliance_engine import apply_tax_relief
+        base_tax, rebate, surcharge = apply_tax_relief(
+            base_tax, total_income, regime.slabs,
+            rebate_threshold=regime.rebate_threshold,
+            rebate_amount=regime.rebate_amount,
+            regime_type=getattr(regime, "regime_type", "new"),
+            surcharge_slabs=regime.surcharge_config,
+        )
     cess = (base_tax + surcharge) * (regime.cess_rate or 0) / 100.0 if regime and regime.cess_rate is not None else 0.0
     total_tax = base_tax + surcharge + cess
 

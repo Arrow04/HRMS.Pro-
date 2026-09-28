@@ -129,6 +129,9 @@ def _ser_policy(p: PayrollPolicy) -> dict:
         "allow_negative_net": p.allow_negative_net,
         "daily_rate_divisor": p.daily_rate_divisor,
         "monthly_divisor_for_weekly": p.monthly_divisor_for_weekly,
+        "fy_start_month": p.fy_start_month,
+        "reporting_currency": p.reporting_currency,
+        "allow_multi_currency": p.allow_multi_currency,
     }
 
 
@@ -161,6 +164,10 @@ def _ser_component(c: PayrollComponent) -> dict:
         "gratuity_applicable": getattr(c, "gratuity_applicable", None),
         "bonus_applicable": getattr(c, "bonus_applicable", None),
         "nps_applicable": getattr(c, "nps_applicable", None),
+        "tiered_config": getattr(c, "tiered_config", None),
+        "shift_differential_config": getattr(c, "shift_differential_config", None),
+        "input_variables": getattr(c, "input_variables", None),
+        "depends_on": getattr(c, "depends_on", None),
     }
 
 
@@ -300,7 +307,8 @@ class PayrollTemplatePayload(BaseModel):
 POLICY_KEYS = ("name", "pro_ration_method", "rounding_method", "decimal_places",
                "round_net_salary", "include_gratuity", "gratuity_rate",
                "default_currency", "allow_negative_net",
-               "daily_rate_divisor", "monthly_divisor_for_weekly")
+               "daily_rate_divisor", "monthly_divisor_for_weekly", "fy_start_month",
+               "reporting_currency", "allow_multi_currency")
 ATT_KEYS = ("name", "working_days_per_week", "working_days", "half_day_as_full_paid",
             "paid_leave_as_present", "holiday_as_present", "overtime_threshold_hours",
             "overtime_rate", "late_mark_threshold_minutes", "half_day_threshold_hours",
@@ -318,22 +326,26 @@ COMPONENT_KEYS = ("name", "display_name", "component_type", "calculation_type",
                   "tax_exempt_limit", "apply_pro_ration", "is_active", "priority",
                   "tax_category", "taxability", "pf_applicable", "esi_applicable",
                   "pt_applicable", "lwf_applicable", "gratuity_applicable",
-                  "bonus_applicable", "nps_applicable")
+                  "bonus_applicable", "nps_applicable",
+                  "tiered_config", "shift_differential_config", "input_variables",
+                  "depends_on")
 STATUTORY_KEYS = ("pf_applicable", "pf_employee_rate", "pf_employer_rate",
                   "pf_wage_ceiling", "pf_max_monthly", "pf_min_basic_for_exclusion",
                   "pf_edli_rate", "pf_edli_max_monthly", "pf_admin_rate", "pf_admin_min_monthly",
-                  "eps_wage_ceiling",
+                  "eps_wage_ceiling", "eps_employer_rate",
+                  "nps_employee_rate", "nps_employer_rate",
                   "esi_applicable", "esi_employee_rate", "esi_employer_rate", "esi_gross_ceiling",
                   "esi_disabled_ceiling",
                   "pt_applicable", "pt_monthly_amount", "pt_min_gross",
                   "lwf_applicable", "lwf_employee_rate", "lwf_employer_rate",
                   "gratuity_applicable", "gratuity_rate", "gratuity_eligible_years",
                   "gratuity_days_per_year", "gratuity_tax_exempt_ceiling",
-                  "bonus_applicable", "bonus_min_rate", "bonus_max_rate", "bonus_wage_ceiling")
+                  "bonus_applicable", "bonus_min_rate", "bonus_max_rate",
+                  "bonus_eligible_ceiling", "bonus_wage_ceiling")
 
 
 def _create_policy(db, org_id, data: dict) -> PayrollPolicy:
-    clean = _pick(data, *POLICY_KEYS)
+    clean = _validate_policy(data)
     policy = PayrollPolicy(organization_id=org_id, **clean)
     db.add(policy)
     db.flush()
@@ -341,15 +353,125 @@ def _create_policy(db, org_id, data: dict) -> PayrollPolicy:
 
 
 def _create_attendance(db, org_id, data: dict) -> AttendancePolicy:
-    clean = _pick(data, *ATT_KEYS)
+    clean = _validate_attendance(data)
     att = AttendancePolicy(organization_id=org_id, **clean)
     db.add(att)
     db.flush()
     return att
 
 
+def _validate_tax_slabs(slabs: List[dict]) -> None:
+    """Reject slabs that could produce negative or runaway tax."""
+    for s in slabs or []:
+        try:
+            frm = float(s.get("from_amount", s.get("from", 0)) or 0)
+            to = s.get("to_amount", s.get("to"))
+            to = float(to) if to is not None else None
+            rate = float(s.get("rate", 0) or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Slab values must be numbers")
+        if frm < 0:
+            raise HTTPException(status_code=400, detail="Slab from_amount cannot be negative")
+        if to is not None and to <= frm:
+            raise HTTPException(status_code=400, detail="Slab to_amount must exceed from_amount")
+        if rate < 0 or rate > 100:
+            raise HTTPException(status_code=400, detail="Slab rate must be between 0 and 100")
+
+
+def _validate_tax_regime(data: dict) -> None:
+    NONNEG = ("standard_deduction", "rebate_threshold", "rebate_amount", "cess_rate",
+              "section_80c_cap", "section_80d_cap", "section_80d_senior_cap",
+              "section_80ccd_1b_cap", "section_24_home_loan_cap", "section_80c_old_cap",
+              "hra_metro_pct", "hra_non_metro_pct", "hra_rent_threshold_pct",
+              "basic_pct_of_gross")
+    for k in NONNEG:
+        v = data.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{k} must be a number")
+        if fv < 0:
+            raise HTTPException(status_code=400, detail=f"{k} cannot be negative")
+    for k in ("cess_rate", "hra_metro_pct", "hra_non_metro_pct",
+              "hra_rent_threshold_pct", "basic_pct_of_gross"):
+        v = data.get(k)
+        if v is not None and v != "" and float(v) > 100:
+            raise HTTPException(status_code=400, detail=f"{k} must be at most 100")
+    if data.get("slabs") is not None:
+        _validate_tax_slabs(data["slabs"])
+    cfg = data.get("surcharge_config")
+    if cfg is not None:
+        for s in (cfg if isinstance(cfg, list) else []):
+            try:
+                rate = float((s or {}).get("rate", 0))
+                frm = float((s or {}).get("from", 0))
+            except (TypeError, ValueError, AttributeError):
+                raise HTTPException(status_code=400, detail="Surcharge entries need numeric from/rate")
+            if rate < 0 or rate > 100 or frm < 0:
+                raise HTTPException(status_code=400, detail="Surcharge rate must be between 0 and 100")
+
+
+VALID_CALC_TYPES = ("fixed", "percentage", "formula", "hourly", "piece_rate",
+                    "tiered", "shift_differential")
+
+
+def _validate_policy(data: dict) -> dict:
+    clean = _pick(data, *POLICY_KEYS)
+    if clean.get("decimal_places") is not None:
+        n = _as_int(clean["decimal_places"])
+        if n is None or n < 0 or n > 6:
+            raise HTTPException(status_code=400, detail="decimal_places must be 0-6")
+        clean["decimal_places"] = n
+    if clean.get("fy_start_month") is not None:
+        n = _as_int(clean["fy_start_month"])
+        if n is None or n < 1 or n > 12:
+            raise HTTPException(status_code=400, detail="fy_start_month must be 1-12")
+        clean["fy_start_month"] = n
+    for k in ("daily_rate_divisor", "monthly_divisor_for_weekly"):
+        if clean.get(k) is not None:
+            try:
+                fv = float(clean[k])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail=f"{k} must be a number")
+            if fv <= 0:
+                raise HTTPException(status_code=400, detail=f"{k} must be a positive number")
+            clean[k] = fv
+    if clean.get("gratuity_rate") is not None and float(clean["gratuity_rate"]) < 0:
+        raise HTTPException(status_code=400, detail="gratuity_rate cannot be negative")
+    return clean
+
+
+def _validate_attendance(data: dict) -> dict:
+    clean = _pick(data, *ATT_KEYS)
+    if clean.get("working_days_per_week") is not None:
+        n = _as_int(clean["working_days_per_week"])
+        if n is None or n < 1 or n > 7:
+            raise HTTPException(status_code=400, detail="working_days_per_week must be 1-7")
+        clean["working_days_per_week"] = n
+    for k in ("half_day_as_full_paid", "paid_leave_as_present", "holiday_as_present"):
+        if k in clean:
+            clean[k] = _as_bool(clean[k])
+    for k in ("overtime_threshold_hours", "overtime_rate", "late_to_absent_count",
+              "early_to_absent_count", "late_mark_threshold_minutes",
+              "half_day_threshold_hours"):
+        v = clean.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{k} must be a number")
+        if fv < 0:
+            raise HTTPException(status_code=400, detail=f"{k} cannot be negative")
+    return clean
+
+
 def _create_tax_regime(db, org_id, data: dict) -> TaxRegime:
+    _validate_tax_regime(data)
     clean = _pick(data, *TAX_KEYS)
+    clean.setdefault("name", "Default Tax Regime")
     regime = TaxRegime(organization_id=org_id, **clean)
     db.add(regime)
     db.flush()
@@ -365,9 +487,49 @@ def _create_tax_regime(db, org_id, data: dict) -> TaxRegime:
     return regime
 
 
+def _validate_component(c: dict) -> None:
+    calc = c.get("calculation_type") or "fixed"
+    if calc not in VALID_CALC_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unknown calculation type '{calc}'")
+    for k in ("calculation_value", "max_cap", "min_cap", "tax_exempt_limit"):
+        v = c.get(k)
+        if v is None or v == "":
+            continue
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"{k} must be a number")
+        if fv < 0:
+            raise HTTPException(status_code=400, detail=f"{k} cannot be negative")
+    if c.get("max_cap") is not None and c.get("min_cap") is not None:
+        if float(c["min_cap"]) > float(c["max_cap"]):
+            raise HTTPException(status_code=400, detail="min_cap cannot exceed max_cap")
+    if calc == "tiered":
+        tiers = c.get("tiered_config") or []
+        if not tiers:
+            raise HTTPException(status_code=400, detail="tiered components need tiered_config brackets")
+        for t in tiers:
+            try:
+                t_from = float((t or {}).get("from", 0) or 0)
+                t_to = (t or {}).get("to")
+                t_to = float(t_to) if t_to is not None else None
+                t_rate = float((t or {}).get("rate", 0) or 0)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="tiered bracket values must be numbers")
+            if t_from < 0 or t_rate < 0:
+                raise HTTPException(status_code=400, detail="tiered brackets cannot be negative")
+            if t_to is not None and t_to <= t_from:
+                raise HTTPException(status_code=400, detail="tiered bracket to must exceed from")
+    if calc == "shift_differential":
+        cfg = c.get("shift_differential_config") or {}
+        if not isinstance(cfg, dict) or any(float(v or 0) < 0 for v in cfg.values()):
+            raise HTTPException(status_code=400, detail="shift multipliers cannot be negative")
+
+
 def _create_components(db, org_id, policy_id, comps: List[dict]) -> List[int]:
     ids = []
     for i, c in enumerate(comps or []):
+        _validate_component(c)
         clean = _pick(c, *COMPONENT_KEYS)
         clean.setdefault("name", f"Component {i + 1}")
         clean.setdefault("priority", i)
@@ -384,11 +546,13 @@ def _clean_statutory(raw: dict) -> dict:
         if k not in raw:
             continue
         v = raw[k]
-        if k.startswith(("pf_", "esi_", "eps_", "pt_", "lwf_", "gratuity_", "bonus_")):
+        if k.startswith(("pf_", "esi_", "eps_", "nps_", "pt_", "lwf_", "gratuity_", "bonus_")):
             if k.endswith("_applicable"):
                 out[k] = _as_bool(v)
             else:
                 out[k] = _as_float(v)
+                if out[k] is not None and out[k] < 0:
+                    raise HTTPException(status_code=400, detail=f"{k} cannot be negative")
         else:
             out[k] = v
     return out
@@ -410,7 +574,9 @@ def list_templates(
     company_id = resolve_company_scope(db, current_user, company_id)
     if company_id is not None:
         q = q.filter(PayrollTemplate.company_id == company_id)
-    return [_ser_template(db, t) for t in q.order_by(PayrollTemplate.name).all()]
+    # full=True: consumers (employee form split, template editor) need
+    # components + statutory — without them deductions calculate as 0.
+    return [_ser_template(db, t, full=True) for t in q.order_by(PayrollTemplate.name).all()]
 
 
 @router.get("/{template_id}")
@@ -540,7 +706,7 @@ def update_template(
     if body.get("payroll_policy") and tpl.payroll_policy_id:
         policy = db.query(PayrollPolicy).filter(PayrollPolicy.id == tpl.payroll_policy_id).first()
         if policy:
-            for k, v in _pick(body["payroll_policy"], *POLICY_KEYS).items():
+            for k, v in _validate_policy(body["payroll_policy"]).items():
                 setattr(policy, k, v)
 
     # Attendance link vs owned-edit, decided by the shared marker so the
@@ -560,7 +726,7 @@ def update_template(
                 raise HTTPException(status_code=400, detail="Attendance template not found")
             tpl.attendance_policy_id = att.id
             if not getattr(att, "is_shared_template", False) and body.get("attendance_policy"):
-                for k, v in _pick(body["attendance_policy"], *ATT_KEYS).items():
+                for k, v in _validate_attendance(body["attendance_policy"]).items():
                     setattr(att, k, v)
         elif body.get("attendance_policy"):
             att = _create_attendance(db, org.id, body.get("attendance_policy") or {})
@@ -585,6 +751,7 @@ def update_template(
     if body.get("tax_regime") and tpl.tax_regime_id:
         tax = db.query(TaxRegime).filter(TaxRegime.id == tpl.tax_regime_id).first()
         if tax:
+            _validate_tax_regime(body["tax_regime"])
             for k, v in _pick(body["tax_regime"], *TAX_KEYS).items():
                 setattr(tax, k, v)
             if body["tax_regime"].get("slabs") is not None:
@@ -615,6 +782,25 @@ def update_template(
         "message": f"Payroll template '{tpl.name}' updated",
         "template": _ser_template(db, tpl, full=True),
     }
+
+
+@router.post("/{template_id}/reset-statutory")
+def reset_template_statutory(
+    template_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reset template statutory values to null so they inherit from org defaults."""
+    org = _resolve_org(db, current_user)
+    tpl = _load_template(db, org, template_id)
+    stat = dict(tpl.statutory or {})
+    for k in list(stat.keys()):
+        if not k.endswith('_applicable'):
+            stat[k] = None
+    tpl.statutory = stat
+    db.commit()
+    db.refresh(tpl)
+    return {"message": "Statutory reset to org defaults", "template": _ser_template(db, tpl, full=True)}
 
 
 @router.delete("/{template_id}")
@@ -776,3 +962,51 @@ def snapshot_from_org(
         "message": f"Payroll template '{tpl.name}' created from current configuration",
         "template": _ser_template(db, tpl, full=True),
     }
+
+class AssignEmployeesRequest(BaseModel):
+    employeeIds: List[int] = Field(default_factory=list)
+
+
+@router.post("/{template_id}/assign")
+def assign_template_employees(
+    template_id: int,
+    payload: AssignEmployeesRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk-assign employees to this payroll template (idempotent).
+
+    One action replaces N employee-form edits: every listed employee's payroll
+    structure becomes this template. Unlisted employees are untouched.
+    """
+    org = _resolve_org(db, current_user)
+    tpl = _load_template(db, org, template_id)
+    assert_company_allowed(db, current_user, tpl.company_id)
+    ids = [int(i) for i in (payload.employeeIds or [])][:2000]
+    if not ids:
+        raise HTTPException(status_code=400, detail="employeeIds is required")
+
+    emps = (
+        db.query(Employee)
+        .filter(Employee.id.in_(ids), Employee.deleted_at.is_(None))
+        .all()
+    )
+    # Validate everyone first so a single out-of-scope id never half-assigns.
+    for emp in emps:
+        if emp.organization_id != org.id:
+            raise HTTPException(status_code=403, detail="Employee outside this organization")
+        assert_company_allowed(db, current_user, emp.company_id)
+    assigned = 0
+    for emp in emps:
+        emp.payroll_template_id = template_id
+        assigned += 1
+    db.commit()
+    try:
+        from core.shared import _create_audit_log
+        _create_audit_log(
+            db, current_user, "assign_payroll_template", "payroll_template", template_id,
+            f"Assigned {assigned} employee(s) to template '{tpl.name}'",
+        )
+    except Exception:
+        logger.exception("payroll template assign audit failed")
+    return {"message": f"{assigned} employee(s) assigned to '{tpl.name}'", "assigned": assigned}

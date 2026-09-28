@@ -136,9 +136,9 @@ const FormSectionTitle = ({ title }: { title: string }) => (
 
 const TABS = [
   { id: 'run', label: 'Run Payroll', icon: Play },
+  { id: 'pay_items', label: 'Payroll Adjustments', icon: HandCoins },
   { id: 'review', label: 'Review & Approve', icon: ClipboardCheck },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
-  { id: 'pay_items', label: 'Bonuses & Loans', icon: HandCoins },
   { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
   { id: 'config', label: 'Configuration', icon: Settings },
   { id: 'guide', label: 'Learning Hub', icon: GraduationCap },
@@ -151,6 +151,7 @@ interface BonusForm {
   year: number;
   amount: number;
   reason: string;
+  type: 'bonus' | 'incentive' | 'commission' | 'deduction';
 }
 
 interface BonusRecord {
@@ -163,6 +164,7 @@ interface BonusRecord {
   year?: number;
   amount: number;
   reason?: string;
+  type?: string;
   companyId?: number;
   branchId?: number;
   departmentId?: number;
@@ -285,8 +287,12 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
 
   // Bonuses state
   const [showBonusForm, setShowBonusForm] = useState(false);
-  const [bonusForm, setBonusForm] = useState<BonusForm>({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '' });
+  const [bonusForm, setBonusForm] = useState<BonusForm>({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '', type: 'bonus' });
+  // When set, the modal edits an existing ad-hoc earning (replace, never add).
+  const [editingBonus, setEditingBonus] = useState<{ id: number; type?: string } | null>(null);
   const [bonusYearFilter, setBonusYearFilter] = useState(new Date().getFullYear());
+  const [bonusMonthFilter, setBonusMonthFilter] = useState<number | 'all'>(new Date().getMonth() + 1);
+  const [bonusTypeFilter, setBonusTypeFilter] = useState<string>('all');
   const [bonusCompanyFilter, setBonusCompanyFilter] = useState('all');
   const [bonusBranchFilter, setBonusBranchFilter] = useState('all');
   const [bonusDeptFilter, setBonusDeptFilter] = useState('all');
@@ -789,7 +795,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const [showRerunConfirm, setShowRerunConfirm] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [runSubTab, setRunSubTab] = useState<'review' | 'history'>('review');
-  const [payItemsSub, setPayItemsSub] = useState<'bonuses' | 'loans'>('bonuses');
+  const [payItemsSub, setPayItemsSub] = useState<'bonuses' | 'deductions' | 'loans'>('bonuses');
   const [pendingRunAction, setPendingRunAction] = useState<'submit' | 'approve' | 'process' | null>(null);
 
   const finalizeMutation = useMutation({
@@ -804,41 +810,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     onError: () => toast.error('Failed to reopen period'),
   });
 
-  const downloadChallans = async () => {
-    try {
-      const r = await api.get('/payroll/compliance/challans/export', {
-        params: { month: runMonth, year: runYear },
-        responseType: 'blob',
-      });
-      const url = URL.createObjectURL(r.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `compliance_challans_${runYear}-${runMonth}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Compliance CSV downloaded');
-    } catch {
-      toast.error('Failed to download compliance CSV');
-    }
-  };
-
-  const downloadDisbursement = async () => {
-    try {
-      const params: Record<string, unknown> = { month: runMonth, year: runYear };
-      if (runCompanyId !== 'all') params.companyId = Number(runCompanyId);
-      if (runBranchId !== 'all') params.branchId = Number(runBranchId);
-      const r = await api.get('/payroll/disbursement', { params, responseType: 'blob' });
-      const url = URL.createObjectURL(r.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `disbursement_${runYear}-${runMonth}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Bank disbursement file downloaded');
-    } catch {
-      toast.error('No paid payrolls found for this period — mark payrolls as paid first');
-    }
-  };
 
   // Payroll status transitions: approve / process / mark_paid
   const payrollStatusMutation = useMutation({
@@ -949,7 +920,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   });
 
   const deleteBonusMutation = useMutation({
-    mutationFn: async (id: number) => { const r = await api.delete(`/bonuses/${id}`); return r.data; },
+    mutationFn: async ({ id, type }: { id: number; type?: string }) => { const r = await api.delete(`/bonuses/${id}`, { params: { type: type || 'bonus' } }); return r.data; },
     onSuccess: () => { toast.success('Bonus deleted'); refetchBonuses(); },
     onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to delete bonus'); },
   });
@@ -963,9 +934,66 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
   const createBonusMutation = useMutation({
     mutationFn: async (data: BonusForm) => { const r = await api.post('/bonuses', data); return r.data; },
-    onSuccess: () => { toast.success('Bonus recorded'); refetchBonuses(); setShowBonusForm(false); },
+    onSuccess: () => { toast.success('Bonus recorded'); refetchBonuses(); setShowBonusForm(false); setEditingBonus(null); },
     onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to record bonus'); },
   });
+
+  const { data: preDeductionData, refetch: refetchPreDeductions } = useQuery({
+    queryKey: ['pre-deductions', runMonth, runYear, runCompanyId],
+    queryFn: async () => {
+      try {
+        const r = await api.get('/payroll/pre-deductions', {
+          params: { month: runMonth, year: runYear, ...(runCompanyId !== 'all' ? { companyId: Number(runCompanyId) } : {}) },
+        });
+        return r.data || { items: [], total: 0 };
+      } catch { return { items: [], total: 0 }; }
+    },
+  });
+  interface PreDeductionRow { id: number; employeeId: number; employeeName?: string; employeeCode?: string; amount: number; reason?: string }
+  const preDeductions: PreDeductionRow[] = (preDeductionData as { items?: PreDeductionRow[] } | undefined)?.items || [];
+
+  const savePreDeductionMutation = useMutation({
+    mutationFn: async (data: BonusForm) => {
+      const r = await api.post('/payroll/pre-deductions', {
+        month: data.month, year: data.year,
+        items: [{ employeeId: Number(data.employeeId), amount: Number(data.amount), reason: data.reason }],
+      });
+      return r.data;
+    },
+    onSuccess: () => { toast.success('Pre-run deduction queued — it will be applied at preview/generate'); refetchPreDeductions(); setShowBonusForm(false); setEditingBonus(null); },
+    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to save deduction'); },
+  });
+
+  const deletePreDeductionMutation = useMutation({
+    mutationFn: async (id: number) => { const r = await api.delete(`/payroll/pre-deductions/${id}`); return r.data; },
+    onSuccess: () => { toast.success('Deduction removed'); refetchPreDeductions(); },
+    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to remove deduction'); },
+  });
+
+  // Editing an existing entry REPLACES it (remove old, record new) — never
+  // re-adds, which would silently double the payout.
+  const saveBonus = async () => {
+    if (!bonusForm.employeeId) { toast.error('Select an employee'); return; }
+    if (!(bonusForm.amount > 0)) { toast.error('Enter an amount greater than zero'); return; }
+    if (bonusForm.type === 'deduction') {
+      if (editingBonus) {
+        try { await api.delete(`/payroll/pre-deductions/${editingBonus.id}`); }
+        catch (err) { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to update deduction'); return; }
+      }
+      savePreDeductionMutation.mutate(bonusForm);
+      return;
+    }
+    if (editingBonus) {
+      try {
+        await api.delete(`/bonuses/${editingBonus.id}`, { params: { type: editingBonus.type || bonusForm.type || 'bonus' } });
+      } catch (err) {
+        const e = err as { response?: { data?: { detail?: string } } };
+        toast.error(e.response?.data?.detail || 'Failed to update bonus');
+        return;
+      }
+    }
+    createBonusMutation.mutate(bonusForm);
+  };
 
   const createPayrollMutation = useMutation({
     mutationFn: async (data: typeof newPayroll) => {
@@ -1713,29 +1741,189 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           </div>
 
           {showRunHelp && (
-            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 space-y-1.5">
-              <p className="font-medium">How to run payroll (with Re-run)</p>
-              <p className="text-[13px] leading-relaxed">
-                1. Pick the <b>Company</b>, <b>Branch</b> and <b>Department</b> (leave "All" to run everyone), then choose the <b>month &amp; year</b> you are paying for.
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                2. Click <b>Generate Payroll</b> — it creates <b>draft</b> payslips for every active employee in that scope. No email is sent.
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                3. Review the payslips in the <b>Payroll Review</b> table below (gross, deduction and net breakdown per employee).
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                4. Click <b>Process Payroll</b> to submit them for processing (→ <b>pending approval</b>), then <b>Approve Payroll</b> to approve them (→ <b>approved</b>).
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                5. Click <b>Submit Payroll</b> to move the approved payslips to the <b>Payslips</b> tab for further action (email, mark paid, etc.).
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                6. Made a mistake? Fix the source data, then click <b>Re-run Payroll</b> — it <b>permanently deletes</b> the selected month's payslips and regenerates fresh drafts, so the database stays clean.
-              </p>
-              <p className="text-[13px] leading-relaxed">
-                7. Every action (who generated, processed, approved, submitted and re-ran) is logged in the <b>Run History</b> tab.
-              </p>
+            <div className="mb-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C64F2] to-[#3B82F6] flex items-center justify-center text-white shadow-sm">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0F172A] text-base">Complete Payroll Guide</h3>
+                  <p className="text-xs text-[#64748B]">Step-by-step: configure → adjust → run → review → pay</p>
+                </div>
+              </div>
+
+              {/* Step 1: Configuration */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#1C64F2] text-white text-xs font-bold flex items-center justify-center">1</span>
+                  Configure (one-time setup)
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to the <b>Configuration</b> tab and set up your payroll rules before running anything:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Overview</b> — Set the company name, FY start month, and currency.</li>
+                    <li><b>Policy</b> — Pro-ration method (how partial months are paid), rounding rules, decimal places.</li>
+                    <li><b>Statutory</b> — EPF, ESI, Professional Tax, LWF, Gratuity, Bonus rates and ceilings. Employee share vs Employer share. All values inherit from org defaults — override per template only when needed.</li>
+                    <li><b>Tax</b> — Income tax regime (New / Old), slabs, surcharge, cess, HRA rules, 80C/80D caps.</li>
+                    <li><b>Compliance</b> — State-wise PT and LWF slabs (versioned, with history). jurisdiction scoping (platform → org → company).</li>
+                    <li><b>Components</b> — Salary structure (Basic, HRA, DA, Conveyance, Medical, Special, etc.) with percentage or fixed amounts, priority ordering, taxability, and statutory applicability flags.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 2: Assign templates to employees */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#1C64F2] text-white text-xs font-bold flex items-center justify-center">2</span>
+                  Assign payroll templates to employees
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to <b>Employees → Edit → Salary</b> and set:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Payroll Template</b> — Choose the template that defines the salary structure, statutory, tax, attendance and policy for this employee.</li>
+                    <li><b>Base Salary</b> — Annual CTC. The engine auto-splits it into monthly Basic, HRA, DA, etc. using the template's component percentages.</li>
+                    <li><b>Salary Currency</b> — If the employee is paid in a different currency, enter the ISO code (e.g. USD) and the exchange rate (policy currency per 1 unit of employee currency).</li>
+                    <li><b>Manual salary mode</b> — Advanced: override individual component amounts (Basic, HRA, etc.) directly. Use when the auto-split doesn't match your needs.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 3: Pre-run adjustments */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#1C64F2] text-white text-xs font-bold flex items-center justify-center">3</span>
+                  Pre-run adjustments (before generating)
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to the <b>Payroll Adjustments</b> tab and use the sub-tabs:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Bonuses &amp; Incentives</b> — Record one-time bonuses, incentives or commissions. The engine merges them into the payslip at generation time (additive to regular salary).</li>
+                    <li><b>Pre-run Deductions</b> — Queue one-time recoveries (canteen, advance, fine). The engine adds them to <i>Other Deductions</i> automatically — no manual entry during the run.</li>
+                    <li><b>Loans &amp; Advances</b> — Create salary advances or employee loans. The engine auto-deducts the monthly EMI every payroll run until the balance is zero. Tracks outstanding balance and remaining months.</li>
+                  </ul>
+                  <p className="text-[#64748B] italic">All adjustments are visible in Preview before you generate, so you can verify before committing.</p>
+                </div>
+              </div>
+
+              {/* Step 4: Generate */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#F59E0B] text-white text-xs font-bold flex items-center justify-center">4</span>
+                  Generate payroll
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Select <b>Company</b>, <b>Branch</b>, <b>Department</b> (leave "All" to run everyone), and the <b>Month/Year</b>.</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li>Click <b>Generate Payroll</b> — creates <b>draft</b> payslips. No email is sent yet.</li>
+                    <li>Each payslip shows: gross salary, PF, ESI, PT, LWF, income tax, bonus, loan recovery, other deductions, and net pay.</li>
+                    <li>Pre-run adjustments (bonuses, deductions, loans) are automatically included.</li>
+                    <li>TDS is calculated cumulatively across the financial year (87A rebate and marginal relief are applied automatically).</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 5: Review */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#10B981] text-white text-xs font-bold flex items-center justify-center">5</span>
+                  Review &amp; edit payslips
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to <b>Review &amp; Approve</b> tab. Click any employee row to open the <b>Edit Payroll Record</b> drawer:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li>Edit earnings, deductions, loan, advance, other deductions, notes.</li>
+                    <li>Server recalculates total deductions and net pay instantly — no drift.</li>
+                    <li>Click the <b>Explain</b> icon to see why each figure is what it is (rate, version, formula, inputs).</li>
+                    <li>Use the <b>Payslip Explainer</b> (Compliance &amp; Rules tab) for a detailed breakdown of any payslip.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 6: Process → Approve → Submit */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#8B5CF6] text-white text-xs font-bold flex items-center justify-center">6</span>
+                  Process → Approve → Submit
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Status lifecycle — each step is a one-way gate:</p>
+                  <div className="flex flex-wrap items-center gap-1.5 my-2 text-[12px] font-medium">
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">Draft</span>
+                    <span className="text-[#94A3B8]">→</span>
+                    <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending Approval</span>
+                    <span className="text-[#94A3B8]">→</span>
+                    <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">Approved</span>
+                    <span className="text-[#94A3B8]">→</span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Processed</span>
+                    <span className="text-[#94A3B8]">→</span>
+                    <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">Paid</span>
+                  </div>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Process Payroll</b> — moves drafts to <i>Pending Approval</i>.</li>
+                    <li><b>Approve Payroll</b> — moves to <i>Approved</i> (final review done).</li>
+                    <li><b>Submit Payroll</b> — moves to <i>Processed</i> and appears in the <b>Payslips</b> tab for email, bank file, and marking as paid.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Step 7: Payslips */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#6366F1] text-white text-xs font-bold flex items-center justify-center">7</span>
+                  Deliver payslips
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to the <b>Payslips</b> tab:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Email All</b> — sends payslip PDFs to every employee in the current view.</li>
+                    <li>Click any row to open the <b>Payslip Drawer</b> — full breakdown, print, or email individually.</li>
+                    <li>Mark payrolls as <i>Paid</i> once the bank transfer is done.</li>
+                    <li><b>Bulk Export (ZIP)</b> — downloads Form 16 (Part B) PDFs for all eligible employees (year-end tax certificates).</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Re-run / Void */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#DC2626] text-white text-xs font-bold flex items-center justify-center">8</span>
+                  Fixing mistakes
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Re-run Payroll</b> — deletes the selected month's payslips and regenerates fresh drafts. Use after changing salaries, templates, adjustments, or attendance. The database stays clean — no orphan rows.</li>
+                    <li><b>Void Payroll</b> — permanently deletes without regenerating. Use when you need to cancel a run entirely.</li>
+                    <li>Both are logged in the <b>Run History</b> table below with who did it and when.</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* Compliance & Rules */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-[#0F172A] flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-[#0EA5E9] text-white text-xs font-bold flex items-center justify-center">9</span>
+                  Compliance &amp; Rules (advanced)
+                </h4>
+                <div className="ml-8 text-[13px] text-[#334155] leading-relaxed space-y-1">
+                  <p>Go to the <b>Compliance &amp; Rules</b> tab for:</p>
+                  <ul className="list-disc ml-5 space-y-0.5">
+                    <li><b>Statutory Rules</b> — publish dated rules (e.g. "PF rate changes to 12.5% from Jul 2026") — the engine applies them automatically based on the effective date.</li>
+                    <li><b>Compliance Calendar</b> — track filing due dates for EPF, ESI, PT, LWF (mark as filed when done).</li>
+                    <li><b>Tax Planner</b> — per-employee tax comparison (New vs Old regime) based on actual declarations.</li>
+                    <li><b>Arrears &amp; Retro</b> — simulate and apply retroactive salary changes (the engine splits arrears across past months and adjusts TDS).</li>
+                    <li><b>Bank Payments</b> — create payment batches, download bank files, reconcile.</li>
+                    <li><b>Statutory Filings</b> — download EPF ECR, ESI, PT filing-ready files.</li>
+                    <li><b>Accounting</b> — post payroll journal entries to your GL, view/reverse journals.</li>
+                    <li><b>Payslip Explainer</b> — pick any employee + month → see exactly why each figure is what it is (rule, version, formula, inputs).</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-blue-200">
+                <p className="text-[13px] text-[#64748B]">
+                  <b>Tip:</b> Preview and Simulate (on the Configuration tab) let you see the effect of changes <i>before</i> generating. The payslip preview (click any employee row) uses the exact same engine as generation — numbers always match.
+                </p>
+              </div>
             </div>
           )}
 
@@ -2201,16 +2389,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                   title="Email the payslip PDF to every employee in the current view">
                   <Mail className="w-4 h-4" /> {isRunning ? 'Sending...' : 'Email All'}
                 </button>
-                <button onClick={downloadDisbursement}
-                  className="h-[42px] flex items-center gap-2 px-4 border border-emerald-600 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-50"
-                  title="Download the bank transfer file (account number + IFSC + net salary) for PAID payrolls">
-                  <Download className="w-4 h-4" /> Bank Disbursement
-                </button>
-                <button onClick={downloadChallans}
-                  className="h-[42px] flex items-center gap-2 px-4 border border-[var(--border-color)] text-[var(--text-secondary)] rounded-xl text-sm font-medium hover:bg-gray-50"
-                  title="Download per-employee PF/ESI/PT/LWF/TDS CSV for filing">
-                  <Download className="w-4 h-4" /> Compliance CSV
-                </button>
               </div>
             </div>
             <div className="bg-white overflow-hidden">
@@ -2324,38 +2502,43 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
         {/* BONUSES TAB */}
         {activeTab === 'pay_items' && (
-          <div className="flex gap-2 mb-4">
-            {([['bonuses', 'Bonuses'], ['loans', 'Loans & Advances']] as const).map(([id, label]) => (
-              <button key={id} onClick={() => setPayItemsSub(id)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                  payItemsSub === id
-                    ? 'bg-[var(--primary-blue)] text-white shadow-md'
-                    : 'bg-[var(--card-bg)] text-[var(--text-secondary)] border border-[var(--border-color)]'
-                }`}>{label}</button>
-            ))}
+          <div className="border-b border-[var(--border-color)] mb-5">
+            <div className="flex items-center gap-1 -mb-px overflow-x-auto">
+              {([
+                ['bonuses', 'Bonuses & Incentives'],
+                ['deductions', 'Pre-run Deductions'],
+                ['loans', 'Loans & Advances'],
+              ] as const).map(([id, label]) => (
+                <button key={id} onClick={() => setPayItemsSub(id)}
+                  className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                    payItemsSub === id
+                      ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]'
+                      : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {activeTab === 'pay_items' && payItemsSub === 'bonuses' && (
           <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
             <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)] bg-gradient-to-r from-[#F8FAFC] to-white">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center text-white shadow-sm">
                   <Award className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-[#0F172A]">Bonus Records</h3>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">One-off bonuses and incentives</p>
+<h3 className="text-sm font-bold text-[#0F172A]">Bonuses & Incentives</h3>
+<p className="text-xs text-[#94A3B8] mt-0.5">One-off bonuses, incentives &amp; commissions — merged into that month's payslip</p>
                 </div>
               </div>
-              <button onClick={() => { setShowBonusForm(true); setBonusForm({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '' }); }}
+              <button onClick={() => { setShowBonusForm(true); setEditingBonus(null); setBonusForm({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '', type: 'bonus' }); }}
                 className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-blue)] text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
-                <Plus className="w-4 h-4" /> Add Bonus
+                <Plus className="w-4 h-4" /> Add Payment
               </button>
             </div>
             <div className="flex flex-col md:flex-row gap-4 px-6 py-4 border-b border-[var(--border-color)]">
-              <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
-                options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
-                placeholder="Select Year" allOption="Select Year" className="w-36" />
               <SearchableSelect
                 value={bonusCompanyFilter === 'all' ? 'all' : Number(bonusCompanyFilter)}
                 onChange={(val) => setBonusCompanyFilter(val.toString())}
@@ -2380,6 +2563,15 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 allOption="All Departments"
                 className="w-40"
               />
+              <SearchableSelect value={bonusTypeFilter} onChange={(val) => setBonusTypeFilter(val)}
+                options={[{ id: 'bonus', name: 'Bonus' }, { id: 'incentive', name: 'Incentive' }, { id: 'commission', name: 'Commission' }]}
+                placeholder="All Types" allOption="All Types" className="w-36" />
+              <SearchableSelect value={bonusMonthFilter} onChange={(val) => setBonusMonthFilter(val === 'all' ? 'all' : Number(val))}
+                options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
+                placeholder="All Months" allOption="All Months" className="w-36" />
+              <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
+                options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+                placeholder="Select Year" allOption="Select Year" className="w-36" />
             </div>
             <div className="overflow-x-auto">
               <DataTable
@@ -2390,9 +2582,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 searchPlaceholder="Search by employee name..."
                 logEntityType="payroll"
                 logFor={(b: BonusRecord) => ({ id: b.id ?? `${b.employeeName}-${b.month}/${b.year}`, label: b.employeeName })}
-                emptyMessage="No bonus records found"
+                emptyMessage="No bonuses or incentives recorded yet"
                 onDelete={(rows) => {
-                  rows.forEach((r) => { if (r.id) deleteBonusMutation.mutate(r.id); });
+                  rows.forEach((r) => { if (r.id) deleteBonusMutation.mutate({ id: r.id, type: (r as BonusRecord).type }); });
                 }}
                 columns={[
                   { key: 'employeeName', header: 'Employee', sortable: true, render: (b: BonusRecord) => (
@@ -2410,13 +2602,16 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                     </div>
                   ), sortValue: (b: BonusRecord) => b.employeeName },
                   { key: 'period', header: 'Period', align: 'center', render: (b: BonusRecord) => <span className="text-sm text-[#64748B]">{monthLabel(b.month, b.year)}</span> },
+                  { key: 'type', header: 'Type', align: 'center', render: (b: BonusRecord) => (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 capitalize">{b.type || 'bonus'}</span>
+                  ), sortValue: (b: BonusRecord) => b.type || 'bonus' },
                   { key: 'amount', header: 'Amount', sortable: true, align: 'right', render: (b: BonusRecord) => <span className="text-sm font-semibold text-[#059669]">{formatCurrency(b.amount, currency)}</span>, sortValue: (b: BonusRecord) => b.amount },
                   { key: 'reason', header: 'Reason', render: (b: BonusRecord) => <span className="text-sm text-[#64748B]">{b.reason || '-'}</span> },
                 ]}
                 actions={(b: BonusRecord) => (
                   <div className="flex items-center justify-end gap-1.5">
-                    <button onClick={() => { setBonusForm({ employeeId: '', month: b.month || 1, year: b.year || new Date().getFullYear(), amount: b.amount, reason: b.reason || '' }); setShowBonusForm(true); }} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit Bonus"><Edit3 className="w-4 h-4" /></button>
-                    <button onClick={() => { if (b.id) deleteBonusMutation.mutate(b.id); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete Bonus"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditingBonus({ id: b.id!, type: b.type }); setBonusForm({ employeeId: String(b.employeeId ?? ''), month: b.month || 1, year: b.year || new Date().getFullYear(), amount: b.amount, reason: b.reason || '', type: (b.type as BonusForm['type']) || 'bonus' }); setShowBonusForm(true); }} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit Bonus"><Edit3 className="w-4 h-4" /></button>
+                    <button onClick={() => { if (b.id) deleteBonusMutation.mutate({ id: b.id, type: b.type }); }} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete Bonus"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
               />
@@ -2424,7 +2619,99 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           </div>
         )}
 
-        {activeTab === 'pay_items' && payItemsSub === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} /></div>}
+        {activeTab === 'pay_items' && payItemsSub === 'deductions' && (
+          <div className="animate-in fade-in duration-300 bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)] bg-gradient-to-r from-[#F8FAFC] to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#DC2626] to-[#B91C1C] flex items-center justify-center text-white shadow-sm">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#0F172A]">Pre-run Deductions</h3>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">One-time recoveries (canteen, advance, fine) &mdash; the payroll engine adds them to Other Deductions at preview &amp; generate</p>
+                </div>
+              </div>
+              <button onClick={() => { setEditingBonus(null); setBonusForm({ employeeId: '', month: runMonth, year: runYear, amount: 0, reason: '', type: 'deduction' }); setShowBonusForm(true); }}
+                className="flex items-center gap-2 px-4 py-2 bg-[#DC2626] text-white rounded-xl text-sm font-medium hover:bg-red-700 transition-colors">
+                <Plus className="w-4 h-4" /> Add Deduction
+              </button>
+            </div>
+            <div className="flex flex-col md:flex-row gap-4 px-6 py-4 border-b border-[var(--border-color)]">
+              <SearchableSelect
+                value={bonusCompanyFilter === 'all' ? 'all' : Number(bonusCompanyFilter)}
+                onChange={(val) => setBonusCompanyFilter(val.toString())}
+                options={(companies || []).map((c: { id: number; name: string }) => ({ id: c.id, name: c.name }))}
+                placeholder="All Companies"
+                allOption="All Companies"
+                className="w-40"
+              />
+              <SearchableSelect
+                value={bonusBranchFilter === 'all' ? 'all' : Number(bonusBranchFilter)}
+                onChange={(val) => setBonusBranchFilter(val.toString())}
+                options={(branches || []).map((b: { id: number; name: string }) => ({ id: b.id, name: b.name }))}
+                placeholder="All Branches"
+                allOption="All Branches"
+                className="w-40"
+              />
+              <SearchableSelect
+                value={bonusDeptFilter === 'all' ? 'all' : Number(bonusDeptFilter)}
+                onChange={(val) => setBonusDeptFilter(val.toString())}
+                options={(departments || []).map((d: { id: number; name: string }) => ({ id: d.id, name: d.name }))}
+                placeholder="All Departments"
+                allOption="All Departments"
+                className="w-40"
+              />
+              <SearchableSelect value="deduction" onChange={() => {}}
+                options={[{ id: 'deduction', name: 'Deduction' }]}
+                placeholder="Type" className="w-36" />
+              <SearchableSelect value={bonusMonthFilter} onChange={(val) => setBonusMonthFilter(val === 'all' ? 'all' : Number(val))}
+                options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
+                placeholder="All Months" allOption="All Months" className="w-36" />
+              <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
+                options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+                placeholder="Select Year" allOption="Select Year" className="w-36" />
+            </div>
+            <div className="overflow-x-auto">
+              <DataTable
+                data={preDeductions}
+                rowKey={(row: PreDeductionRow) => row.id}
+                searchable
+                searchKeys={(row: PreDeductionRow) => `${row.employeeName || ''} ${row.employeeCode || ''} ${row.reason || ''}`}
+                searchPlaceholder="Search by employee name or reason..."
+                emptyMessage="No pre-run deductions recorded yet"
+                columns={[
+                  { key: 'employeeName', header: 'Employee', sortable: true, render: (row: PreDeductionRow) => (
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shrink-0">
+                        <Users className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className="font-semibold text-[#0F172A] text-sm">{row.employeeName}</span>
+                          {row.employeeCode && <span className="inline-flex px-1.5 py-0.5 bg-[#F1F5F9] text-[#64748B] text-[10px] font-medium rounded">{row.employeeCode}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ), sortValue: (row: PreDeductionRow) => row.employeeName || '' },
+                  { key: 'period', header: 'Period', align: 'center', render: () => <span className="text-sm text-[#64748B]">{monthLabel(runMonth, runYear)}</span> },
+                  { key: 'type', header: 'Type', align: 'center', render: () => (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-50 text-red-700">Deduction</span>
+                  ) },
+                  { key: 'amount', header: 'Amount', sortable: true, align: 'right', render: (row: PreDeductionRow) => <span className="text-sm font-semibold text-[#DC2626]">-{formatCurrency(row.amount, currency)}</span>, sortValue: (row: PreDeductionRow) => row.amount },
+                  { key: 'reason', header: 'Reason', render: (row: PreDeductionRow) => <span className="text-sm text-[#64748B]">{row.reason || '-'}</span> },
+                ]}
+                actions={(row: PreDeductionRow) => (
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button onClick={() => { setEditingBonus({ id: row.id, type: 'deduction' }); setBonusForm({ employeeId: String(row.employeeId), month: runMonth, year: runYear, amount: row.amount, reason: row.reason || '', type: 'deduction' }); setShowBonusForm(true); }} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit3 className="w-4 h-4" /></button>
+                    <button onClick={() => deletePreDeductionMutation.mutate(row.id)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Remove"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                )}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'pay_items' && payItemsSub === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} companies={companies} branches={branches} departments={departments} /></div>}
 
         {activeTab === 'compliance' && <div className="animate-in fade-in duration-300"><PayrollConsole /></div>}
         {activeTab === 'guide' && <div className="animate-in fade-in duration-300"><PayrollJourney activeTab={activeTab} onNavigate={(t) => setActiveTab(t)} /></div>}
@@ -2665,12 +2952,27 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl">
             <div className="p-6 border-b border-[var(--border-color)] flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Record Bonus</h2>
+              <h2 className="text-lg font-semibold">{editingBonus ? 'Edit Payment' : bonusForm.type === 'deduction' ? 'Queue Pre-run Deduction' : 'Record Bonus / Incentive'}</h2>
               <button onClick={() => setShowBonusForm(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-4">
               <FormGrid className={payrollGridClass}>
-                <FormField label="Employee" help="Employee receiving the bonus">
+                <FormField label="Type" help="What this one-off payment is">
+                  <SearchableSelect
+                    value={bonusForm.type}
+                    onChange={(v) => setBonusForm({ ...bonusForm, type: v as BonusForm['type'] })}
+                    options={[
+                      { id: 'bonus', name: 'Bonus' },
+                      { id: 'incentive', name: 'Incentive' },
+                      { id: 'commission', name: 'Commission' },
+                      { id: 'deduction', name: 'Other Deduction (pre-run)' },
+                    ]}
+                    placeholder="Select Type"
+                    showAllOption={false}
+                    className="w-full"
+                  />
+                </FormField>
+                <FormField label="Employee" help="Employee receiving the payment">
                   <EmployeeSelectWithFilters
                     status="active"
                     companies={companies}
@@ -2692,18 +2994,18 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                   <input type="number" value={bonusForm.year} onChange={e => setBonusForm({...bonusForm, year: parseInt(e.target.value) || 2026})}
                     className={formInputClass} />
                 </FormField>
-                <FormField label="Amount" help="Bonus amount in INR">
+                <FormField label="Amount" help="Amount in INR — added to this month's take-home pay">
                   <input type="number" step="0.01" value={bonusForm.amount} onChange={e => setBonusForm({...bonusForm, amount: parseFloat(e.target.value) || 0})}
                     className={formInputClass} />
                 </FormField>
-                <FormField label="Reason" help="Reason for the bonus">
+                <FormField label="Reason" help="Reason for this payment (kept for audit)">
                   <input type="text" value={bonusForm.reason} onChange={e => setBonusForm({...bonusForm, reason: e.target.value})}
                     className={formInputClass} />
                 </FormField>
               </FormGrid>
-              <button onClick={() => createBonusMutation.mutate(bonusForm)}
+              <button onClick={saveBonus}
                 className="w-full h-[42px] bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors">
-                Record Bonus
+                {editingBonus ? 'Save Changes' : 'Record Payment'}
               </button>
             </div>
           </div>
@@ -2891,7 +3193,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
 export default Payroll;
 
-function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Record<string, any>>; currency: string }) {
+function LoansAndAdvancesPanel({ employees, currency, companies, branches, departments }: { employees: Array<Record<string, any>>; currency: string; companies?: Array<{ id: number; name: string }>; branches?: Array<{ id: number; name: string }>; departments?: Array<{ id: number; name: string }> }) {
   const queryClient = useQueryClient();
   const [empId, setEmpId] = useState<number | ''>('');
   const [showForm, setShowForm] = useState(false);
@@ -2900,6 +3202,12 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
     loanType: 'loan', principalAmount: 0, monthlyDeduction: 0, totalMonths: 12,
     startMonth: new Date().getMonth() + 1, startYear: new Date().getFullYear(), notes: '',
   });
+  const [loanCompanyFilter, setLoanCompanyFilter] = useState<string>('all');
+  const [loanBranchFilter, setLoanBranchFilter] = useState<string>('all');
+  const [loanDeptFilter, setLoanDeptFilter] = useState<string>('all');
+  const [loanStatusFilter, setLoanStatusFilter] = useState<string>('all');
+  const [loanMonthFilter, setLoanMonthFilter] = useState<number | 'all'>(new Date().getMonth() + 1);
+  const [loanYearFilter, setLoanYearFilter] = useState(new Date().getFullYear());
 
   const { data: loans = [], isLoading } = useQuery({
     queryKey: ['salary-loans', empId],
@@ -2933,23 +3241,34 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
     ...(empId === '' ? [{
       key: 'employeeName', header: 'Employee', sortable: true,
       render: (l: Record<string, any>) => (
-        <span className="text-sm font-medium text-[#0F172A]">{l.employeeName || `#${l.employeeId}`}</span>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+            <Users className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <span className="font-semibold text-[#0F172A] text-sm">{l.employeeName || `#${l.employeeId}`}</span>
+          </div>
+        </div>
       ),
       sortValue: (l: Record<string, any>) => l.employeeName || '',
     }] : []),
     {
       key: 'loanType', header: 'Type', sortable: true,
-      render: (l: Record<string, any>) => <span className="text-sm capitalize font-medium text-[#0F172A]">{l.loanType}</span>,
+      render: (l: Record<string, any>) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${l.loanType === 'loan' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+          {l.loanType === 'loan' ? 'Loan' : 'Advance'}
+        </span>
+      ),
       sortValue: (l: Record<string, any>) => l.loanType,
     },
     {
       key: 'principalAmount', header: 'Principal', sortable: true, align: 'right',
-      render: (l: Record<string, any>) => <span className="text-sm text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</span>,
+      render: (l: Record<string, any>) => <span className="text-sm font-medium text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</span>,
       sortValue: (l: Record<string, any>) => l.principalAmount,
     },
     {
       key: 'monthlyDeduction', header: 'Monthly Deduction', sortable: true, align: 'right',
-      render: (l: Record<string, any>) => <span className="text-sm text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</span>,
+      render: (l: Record<string, any>) => <span className="text-sm font-semibold text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</span>,
       sortValue: (l: Record<string, any>) => l.monthlyDeduction,
     },
     {
@@ -2965,7 +3284,7 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
     {
       key: 'status', header: 'Status', sortable: true, align: 'center',
       render: (l: Record<string, any>) => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${l.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${l.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
           {capitalizeStatus(l.status)}
         </span>
       ),
@@ -2975,21 +3294,60 @@ function LoansAndAdvancesPanel({ employees, currency }: { employees: Array<Recor
 
   return (
     <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 px-6 py-5 border-b border-[var(--border-color)]">
-        <div className="flex-1 min-w-[220px]">
-          <SearchableSelect
-            value={empId === '' ? 'all' : empId}
-            onChange={(v) => setEmpId(v === 'all' ? '' : Number(v))}
-            options={employees.map((e) => ({ id: e.id, name: formatEmployeeLabel(e) }))}
-            placeholder="Select employee"
-            allOption="All Employees"
-            className="w-full"
-          />
+      <div className="flex items-center justify-between px-6 py-5 border-b border-[var(--border-color)] bg-gradient-to-r from-[#F8FAFC] to-white">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-sm">
+            <HandCoins className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-[#0F172A]">Loans & Advances</h3>
+            <p className="text-xs text-[#94A3B8] mt-0.5">Salary advances and employee loans &mdash; auto-deducted each month via amortization</p>
+          </div>
         </div>
-        <button onClick={() => { setFormEmployeeId(empId); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-blue)] text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+        <button onClick={() => { setFormEmployeeId(empId === '' ? '' : empId); setShowForm(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-blue)] text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
           <Plus className="w-4 h-4" /> Add Loan / Advance
         </button>
+      </div>
+      <div className="flex flex-col md:flex-row gap-4 px-6 py-4 border-b border-[var(--border-color)]">
+        <SearchableSelect
+          value={loanCompanyFilter}
+          onChange={(val) => setLoanCompanyFilter(val)}
+          options={(companies || []).map((c) => ({ id: c.id, name: c.name }))}
+          placeholder="All Companies"
+          allOption="All Companies"
+          className="w-40"
+        />
+        <SearchableSelect
+          value={loanBranchFilter}
+          onChange={(val) => setLoanBranchFilter(val)}
+          options={(branches || []).map((b) => ({ id: b.id, name: b.name }))}
+          placeholder="All Branches"
+          allOption="All Branches"
+          className="w-40"
+        />
+        <SearchableSelect
+          value={loanDeptFilter}
+          onChange={(val) => setLoanDeptFilter(val)}
+          options={(departments || []).map((d) => ({ id: d.id, name: d.name }))}
+          placeholder="All Departments"
+          allOption="All Departments"
+          className="w-40"
+        />
+        <SearchableSelect
+          value={loanStatusFilter}
+          onChange={(val) => setLoanStatusFilter(val)}
+          options={[{ id: 'active', name: 'Active' }, { id: 'closed', name: 'Closed' }]}
+          placeholder="All Status"
+          allOption="All Status"
+          className="w-36"
+        />
+        <SearchableSelect value={loanMonthFilter} onChange={(val) => setLoanMonthFilter(val === 'all' ? 'all' : Number(val))}
+          options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
+          placeholder="All Months" allOption="All Months" className="w-36" />
+        <SearchableSelect value={loanYearFilter} onChange={(val) => setLoanYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
+          options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+          placeholder="Select Year" allOption="Select Year" className="w-36" />
       </div>
 
       {isLoading ? (

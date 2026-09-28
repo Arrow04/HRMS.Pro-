@@ -13,6 +13,7 @@ export interface EmployeePickerItem {
   status?: string;
   phone?: string;
   companyId?: number;
+  profileCompletion?: number;
 }
 
 export interface EmployeePickerParams {

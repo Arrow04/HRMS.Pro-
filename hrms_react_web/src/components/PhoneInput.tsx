@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, Phone } from 'lucide-react';
 
 interface CountryCode {
@@ -89,9 +90,31 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 }) => {
   const [dial, setDial] = useState(defaultDial);
   const [open, setOpen] = useState(false);
+  const [panelPos, setPanelPos] = useState<{ left: number; top?: number; bottom?: number; listMaxH: number } | null>(null);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const PANEL_W = 288;   // w-72
+  const PANEL_H = 300;   // rough full height: search header + list
+  const HEADER_H = 52;
+
+  // Position the panel (fixed, portaled to <body>) so no ancestor overflow can
+  // clip it. Opens below when there's room, otherwise flips above the field.
+  const updatePos = () => {
+    const anchor = dropdownRef.current?.getBoundingClientRect();
+    if (!anchor) return;
+    const spaceBelow = window.innerHeight - anchor.bottom;
+    const spaceAbove = anchor.top;
+    const openUp = spaceBelow < PANEL_H + 12 && spaceAbove > spaceBelow;
+    const avail = (openUp ? spaceAbove : spaceBelow) - 16;
+    const listMaxH = Math.max(160, Math.min(256, avail - HEADER_H));
+    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - PANEL_W - 8));
+    setPanelPos(openUp
+      ? { left, bottom: window.innerHeight - anchor.top + 8, listMaxH }
+      : { left, top: anchor.bottom + 8, listMaxH });
+  };
 
   const stripDial = (raw: string) => (raw || '').replace(/^\+\d{1,4}\s?/, '');
 
@@ -110,7 +133,9 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (dropdownRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -119,6 +144,33 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
   useEffect(() => {
     if (open && searchRef.current) searchRef.current.focus();
   }, [open]);
+
+  // Keep the panel anchored while the page/modal scrolls or the window resizes.
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onMove = () => updatePos();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // When the list opens, bring the currently selected (settings-default) country
+  // into view instead of forcing the user to scroll from the top of the alphabet.
+  // Uses scrollTop math on the list only — never scrollIntoView, which would also
+  // scroll the modal/page behind the panel.
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const el = panel?.querySelector('[data-selected="true"]') as HTMLElement | null;
+    const list = panel?.querySelector('[data-country-list]') as HTMLElement | null;
+    if (!el || !list) return;
+    list.scrollTop = (el.offsetTop - list.offsetTop) - list.clientHeight / 2 + el.offsetHeight / 2;
+  }, [open, panelPos]);
 
   const choose = (c: CountryCode) => {
     setDial(c.dial);
@@ -157,7 +209,7 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
     <div className="relative flex" ref={dropdownRef} {...rest}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (!open) updatePos(); setOpen((o) => !o); }}
         disabled={disabled}
         className="flex items-center gap-1 px-3 py-2 border border-r-0 border-[var(--border-color)] rounded-l-lg bg-white text-sm text-[var(--text-primary)] hover:bg-gray-50 focus:outline-none focus:ring-2 whitespace-nowrap disabled:opacity-50"
       >
@@ -175,8 +227,12 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
         className={`${inputClassName || 'w-full px-3 py-2 border border-[var(--border-color)] rounded-r-lg focus:outline-none focus:ring-2'} disabled:opacity-50`}
       />
 
-      {open && (
-        <div className="absolute left-0 top-full mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 overflow-hidden">
+      {open && panelPos && createPortal(
+        <div
+          ref={panelRef}
+          className="w-72 bg-white border border-gray-200 rounded-xl shadow-2xl z-[9999] overflow-hidden"
+          style={{ position: 'fixed', left: panelPos.left, top: panelPos.top, bottom: panelPos.bottom }}
+        >
           <div className="p-2 border-b border-gray-100 flex items-center gap-2">
             <Search className="w-4 h-4 text-gray-400" />
             <input
@@ -187,11 +243,12 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
               className="w-full py-1.5 text-sm focus:outline-none"
             />
           </div>
-          <div className="max-h-64 overflow-y-auto">
+          <div data-country-list className="overflow-y-auto" style={{ maxHeight: panelPos.listMaxH }}>
             {filtered.map((c) => (
               <button
                 key={c.code + c.dial}
                 type="button"
+                data-selected={c.dial === dial ? 'true' : 'false'}
                 onClick={() => choose(c)}
                 className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${
                   c.dial === dial ? 'bg-blue-50 text-blue-700 font-medium' : 'text-[var(--text-primary)]'
@@ -210,7 +267,8 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
               <p className="text-center text-sm text-gray-400 py-6">No country found</p>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

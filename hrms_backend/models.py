@@ -331,6 +331,7 @@ class Employee(Base):
     esic_number = Column(String(100))
     pran_number = Column(String(100))        # NPS PRAN / retirement reference
     nps_applicable = Column(Boolean, default=False)
+    gratuity_applicable = Column(Boolean, default=False)
     mediclaim_number = Column(String(100))
     mediclaim_provider = Column(String(200))
     life_insurance_number = Column(String(100))
@@ -343,6 +344,7 @@ class Employee(Base):
     spouse_name = Column(String(255))
     spouse_phone = Column(String(50))
     number_of_children = Column(Integer, default=0)
+    children_names = Column(String(500))        # comma-separated children names
     nominee_name = Column(String(255))
     nominee_relationship = Column(String(100))
     
@@ -447,6 +449,32 @@ class Employee(Base):
     device_mac_address = Column(String(50), nullable=True)  # MAC address for device binding
     device_serial_number = Column(String(100), nullable=True)  # Serial/IMEI for device authentication
     device_assigned_date = Column(DateTime)  # Optional - Date when device was registered
+
+    # IT setup tracking (assignment, dates, notes, checklist)
+    it_assigned_by = Column(String(150))
+    it_assigned_date = Column(Date)
+    it_grant_date = Column(Date)
+    it_completion_date = Column(Date)
+    it_notes = Column(Text)
+    it_email_created = Column(Boolean, default=False)
+    it_system_access = Column(Boolean, default=False)
+    it_erp_access = Column(Boolean, default=False)
+    it_cloud_apps = Column(Boolean, default=False)
+    it_shared_drives = Column(Boolean, default=False)
+    it_hrms_account = Column(Boolean, default=False)
+    it_group_memberships = Column(Boolean, default=False)
+    it_credentials_issued = Column(Boolean, default=False)
+    it_vpn_access = Column(Boolean, default=False)
+    it_mfa_enabled = Column(Boolean, default=False)
+    it_password_manager = Column(Boolean, default=False)
+    it_role_assigned = Column(Boolean, default=False)
+    it_endpoint_protection = Column(Boolean, default=False)
+    it_hardware_assigned = Column(Boolean, default=False)
+    it_policy_signed = Column(Boolean, default=False)
+    it_training_done = Column(Boolean, default=False)
+    it_asset_tag = Column(Boolean, default=False)
+    it_laptop_encryption = Column(Boolean, default=False)
+    it_work_phone = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1205,9 +1233,19 @@ class Payroll(Base):
     country = Column(String(50), nullable=True)
     registered_state = Column(String(100), nullable=True)
 
+    # Multi-currency snapshot: all money columns on this row are stored in the
+    # policy currency. When the employee is paid in another currency, these
+    # record which one and at what rate (policy units per 1 employee unit).
+    salary_currency = Column(String(10), nullable=True)
+    currency_exchange_rate = Column(Float, nullable=True)
+
     # Notes
     notes = Column(Text)
     remarks = Column(Text)
+    # Pending-ad-hoc marker: row created by Add Bonus / incentive BEFORE the
+    # payroll run. The run merges its ad-hoc earnings into the real payslip
+    # and retires this row (see payroll_service.is_pending_adhoc_row).
+    is_pending_adhoc = Column(Boolean, default=False, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1249,6 +1287,28 @@ class PayrollPeriodLock(Base):
 
     def __repr__(self):
         return f'<PayrollPeriodLock {self.organization_id} c{self.company_id} e{self.employee_id} {self.month}/{self.year} {self.status}>'
+
+
+class PayrollPreDeduction(Base):
+    """One-off deduction queued on the Payroll page BEFORE the month's run
+    (canteen, recovery, fine...). The engine ADDS pending amounts to
+    other_deductions / total_deductions in every computation (preview,
+    generate, recalculate), so preview and payslip stay identical. Clear
+    the row after the run - it is input data, not a payslip edit."""
+    __tablename__ = 'payroll_pre_deductions'
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=True, index=True)
+    month = Column(Integer, nullable=False)
+    year = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False, default=0)
+    reason = Column(String(255), nullable=True)
+    created_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
 
 
 class PayrollRun(Base):
@@ -1772,7 +1832,7 @@ class StatutorySetting(Base):
     # PF
     pf_applicable = Column(Boolean, default=True)
     pf_employee_rate = Column(Float, default=12.0)
-    pf_employer_rate = Column(Float, default=12.0)
+    pf_employer_rate = Column(Float, default=3.67)
     pf_wage_ceiling = Column(Float, default=15000.0)  # statutory wage ceiling for EPF/EPS
     pf_max_monthly = Column(Float, default=1800.0)
     pf_min_basic_for_exclusion = Column(Float, default=15000.0)
@@ -1784,6 +1844,9 @@ class StatutorySetting(Base):
     pf_admin_min_monthly = Column(Float, default=75.0)
     eps_rate = Column(Float, default=8.33)  # EPS (pension) contribution rate - configurable per company
     eps_wage_ceiling = Column(Float, default=15000.0)  # EPS (pension) capped at eps_rate% of this ceiling
+    eps_employer_rate = Column(Float, default=8.33)
+    nps_employee_rate = Column(Float, nullable=True)
+    nps_employer_rate = Column(Float, nullable=True)
 
     # ESI
     esi_applicable = Column(Boolean, default=True)
@@ -1813,7 +1876,8 @@ class StatutorySetting(Base):
     bonus_applicable = Column(Boolean, default=False)
     bonus_min_rate = Column(Float, default=8.33)
     bonus_max_rate = Column(Float, default=20.0)
-    bonus_wage_ceiling = Column(Float, default=21000.0)
+    bonus_eligible_ceiling = Column(Float, default=21000.0)
+    bonus_wage_ceiling = Column(Float, default=7000.0)
 
     status = Column(String(20), default='active', index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -1957,6 +2021,8 @@ class StatePTSlab(Base):
     id = Column(Integer, primary_key=True)
     state_code = Column(String(50), nullable=False, index=True)   # internal snake_case key, e.g. 'karnataka'
     state_name = Column(String(100), nullable=False, default='')
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)  # NULL = platform default
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)  # NULL = whole org
     from_gross = Column(Float, nullable=False, default=0.0)
     to_gross = Column(Float, nullable=True)  # NULL = infinite
     amount = Column(Float, nullable=False, default=0.0)
@@ -1979,6 +2045,8 @@ class StateLWFConfig(Base):
     id = Column(Integer, primary_key=True)
     state_code = Column(String(50), nullable=False, index=True)
     state_name = Column(String(100), nullable=False, default='')
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)  # NULL = platform default
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)  # NULL = whole org
     applicable = Column(Boolean, default=True)
     employee_contribution = Column(Float, nullable=False, default=0.0)
     employer_contribution = Column(Float, nullable=False, default=0.0)

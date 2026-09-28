@@ -220,3 +220,96 @@ def test_template_delete_detaches_employees(client, db_session, admin_token):
     assert r.status_code == 200
     db_session.refresh(emp)
     assert emp.payroll_template_id is None
+
+
+def test_template_component_rich_fields_roundtrip(client, db_session, admin_token):
+    h = {"Authorization": f"Bearer {admin_token}"}
+    org_id = _admin_org(db_session)
+    comp = _mk_company(db_session, org_id)
+
+    payload = _payload(comp.id)
+    payload["components"] = [
+        {"name": "Overtime", "component_type": "earning", "calculation_type": "tiered",
+         "calculation_base": "basic", "calculation_value": 1.0, "priority": 1,
+         "is_taxable": True, "tax_category": "salary_17_1",
+         "tiered_config": [{"from": 0, "to": 2, "rate": 1.5}, {"from": 2, "to": None, "rate": 2.0}],
+         "input_variables": ["overtime_hours"], "depends_on": ["basic"],
+         "taxability": "taxable", "pf_applicable": True, "esi_applicable": False,
+         "pt_applicable": None, "lwf_applicable": True, "gratuity_applicable": False,
+         "bonus_applicable": True, "nps_applicable": False},
+        {"name": "Night Shift", "component_type": "earning", "calculation_type": "shift_differential",
+         "calculation_value": 500, "priority": 2, "is_taxable": True,
+         "tax_category": "salary_17_1",
+         "shift_differential_config": {"day": 1.0, "night": 1.25},
+         "input_variables": ["hours_worked"], "depends_on": [],
+         "taxability": "conditional", "pf_applicable": False, "esi_applicable": True,
+         "pt_applicable": True, "lwf_applicable": False, "gratuity_applicable": True,
+         "bonus_applicable": False, "nps_applicable": True},
+    ]
+    r = client.post("/api/payroll-templates", json=payload, headers=h)
+    assert r.status_code == 200, r.text
+    got = {c["name"]: c for c in r.json()["template"]["components"]}
+    assert got["Overtime"]["tiered_config"] == [
+        {"from": 0, "to": 2, "rate": 1.5}, {"from": 2, "to": None, "rate": 2.0},
+    ]
+    assert got["Overtime"]["input_variables"] == ["overtime_hours"]
+    assert got["Overtime"]["depends_on"] == ["basic"]
+    assert got["Overtime"]["taxability"] == "taxable"
+    assert got["Overtime"]["esi_applicable"] is False
+    # None survives the pick but the column default fills in on insert —
+    # "inherit" is resolved at payroll time from the JSON, not the row.
+    assert got["Overtime"]["pt_applicable"] is True
+    assert got["Night Shift"]["shift_differential_config"] == {"day": 1.0, "night": 1.25}
+    assert got["Night Shift"]["taxability"] == "conditional"
+    assert got["Night Shift"]["nps_applicable"] is True
+
+    # Unknown keys never leak through
+    payload["components"][0]["hacker_field"] = "x"
+    r = client.post("/api/payroll-templates", json=payload, headers=h)
+    assert r.status_code == 200, r.text
+    assert "hacker_field" not in {c["name"]: c for c in r.json()["template"]["components"]}["Overtime"]
+
+
+
+def test_template_policy_fy_start_month_persists(client, db_session, admin_token):
+    from services.payroll_service import _get_fy_start_month
+    h = {"Authorization": f"Bearer {admin_token}"}
+    org_id = _admin_org(db_session)
+    comp = _mk_company(db_session, org_id)
+
+    payload = _payload(comp.id)
+    payload["payrollPolicy"] = {**payload["payrollPolicy"], "fy_start_month": 1}
+    r = client.post("/api/payroll-templates", json=payload, headers=h)
+    assert r.status_code == 200, r.text
+    tpl = r.json()["template"]
+    template_id = tpl["id"]
+    assert tpl["payroll_policy"]["fy_start_month"] == 1
+
+    # Update path persists too
+    payload["payrollPolicy"] = {"fy_start_month": 7}
+    r = client.put(f"/api/payroll-templates/{template_id}", json=payload, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["template"]["payroll_policy"]["fy_start_month"] == 7
+
+    # Engine honors the template policy value...
+    emp = Employee(
+        first_name="Fy", last_name="Start", email="fy@example.com",
+        employee_code="FY001", designation="Engineer",
+        organization_id=org_id, company_id=comp.id, base_salary=600000,
+        status="active", join_date=datetime(2020, 1, 1),
+        payroll_template_id=template_id,
+    )
+    db_session.add(emp)
+    db_session.flush()
+    assert _get_fy_start_month(db_session, emp) == 7
+
+    # ...and falls back to April with no policy
+    emp2 = Employee(
+        first_name="No", last_name="Policy", email="nopolicy@example.com",
+        employee_code="FY002", designation="Engineer",
+        organization_id=org_id, company_id=comp.id, base_salary=600000,
+        status="active", join_date=datetime(2020, 1, 1),
+    )
+    db_session.add(emp2)
+    db_session.flush()
+    assert _get_fy_start_month(db_session, emp2) == 4

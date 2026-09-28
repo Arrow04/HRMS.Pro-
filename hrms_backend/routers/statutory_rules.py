@@ -4,7 +4,7 @@ Statutory Rules Router
 CRUD API for versioned, effective-dated statutory rules.
 Allows admins to manage PF/ESI/PT/Bonus/Tax rules per country/state/org.
 """
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +17,15 @@ from database import get_db
 from models import StatutorySetting, User
 
 router = APIRouter(prefix="/api/statutory-rules", tags=["Statutory Rules"])
+
+
+def _require_role(current_user: User, allowed_roles: List[str]) -> None:
+    """Inline role guard (check_role is a dependency factory, not a checker)."""
+    if (current_user.role or "") not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{current_user.role}' does not have permission to access this resource",
+        )
 
 
 # ── Schemas ──
@@ -63,7 +72,7 @@ class StatutoryRuleResponse(BaseModel):
     gazette_url: Optional[str] = None
     status: str
     notes: Optional[str] = None
-    created_at: Optional[date] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -147,7 +156,7 @@ def create_statutory_rule(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new statutory rule. Admin only. company_id makes it company-specific."""
-    check_role(current_user, ["admin", "superadmin", "hr_manager"])
+    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
     from models import StatutoryRule
 
     new_rule = StatutoryRule(
@@ -180,7 +189,7 @@ def update_statutory_rule(
     current_user: User = Depends(get_current_user),
 ):
     """Update a statutory rule. Admin only."""
-    check_role(current_user, ["admin", "superadmin", "hr_manager"])
+    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
     from models import StatutoryRule
 
     rule = db.query(StatutoryRule).filter(
@@ -204,7 +213,7 @@ def delete_statutory_rule(
     current_user: User = Depends(get_current_user),
 ):
     """Soft-delete a statutory rule. Admin only."""
-    check_role(current_user, ["admin", "superadmin", "hr_manager"])
+    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
     from datetime import datetime as _dt
     from models import StatutoryRule
 
@@ -229,7 +238,7 @@ def supersede_rule(
     current_user: User = Depends(get_current_user),
 ):
     """Set the effective_to date on a rule to supersede it."""
-    check_role(current_user, ["admin", "superadmin", "hr_manager"])
+    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
     from models import StatutoryRule
 
     rule = db.query(StatutoryRule).filter(

@@ -11,9 +11,10 @@ import os
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel
 
 import redis
 import structlog
@@ -34,7 +35,7 @@ from core.company_scope import resolve_company_scope, assert_company_allowed, re
 from database import Base, SessionLocal, engine, get_db, get_read_db
 from core.scale import MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT, DEFAULT_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeBranchAssignment, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PayrollPeriodLock, PayrollRun, PerformanceReview, ReportExecutionLog, SalaryLoan, SalaryRevision, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
-from services.payroll_service import calculate_payroll, generate_payroll_record, _compute_cumulative_tds, _get_tax_regime, _get_payroll_policy
+from services.payroll_service import calculate_payroll, generate_payroll_record, recompute_payroll_totals, is_pending_adhoc_row as _is_pending_adhoc_row, _compute_cumulative_tds, _get_tax_regime, _get_payroll_policy
 from services.accounting_service import post_payroll_journal
 from utils.helpers import convert_camel_to_snake
 
@@ -893,6 +894,213 @@ def calculate_payroll_preview(
     return result
 
 
+@router.post("/api/payroll/preview", tags=["Payroll"])
+def payroll_preview(
+    data: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dry-run salary structure computed by the payroll engine itself.
+
+    The single calculator behind the employee Salary tab: same templates, same
+    statutory rules, same entry-mode precedence as a real run — so the preview
+    can never drift from the payslip. Works for saved employees (employeeId)
+    and for unsaved drafts (baseSalary + payrollTemplateId + salaryMode).
+
+    Preview is always full-month structure: attendance proration, loans and
+    arrears belong to real runs, not to a what-you-see split.
+    """
+    from core.schemas import PayrollPreviewRequest
+    from services.payroll_service import make_preview_employee
+
+    payload = PayrollPreviewRequest(**(data or {}))
+    month = int(payload.month or ist_now_naive().month)
+    year = int(payload.year or ist_now_naive().year)
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="month must be 1-12")
+
+    source = None
+    if payload.employeeId:
+        source = db.query(Employee).filter(
+            Employee.deleted_at.is_(None),
+            Employee.id == payload.employeeId,
+        ).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if current_user.role != "superadmin":
+            org_owned(source, current_user.organization_id)
+        assert_company_allowed(db, current_user, source.company_id)
+        org_id = source.organization_id
+    else:
+        org_id = current_user.organization_id
+        if not org_id:
+            raise HTTPException(status_code=400, detail="Organization context required for draft previews")
+        if payload.companyId:
+            validate_company_in_org(db, Company, payload.companyId, org_id)
+
+    if payload.payrollTemplateId is not None:
+        from models import PayrollTemplate
+        tpl = db.query(PayrollTemplate).filter(
+            PayrollTemplate.id == payload.payrollTemplateId,
+            PayrollTemplate.organization_id == org_id,
+            PayrollTemplate.deleted_at.is_(None),
+        ).first()
+        if not tpl:
+            raise HTTPException(status_code=404, detail="Payroll template not found")
+
+    emp = make_preview_employee(
+        db, org_id,
+        source=source,
+        base_salary=payload.baseSalary,
+        pay_frequency=payload.payFrequency,
+        payroll_template_id=payload.payrollTemplateId,
+        salary_components=payload.salaryComponents,
+        salary_mode=payload.salaryMode,
+        company_id=(source.company_id if source is not None else payload.companyId),
+        department_id=(source.department_id if source is not None else payload.departmentId),
+    )
+    result = calculate_payroll(db, emp, month, year, assume_full_attendance=True)
+    result["employeeName"] = (
+        f"{source.first_name} {source.last_name or ''}".strip() if source is not None else "Preview"
+    )
+    result["preview"] = True
+    return result
+
+
+@router.post("/api/payroll/simulate-impact", tags=["Payroll"])
+def payroll_simulate(
+    data: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dry-run impact: each employee's payslip under the CURRENT config vs a
+    PROPOSED one — computed by the payroll engine, nothing persisted.
+
+    Body: {
+      "month": 9, "year": 2026,
+      "companyId"?, "branchId"?, "departmentId"?, "employeeIds"?,
+      "payrollTemplateId"?,   # marks rows as currently on that template
+      "proposed": {
+        "components": [{"name", "component_type", "calculation_type",
+                        "calculation_base", "calculation_value", ...}, ...],
+        "statutory": {"pf_wage_ceiling": 25000, "pf_max_monthly": 3000, ...}
+      }
+    }
+    Missing proposed pieces fall back to the employee's current config, so
+    components-only or statutory-only simulations both work.
+    """
+    from models import PayrollComponent, EmployeeBranchAssignment
+    from sqlalchemy import inspect as _sa_inspect
+
+    body = data or {}
+    month = int(body.get("month") or ist_now_naive().month)
+    year = int(body.get("year") or ist_now_naive().year)
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="month must be 1-12")
+    org_id = current_user.organization_id
+    proposed = body.get("proposed") or {}
+    proposed_statutory = proposed.get("statutory") or None
+
+    proposed_comps = None
+    if proposed.get("components") is not None:
+        comp_cols = {c.key for c in _sa_inspect(PayrollComponent).mapper.column_attrs}
+        proposed_comps = []
+        for item in (proposed.get("components") or []):
+            kwargs = {k: v for k, v in dict(item).items() if k in comp_cols and k not in ("id", "organization_id", "payroll_policy_id", "company_id")}
+            kwargs.setdefault("name", "Component")
+            kwargs.setdefault("component_type", "earning")
+            kwargs.setdefault("calculation_type", "fixed")
+            kwargs.setdefault("is_active", True)
+            kwargs.setdefault("status", "active")
+            proposed_comps.append(PayrollComponent(**kwargs))
+        proposed_comps.sort(key=lambda c: (getattr(c, "priority", 0) or 0))
+
+    query = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.status == "active")
+    if org_id:
+        query = query.filter(Employee.organization_id == org_id)
+    if body.get("companyId"):
+        if current_user.role != "superadmin":
+            validate_company_in_org(db, Company, body.get("companyId"), org_id)
+        query = query.filter(Employee.company_id == body.get("companyId"))
+    if body.get("departmentId"):
+        query = query.filter(Employee.department_id == body.get("departmentId"))
+    if body.get("branchId"):
+        query = query.filter(Employee.id.in_(
+            db.query(EmployeeBranchAssignment.employee_id)
+            .filter(EmployeeBranchAssignment.branch_id == body.get("branchId"))
+            .filter(EmployeeBranchAssignment.status == "active")
+            .filter(EmployeeBranchAssignment.deleted_at.is_(None))
+        ))
+    if body.get("employeeIds"):
+        query = query.filter(Employee.id.in_([int(i) for i in body["employeeIds"]]))
+    employees = query.order_by(Employee.id).limit(2000).all()
+    if not body.get("companyId") and current_user.role != "superadmin":
+        # Non-superadmin without explicit company: keep to companies they may see
+        allowed = resolve_company_scope(db, current_user, None)
+        if allowed is not None:
+            employees = [e for e in employees if e.company_id == allowed]
+
+    tpl_id = body.get("payrollTemplateId")
+    money_keys = [
+        ("basic", "basic_salary"), ("hra", "hra"), ("da", "da"),
+        ("conveyance", "conveyance"), ("medical", "medical"),
+        ("specialAllowance", "special_allowance"), ("otherAllowance", "other_allowance"),
+        ("travel", "travel_allowance"), ("performanceBonus", "performance_bonus"),
+        ("gross", "gross_salary"), ("totalEarnings", "total_earnings"),
+        ("pf", "pf_deduction"), ("esi", "esi_deduction"),
+        ("professionalTax", "professional_tax"), ("tds", "tds_deduction"),
+        ("totalDeductions", "total_deductions"), ("net", "net_salary"),
+        ("pfEmployer", "pf_employer_contribution"), ("esiEmployer", "esi_employer_contribution"),
+        ("gratuity", "gratuity"),
+    ]
+
+    def _snap(calc: dict) -> dict:
+        return {label: round(float(calc.get(src) or 0), 2) for label, src in money_keys}
+
+    rows = []
+    affected = 0
+    totals = {"currentNet": 0.0, "proposedNet": 0.0, "currentGross": 0.0, "proposedGross": 0.0}
+    for emp in employees:
+        try:
+            current = _snap(calculate_payroll(db, emp, month, year, assume_full_attendance=True))
+            proposed_snap = _snap(calculate_payroll(
+                db, emp, month, year, assume_full_attendance=True,
+                override_components=proposed_comps,
+                override_statutory=proposed_statutory,
+            ))
+        except Exception:
+            logger.exception("Simulate failed for employee %s", emp.id)
+            continue
+        delta = {k: round(proposed_snap[k] - current[k], 2) for k in current}
+        changed = [k for k, v in delta.items() if abs(v) >= 0.01]
+        if changed:
+            affected += 1
+        totals["currentNet"] += current["net"]
+        totals["proposedNet"] += proposed_snap["net"]
+        totals["currentGross"] += current["gross"]
+        totals["proposedGross"] += proposed_snap["gross"]
+        rows.append({
+            "employeeId": emp.id,
+            "employeeName": f"{emp.first_name} {emp.last_name or ''}".strip(),
+            "employeeCode": emp.employee_code,
+            "onTemplate": bool(tpl_id) and emp.payroll_template_id == int(tpl_id),
+            "current": current,
+            "proposed": proposed_snap,
+            "delta": delta,
+            "changed": changed,
+        })
+
+    return {
+        "month": month,
+        "year": year,
+        "totalEmployees": len(rows),
+        "affected": affected,
+        "totals": {k: round(v, 2) for k, v in totals.items()},
+        "deltaNet": round(totals["proposedNet"] - totals["currentNet"], 2),
+        "rows": rows,
+    }
+
+
 @router.post("/api/payroll/recalculate", tags=["Payroll"])
 def recalculate_payroll_tds(
     payload: dict,
@@ -941,6 +1149,28 @@ def recalculate_payroll_tds(
     }
 
 
+def _has_pending_adhoc(pr: Payroll) -> bool:
+    return any(float(getattr(pr, f, 0) or 0) > 0 for f in ("bonus", "incentive", "commission"))
+
+
+def _absorb_pending_adhoc(existing: Payroll, fresh: Payroll) -> None:
+    """Carry ad-hoc earnings recorded on a pending-ad-hoc row onto the freshly
+    generated payroll, then retire the pending row.
+
+    Bonuses / incentives / commissions are additive one-off earnings — the run
+    must ADD them to (never drop them from) the generated payslip, and net pay
+    must reflect them.
+    """
+    for _f in ("bonus", "commission", "incentive", "other_earnings"):
+        pending = float(getattr(existing, _f, 0) or 0)
+        if pending:
+            setattr(fresh, _f, float(getattr(fresh, _f, 0) or 0) + pending)
+    if existing.notes:
+        fresh.notes = ((fresh.notes or "") + ("; " if fresh.notes else "") + str(existing.notes))
+    recompute_payroll_totals(fresh)
+    existing.deleted_at = ist_now_naive()
+
+
 @router.post("/api/payroll/generate", tags=["Payroll"])
 def generate_payroll_endpoint(
     employeeId: int,
@@ -971,7 +1201,27 @@ def generate_payroll_endpoint(
     if locked:
         raise HTTPException(status_code=409, detail="Payroll period is locked; reopen before regenerating")
     assert_company_allowed(db, current_user, emp.company_id)
+    existing = db.query(Payroll).filter(
+        Payroll.deleted_at.is_(None),
+        Payroll.employee_id == employeeId,
+        Payroll.month == month,
+        Payroll.year == year,
+    ).first()
+    if existing and not _is_pending_adhoc_row(existing):
+        # Already generated — never create a duplicate payslip row.
+        return {
+            "message": "Payroll already exists for this period",
+            "payrollId": existing.id,
+            "netSalary": existing.net_salary,
+            "skipped": True,
+            "emailSent": False,
+            "emailSkipped": "",
+        }
     payroll = generate_payroll_record(db, emp, month, year)
+    if existing:
+        # Merge the recorded bonuses/incentives into the fresh payslip.
+        _absorb_pending_adhoc(existing, payroll)
+        db.commit()
     email_sent = False
     email_skipped = ""
     if email:
@@ -1103,6 +1353,13 @@ def _run_payroll_job(run_id: int):
                 if existing:
                     if existing.status == "locked":
                         return {"employeeId": emp_id, "name": name, "reason": "Payroll period is locked"}
+                    if _is_pending_adhoc_row(existing):
+                        # Bonuses/incentives were recorded before the run —
+                        # generate the real payslip and merge them in.
+                        pr = generate_payroll_record(s, emp, month, year)
+                        _absorb_pending_adhoc(existing, pr)
+                        s.commit()
+                        return {"employeeId": emp_id, "name": name, "netSalary": pr.net_salary, "payrollId": pr.id, "email": emp_email}
                     return {"employeeId": emp_id, "name": name, "reason": "Already exists"}
                 pr = generate_payroll_record(s, emp, month, year)
                 return {"employeeId": emp_id, "name": name, "netSalary": pr.net_salary, "payrollId": pr.id, "email": emp_email}
@@ -1598,9 +1855,13 @@ def reset_payroll_period(
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
 
     now = ist_now_naive()
-    count = len(records)
+    # Pending ad-hoc earnings (bonuses / incentives recorded before the run)
+    # must survive a wipe-and-regenerate — the fresh payslips merge them in.
+    preserved = [r for r in records if _is_pending_adhoc_row(r) and _has_pending_adhoc(r)]
+    to_delete = [r for r in records if not (_is_pending_adhoc_row(r) and _has_pending_adhoc(r))]
+    count = len(to_delete)
     # Hard-delete the selected period's payroll so the database stays clean.
-    for pr in records:
+    for pr in to_delete:
         db.delete(pr)
     db.commit()
 
@@ -1621,7 +1882,8 @@ def reset_payroll_period(
 
     _create_audit_log(
         db, current_user, "reset_payroll", "payroll", None,
-        f"Wiped {count} payroll record(s) for {month}/{year} to regenerate fresh payslips",
+        f"Wiped {count} payroll record(s) for {month}/{year} to regenerate fresh payslips"
+        + (f" ({len(preserved)} pending bonus/incentive row(s) preserved)" if preserved else ""),
     )
 
     # Record who re-ran this period on the matching payroll run for Run History.
@@ -1629,8 +1891,10 @@ def reset_payroll_period(
     db.commit()
 
     return {
-        "message": f"Wiped {count} payroll record(s) for {month}/{year}. You can now generate fresh payslips.",
+        "message": f"Wiped {count} payroll record(s) for {month}/{year}. You can now generate fresh payslips."
+        + (f" {len(preserved)} pending bonus/incentive row(s) kept and will be merged." if preserved else ""),
         "deleted": count,
+        "preserved": len(preserved),
     }
 
 
@@ -2034,10 +2298,154 @@ def update_payroll_record(
 
     for k, v in updates.items():
         setattr(pr, k, v)
+    # Server-side recalculation keeps the record internally consistent:
+    # net = total_earnings - total_deductions (after applying the edits).
+    # Always recompute so take-home pay can never drift from its components.
+    recompute_payroll_totals(pr)
     pr.updated_at = ist_now_naive()
     db.commit()
     db.refresh(pr)
     return pr
+
+
+# ── Pre-run deductions (queued on the Payroll page before the run) ────────
+# Stored rows are folded into other_deductions/total_deductions by the
+# engine itself (preview + generate + recalculate share the one function),
+# so a queued recovery can never diverge between preview and payslip.
+
+class PreDeductionItem(BaseModel):
+    employeeId: int
+    amount: float
+    reason: Optional[str] = None
+
+
+class PreDeductionBulk(BaseModel):
+    month: int
+    year: int
+    companyId: Optional[int] = None
+    items: List[PreDeductionItem]
+
+
+@router.get("/api/payroll/pre-deductions", tags=["Payroll"])
+def list_pre_deductions(
+    month: int,
+    year: int,
+    companyId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from models import PayrollPreDeduction
+    q = db.query(PayrollPreDeduction).filter(
+        PayrollPreDeduction.month == month,
+        PayrollPreDeduction.year == year,
+        PayrollPreDeduction.deleted_at.is_(None),
+    )
+    if current_user.organization_id:
+        q = q.filter(PayrollPreDeduction.organization_id == current_user.organization_id)
+    scope = resolve_company_scope(db, current_user, companyId)
+    if scope is not None:
+        q = q.filter(PayrollPreDeduction.company_id == scope)
+    rows = q.order_by(PayrollPreDeduction.id).all()
+    out = []
+    for r in rows:
+        emp = db.query(Employee).filter(Employee.id == r.employee_id).first()
+        out.append({
+            "id": r.id,
+            "employeeId": r.employee_id,
+            "employeeName": f"{emp.first_name} {emp.last_name}" if emp else None,
+            "employeeCode": emp.employee_code if emp else None,
+            "amount": float(r.amount or 0),
+            "reason": r.reason or "",
+        })
+    return {"month": month, "year": year, "items": out, "total": sum(x["amount"] for x in out)}
+
+
+@router.post("/api/payroll/pre-deductions", tags=["Payroll"])
+def save_pre_deductions(
+    data: PreDeductionBulk,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue one-off deductions for a pay period (per-employee upsert).
+
+    Re-queuing an employee replaces that employee's pending amount; queued
+    rows for other employees are untouched. Amounts must be positive; each
+    employee must belong to the caller's org. Company defaults to the
+    employee's own company when not given.
+    """
+    from models import PayrollPreDeduction
+    if not (1 <= data.month <= 12) or data.year < 2000:
+        raise HTTPException(status_code=400, detail="Invalid month/year")
+    if data.companyId is not None:
+        require_write_company(db, current_user, data.companyId)
+    items = data.items or []
+    clean = []
+    for it in items:
+        amt = round(float(it.amount or 0), 2)
+        if amt <= 0:
+            raise HTTPException(status_code=400, detail="Amounts must be greater than zero")
+        if amt > 10_000_000:
+            raise HTTPException(status_code=400, detail="Amount too large")
+        emp = db.query(Employee).filter(
+            Employee.id == it.employeeId,
+            Employee.deleted_at.is_(None),
+        ).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail=f"Employee {it.employeeId} not found")
+        org_owned(emp, current_user.organization_id)
+        assert_company_allowed(db, current_user, emp.company_id)
+        clean.append((emp, amt, (it.reason or "").strip()[:255]))
+
+    # Upsert semantics: an existing pending row for the same employee+period
+    # is REPLACED by the new amount; other employees' queued rows are kept.
+    emp_ids = [emp.id for emp, _a, _r in clean]
+    if emp_ids:
+        old = db.query(PayrollPreDeduction).filter(
+            PayrollPreDeduction.month == data.month,
+            PayrollPreDeduction.year == data.year,
+            PayrollPreDeduction.employee_id.in_(emp_ids),
+            PayrollPreDeduction.deleted_at.is_(None),
+        )
+        if current_user.organization_id:
+            old = old.filter(PayrollPreDeduction.organization_id == current_user.organization_id)
+        for r in old.all():
+            r.deleted_at = ist_now_naive()
+    for emp, amt, reason in clean:
+        db.add(PayrollPreDeduction(
+            employee_id=emp.id,
+            organization_id=emp.organization_id,
+            company_id=data.companyId if data.companyId is not None else emp.company_id,
+            month=data.month,
+            year=data.year,
+            amount=amt,
+            reason=reason or None,
+            created_by=getattr(current_user, "id", None),
+        ))
+    db.commit()
+    invalidate_cache("hrms:tenant:*")
+    return {"message": f"{len(clean)} pre-run deduction(s) saved", "saved": len(clean)}
+
+
+@router.delete("/api/payroll/pre-deductions/{row_id}", tags=["Payroll"])
+def delete_pre_deduction(
+    row_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from models import PayrollPreDeduction
+    q = db.query(PayrollPreDeduction).filter(
+        PayrollPreDeduction.id == row_id,
+        PayrollPreDeduction.deleted_at.is_(None),
+    )
+    if current_user.organization_id:
+        q = q.filter(PayrollPreDeduction.organization_id == current_user.organization_id)
+    row = q.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    row.deleted_at = ist_now_naive()
+    db.commit()
+    invalidate_cache("hrms:tenant:*")
+    return {"message": "Removed"}
 
 
 @cached(ttl=60)
@@ -2972,6 +3380,160 @@ def export_compliance_challans(
         content="\ufeff" + buf.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename=compliance_challans_{year}-{month}.csv"},
+    )
+
+
+@router.get("/api/payroll/compliance-calendar", tags=["Payroll"])
+def get_compliance_calendar(
+    lookback: int = 1,
+    horizon: int = 3,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """What we owe, to whom, by when — statutory filing obligations with status.
+
+    Computed from the configured due-date rules (org.settings.payroll.
+    filing_due_dates overrides the defaults) plus filed marks in
+    org.settings.payroll.filing_status.
+    """
+    from services.compliance_calendar import build_calendar
+    org_id = current_user.organization_id
+    items = build_calendar(db, org_id, lookback=max(0, min(lookback, 6)), horizon=max(1, min(horizon, 12)))
+    return {
+        "today": date.today().isoformat(),
+        "items": items,
+        "counts": {
+            "overdue": sum(1 for i in items if i["status"] == "overdue"),
+            "due_soon": sum(1 for i in items if i["status"] == "due_soon"),
+            "filed": sum(1 for i in items if i["status"] == "filed"),
+            "upcoming": sum(1 for i in items if i["status"] == "upcoming"),
+        },
+    }
+
+
+@router.post("/api/payroll/compliance-calendar/file", tags=["Payroll"])
+def mark_filing_filed(
+    payload: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a filing obligation as filed (body: {code, periodKey, notes?})."""
+    from services.compliance_calendar import mark_filed
+    body = payload or {}
+    code = body.get("code")
+    period_key = body.get("periodKey")
+    if not code or not period_key:
+        raise HTTPException(status_code=400, detail="code and periodKey are required")
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    entry = mark_filed(
+        db, org,
+        code=code, period_key=period_key,
+        user_id=current_user.id,
+        user_name=getattr(current_user, "full_name", "") or current_user.email,
+        notes=body.get("notes") or "",
+    )
+    db.commit()
+    return {"message": f"{code} marked as filed", "entry": entry}
+
+
+@router.delete("/api/payroll/compliance-calendar/file", tags=["Payroll"])
+def unmark_filing_filed(
+    periodKey: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Undo a filed mark (e.g. wrong period selected)."""
+    from services.compliance_calendar import unmark_filed
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    if not unmark_filed(db, org, periodKey):
+        raise HTTPException(status_code=404, detail="No filed mark for that period")
+    db.commit()
+    return {"message": "Filed mark removed"}
+
+
+@router.post("/api/payroll/tax-planner", tags=["Payroll"])
+def payroll_tax_planner(
+    data: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Old vs new regime comparison + savings tips (the take-home optimizer).
+
+    Pass employeeId to auto-fill salary figures from their current structure and
+    tax declarations; any explicit figure overrides the prefill. Slab math is
+    the payroll engine's own, so the plan matches the payslip.
+    """
+    from services.tax_planner import plan_tax
+
+    body = data or {}
+    org_id = current_user.organization_id
+    month = int(body.get("month") or ist_now_naive().month)
+    year = int(body.get("year") or ist_now_naive().year)
+
+    annual_gross = body.get("annualGross")
+    annual_basic = body.get("annualBasic")
+    annual_hra = body.get("annualHra")
+    decl_defaults: dict = {}
+
+    if body.get("employeeId"):
+        emp = db.query(Employee).filter(
+            Employee.deleted_at.is_(None), Employee.id == int(body["employeeId"]),
+        ).first()
+        if not emp:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        if current_user.role != "superadmin":
+            org_owned(emp, current_user.organization_id)
+        assert_company_allowed(db, current_user, emp.company_id)
+        if annual_gross is None or annual_basic is None or annual_hra is None:
+            calc = calculate_payroll(db, emp, month, year, assume_full_attendance=True)
+            annual_gross = annual_gross if annual_gross is not None else float(calc.get("gross_salary") or 0) * 12
+            annual_basic = annual_basic if annual_basic is not None else float(calc.get("basic_salary") or 0) * 12
+            annual_hra = annual_hra if annual_hra is not None else float(calc.get("hra") or 0) * 12
+        try:
+            from services.payroll_service import _get_effective_declaration
+            decl = _get_effective_declaration(db, emp, year, month)
+        except Exception:
+            decl = None
+        if decl is not None:
+            decl_defaults = {
+                "rentPaidMonthly": float(getattr(decl, "hra_monthly_rent", 0) or 0),
+                "metro": bool(getattr(decl, "hra_is_metro", False)),
+                "section80c": float(decl.deduction_80c or 0),
+                "section80d": float(decl.deduction_80d or 0),
+                "nps80ccd1b": float(decl.nps_deduction or 0),
+                "homeLoanInterest": float(decl.home_loan_interest or 0),
+                "otherIncome": float(decl.other_income or 0),
+            }
+
+    if annual_gross is None or annual_basic is None or annual_hra is None:
+        raise HTTPException(
+            status_code=400,
+            detail="annualGross, annualBasic and annualHra are required (or pass employeeId)",
+        )
+
+    def pick(key: str, fallback: float) -> float:
+        v = body.get(key)
+        try:
+            return float(v) if v is not None else float(fallback or 0)
+        except (TypeError, ValueError):
+            return float(fallback or 0)
+
+    return plan_tax(
+        db, org_id,
+        annual_gross=float(annual_gross),
+        annual_basic=float(annual_basic),
+        annual_hra=float(annual_hra),
+        rent_paid_monthly=pick("rentPaidMonthly", decl_defaults.get("rentPaidMonthly", 0)),
+        metro=bool(body["metro"]) if body.get("metro") is not None else bool(decl_defaults.get("metro", True)),
+        section_80c=pick("section80c", decl_defaults.get("section80c", 0)),
+        section_80d=pick("section80d", decl_defaults.get("section80d", 0)),
+        nps_80ccd_1b=pick("nps80ccd1b", decl_defaults.get("nps80ccd1b", 0)),
+        home_loan_interest=pick("homeLoanInterest", decl_defaults.get("homeLoanInterest", 0)),
+        other_income=pick("otherIncome", decl_defaults.get("otherIncome", 0)),
     )
 
 

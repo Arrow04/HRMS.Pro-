@@ -69,23 +69,41 @@ export const deletePayrollComponent = (id: number) =>
 // ── Statutory Settings ──
 
 export interface StatutorySetting {
-  pf_applicable?: boolean;
+  pf_applicable?: boolean | null;
   pf_employee_rate?: number;
   pf_employer_rate?: number;
+  pf_wage_ceiling?: number;
   pf_max_monthly?: number;
   pf_min_basic_for_exclusion?: number;
-  esi_applicable?: boolean;
+  pf_edli_rate?: number;
+  pf_edli_max_monthly?: number;
+  pf_admin_rate?: number;
+  pf_admin_min_monthly?: number;
+  eps_wage_ceiling?: number;
+  eps_employer_rate?: number;
+  nps_employee_rate?: number;
+  nps_employer_rate?: number;
+  esi_applicable?: boolean | null;
   esi_employee_rate?: number;
   esi_employer_rate?: number;
   esi_gross_ceiling?: number;
-  pt_applicable?: boolean;
+  esi_disabled_ceiling?: number;
+  pt_applicable?: boolean | null;
   pt_monthly_amount?: number;
   pt_min_gross?: number;
-  lwf_applicable?: boolean;
+  lwf_applicable?: boolean | null;
   lwf_employee_rate?: number;
   lwf_employer_rate?: number;
-  gratuity_applicable?: boolean;
+  gratuity_applicable?: boolean | null;
   gratuity_rate?: number;
+  gratuity_eligible_years?: number;
+  gratuity_days_per_year?: number;
+  gratuity_tax_exempt_ceiling?: number;
+  bonus_applicable?: boolean | null;
+  bonus_min_rate?: number;
+  bonus_max_rate?: number;
+  bonus_eligible_ceiling?: number;
+  bonus_wage_ceiling?: number;
 }
 
 export const getStatutorySettings = (companyId?: number) =>
@@ -97,8 +115,8 @@ export const upsertStatutorySettings = (data: StatutorySetting, companyId?: numb
 export interface StatutoryPreset {
   code: string;
   label: string;
-  pf_applicable?: boolean;
-  esi_applicable?: boolean;
+  pf_applicable?: boolean | null;
+  esi_applicable?: boolean | null;
 }
 
 export const getStatutoryPresets = () =>
@@ -221,11 +239,86 @@ export interface StateInfo {
 export const getComplianceStates = () =>
   api.get<StateInfo[]>('/payroll-config/compliance/states').then(r => r.data);
 
-export const getStatePT = (stateCode: string) =>
-  api.get(`/payroll-config/compliance/${stateCode}/pt`).then(r => r.data);
+export interface PTSlab {
+  id?: number | null;
+  from_gross: number;
+  to_gross: number | null;
+  amount: number;
+  description?: string;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  source?: string;
+  organization_id?: number | null;
+  company_id?: number | null;
+}
 
-export const getStateLWF = (stateCode: string) =>
-  api.get(`/payroll-config/compliance/${stateCode}/lwf`).then(r => r.data);
+export type ComplianceScope = 'static' | 'platform' | 'organization' | 'company';
+
+export interface StatePTDetail {
+  state_code: string;
+  state_name: string;
+  slabs: PTSlab[];
+  annual_max?: number;
+  notes?: string;
+  source: 'static' | 'db';
+  scope: ComplianceScope;
+  history: PTSlab[];
+}
+
+export interface StateLWFDetail {
+  id?: number | null;
+  state_code?: string;
+  state_name?: string;
+  applicable: boolean;
+  employee_contribution: number;
+  employer_contribution: number;
+  frequency?: string;
+  max_wage_for_applicability?: number | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  source?: 'static' | 'db' | string;
+  scope?: ComplianceScope;
+  notes?: string;
+  history?: any[];
+}
+
+export interface PTReplacePayload {
+  effective_from: string;
+  slabs: { from_gross: number; to_gross: number | null; amount: number; description?: string }[];
+  companyId?: number | null;
+}
+
+export interface LWFReplacePayload {
+  effective_from: string;
+  companyId?: number | null;
+  applicable: boolean;
+  employee_contribution: number;
+  employer_contribution: number;
+  frequency: string;
+  max_wage_for_applicability?: number | null;
+}
+
+export const getStatePT = (stateCode: string, companyId?: number | null) =>
+  api.get<StatePTDetail>(`/payroll-config/compliance/${stateCode}/pt`, {
+    params: companyId != null ? { companyId } : {},
+  }).then(r => r.data);
+
+export const getStateLWF = (stateCode: string, companyId?: number | null) =>
+  api.get<StateLWFDetail>(`/payroll-config/compliance/${stateCode}/lwf`, {
+    params: companyId != null ? { companyId } : {},
+  }).then(r => r.data);
+
+export const replaceStatePT = (stateCode: string, data: PTReplacePayload) =>
+  api.put(`/payroll-config/compliance/${stateCode}/pt`, data).then(r => r.data);
+
+export const replaceStateLWF = (stateCode: string, data: LWFReplacePayload) =>
+  api.put(`/payroll-config/compliance/${stateCode}/lwf`, data).then(r => r.data);
+
+export const deleteStatePTRow = (rowId: number) =>
+  api.delete(`/payroll-config/compliance/pt/${rowId}`).then(r => r.data);
+
+export const deleteStateLWFRow = (rowId: number) =>
+  api.delete(`/payroll-config/compliance/lwf/${rowId}`).then(r => r.data);
 
 export const calculatePT = (grossSalary: number, stateCode: string) =>
   api.post('/payroll-config/compliance/calculate-pt', { gross_salary: grossSalary, state_code: stateCode }).then(r => r.data);

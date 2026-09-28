@@ -18,7 +18,7 @@ from core.auth import check_role, get_current_user
 from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from data.state_compliance import (
     PROFESSIONAL_TAX, LWF, get_all_state_codes, get_lwf_state_codes,
-    get_pt_for_state, get_lwf_for_state,
+    get_pt_for_state, get_lwf_for_state, resolve_state_key,
 )
 from database import get_db
 from models import (
@@ -70,6 +70,11 @@ class PayrollPolicyCreate(BaseModel):
     gratuity_rate: float = 4.81
     default_currency: str = "INR"
     allow_negative_net: bool = False
+    daily_rate_divisor: float = 30.0
+    monthly_divisor_for_weekly: float = 4.33
+    fy_start_month: int = 4
+    reporting_currency: Optional[str] = None
+    allow_multi_currency: bool = False
 
 class PayrollPolicyUpdate(BaseModel):
     name: Optional[str] = None
@@ -82,6 +87,11 @@ class PayrollPolicyUpdate(BaseModel):
     gratuity_rate: Optional[float] = None
     default_currency: Optional[str] = None
     allow_negative_net: Optional[bool] = None
+    daily_rate_divisor: Optional[float] = None
+    monthly_divisor_for_weekly: Optional[float] = None
+    fy_start_month: Optional[int] = None
+    reporting_currency: Optional[str] = None
+    allow_multi_currency: Optional[bool] = None
 
 class PayrollComponentCreate(BaseModel):
     payroll_policy_id: Optional[int] = None
@@ -123,7 +133,7 @@ class PayrollComponentUpdate(BaseModel):
 class StatutorySettingCreate(BaseModel):
     pf_applicable: bool = True
     pf_employee_rate: float = 12.0
-    pf_employer_rate: float = 12.0
+    pf_employer_rate: float = 3.67
     pf_wage_ceiling: float = 15000.0
     pf_max_monthly: float = 1800.0
     pf_min_basic_for_exclusion: float = 15000.0
@@ -165,6 +175,9 @@ class StatutorySettingUpdate(BaseModel):
     pf_admin_rate: Optional[float] = None
     pf_admin_min_monthly: Optional[float] = None
     eps_wage_ceiling: Optional[float] = None
+    eps_employer_rate: Optional[float] = None
+    nps_employee_rate: Optional[float] = None
+    nps_employer_rate: Optional[float] = None
     esi_applicable: Optional[bool] = None
     esi_employee_rate: Optional[float] = None
     esi_employer_rate: Optional[float] = None
@@ -184,6 +197,7 @@ class StatutorySettingUpdate(BaseModel):
     bonus_applicable: Optional[bool] = None
     bonus_min_rate: Optional[float] = None
     bonus_max_rate: Optional[float] = None
+    bonus_eligible_ceiling: Optional[float] = None
     bonus_wage_ceiling: Optional[float] = None
 
 class TaxSlabSchema(BaseModel):
@@ -220,31 +234,32 @@ class TaxRegimeUpdate(BaseModel):
 class AttendancePolicyCreate(BaseModel):
     name: str = "Default Attendance Policy"
     description: Optional[str] = None
-    working_days_per_week: int = 6
+    status: Optional[str] = None
+    working_days_per_week: Optional[int] = 6
     working_days: str = "0,1,2,3,4,5,6"
     half_day_as_full_paid: bool = True
     paid_leave_as_present: bool = True
     holiday_as_present: bool = True
-    overtime_threshold_hours: float = 8.0
-    overtime_rate: float = 1.5
+    overtime_threshold_hours: Optional[float] = 8.0
+    overtime_rate: Optional[float] = 1.5
     overtime_tiers: Optional[list] = None
     shift_differential_rates: Optional[dict] = None
-    late_mark_threshold_minutes: int = 15
-    half_day_threshold_hours: float = 4.0
+    late_mark_threshold_minutes: Optional[int] = 15
+    half_day_threshold_hours: Optional[float] = 4.0
     wfh_allowed: bool = False
     geofence_enabled: bool = False
-    geofence_radius: float = 100.0
+    geofence_radius: Optional[float] = 100.0
     effective_from: Optional[str] = None
     shift_id: Optional[int] = None
     late_to_absent_count: Optional[int] = None
     early_to_absent_count: Optional[int] = None
     missing_checkout_rule: Optional[str] = None
     company_id: Optional[int] = None
-    check_in_time: str = "09:00"
-    check_out_time: str = "18:00"
-    break_hours: float = 1.0
+    check_in_time: Optional[str] = "09:00"
+    check_out_time: Optional[str] = "18:00"
+    break_hours: Optional[float] = 1.0
     comp_off_enabled: bool = False
-    max_comp_off_balance: int = 5
+    max_comp_off_balance: Optional[int] = 5
     max_overtime_hours_per_month: Optional[float] = None
     selfie_checkin_enabled: bool = False
     ip_restriction_enabled: bool = False
@@ -252,7 +267,7 @@ class AttendancePolicyCreate(BaseModel):
     wifi_checkin_enabled: bool = False
     allowed_ssids: Optional[list] = None
     auto_approve_if_no_mark: bool = False
-    min_hours_for_full_day: float = 8.0
+    min_hours_for_full_day: Optional[float] = 8.0
     shift_based_payroll: bool = False
 
 class AttendancePolicyUpdate(BaseModel):
@@ -548,6 +563,9 @@ def get_statutory_settings(
         "pf_admin_rate": setting.pf_admin_rate,
         "pf_admin_min_monthly": setting.pf_admin_min_monthly,
         "eps_wage_ceiling": setting.eps_wage_ceiling,
+        "eps_employer_rate": setting.eps_employer_rate,
+        "nps_employee_rate": setting.nps_employee_rate,
+        "nps_employer_rate": setting.nps_employer_rate,
         "esi_applicable": setting.esi_applicable,
         "esi_employee_rate": setting.esi_employee_rate,
         "esi_employer_rate": setting.esi_employer_rate,
@@ -567,6 +585,7 @@ def get_statutory_settings(
         "bonus_applicable": setting.bonus_applicable,
         "bonus_min_rate": setting.bonus_min_rate,
         "bonus_max_rate": setting.bonus_max_rate,
+        "bonus_eligible_ceiling": setting.bonus_eligible_ceiling,
         "bonus_wage_ceiling": setting.bonus_wage_ceiling,
     }
 
@@ -577,6 +596,9 @@ def upsert_statutory_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    for name, val in data.model_dump().items():
+        if isinstance(val, (int, float)) and not isinstance(val, bool) and val < 0:
+            raise HTTPException(status_code=400, detail=f"{name} cannot be negative")
     q = db.query(StatutorySetting).filter(
         StatutorySetting.organization_id == current_user.organization_id,
     )
@@ -599,12 +621,31 @@ def upsert_statutory_settings(
     return {"message": "Statutory settings updated", "id": setting.id}
 
 
+@router.delete("/statutory-settings")
+def delete_statutory_settings(
+    companyId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(StatutorySetting).filter(
+        StatutorySetting.organization_id == current_user.organization_id,
+    )
+    if companyId is not None:
+        q = q.filter(StatutorySetting.company_id == companyId)
+    setting = q.first()
+    if not setting:
+        raise HTTPException(status_code=404, detail="No statutory settings found")
+    db.delete(setting)
+    db.commit()
+    return {"message": "Statutory settings deleted"}
+
+
 # Country-specific statutory presets. The engine is country-agnostic; these are
 # sensible one-click starting points (always fine-tunable via the PUT endpoint).
 COUNTRY_STATUTORY_PRESETS = {
     "india": {
         "label": "India",
-        "pf_applicable": True, "pf_employee_rate": 12.0, "pf_employer_rate": 12.0,
+        "pf_applicable": True, "pf_employee_rate": 12.0, "pf_employer_rate": 3.67,
         "pf_max_monthly": 1800.0, "pf_min_basic_for_exclusion": 0,
         # pf_min_basic_for_exclusion=0 means ALL employees are PF members (no exclusion).
         # Per EPF Act, PF is mandatory for employees earning basic <= ₹15,000/month.
@@ -934,7 +975,8 @@ def create_attendance_policy(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    payload = data.model_dump()
+    # Wizard sends null for untouched fields — drop them so column defaults apply
+    payload = data.model_dump(exclude_none=True)
     payload["working_days"] = _derive_working_days(
         payload.get("working_days_per_week", 6), payload.get("working_days")
     )
@@ -1002,49 +1044,412 @@ def list_compliance_states():
     return sorted(states, key=lambda s: s["state_name"])
 
 
+def _ser_pt_row(r) -> dict:
+    return {
+        "id": r.id,
+        "from_gross": r.from_gross,
+        "to_gross": r.to_gross,
+        "amount": r.amount,
+        "description": r.description or "",
+        "annual_max": r.annual_max,
+        "effective_from": r.effective_from.isoformat() if r.effective_from else None,
+        "effective_to": r.effective_to.isoformat() if r.effective_to else None,
+        "source": r.source or "custom",
+        "organization_id": r.organization_id,
+        "company_id": r.company_id,
+    }
+
+
+def _ser_lwf_row(r) -> dict:
+    return {
+        "id": r.id,
+        "applicable": bool(r.applicable),
+        "employee_contribution": float(r.employee_contribution or 0),
+        "employer_contribution": float(r.employer_contribution or 0),
+        "frequency": r.frequency or "monthly",
+        "max_wage_for_applicability": r.max_wage_for_applicability,
+        "effective_from": r.effective_from.isoformat() if r.effective_from else None,
+        "effective_to": r.effective_to.isoformat() if r.effective_to else None,
+        "source": r.source or "custom",
+        "organization_id": r.organization_id,
+        "company_id": r.company_id,
+    }
+
+
+def _assert_company_in_org(db: Session, org_id: int, company_id: Optional[int]) -> None:
+    if company_id is None:
+        return
+    from models import Company
+    if not db.query(Company).filter(
+        Company.id == company_id, Company.organization_id == org_id
+    ).first():
+        raise HTTPException(status_code=404, detail=f"Company {company_id} not found in your organization")
+
+
+def _parse_iso_date(value: str, field: str):
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(value)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid {field}: expected YYYY-MM-DD")
+
+
 @router.get("/compliance/{state_code}/pt")
-def get_state_pt(state_code: str):
-    """Get Professional Tax slabs for a state."""
-    pt = get_pt_for_state(state_code)
-    if not pt:
+def get_state_pt(
+    state_code: str,
+    companyId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Professional Tax slabs for a state, scope-resolved:
+    your company override -> your org override -> platform default -> static."""
+    from datetime import date as _date
+    from models import StatePTSlab
+    from services.compliance_engine import _active_rows_for_scope
+
+    key = resolve_state_key(state_code)
+    static = get_pt_for_state(state_code)
+    if not key or not static:
         raise HTTPException(status_code=404, detail=f"State '{state_code}' not found in PT database")
-    return pt
+    org_id = current_user.organization_id
+    _assert_company_in_org(db, org_id, companyId)
+    today = _date.today()
+    rows, scope = _active_rows_for_scope(db, StatePTSlab, key, today, org_id, companyId)
+    if rows:
+        rows = sorted(rows, key=lambda r: (r.from_gross or 0.0))
+
+    if rows:
+        slabs = [_ser_pt_row(r) for r in rows]
+        annual_max = max((float(r.annual_max or 0) for r in rows), default=0) or max(
+            (float(r.amount or 0) for r in rows), default=0
+        ) * 12
+        out = {
+            "state_code": key,
+            "state_name": rows[0].state_name or static.get("state_name", state_code),
+            "slabs": slabs,
+            "annual_max": annual_max,
+            "notes": static.get("notes", ""),
+            "source": "db",
+            "scope": scope,
+        }
+    else:
+        slabs = [
+            {**s, "id": None, "source": "static", "effective_from": None,
+             "effective_to": None, "organization_id": None, "company_id": None}
+            for s in static.get("slabs", [])
+        ]
+        out = {
+            **static,
+            "state_code": key,
+            "slabs": slabs,
+            "source": "static",
+            "scope": "static",
+        }
+
+    active_ids = {s.get("id") for s in out["slabs"] if s.get("id")}
+    history_rows = (
+        db.query(StatePTSlab)
+        .filter(StatePTSlab.state_code == key)
+        .filter(StatePTSlab.organization_id == org_id)
+        .order_by(StatePTSlab.effective_from.desc(), StatePTSlab.from_gross.asc())
+        .all()
+    )
+    out["history"] = [_ser_pt_row(r) for r in history_rows if r.id not in active_ids]
+    return out
 
 
 @router.get("/compliance/{state_code}/lwf")
-def get_state_lwf(state_code: str):
-    """Get Labour Welfare Fund rates for a state."""
-    lwf_data = get_lwf_for_state(state_code)
-    if not lwf_data:
+def get_state_lwf(
+    state_code: str,
+    companyId: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Labour Welfare Fund rates for a state, scope-resolved like PT."""
+    from datetime import date as _date
+    from models import StateLWFConfig
+    from services.compliance_engine import _active_rows_for_scope
+
+    key = resolve_state_key(state_code)
+    static = get_lwf_for_state(state_code)
+    if not key or not static:
         raise HTTPException(status_code=404, detail=f"State '{state_code}' not found in LWF database")
-    return lwf_data
+    org_id = current_user.organization_id
+    _assert_company_in_org(db, org_id, companyId)
+    today = _date.today()
+    rows, scope = _active_rows_for_scope(db, StateLWFConfig, key, today, org_id, companyId)
+
+    if rows:
+        rows.sort(key=lambda r: (r.effective_from or _date.min), reverse=True)
+        out = {
+            **_ser_lwf_row(rows[0]),
+            "state_code": key,
+            "state_name": rows[0].state_name or static.get("state_name", state_code),
+            "notes": static.get("notes", ""),
+            "source": "db",
+            "scope": scope,
+        }
+    else:
+        out = {
+            **static,
+            "state_code": key,
+            "id": None,
+            "effective_from": None,
+            "effective_to": None,
+            "organization_id": None,
+            "company_id": None,
+            "source": "static",
+            "scope": "static",
+        }
+
+    active_id = out.get("id")
+    history_rows = (
+        db.query(StateLWFConfig)
+        .filter(StateLWFConfig.state_code == key)
+        .filter(StateLWFConfig.organization_id == org_id)
+        .order_by(StateLWFConfig.effective_from.desc())
+        .all()
+    )
+    out["history"] = [_ser_lwf_row(r) for r in history_rows if r.id != active_id]
+    return out
+
+
+class PTSlabInput(BaseModel):
+    from_gross: float
+    to_gross: Optional[float] = None
+    amount: float
+    description: str = ""
+
+
+class PTReplaceRequest(BaseModel):
+    effective_from: str  # YYYY-MM-DD
+    slabs: List[PTSlabInput]
+    companyId: Optional[int] = None
+
+
+@router.put("/compliance/{state_code}/pt")
+def replace_state_pt(
+    state_code: str,
+    req: PTReplaceRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Version-on-change replace of the PT slab set for your company/org scope.
+
+    In-force rows are closed the day before `effective_from`; rows starting on
+    or after it are purged (never used); all earlier history is preserved so
+    past payroll runs stay reproducible.
+    """
+    from datetime import date as _date, timedelta
+    from models import StatePTSlab
+
+    key = resolve_state_key(state_code)
+    if not key:
+        raise HTTPException(status_code=404, detail=f"State '{state_code}' not found")
+    if not req.slabs:
+        raise HTTPException(status_code=400, detail="At least one slab is required")
+    org_id = current_user.organization_id
+    _assert_company_in_org(db, org_id, req.companyId)
+    new_from = _parse_iso_date(req.effective_from, "effective_from")
+
+    ordered = sorted(req.slabs, key=lambda s: s.from_gross)
+    for i, s in enumerate(ordered):
+        if s.amount < 0:
+            raise HTTPException(status_code=400, detail="Slab amounts cannot be negative")
+        if s.from_gross < 0:
+            raise HTTPException(status_code=400, detail="Slab ranges cannot be negative")
+        if s.to_gross is not None and s.to_gross < s.from_gross:
+            raise HTTPException(status_code=400, detail=f"Slab '{s.from_gross}' has to_gross below from_gross")
+        if i > 0:
+            prev = ordered[i - 1]
+            if prev.to_gross is None:
+                raise HTTPException(status_code=400, detail="Only the last slab may have an open-ended upper range")
+            if s.from_gross < prev.to_gross:
+                raise HTTPException(status_code=400, detail=f"Slab {s.from_gross} overlaps the previous slab (up to {prev.to_gross})")
+
+    q = db.query(StatePTSlab).filter(
+        StatePTSlab.state_code == key,
+        StatePTSlab.organization_id == org_id,
+    )
+    q = q.filter(StatePTSlab.company_id == req.companyId) if req.companyId is not None else q.filter(StatePTSlab.company_id.is_(None))
+    for r in q.all():
+        if r.effective_from >= new_from:
+            db.delete(r)
+        elif r.effective_to is None or r.effective_to >= new_from:
+            r.effective_to = new_from - timedelta(days=1)
+
+    state_name = (get_pt_for_state(state_code) or {}).get("state_name", state_code)
+    for s in ordered:
+        db.add(StatePTSlab(
+            state_code=key,
+            state_name=state_name,
+            organization_id=org_id,
+            company_id=req.companyId,
+            from_gross=float(s.from_gross),
+            to_gross=float(s.to_gross) if s.to_gross is not None else None,
+            amount=float(s.amount),
+            description=s.description or "",
+            effective_from=new_from,
+            effective_to=None,
+            source="custom",
+        ))
+    db.commit()
+    scope = "company" if req.companyId is not None else "organization"
+    return {
+        "message": f"PT slabs for {state_name} updated ({scope} scope, effective {new_from.isoformat()})",
+        "effective_from": new_from.isoformat(),
+        "scope": scope,
+        "count": len(ordered),
+    }
+
+
+class LWFReplaceRequest(BaseModel):
+    effective_from: str  # YYYY-MM-DD
+    companyId: Optional[int] = None
+    applicable: bool = True
+    employee_contribution: float = 0.0
+    employer_contribution: float = 0.0
+    frequency: str = "monthly"
+    max_wage_for_applicability: Optional[float] = None
+
+
+@router.put("/compliance/{state_code}/lwf")
+def replace_state_lwf(
+    state_code: str,
+    req: LWFReplaceRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Version-on-change replace of the LWF config for your company/org scope."""
+    from datetime import date as _date, timedelta
+    from models import StateLWFConfig
+
+    key = resolve_state_key(state_code)
+    if not key:
+        raise HTTPException(status_code=404, detail=f"State '{state_code}' not found")
+    if req.frequency not in ("monthly", "half_yearly", "yearly"):
+        raise HTTPException(status_code=400, detail="frequency must be 'monthly', 'half_yearly' or 'yearly'")
+    if req.employee_contribution < 0 or req.employer_contribution < 0:
+        raise HTTPException(status_code=400, detail="Contributions cannot be negative")
+    org_id = current_user.organization_id
+    _assert_company_in_org(db, org_id, req.companyId)
+    new_from = _parse_iso_date(req.effective_from, "effective_from")
+
+    q = db.query(StateLWFConfig).filter(
+        StateLWFConfig.state_code == key,
+        StateLWFConfig.organization_id == org_id,
+    )
+    q = q.filter(StateLWFConfig.company_id == req.companyId) if req.companyId is not None else q.filter(StateLWFConfig.company_id.is_(None))
+    for r in q.all():
+        if r.effective_from >= new_from:
+            db.delete(r)
+        elif r.effective_to is None or r.effective_to >= new_from:
+            r.effective_to = new_from - timedelta(days=1)
+
+    state_name = (get_lwf_for_state(state_code) or {}).get("state_name", state_code)
+    db.add(StateLWFConfig(
+        state_code=key,
+        state_name=state_name,
+        organization_id=org_id,
+        company_id=req.companyId,
+        applicable=req.applicable,
+        employee_contribution=float(req.employee_contribution),
+        employer_contribution=float(req.employer_contribution),
+        frequency=req.frequency,
+        max_wage_for_applicability=req.max_wage_for_applicability,
+        effective_from=new_from,
+        effective_to=None,
+        source="custom",
+    ))
+    db.commit()
+    scope = "company" if req.companyId is not None else "organization"
+    return {
+        "message": f"LWF config for {state_name} updated ({scope} scope, effective {new_from.isoformat()})",
+        "effective_from": new_from.isoformat(),
+        "scope": scope,
+    }
+
+
+def _delete_dated_row(db: Session, model, row_id: int, org_id: int, label: str) -> dict:
+    from datetime import date as _date
+    r = db.query(model).filter(model.id == row_id).first()
+    if not r or r.organization_id != org_id:
+        raise HTTPException(status_code=404, detail=f"{label} row {row_id} not found")
+    today = _date.today()
+    is_active = r.effective_from <= today and (r.effective_to is None or r.effective_to >= today)
+    if is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="This row is currently in force — replace the whole set (PUT) instead of deleting it",
+        )
+    db.delete(r)
+    db.commit()
+    return {"message": f"{label} row {row_id} deleted", "id": row_id}
+
+
+@router.delete("/compliance/pt/{row_id}")
+def delete_pt_row(row_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from models import StatePTSlab
+    return _delete_dated_row(db, StatePTSlab, row_id, current_user.organization_id, "PT slab")
+
+
+@router.delete("/compliance/lwf/{row_id}")
+def delete_lwf_row(row_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from models import StateLWFConfig
+    return _delete_dated_row(db, StateLWFConfig, row_id, current_user.organization_id, "LWF config")
 
 
 class PTRequest(BaseModel):
     gross_salary: float
     state_code: str = "other"
+    companyId: Optional[int] = None
 
 
 class LWFRequest(BaseModel):
     gross_salary: float
     state_code: str
+    companyId: Optional[int] = None
 
 
 @router.post("/compliance/calculate-pt")
-def calculate_professional_tax(req: PTRequest, db: Session = Depends(get_db)):
+def calculate_professional_tax(
+    req: PTRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Calculate monthly Professional Tax for a given salary and state.
 
     This is what competitors charge extra for — we give it free and automatic.
     Keka requires manual PT slab updates when states revise rates.
-    Uses the effective-dated DB slabs when available, otherwise the static table.
+    Uses your org/company slabs when set, else platform defaults, else static.
     """
     try:
         from services.compliance_engine import calculate_professional_tax as engine_pt
         from datetime import date as _date
-        result = engine_pt(req.gross_salary, req.state_code, db=db, as_of=_date.today())
+        org_id = current_user.organization_id
+        _assert_company_in_org(db, org_id, req.companyId)
+        result = engine_pt(
+            req.gross_salary, req.state_code, db=db, as_of=_date.today(),
+            organization_id=org_id, company_id=req.companyId,
+        )
         amount = result.get("amount", 0.0)
         state_name = result.get("state", "Unknown")
-        pt_config = get_pt_for_state(req.state_code) or get_pt_for_state("other")
+        slabs: list = []
+        if result.get("source") == "db":
+            from models import StatePTSlab
+            from services.compliance_engine import _active_rows_for_scope
+            key = resolve_state_key(req.state_code)
+            rows, _scope = _active_rows_for_scope(
+                db, StatePTSlab, key, _date.today(), org_id, req.companyId
+            ) if key else ([], None)
+            slabs = [
+                {"from_gross": r.from_gross, "to_gross": r.to_gross,
+                 "amount": r.amount, "description": r.description or ""}
+                for r in rows
+            ]
+        else:
+            pt_config = get_pt_for_state(req.state_code) or get_pt_for_state("other")
+            slabs = pt_config["slabs"] if pt_config else []
         return {
             "gross_salary": req.gross_salary,
             "state_code": req.state_code,
@@ -1052,20 +1457,30 @@ def calculate_professional_tax(req: PTRequest, db: Session = Depends(get_db)):
             "monthly_pt": amount,
             "annual_pt": amount * 12,
             "source": result.get("source", "static"),
-            "slabs_applied": pt_config["slabs"] if pt_config else [],
+            "slabs_applied": slabs,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/compliance/calculate-lwf")
-def calculate_lwf_endpoint(req: LWFRequest, db: Session = Depends(get_db)):
+def calculate_lwf_endpoint(
+    req: LWFRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Calculate monthly LWF contributions for a given salary and state."""
     try:
         from services.compliance_engine import calculate_lwf as engine_lwf
         from datetime import date as _date
-        result = engine_lwf(req.gross_salary, req.state_code, db=db, as_of=_date.today())
-        lwf_config = get_lwf_for_state(req.state_code)
+        org_id = current_user.organization_id
+        _assert_company_in_org(db, org_id, req.companyId)
+        result = engine_lwf(
+            req.gross_salary, req.state_code, db=db, as_of=_date.today(),
+            organization_id=org_id, company_id=req.companyId,
+        )
         return {
             "gross_salary": req.gross_salary,
             "state_code": req.state_code,
@@ -1076,6 +1491,8 @@ def calculate_lwf_endpoint(req: LWFRequest, db: Session = Depends(get_db)):
             "frequency": result.get("frequency", "monthly"),
             "source": result.get("source", "static"),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

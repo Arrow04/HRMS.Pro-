@@ -805,21 +805,39 @@ class TestRegressionFixes:
         """Statutory bonus applies only when opted-in, India org, and gross within ceiling."""
         from services.compliance_engine import calculate_bonus
         employee.base_salary = 120000  # monthly basic 10000 -> gross ~17850 (<= 21000)
-        org.settings = {"payroll": {"statutoryBonus": True}}
+        db_session.add(StatutorySetting(
+            organization_id=org.id, bonus_applicable=True, status="active",
+        ))
         db_session.flush()
         result = calculate_payroll(db_session, employee, 6, 2026,
                                     override_pf_deduction=0, override_professional_tax=0,
                                     override_esi_deduction=0, override_tds=0)
-        expected = calculate_bonus(result["gross_salary"], 12)["minimum"] / 12
+        expected = calculate_bonus(min(result["gross_salary"], 7000.0), 12)["minimum"] / 12
         assert result["bonus"] > 0
         assert abs(result["bonus"] - expected) < 0.01
         # Off by default -> no bonus
-        org.settings = {}
+        db_session.query(StatutorySetting).filter(
+            StatutorySetting.organization_id == org.id,
+        ).delete(synchronize_session=False)
         db_session.flush()
         result2 = calculate_payroll(db_session, employee, 6, 2026,
                                      override_pf_deduction=0, override_professional_tax=0,
                                      override_esi_deduction=0, override_tds=0)
         assert result2["bonus"] == 0.0
+
+    def test_statutory_bonus_calc_cap(self, org: Organization, employee: Employee,
+                                      db_session: Session, full_attendance):
+        """Bonus is computed on wages capped at 7000 even for earners up to 21000."""
+        employee.base_salary = 120000
+        db_session.add(StatutorySetting(
+            organization_id=org.id, bonus_applicable=True, status="active",
+        ))
+        db_session.flush()
+        result = calculate_payroll(db_session, employee, 6, 2026,
+                                    override_pf_deduction=0, override_professional_tax=0,
+                                    override_esi_deduction=0, override_tds=0)
+        assert result["gross_salary"] > 7000.0
+        assert abs(result["bonus"] - round(7000.0 * 8.33 / 100, 2)) < 0.01
 
     def test_old_regime_exemptions(self, org: Organization, employee: Employee,
                                    db_session: Session, full_attendance):

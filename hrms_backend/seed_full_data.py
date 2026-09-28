@@ -313,7 +313,6 @@ def seed():
             timezone="Asia/Kolkata",
             date_format="YYYY-MM-DD",
             country="India",
-            registered_state="Karnataka",
             registered_city="Bengaluru",
         )
         session.add(org)
@@ -628,7 +627,7 @@ def seed():
             payroll_components.append(pc)
 
         statutory = StatutorySetting(
-            organization_id=org.id, pf_applicable=True, pf_employee_rate=12.0, pf_employer_rate=12.0,
+            organization_id=org.id, pf_applicable=True, pf_employee_rate=12.0, pf_employer_rate=3.67,
             pf_max_monthly=1800.0, pf_min_basic_for_exclusion=15000.0,
             esi_applicable=True, esi_employee_rate=0.75, esi_employer_rate=3.25, esi_gross_ceiling=21000.0,
             pt_applicable=True, pt_monthly_amount=200.0, pt_min_gross=10000.0,

@@ -1,10 +1,10 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Pencil, Trash2, Loader2, X, Building2, SlidersHorizontal,
+  Plus, Pencil, Trash2, Loader2, X, Building2, SlidersHorizontal, RotateCcw, Layers,
   ShieldCheck, Landmark, Clock, MapPin, CheckCircle2, ChevronDown, ChevronUp,
-  FileText, Save, CalendarDays, TrendingUp, MinusCircle, Wallet,
+  FileText, Save, CalendarDays, TrendingUp, MinusCircle, Wallet, UserPlus, Search, BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
@@ -13,7 +13,9 @@ import { useAppConfig } from '../context/AppConfigContext';
 import api from '../services/api';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import * as ptApi from '../services/payrollTemplateApi';
-import { getStatePT, getStateLWF } from '../services/payrollConfigApi';
+import { getStatePT, getStateLWF, replaceStatePT, replaceStateLWF } from '../services/payrollConfigApi';
+import OrgStatutoryDefaults from './OrgStatutoryDefaults';
+import DatePicker from './DatePicker';
 import type {
   PayrollTemplate, PayrollTemplateComponent, PayrollTemplatePayload,
   PayrollTemplateStatutory, PayrollTemplateTaxRegime, TaxSlabInput,
@@ -34,6 +36,118 @@ const STATES = [
 ];
 
 const PAY_CYCLES = ['daily', 'weekly', 'monthly', 'yearly'];
+
+type StatField = { field: keyof PayrollTemplateStatutory; label: string; help: string; unit: '%' | 'money' | 'num' };
+type StatSection = { key: string; title: string; desc: string; side: 'employee' | 'employer'; fields: StatField[]; applicable: { field: keyof PayrollTemplateStatutory; label: string; help: string } };
+
+const STATUTORY_SECTIONS: StatSection[] = [
+  {
+    key: 'stat-pf-emp', title: 'Provident Fund (PF)', side: 'employee',
+    desc: "Provident Fund — the employee contributes the employee rate % of basic wages (up to the PF wage ceiling).",
+    fields: [
+      { field: 'pf_employee_rate', label: 'Employee rate', help: 'Number — % of basic deducted from employee.', unit: '%' },
+      { field: 'pf_wage_ceiling', label: 'PF wage ceiling', help: 'Number — EPF computed on min(Basic+DA, this).', unit: 'money' },
+      { field: 'pf_max_monthly', label: 'Max monthly', help: 'Number — PF deducted capped at this amount per month.', unit: 'money' },
+      { field: 'pf_min_basic_for_exclusion', label: 'Min basic for exclusion', help: 'Number — employees above this basic can opt out of PF.', unit: 'money' },
+    ],
+    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = deduct Provident Fund. Off = never deduct for this template.' },
+  },
+  {
+    key: 'stat-esi-emp', title: 'ESI', side: 'employee',
+    desc: "Employees' State Insurance — employee contributes a % of gross while wages stay under the ceiling; once insured, coverage continues through the end of the Apr–Sep / Oct–Mar contribution period even if wages later cross the ceiling.",
+    fields: [
+      { field: 'esi_employee_rate', label: 'Employee rate', help: 'Number — % of gross deducted.', unit: '%' },
+      { field: 'esi_gross_ceiling', label: 'Gross ceiling', help: 'Number — ESI applies only below this monthly gross.', unit: 'money' },
+      { field: 'esi_disabled_ceiling', label: 'Disabled ceiling', help: 'Number — higher ceiling for persons with disabilities.', unit: 'money' },
+    ],
+    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: "Inherit = follow org statutory settings. On = deduct Employees' State Insurance. Off = never deduct." },
+  },
+  {
+    key: 'stat-pt', title: 'Professional Tax', side: 'employee',
+    desc: "Professional Tax — a flat monthly state tax. State PT slabs override this flat amount when configured.",
+    fields: [
+      { field: 'pt_monthly_amount', label: 'Flat amount', help: 'Number — fixed monthly PT. State slabs may override.', unit: 'money' },
+      { field: 'pt_min_gross', label: 'Min gross', help: 'Number — PT deducted only above this gross.', unit: 'money' },
+    ],
+    applicable: { field: 'pt_applicable', label: 'PT applicable', help: 'Inherit = follow org/state settings. On = deduct Professional Tax. Off = never deduct.' },
+  },
+  {
+    key: 'stat-lwf-emp', title: 'Labour Welfare Fund (LWF)', side: 'employee',
+    desc: "Labour Welfare Fund — employee contribution in states that levy LWF.",
+    fields: [
+      { field: 'lwf_employee_rate', label: 'Employee rate', help: 'Number — fixed amount deducted as employee LWF contribution.', unit: 'money' },
+    ],
+    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = deduct Labour Welfare Fund. Off = never deduct.' },
+  },
+  {
+    key: 'stat-nps-emp', title: 'NPS — Employee', side: 'employee',
+    desc: "National Pension System — employee contributes a % of basic to NPS (u/s 80CCD(1)).",
+    fields: [
+      { field: 'nps_employee_rate', label: 'Employee rate', help: 'Number — % of basic contributed to NPS (up to 10%).', unit: '%' },
+    ],
+    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = deduct NPS from employee salary. Off = skip for this template.' },
+  },
+  {
+    key: 'stat-pf-employer', title: 'Employer PF & Pension', side: 'employer',
+    desc: "Employer PF contribution — EPF, EPS pension, EDLI insurance and admin charges.",
+    fields: [
+      { field: 'pf_employer_rate', label: 'EPF rate', help: 'Number — employer EPF contribution.', unit: '%' },
+      { field: 'eps_employer_rate', label: 'EPS rate', help: 'Number — employer pension contribution.', unit: '%' },
+      { field: 'eps_wage_ceiling', label: 'EPS wage ceiling', help: 'Number — pension (EPS) capped at this wage.', unit: 'money' },
+      { field: 'pf_edli_rate', label: 'EDLI rate', help: 'Number — EDLI insurance.', unit: '%' },
+      { field: 'pf_edli_max_monthly', label: 'EDLI max', help: 'Number — EDLI capped at this amount per month.', unit: 'money' },
+      { field: 'pf_admin_rate', label: 'Admin charges', help: 'Number — EPF admin charges.', unit: '%' },
+      { field: 'pf_admin_min_monthly', label: 'Admin min', help: 'Number — admin charges minimum per month.', unit: 'money' },
+    ],
+    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = apply employer PF/EPS/EDLI. Off = skip for this template.' },
+  },
+  {
+    key: 'stat-esi-employer', title: 'ESI — Employer', side: 'employer',
+    desc: "Employer ESI contribution — the organization matches the employee's ESI contribution.",
+    fields: [
+      { field: 'esi_employer_rate', label: 'Employer rate', help: 'Number — employer ESI %.', unit: '%' },
+    ],
+    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: "Inherit = follow org statutory settings. On = apply employer ESI. Off = skip for this template." },
+  },
+  {
+    key: 'stat-lwf-employer', title: 'LWF — Employer', side: 'employer',
+    desc: "Employer LWF contribution — the organization matches the employee's LWF contribution.",
+    fields: [
+      { field: 'lwf_employer_rate', label: 'Employer rate', help: 'Number — fixed amount contributed by employer as LWF.', unit: 'money' },
+    ],
+    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = apply employer LWF. Off = skip for this template.' },
+  },
+  {
+    key: 'stat-nps-employer', title: 'NPS — Employer', side: 'employer',
+    desc: "Employer NPS contribution under section 80CCD(2).",
+    fields: [
+      { field: 'nps_employer_rate', label: 'Employer rate', help: 'Number — % of basic employer contributes to NPS.', unit: '%' },
+    ],
+    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = employer contributes to NPS. Off = skip for this template.' },
+  },
+  {
+    key: 'stat-gratuity', title: 'Gratuity', side: 'employer',
+    desc: "Gratuity — an employer-funded retirement benefit accrued at the rate % of basic per year of service.",
+    fields: [
+      { field: 'gratuity_rate', label: 'Rate', help: 'Number — % of basic wage.', unit: '%' },
+      { field: 'gratuity_eligible_years', label: 'Eligibility years', help: 'Number — years of service for gratuity.', unit: 'num' },
+      { field: 'gratuity_days_per_year', label: 'Days per year', help: 'Number — gratuity days credited per year.', unit: 'num' },
+      { field: 'gratuity_tax_exempt_ceiling', label: 'Tax-exempt ceiling', help: 'Number — gratuity tax exemption limit.', unit: 'money' },
+    ],
+    applicable: { field: 'gratuity_applicable', label: 'Gratuity applicable', help: 'Inherit = follow org settings. On = reserve a gratuity liability. Off = none for this template.' },
+  },
+  {
+    key: 'stat-bonus', title: 'Statutory Bonus', side: 'employer',
+    desc: "Statutory Bonus — employees earning up to the eligibility ceiling qualify; the payout is computed on wages capped at the calculation cap, between the minimum and maximum rates.",
+    fields: [
+      { field: 'bonus_min_rate', label: 'Minimum rate', help: 'Number — minimum bonus % of wages.', unit: '%' },
+      { field: 'bonus_max_rate', label: 'Maximum rate', help: 'Number — maximum bonus % of wages.', unit: '%' },
+      { field: 'bonus_eligible_ceiling', label: 'Eligibility ceiling', help: 'Number — employees earning above this monthly wage are not eligible.', unit: 'money' },
+      { field: 'bonus_wage_ceiling', label: 'Calculation cap', help: 'Number — bonus is computed on wages capped at this monthly amount.', unit: 'money' },
+    ],
+    applicable: { field: 'bonus_applicable', label: 'Bonus applicable', help: 'Inherit = follow org settings. On = pay statutory bonus. Off = none for this template.' },
+  },
+];
 
 // Form 16 (Part B) heads — where each component sits in the salary computation.
 const TAX_CATEGORIES: Record<string, { value: string; label: string; help: string }[]> = {
@@ -73,7 +187,8 @@ function defaultPolicy() {
     name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
     gratuity_rate: null, default_currency: '', allow_negative_net: false,
-    daily_rate_divisor: 30, monthly_divisor_for_weekly: 4.33,
+    daily_rate_divisor: 30, monthly_divisor_for_weekly: 4.33, fy_start_month: 4,
+    reporting_currency: '', allow_multi_currency: false,
   };
 }
 
@@ -118,14 +233,15 @@ function defaultStatutory(): PayrollTemplateStatutory {
     pf_wage_ceiling: null, pf_max_monthly: null, pf_min_basic_for_exclusion: null,
     pf_edli_rate: null, pf_edli_max_monthly: null,
     pf_admin_rate: null, pf_admin_min_monthly: null,
-    eps_wage_ceiling: null,
+    eps_wage_ceiling: null, eps_employer_rate: null,
+    nps_employee_rate: null, nps_employer_rate: null,
     esi_applicable: false, esi_employee_rate: null, esi_employer_rate: null,
     esi_gross_ceiling: null, esi_disabled_ceiling: null,
     pt_applicable: false, pt_monthly_amount: null, pt_min_gross: null,
     lwf_applicable: false, lwf_employee_rate: null, lwf_employer_rate: null,
     gratuity_applicable: false, gratuity_rate: null,
     gratuity_eligible_years: null, gratuity_days_per_year: null, gratuity_tax_exempt_ceiling: null,
-    bonus_applicable: false, bonus_min_rate: null, bonus_max_rate: null, bonus_wage_ceiling: null,
+    bonus_applicable: false, bonus_min_rate: null, bonus_max_rate: null, bonus_eligible_ceiling: null, bonus_wage_ceiling: null,
   };
 }
 
@@ -159,6 +275,7 @@ interface WizardState {
   companyId: number | null;
   country: string;
   registeredState: string;
+  effectiveFrom: string;
   payrollPolicy: Record<string, any>;
   components: PayrollTemplateComponent[];
   statutory: PayrollTemplateStatutory;
@@ -177,6 +294,7 @@ interface WizardState {
 function blankWizard(): WizardState {
   return {
     name: '', description: '', companyId: null, country: 'India', registeredState: '',
+    effectiveFrom: '',
     payrollPolicy: defaultPolicy(), components: defaultComponents(),
     statutory: defaultStatutory(), taxRegime: defaultTax(),
     attendancePolicy: defaultAttendance(),
@@ -212,6 +330,7 @@ function fromTemplate(t: PayrollTemplate): WizardState {
     autoPayslip: !!t.auto_payslip,
     emailPayslip: !!t.email_payslip,
     status: t.status || 'active',
+    effectiveFrom: (t as any).effective_from || '',
   };
 }
 
@@ -232,6 +351,7 @@ function toPayload(w: WizardState): PayrollTemplatePayload {
     autoPayslip: w.autoPayslip,
     emailPayslip: w.emailPayslip,
     status: w.status,
+    effectiveFrom: w.effectiveFrom || undefined,
   };
 }
 
@@ -254,7 +374,7 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
 }
 
 function NumInput({ value, onChange, placeholder }: { value: number | null; onChange: (v: number | null) => void; placeholder?: string }) {
-  return <input type="number" step="any" className={inputCls} value={value ?? ''} placeholder={placeholder} onChange={e => onChange(e.target.value === '' ? null : +e.target.value)} />;
+  return <input type="number" step="any" min={0} className={inputCls} value={value ?? ''} placeholder={placeholder} onChange={e => { const v = e.target.value; onChange(v === '' ? null : Number.isFinite(+v) ? +v : null); }} />;
 }
 
 function Toggle({ label, checked, onChange, help }: { label: string; checked: boolean; onChange: (v: boolean) => void; help?: string }) {
@@ -286,23 +406,155 @@ function Toggle({ label, checked, onChange, help }: { label: string; checked: bo
   );
 }
 
-function WizardSectionCard({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
+function ViewVal({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="border border-[var(--border-color)] rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-4 py-3 bg-[var(--background)] hover:bg-[var(--hover-bg)]">
-        <span className="flex items-center gap-2">
-          <Icon className="w-4 h-4 text-[var(--primary-blue)]" />
-          <span className="font-medium text-sm text-[var(--text-primary)]">{title}</span>
-        </span>
-        {open ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
-      </button>
-      {open && <div className="p-4 space-y-4">{children}</div>}
+    <div className="space-y-1">
+      <span className="block text-xs text-[var(--text-tertiary)]">{label}</span>
+      <span className="block text-sm font-medium text-[var(--text-primary)]">{children}</span>
     </div>
   );
 }
 
-function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupCount, onPriority }: {
+function ApplicableSelect({ label, value, onChange, help }: { label: string; value: boolean | null; onChange: (v: boolean | null) => void; help?: string }) {
+  const opts: { key: string; label: string; val: boolean | null }[] = [
+    { key: 'inherit', label: 'Inherit', val: null },
+    { key: 'on', label: 'On', val: true },
+    { key: 'off', label: 'Off', val: false },
+  ];
+  const current = value === null || value === undefined ? 'inherit' : value ? 'on' : 'off';
+  return (
+    <div className="space-y-1">
+      <span className="text-sm font-medium text-[var(--text-secondary)]">{label}</span>
+      {help && <p className="text-[11px] leading-snug text-[var(--text-tertiary)]">{help}</p>}
+      <div className="flex gap-1.5 mt-1">
+        {opts.map(o => (
+          <button key={o.key} type="button" onClick={() => onChange(o.val)} title={help}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
+              current === o.key
+                ? o.val === true ? 'bg-emerald-500 text-white' : o.val === false ? 'bg-red-500 text-white' : 'bg-[var(--primary-blue)] text-white'
+                : 'text-[var(--text-tertiary)] hover:bg-[var(--hover-bg)] border border-[var(--border-color)]'
+            }`}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ApplicableToggle({ label, checked, onChange }: { label: string; checked: boolean | null; onChange: (v: boolean | null) => void }) {
+  const val = checked === null || checked === undefined ? 'inherit' : checked ? 'on' : 'off';
+  return (
+    <div className="space-y-1">
+      <span className="text-xs font-medium text-[var(--text-secondary)]">{label}</span>
+      <div className="flex gap-1.5">
+        {(['inherit', 'on', 'off'] as const).map(opt => (
+          <button key={opt} type="button" onClick={() => onChange(opt === 'inherit' ? null : opt === 'on')}
+            className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
+              val === opt
+                ? opt === 'on' ? 'bg-emerald-500 text-white' : opt === 'off' ? 'bg-red-500 text-white' : 'bg-[var(--primary-blue)] text-white'
+                : 'text-[var(--text-tertiary)] hover:bg-[var(--hover-bg)] border border-[var(--border-color)]'
+            }`}>
+            {opt === 'inherit' ? 'Inherit' : opt === 'on' ? 'On' : 'Off'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShiftMultiplierEditor({ value, onChange }: { value: Record<string, number>; onChange: (v: Record<string, number>) => void }) {
+  const [labels, setLabels] = useState<string[]>(Object.keys(value || {}).length ? Object.keys(value) : ['day', 'evening', 'night']);
+  const vals = value || {};
+  const defaults: Record<string, number> = { day: 1.0, evening: 1.15, night: 1.25 };
+  useEffect(() => {
+    const merged: Record<string, number> = { ...vals };
+    let changed = false;
+    labels.forEach(l => {
+      if (!(l in merged)) {
+        merged[l] = defaults[l.toLowerCase()] ?? 1.0;
+        changed = true;
+      }
+    });
+    if (changed) onChange(merged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const patch = (label: string, v: number | null) => onChange({ ...vals, [label]: v ?? 1.0 });
+  const rename = (oldLabel: string, newLabel: string) => {
+    const clean = newLabel.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!clean || clean === oldLabel) return;
+    const next: Record<string, number> = {};
+    Object.entries(vals).forEach(([k, val]) => { next[k === oldLabel ? clean : k] = val; });
+    setLabels(ls => ls.map(l => (l === oldLabel ? clean : l)));
+    onChange(next);
+  };
+  return (
+    <div className="space-y-2">
+      {labels.map(label => (
+        <div key={label} className="grid grid-cols-2 gap-3 items-end">
+          <Field label="Shift label" help="Must match the shift name from attendance (lowercased).">
+            <TextInput value={label} onChange={v => rename(label, v)} />
+          </Field>
+          <Field label="Multiplier" help="Number — pay is base rate × hours × this.">
+            <NumInput value={vals[label] ?? 1.0} onChange={v => patch(label, v)} />
+          </Field>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button onClick={() => { const l = `shift_${labels.length + 1}`; setLabels(ls => [...ls, l]); onChange({ ...vals, [l]: 1.0 }); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Add shift
+        </button>
+        {labels.some(l => !(l.toLowerCase() in defaults)) && labels.length > 3 && (
+          <button onClick={() => { const last = labels[labels.length - 1]; const next = { ...vals }; delete next[last]; setLabels(ls => ls.slice(0, -1)); onChange(next); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" /> Remove last
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DependsOnEditor({ value, options, onChange }: { value: (string | number)[]; options: { key: string; label: string }[]; onChange: (keys: (string | number)[]) => void }) {
+  const selected = new Set((value || []).map(String));
+  const toggle = (key: string) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    onChange(options.filter(o => next.has(o.key)).map(o => o.key));
+  };
+  if (options.length === 0) return <p className="text-[11px] text-[var(--text-disabled)]">No other components to depend on yet.</p>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(o => (
+        <button key={o.key} type="button" onClick={() => toggle(o.key)}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${selected.has(o.key) ? 'bg-[var(--primary-blue)] text-white border-[var(--primary-blue)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]'}`}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WizardSectionCard({ title, icon: Icon, action, forceOpen, children }: { title: string; icon: LucideIcon; action?: React.ReactNode; forceOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  const isOpen = forceOpen || open;
+  return (
+    <div className="border border-[var(--border-color)] rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 bg-[var(--background)] hover:bg-[var(--hover-bg)] transition-colors">
+        <button onClick={() => setOpen(!open)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+          <Icon className="w-4 h-4 text-[var(--primary-blue)] shrink-0" />
+          <span className="font-medium text-sm text-[var(--text-primary)] truncate">{title}</span>
+        </button>
+        {action}
+        <button onClick={() => setOpen(!open)} className="shrink-0" aria-label={isOpen ? 'Collapse' : 'Expand'}>
+          {isOpen ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
+        </button>
+      </div>
+      {isOpen && <div className="p-4 space-y-4">{children}</div>}
+    </div>
+  );
+}
+
+function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupCount, onPriority, peers }: {
   c: PayrollTemplateComponent;
   i: number;
   setComp: (i: number, patch: Partial<PayrollTemplateComponent>) => void;
@@ -312,6 +564,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
   rank: number;
   groupCount: number;
   onPriority: (p: number) => void;
+  peers: { key: string; label: string }[];
 }) {
   return (
     <div className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
@@ -336,11 +589,15 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
             { id: 'employer_contribution', name: 'Employer contribution' },
           ]} showAllOption={false} />
         </Field>
-        <Field label="Calc type" help="Percentage, Fixed (flat) or Formula.">
+        <Field label="Calc type" help="Percentage, Fixed, Formula, Hourly (overtime rate x hours), Piece rate (per-unit x units), Tiered (overtime-style brackets) or Shift differential (shift x multiplier).">
           <SearchableSelect value={c.calculation_type} onChange={v => setComp(i, { calculation_type: String(v) as any })} placeholder="Select Calc type" options={[
             { id: 'percentage', name: 'Percentage' },
             { id: 'fixed', name: 'Fixed' },
             { id: 'formula', name: 'Formula' },
+            { id: 'hourly', name: 'Hourly' },
+            { id: 'piece_rate', name: 'Piece rate' },
+            { id: 'tiered', name: 'Tiered' },
+            { id: 'shift_differential', name: 'Shift differential' },
           ]} showAllOption={false} />
         </Field>
       </div>
@@ -356,16 +613,39 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
             ]} showAllOption={false} />
           </Field>
         ) : c.calculation_type === 'formula' ? (
-          <Field label="Formula" help="Text — use 'tax' for income-tax (TDS).">
-            <TextInput value={c.formula || ''} onChange={v => setComp(i, { formula: v })} placeholder="e.g. tax" />
+          <Field label="Formula" help="Full expression — basic, base, rate, prior components by name, attendance hours. 'tax' = income tax. Bad formulas evaluate to 0.">
+            <TextInput value={c.formula || ''} onChange={v => setComp(i, { formula: v })} placeholder="e.g. base * 0.4" />
           </Field>
+        ) : c.calculation_type === 'hourly' ? (
+          <Field label="Hourly rate" help="Number — pay per hour. Multiplied by hours_worked each month.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
+          </Field>
+        ) : c.calculation_type === 'piece_rate' ? (
+          <Field label="Rate per unit" help="Number — pay per unit. Multiplied by units_produced each month.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
+          </Field>
+        ) : c.calculation_type === 'shift_differential' ? (
+          <Field label="Base hourly rate" help="Number — base rate per hour, multiplied by the shift multiplier below.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
+          </Field>
+        ) : c.calculation_type === 'tiered' ? (
+          <div className="md:col-span-2">
+            <Field label="Tiered quantity" help="Progressive brackets on overtime-style hours. Each row: from hours → to hours (blank = no cap) → multiplier. Blank quantity units earn 0 for that month.">
+              <span className="text-[11px] text-[var(--text-tertiary)]">Brackets use the same shape the engine reads — hours × rate, any brackets.</span>
+            </Field>
+          </div>
         ) : (
           <Field label="Amount" help="Number — flat amount for fixed-type components.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
-        {c.calculation_type !== 'formula' && (
+        {c.calculation_type !== 'formula' && c.calculation_type !== 'tiered' && c.calculation_type !== 'shift_differential' && (
           <Field label="Value" help="Number — the % or amount.">
+            <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
+          </Field>
+        )}
+        {(c.calculation_type === 'tiered' || c.calculation_type === 'shift_differential') && (
+          <Field label="Value" help={c.calculation_type === 'tiered' ? 'Number — percentage multiplier applied after brackets (100 = brackets already hold rates, anything else scales them by %).' : 'Number — unused for shift differential, kept for reporting.'}>
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
@@ -377,10 +657,65 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         </Field>
       </div>
 
+      {/* Tiered brackets */}
+      {c.calculation_type === 'tiered' && (
+        <div className="space-y-2">
+          {((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []).map((t, ti) => (
+            <div key={ti} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+              <Field label="From (units)" help="Number — bracket lower bound, inclusive.">
+                <NumInput value={t.from ?? 0} onChange={v => {
+                  const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
+                  next[ti] = { ...next[ti], from: v ?? 0 };
+                  setComp(i, { tiered_config: next });
+                }} />
+              </Field>
+              <Field label="To (blank = no cap)" help="Number — bracket upper bound. Only the last bracket may be open-ended.">
+                <NumInput value={t.to ?? null} onChange={v => {
+                  const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
+                  next[ti] = { ...next[ti], to: v };
+                  setComp(i, { tiered_config: next });
+                }} />
+              </Field>
+              <Field label="Rate" help="Number — pay per unit (or multiplier when Value = 100).">
+                <NumInput value={t.rate ?? 0} onChange={v => {
+                  const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
+                  next[ti] = { ...next[ti], rate: v ?? 0 };
+                  setComp(i, { tiered_config: next });
+                }} />
+              </Field>
+              <div className="flex items-end pb-0.5">
+                <button onClick={() => setComp(i, { tiered_config: (((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []) as { from: number; to?: number | null; rate: number }[]).filter((_, idx) => idx !== ti) })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" /> Remove tier
+                </button>
+              </div>
+            </div>
+          ))}
+          <button onClick={() => setComp(i, { tiered_config: [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []) as { from: number; to?: number | null; rate: number }[]), { from: 0, to: null, rate: 1.0 }] })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
+            <Plus className="w-3.5 h-3.5" /> Add tier
+          </button>
+        </div>
+      )}
+
+      {/* Shift multipliers */}
+      {c.calculation_type === 'shift_differential' && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-[var(--text-tertiary)]">Multiplier per shift label coming from attendance (shift_type). Unknown labels fall back to ×1.0.</p>
+          <ShiftMultiplierEditor value={(c.shift_differential_config as Record<string, number> | null | undefined) || {}} onChange={v => setComp(i, { shift_differential_config: v })} />
+        </div>
+      )}
+
       {/* Row 3 — Form 16 head, priority, exempt limit, remove */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
         <Field label="Tax head (Form 16)" help={TAX_CATEGORIES[c.component_type]?.find(o => o.value === (c.tax_category || defaultTaxCategory(c.component_type)))?.help || 'Where this component sits in Form 16 Part B.'}>
           <SearchableSelect value={c.tax_category || defaultTaxCategory(c.component_type)} onChange={v => setComp(i, { tax_category: String(v) })} placeholder="Select Tax head" options={(TAX_CATEGORIES[c.component_type] || []).map(opt => ({ id: opt.value, name: opt.label }))} showAllOption={false} />
+        </Field>
+        <Field label="Taxability" help="How this line is treated for income tax: taxable, partially, non-taxable or conditional.">
+          <SearchableSelect value={c.taxability || ''} onChange={v => setComp(i, { taxability: String(v) || null })} placeholder="Not set" options={[
+            { id: 'taxable', name: 'Taxable' },
+            { id: 'partially_taxable', name: 'Partially taxable' },
+            { id: 'non_taxable', name: 'Non-taxable' },
+            { id: 'conditional', name: 'Conditional' },
+          ]} showAllOption={false} clearable />
         </Field>
         <Field label="Priority (calc order)" help="Select the calc order — lower runs first. Priorities are auto-assigned.">
           <SearchableSelect value={rank} onChange={v => onPriority(Number(v))} placeholder="Select Priority" options={Array.from({ length: Math.max(groupCount, 1) }, (_, n) => ({ id: n + 1, name: String(n + 1) }))} showAllOption={false} />
@@ -392,6 +727,18 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         )}
       </div>
 
+      {/* Depends on */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
+        <div className="md:col-span-2">
+          <Field label="Depends on" help="Document which components must compute first — set Priority so they run earlier. Selecting here reorders automatically.">
+            <DependsOnEditor value={(c.depends_on as (string | number)[] | null | undefined) || []} options={peers.filter(p => p.key !== String(c.name || '').toLowerCase())} onChange={keys => {
+              setComp(i, { depends_on: keys });
+              if ((window as any).__componentReorder) (window as any).__componentReorder(i, keys);
+            }} />
+          </Field>
+        </div>
+      </div>
+
       {/* Row 4 — toggles */}
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-start border-t border-[var(--border-color)] pt-3">
         <Toggle label="Taxable" help="On = counts towards taxable income." checked={!!c.is_taxable} onChange={v => setComp(i, { is_taxable: v })} />
@@ -399,6 +746,20 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         <Toggle label="Pro-rate" help="On = value pro-rated for partial months." checked={!!c.apply_pro_ration} onChange={v => setComp(i, { apply_pro_ration: v })} />
         <Toggle label="Active" help="Off = kept but not used on payslips." checked={!!c.is_active} onChange={v => setComp(i, { is_active: v })} />
         <Toggle label="Tax exempt" help="On = fully excluded from taxable income." checked={!!c.is_tax_exempt} onChange={v => setComp(i, { is_tax_exempt: v })} />
+      </div>
+
+      {/* Row 5 — per-component statutory applicability */}
+      <div className="space-y-1 border-t border-[var(--border-color)] pt-3">
+        <p className="text-[11px] font-medium text-[var(--text-tertiary)]">Statutory applicability — which statutory bases this component feeds (blank = follow template/org defaults).</p>
+        <div className="flex flex-wrap gap-x-8 gap-y-3 items-start">
+          <ApplicableToggle label="PF" checked={(c.pf_applicable ?? null) as boolean | null} onChange={v => setComp(i, { pf_applicable: v })} />
+          <ApplicableToggle label="ESI" checked={(c.esi_applicable ?? null) as boolean | null} onChange={v => setComp(i, { esi_applicable: v })} />
+          <ApplicableToggle label="PT" checked={(c.pt_applicable ?? null) as boolean | null} onChange={v => setComp(i, { pt_applicable: v })} />
+          <ApplicableToggle label="LWF" checked={(c.lwf_applicable ?? null) as boolean | null} onChange={v => setComp(i, { lwf_applicable: v })} />
+          <ApplicableToggle label="Gratuity" checked={(c.gratuity_applicable ?? null) as boolean | null} onChange={v => setComp(i, { gratuity_applicable: v })} />
+          <ApplicableToggle label="Bonus" checked={(c.bonus_applicable ?? null) as boolean | null} onChange={v => setComp(i, { bonus_applicable: v })} />
+          <ApplicableToggle label="NPS" checked={(c.nps_applicable ?? null) as boolean | null} onChange={v => setComp(i, { nps_applicable: v })} />
+        </div>
       </div>
 
       {/* Bottom bar — add row + delete */}
@@ -431,6 +792,7 @@ function ComponentSection(props: {
 }) {
   const { type, title, icon: Icon, tint, desc, empty, heading, components, setComp, removeComp, addComp, addAfter, setPriority } = props;
   const items = components.map((c, idx) => ({ c, idx })).filter(x => x.c.component_type === type);
+  const peerOpts = items.map(({ c }) => ({ key: String(c.name || '').toLowerCase(), label: c.display_name || c.name || 'Untitled' })).filter(p => p.label !== 'Untitled');
   return (
     <div className="border border-[var(--border-color)] rounded-xl overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-[var(--background)] border-b border-[var(--border-color)]">
@@ -449,7 +811,7 @@ function ComponentSection(props: {
           <p className="text-sm text-[var(--text-disabled)] text-center py-6">{empty}</p>
         ) : (
           items.map(({ c, idx }, n) => (
-            <ComponentCard key={idx} c={c} i={idx} setComp={setComp} removeComp={removeComp} onAdd={() => addAfter(idx, type)} heading={`${heading} ${n + 1}`} rank={n + 1} groupCount={items.length} onPriority={p => setPriority(idx, p)} />
+            <ComponentCard key={idx} c={c} i={idx} setComp={setComp} removeComp={removeComp} onAdd={() => addAfter(idx, type)} heading={`${heading} ${n + 1}`} rank={n + 1} groupCount={items.length} onPriority={p => setPriority(idx, p)} peers={peerOpts} />
           ))
         )}
       </div>
@@ -458,13 +820,16 @@ function ComponentSection(props: {
 }
 
 function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="border border-[var(--border-color)] rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 bg-[var(--background)] border-b border-[var(--border-color)]">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-4 py-3 bg-[var(--background)] border-b border-[var(--border-color)]">
         <Landmark className="w-4 h-4 text-amber-600" />
         <span className="font-medium text-sm text-[var(--text-primary)]">Form 16 (Part B) computation flow</span>
-        <span className="text-xs text-[var(--text-tertiary)]">— how your components flow into taxable income</span>
-      </div>
+        <span className="text-xs text-[var(--text-tertiary)] flex-1 text-left">— how your components flow into taxable income</span>
+        {open ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
+      </button>
+      {open && (
       <div className="p-4 space-y-2 text-xs">
         {[
           { step: '1', label: 'Gross Salary', detail: 'Salary u/s 17(1) + Perquisites u/s 17(2) + Profits in lieu u/s 17(3)', count: components.filter(c => c.component_type === 'earning').length },
@@ -486,6 +851,7 @@ function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) 
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -700,27 +1066,27 @@ function Meta({ label, value }: { label: string; value: string }) {
 // ── Wizard Modal ──
 
 const WIZARD_TABS = [
+  { id: 'guide', label: 'Guide', icon: BookOpen, color: 'text-violet-600' },
   { id: 'overview', label: 'Overview', icon: Building2, color: 'text-blue-600' },
   { id: 'policy', label: 'Payroll Policy', icon: SlidersHorizontal, color: 'text-violet-600' },
   { id: 'statutory', label: 'Statutory Settings', icon: ShieldCheck, color: 'text-emerald-600' },
   { id: 'tax', label: 'Tax Regimes', icon: Landmark, color: 'text-amber-600' },
-  { id: 'attendance', label: 'Attendance & Leave', icon: Clock, color: 'text-rose-600' },
   { id: 'compliance', label: 'State Compliance', icon: MapPin, color: 'text-indigo-600' },
-  { id: 'earning', label: 'Earning Components', icon: TrendingUp, color: 'text-cyan-600' },
-  { id: 'deduction', label: 'Deduction Components', icon: MinusCircle, color: 'text-rose-600' },
-  { id: 'employer', label: 'Employer Contribution', icon: Wallet, color: 'text-emerald-600' },
+  { id: 'attendance', label: 'Attendance & Leave', icon: Clock, color: 'text-rose-600' },
+  { id: 'components', label: 'Components', icon: Layers, color: 'text-cyan-600' },
+  { id: 'simulate', label: 'Simulate', icon: TrendingUp, color: 'text-amber-500' },
 ];
 
 const WIZARD_HELP: Record<string, string> = {
+  guide: 'Complete walkthrough of how to set up a payroll template.',
   overview: 'Name, company and jurisdiction for this template.',
   policy: 'Pay cycle, pay day, auto-payslip and pro-ration & rounding rules.',
   statutory: 'PF, ESI, Professional Tax, LWF and Gratuity settings.',
   tax: 'Income tax regime and slabs used for TDS.',
   attendance: 'Work schedule and attendance-to-payroll mapping.',
   compliance: 'Registered state drives auto-calculated PT and LWF.',
-  earning: 'Earnings added to gross pay — Basic, HRA, Conveyance, Special Allowance, etc.',
-  deduction: 'Deductions subtracted from gross pay — PF, ESI, Professional Tax, TDS, etc.',
-  employer: 'Employer contributions paid on top of salary — PF employer share, ESI, gratuity.',
+  components: 'Earnings, deductions and employer contributions that make up the salary structure.',
+  simulate: 'Preview what these template changes would do to every assigned employee payslip before saving.',
 };
 
 function WizardModal(props: {
@@ -742,13 +1108,185 @@ function WizardModal(props: {
 
   const [ptDetail, setPtDetail] = useState<any>(null);
   const [lwfDetail, setLwfDetail] = useState<any>(null);
+  const [scopeChoice, setScopeChoice] = useState<'company' | 'org'>('org');
+  const [ptEditing, setPtEditing] = useState(false);
+  const [ptSlabs, setPtSlabs] = useState<{ from_gross: number | null; to_gross: number | null; amount: number | null; description: string }[]>([]);
+  const [ptEffectiveFrom, setPtEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lwfEditing, setLwfEditing] = useState(false);
+  const [lwfApplicable, setLwfApplicable] = useState(true);
+  const [lwfEmployee, setLwfEmployee] = useState<number | null>(null);
+  const [lwfEmployer, setLwfEmployer] = useState<number | null>(null);
+  const [lwfFrequency, setLwfFrequency] = useState('monthly');
+  const [lwfWageCeiling, setLwfWageCeiling] = useState<number | null>(null);
+  const [lwfEffectiveFrom, setLwfEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [complianceSaving, setComplianceSaving] = useState(false);
+  const LWF_FREQUENCIES = [
+    { id: 'monthly', name: 'Monthly' },
+    { id: 'half_yearly', name: 'Half-yearly' },
+    { id: 'yearly', name: 'Yearly' },
+  ];
+  const effScope = scopeChoice === 'company' && w.companyId != null ? 'company' : 'org';
+  const complianceCompanyId = effScope === 'company' ? w.companyId : null;
+  const complianceBadge = (scope: string | null | undefined, since: string | null | undefined) => {
+    if (scope === 'company') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override · company{since ? ` · since ${since}` : ''}</span>;
+    if (scope === 'organization') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override · org-wide{since ? ` · since ${since}` : ''}</span>;
+    if (scope === 'platform') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">Platform default — applies to everyone</span>;
+    return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">State default (statutory)</span>;
+  };
+  const lwfUnit = (frequency: string | null | undefined) => (frequency === 'half_yearly' ? 'half-yearly' : frequency === 'yearly' ? 'year' : 'month');
+  const ptHistoryGroups = (rows: any[]) => {
+    const groups: Record<string, any[]> = {};
+    (rows || []).forEach(r => {
+      const key = r.effective_from || 'undated';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    });
+    return Object.entries(groups).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  };
+  const [statSide, setStatSide] = useState<'employee' | 'employer' | 'organisation'>('employee');
+  const [componentTab, setComponentTab] = useState<'earning' | 'deduction' | 'employer'>('earning');
+  const [taxTab, setTaxTab] = useState<'regime' | 'slabs' | 'exemptions'>('regime');
+  const [editingCard, setEditingCard] = useState<string | null>(null);
+  const [cardSnapshot, setCardSnapshot] = useState<any>(null);
+  const startCardEdit = (key: string, snapshot: any) => { setCardSnapshot(snapshot); setEditingCard(key); };
+  const saveCardEdit = () => { setEditingCard(null); setCardSnapshot(null); };
+  const cancelCardEdit = () => {
+    if (cardSnapshot?.statutory) setState({ statutory: cardSnapshot.statutory });
+    if (cardSnapshot?.taxRegime) setState({ taxRegime: cardSnapshot.taxRegime });
+    if (cardSnapshot?.payroll) setState(cardSnapshot.payroll);
+    setEditingCard(null); setCardSnapshot(null);
+  };
+  const policySnap = { payroll: { payCycle: w.payCycle, payDay: w.payDay, autoPayslip: w.autoPayslip, emailPayslip: w.emailPayslip, payrollPolicy: { ...w.payrollPolicy } } };
+  const cardEditBtn = (key: string, snapshot: any) => (
+    <button onClick={() => startCardEdit(key, snapshot)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
+      <Pencil className="w-3.5 h-3.5" /> Edit
+    </button>
+  );
+  const cardEditFooter = (
+    <div className="flex items-center justify-end gap-2 mt-4 border-t border-[var(--border-color)] pt-4">
+      <button onClick={cancelCardEdit} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
+      <button onClick={saveCardEdit} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:opacity-90"><Save className="w-4 h-4" /> Save</button>
+    </div>
+  );
+  const fmtStat = (v: unknown, unit: '%' | 'money' | 'num') => {
+    if (v === null || v === undefined || v === '') return '--';
+    if (unit === '%') return `${v}%`;
+    if (unit === 'money') return `${getCurrencySymbol(getAppCurrency())}${Number(v).toLocaleString()}`;
+    return String(v);
+  };
+  const appLabel = (v: boolean | null | undefined) => (v === null || v === undefined ? 'Inherit (org settings)' : v ? 'On' : 'Off');
+  const reloadCompliance = async () => {
+    if (!w.registeredState) { setPtDetail(null); setLwfDetail(null); return; }
+    try {
+      const [pt, lwf] = await Promise.all([
+        getStatePT(w.registeredState, complianceCompanyId ?? undefined),
+        getStateLWF(w.registeredState, complianceCompanyId ?? undefined),
+      ]);
+      setPtDetail(pt);
+      setLwfDetail(lwf);
+    } catch {
+      setPtDetail(null);
+      setLwfDetail(null);
+    }
+  };
   useEffect(() => {
     let active = true;
+    setPtEditing(false);
+    setLwfEditing(false);
     if (!w.registeredState) { setPtDetail(null); setLwfDetail(null); return; }
-    getStatePT(w.registeredState).then(d => { if (active) setPtDetail(d); }).catch(() => { if (active) setPtDetail(null); });
-    getStateLWF(w.registeredState).then(d => { if (active) setLwfDetail(d); }).catch(() => { if (active) setLwfDetail(null); });
+    getStatePT(w.registeredState, complianceCompanyId ?? undefined).then(d => { if (active) setPtDetail(d); }).catch(() => { if (active) setPtDetail(null); });
+    getStateLWF(w.registeredState, complianceCompanyId ?? undefined).then(d => { if (active) setLwfDetail(d); }).catch(() => { if (active) setLwfDetail(null); });
     return () => { active = false; };
-  }, [w.registeredState]);
+  }, [w.registeredState, complianceCompanyId]);
+  const startPtEdit = () => {
+    if (!w.registeredState) { toast.error('Select a registered state first'); return; }
+    setPtSlabs((ptDetail?.slabs || []).map((s: any) => ({ from_gross: s.from_gross ?? null, to_gross: s.to_gross ?? null, amount: s.amount ?? null, description: s.description || '' })));
+    setPtEffectiveFrom(new Date().toISOString().slice(0, 10));
+    setPtEditing(true);
+  };
+  const cancelPtEdit = () => setPtEditing(false);
+  const setPtSlab = (i: number, patch: Partial<{ from_gross: number | null; to_gross: number | null; amount: number | null; description: string }>) => {
+    setPtSlabs(prev => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  };
+  const addPtSlab = () => setPtSlabs(prev => [...prev, { from_gross: null, to_gross: null, amount: null, description: '' }]);
+  const removePtSlab = (i: number) => setPtSlabs(prev => prev.filter((_, idx) => idx !== i));
+  const savePt = async () => {
+    if (!w.registeredState) { toast.error('Select a registered state first'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ptEffectiveFrom) || Number.isNaN(new Date(ptEffectiveFrom).getTime())) { toast.error('Pick a valid effective date (YYYY-MM-DD).'); return; }
+    if (ptSlabs.length === 0) { toast.error('Add at least one PT slab.'); return; }
+    const cleaned = ptSlabs.map(s => ({
+      from_gross: s.from_gross == null || Number.isNaN(Number(s.from_gross)) ? null : Number(s.from_gross),
+      to_gross: s.to_gross == null || s.to_gross === ('' as any) || Number.isNaN(Number(s.to_gross)) ? null : Number(s.to_gross),
+      amount: s.amount == null || Number.isNaN(Number(s.amount)) ? null : Number(s.amount),
+      description: s.description || '',
+    }));
+    if (cleaned.some(s => s.from_gross == null || s.amount == null)) { toast.error('Fill From and Amount for every slab.'); return; }
+    if (cleaned.some(s => (s.from_gross as number) < 0 || (s.amount as number) < 0)) { toast.error('Slab ranges and amounts cannot be negative.'); return; }
+    if (cleaned.some(s => s.to_gross != null && (s.to_gross as number) < (s.from_gross as number))) { toast.error('A slab has To below From.'); return; }
+    const ordered = [...cleaned].sort((a, b) => (a.from_gross as number) - (b.from_gross as number));
+    for (let i = 1; i < ordered.length; i++) {
+      const prev: any = ordered[i - 1];
+      const curr: any = ordered[i];
+      if (prev.to_gross == null) { toast.error('Only the last slab may have an open-ended upper range.'); return; }
+      if (curr.from_gross < prev.to_gross) { toast.error(`Slab ${curr.from_gross} overlaps the previous slab (up to ${prev.to_gross}). Adjacent slabs may touch, not overlap.`); return; }
+    }
+    setComplianceSaving(true);
+    try {
+      const res: any = await replaceStatePT(w.registeredState, {
+        effective_from: ptEffectiveFrom,
+        slabs: ordered.map(s => ({ from_gross: s.from_gross as number, to_gross: s.to_gross as number | null, amount: s.amount as number, description: s.description })),
+        companyId: complianceCompanyId,
+      });
+      toast.success(res?.message || 'PT slabs saved — historical versions preserved');
+      await reloadCompliance();
+      setPtEditing(false);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save PT slabs'));
+    } finally {
+      setComplianceSaving(false);
+    }
+  };
+  const startLwfEdit = () => {
+    if (!w.registeredState) { toast.error('Select a registered state first'); return; }
+    setLwfApplicable(lwfDetail?.applicable ?? true);
+    setLwfEmployee(lwfDetail?.employee_contribution ?? null);
+    setLwfEmployer(lwfDetail?.employer_contribution ?? null);
+    setLwfFrequency(lwfDetail?.frequency || 'monthly');
+    setLwfWageCeiling(lwfDetail?.max_wage_for_applicability ?? null);
+    setLwfEffectiveFrom(new Date().toISOString().slice(0, 10));
+    setLwfEditing(true);
+  };
+  const cancelLwfEdit = () => setLwfEditing(false);
+  const saveLwf = async () => {
+    if (!w.registeredState) { toast.error('Select a registered state first'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lwfEffectiveFrom) || Number.isNaN(new Date(lwfEffectiveFrom).getTime())) { toast.error('Pick a valid effective date (YYYY-MM-DD).'); return; }
+    if (!['monthly', 'half_yearly', 'yearly'].includes(lwfFrequency)) { toast.error("Frequency must be monthly, half-yearly or yearly."); return; }
+    if (lwfEmployee == null || lwfEmployer == null || Number.isNaN(Number(lwfEmployee)) || Number.isNaN(Number(lwfEmployer))) { toast.error('Fill employee and employer LWF amounts.'); return; }
+    if (Number(lwfEmployee) < 0 || Number(lwfEmployer) < 0) { toast.error('Contributions cannot be negative.'); return; }
+    if (lwfWageCeiling != null && (Number.isNaN(Number(lwfWageCeiling)) || Number(lwfWageCeiling) < 0)) { toast.error('Wage ceiling must be empty or zero and above.'); return; }
+    setComplianceSaving(true);
+    try {
+      const res: any = await replaceStateLWF(w.registeredState, {
+        effective_from: lwfEffectiveFrom,
+        companyId: complianceCompanyId,
+        applicable: lwfApplicable,
+        employee_contribution: Number(lwfEmployee),
+        employer_contribution: Number(lwfEmployer),
+        frequency: lwfFrequency,
+        max_wage_for_applicability: lwfWageCeiling == null ? null : Number(lwfWageCeiling),
+      });
+      toast.success(res?.message || 'LWF rates saved — historical versions preserved');
+      await reloadCompliance();
+      setLwfEditing(false);
+    } catch (e) {
+      toast.error(errMsg(e, 'Could not save LWF rates'));
+    } finally {
+      setComplianceSaving(false);
+    }
+  };
+  useEffect(() => {
+    if (tab === 'simulate' && editingId && !simData && !simLoading) runSimulate();
+  }, [tab, editingId]);
 
   const done = [
     !!(w.name.trim() && w.companyId != null),
@@ -762,6 +1300,30 @@ function WizardModal(props: {
     w.components.some(c => c.component_type === 'employer_contribution'),
   ].filter(Boolean).length;
   const progress = Math.min(100, Math.round((done / WIZARD_TABS.length) * 100));
+
+  const [simData, setSimData] = useState<any | null>(null);
+  const [simLoading, setSimLoading] = useState(false);
+  const [simAffectedOnly, setSimAffectedOnly] = useState(true);
+  const runSimulate = async () => {
+    if (!editingId) return;
+    setSimLoading(true);
+    try {
+      const now = new Date();
+      const r = await api.post('/payroll/simulate-impact', {
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        companyId: w.companyId ?? undefined,
+        payrollTemplateId: editingId,
+        proposed: { components: w.components, statutory: w.statutory },
+      });
+      setSimData(r.data);
+    } catch (e) {
+      toast.error(errMsg(e, 'Simulation failed'));
+      setSimData(null);
+    } finally {
+      setSimLoading(false);
+    }
+  };
 
   const setComp = (i: number, patch: Partial<PayrollTemplateComponent>) => {
     const next = w.components.map((c, idx) => (idx === i ? { ...c, ...patch } : c));
@@ -799,6 +1361,33 @@ function WizardModal(props: {
     group.forEach((c, gi) => { out[groupIdxs[gi]] = c; });
     setComponents(out);
   };
+  useEffect(() => {
+    // Depends-on is documentation + ordering assist: the engine computes in
+    // priority order, so selecting a dependency here moves this component to
+    // run right after the latest selected peer (same mechanics as setPriority).
+    (window as any).__componentReorder = (i: number, keys: (string | number)[]) => {
+      const arr = w.components;
+      const type = arr[i]?.component_type;
+      if (type == null) return;
+      const wanted = new Set((keys || []).map(String));
+      const group: PayrollTemplateComponent[] = [];
+      const groupIdxs: number[] = [];
+      arr.forEach((c, idx) => { if (c.component_type === type) { group.push(c); groupIdxs.push(idx); } });
+      const pos = groupIdxs.indexOf(i);
+      if (pos < 0) return;
+      let latest = -1;
+      group.forEach((g, gpos) => {
+        if (gpos !== pos && wanted.has(String(g.name || '').toLowerCase())) latest = Math.max(latest, gpos);
+      });
+      if (latest < 0 || latest < pos) return;
+      const [item] = group.splice(pos, 1);
+      group.splice(latest, 0, item);
+      const out = [...arr];
+      group.forEach((g, gi) => { out[groupIdxs[gi]] = g; });
+      setComponents(out);
+    };
+    return () => { delete (window as any).__componentReorder; };
+  });
 
   const setSlab = (i: number, patch: Partial<TaxSlabInput>) => {
     const next = (w.taxRegime.slabs || []).map((s, idx) => (idx === i ? { ...s, ...patch } : s));
@@ -876,9 +1465,14 @@ function WizardModal(props: {
               <p className="text-xs text-[#64748B]">Configure everything once, reuse everywhere.</p>
             </div>
           </div>
-          <button onClick={onClose} title="Close" className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
+            <button onClick={onSave} disabled={saving || !w.name.trim()}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {editingId ? 'Save Changes' : 'Create Template'}
+            </button>
+          </div>
         </header>
 
         {/* Progress bar */}
@@ -946,27 +1540,30 @@ function WizardModal(props: {
               <div className="space-y-4">
                 {tab === 'overview' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Template name" help="Text — e.g. 'IT Staff - India'. Shown on the employee form and payroll page.">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Field label="Template name *" help="Text — e.g. 'IT Staff - India'. Shown on the employee form and payroll page.">
                   <TextInput value={w.name} onChange={v => setState({ name: v })} placeholder="e.g. IT Staff - India" />
                 </Field>
                 <Field label="Country" help="Set globally in Settings → General. Used for statutory applicability.">
                   <div className="w-full px-3 py-2.5 border border-[var(--border-color)] rounded-lg bg-gray-50 text-sm text-[var(--text-primary)] select-none cursor-not-allowed">{orgCountry || w.country || 'India'}</div>
                 </Field>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Registered state (state compliance / PT / LWF)" help="Select a state — drives auto-calculated Professional Tax (PT) and Labour Welfare Fund (LWF) slabs.">
+                <Field label="Registered state" help="Select a state — drives auto-calculated PT and LWF slabs.">
                   <SearchableSelect value={w.registeredState || ''} onChange={v => setState({ registeredState: String(v) })} placeholder="Select State" options={STATES.map(s => ({ id: s, name: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))} showAllOption={false} clearable />
                 </Field>
-                <Field label="Company" help="Select the legal entity this template pays. 'All Companies (Org-wide)' applies everywhere.">
+                <Field label="Company" help="Select the legal entity this template pays.">
                   <SearchableSelect value={w.companyId ?? 'all'} onChange={v => setState({ companyId: v === 'all' ? null : Number(v) })} placeholder="Select Company" options={companies.map((c: any) => ({ id: c.id, name: c.name }))} allOption="All Companies (Org-wide)" />
                 </Field>
               </div>
-              <Field label="Description" help="Optional — note what this template is for (e.g. 'IT staff — India', 'Field sales — North zone').">
-                <textarea className={inputCls} rows={3} value={w.description} onChange={e => setState({ description: e.target.value })} placeholder="What is this template for?" />
-              </Field>
-              <div className="flex flex-wrap items-start gap-x-8 gap-y-3 pt-1">
-                <Toggle label="Active" help="Off = template is kept but not offered on the employee form." checked={w.status !== 'inactive'} onChange={v => setState({ status: v ? 'active' : 'inactive' })} />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Field label="Template effective from" help="Date — when this template becomes effective for assigned employees.">
+                  <DatePicker value={w.effectiveFrom || ''} onChange={v => setState({ effectiveFrom: v })} placeholder="Select date" />
+                </Field>
+                <Field label="Description" help="Optional — note what this template is for.">
+                  <textarea className={inputCls} rows={1} value={w.description} onChange={e => setState({ description: e.target.value })} placeholder="What is this template for?" />
+                </Field>
+                <div className="pt-6">
+                  <Toggle label="Active" help="Off = template is kept but not offered on the employee form." checked={w.status !== 'inactive'} onChange={v => setState({ status: v ? 'active' : 'inactive' })} />
+                </div>
               </div>
               <p className="text-xs text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3">
                 <b>Tip:</b> after saving, go to an employee's Salary tab, select this template, and press
@@ -977,249 +1574,411 @@ function WizardModal(props: {
 
           {tab === 'policy' && (
             <div className="space-y-4">
-              <WizardSectionCard title="Pay run" icon={CalendarDays}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <WizardSectionCard title="Payroll Policy" icon={SlidersHorizontal}>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Field label="Policy name" help="Text — internal label for this pay policy."><TextInput value={w.payrollPolicy.name || ''} onChange={v => setNested('payrollPolicy', 'name', v)} /></Field>
+                  <Field label="Currency" help="Text — ISO 4217 code, e.g. INR or USD."><TextInput value={w.payrollPolicy.default_currency || 'INR'} onChange={v => setNested('payrollPolicy', 'default_currency', v)} /></Field>
+                  <Field label="Reporting currency" help="Text — ISO code used for company-level reports. Blank = same as currency."><TextInput value={w.payrollPolicy.reporting_currency || ''} onChange={v => setNested('payrollPolicy', 'reporting_currency', v)} placeholder="Same as currency" /></Field>
                   <Field label="Pay cycle" help="How often payroll runs: daily, weekly, monthly or yearly.">
                     <SearchableSelect value={w.payCycle || 'monthly'} onChange={v => setState({ payCycle: String(v) })} placeholder="Select Pay cycle" options={PAY_CYCLES.map(c => ({ id: c, name: c[0].toUpperCase() + c.slice(1) }))} showAllOption={false} />
                   </Field>
-                  <Field label="Pay day (blank = last day of month)" help="Number (1-31) — the day salary is disbursed. Blank = last day of the month.">
+                  <Field label="Pay day (blank = last day)" help="Number (1-31) — the day salary is disbursed.">
                     <NumInput value={w.payDay} onChange={v => setState({ payDay: v })} placeholder="Last day" />
                   </Field>
-                  <div className="flex flex-wrap items-start gap-x-8 gap-y-3 col-span-2 pt-6">
+                  <div className="flex items-center gap-8 col-span-4 pt-4">
                     <Toggle label="Auto-generate payslips" help="On = payslips are created automatically at the start of each cycle." checked={!!w.autoPayslip} onChange={v => setState({ autoPayslip: v })} />
                     <Toggle label="Email payslips to employees" help="On = generated payslips are emailed to employees." checked={!!w.emailPayslip} onChange={v => setState({ emailPayslip: v })} />
+                    <Toggle label="Allow multi-currency" help="On = employees can be paid in their own currency, converted at their exchange rate." checked={!!w.payrollPolicy.allow_multi_currency} onChange={v => setNested('payrollPolicy', 'allow_multi_currency', v)} />
                   </div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="General" icon={SlidersHorizontal}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Policy name" help="Text — internal label for this pay policy."><TextInput value={w.payrollPolicy.name || ''} onChange={v => setNested('payrollPolicy', 'name', v)} /></Field>
-                  <Field label="Currency" help="Text — ISO 4217 code, e.g. INR or USD. Used on payslip amounts."><TextInput value={w.payrollPolicy.default_currency || 'INR'} onChange={v => setNested('payrollPolicy', 'default_currency', v)} /></Field>
                 </div>
               </WizardSectionCard>
               <WizardSectionCard title="Pro-ration & Rounding" icon={SlidersHorizontal}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                  <Field label="Daily rate divisor" help="Divides monthly salary to get the daily rate (30 calendar days, or 26 working days).">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+                  <Field label="FY start month" help="Financial year start month.">
+                    <SearchableSelect value={String(w.payrollPolicy.fy_start_month || 4)} onChange={v => setNested('payrollPolicy', 'fy_start_month', Number(v))} placeholder="Select" options={[
+                      { id: '1', name: 'January' }, { id: '2', name: 'February' }, { id: '3', name: 'March' },
+                      { id: '4', name: 'April' }, { id: '5', name: 'May' }, { id: '6', name: 'June' },
+                      { id: '7', name: 'July' }, { id: '8', name: 'August' }, { id: '9', name: 'September' },
+                      { id: '10', name: 'October' }, { id: '11', name: 'November' }, { id: '12', name: 'December' },
+                    ]} showAllOption={false} />
+                  </Field>
+                  <Field label="Pro-ration method" help="How salary is split for partial months.">
+                    <SearchableSelect value={w.payrollPolicy.pro_ration_method || 'paid_days'} onChange={v => setNested('payrollPolicy', 'pro_ration_method', String(v))} placeholder="Select" options={[
+                      { id: 'paid_days', name: 'Paid days' }, { id: 'calendar_days', name: 'Calendar days' },
+                      { id: 'working_days', name: 'Working days' }, { id: 'none', name: 'No pro-ration' },
+                    ]} showAllOption={false} />
+                  </Field>
+                  <Field label="Daily rate divisor" help="Divides monthly salary to get the daily rate.">
                     <NumInput value={w.payrollPolicy.daily_rate_divisor} onChange={v => setNested('payrollPolicy', 'daily_rate_divisor', v)} placeholder="30" />
                   </Field>
-                  <Field label="Weekly to monthly divisor" help="Converts a weekly rate to monthly (52 weeks / 12 months = 4.33).">
+                  <Field label="Weekly to monthly divisor" help="Converts a weekly rate to monthly.">
                     <NumInput value={w.payrollPolicy.monthly_divisor_for_weekly} onChange={v => setNested('payrollPolicy', 'monthly_divisor_for_weekly', v)} placeholder="4.33" />
                   </Field>
-                  <Field label="Pro-ration method" help="How salary is split for partial months: paid days, calendar days, working days or none.">
-                    <SearchableSelect value={w.payrollPolicy.pro_ration_method || 'paid_days'} onChange={v => setNested('payrollPolicy', 'pro_ration_method', String(v))} placeholder="Select Pro-ration method" options={[
-                      { id: 'paid_days', name: 'Paid days' },
-                      { id: 'calendar_days', name: 'Calendar days' },
-                      { id: 'working_days', name: 'Working days' },
-                      { id: 'none', name: 'No pro-ration' },
+                  <Field label="Rounding method" help="How payslip values are rounded.">
+                    <SearchableSelect value={w.payrollPolicy.rounding_method || 'nearest'} onChange={v => setNested('payrollPolicy', 'rounding_method', String(v))} placeholder="Select" options={[
+                      { id: 'nearest', name: 'Nearest' }, { id: 'floor', name: 'Floor' },
+                      { id: 'ceil', name: 'Ceil' }, { id: 'truncate', name: 'Truncate' },
                     ]} showAllOption={false} />
                   </Field>
-                  <Field label="Rounding method" help="How payslip values are rounded: nearest, floor, ceil or truncate.">
-                    <SearchableSelect value={w.payrollPolicy.rounding_method || 'nearest'} onChange={v => setNested('payrollPolicy', 'rounding_method', String(v))} placeholder="Select Rounding method" options={[
-                      { id: 'nearest', name: 'Nearest' },
-                      { id: 'floor', name: 'Floor' },
-                      { id: 'ceil', name: 'Ceil' },
-                      { id: 'truncate', name: 'Truncate' },
-                    ]} showAllOption={false} />
-                  </Field>
-                  <Field label="Decimal places" help="Number (0-4) — digits kept after rounding."><NumInput value={w.payrollPolicy.decimal_places ?? 2} onChange={v => setNested('payrollPolicy', 'decimal_places', v ?? 2)} /></Field>
-                  <div className="flex flex-wrap items-start gap-x-8 gap-y-3 col-span-3 pt-6">
+                  <Field label="Decimal places" help="Digits kept after rounding."><NumInput value={w.payrollPolicy.decimal_places ?? 2} onChange={v => setNested('payrollPolicy', 'decimal_places', v ?? 2)} /></Field>
+                  <div className="flex items-center gap-8 col-span-4 pt-4">
                     <Toggle label="Round net salary" help="On = round the final net pay; Off = keep exact decimals." checked={!!w.payrollPolicy.round_net_salary} onChange={v => setNested('payrollPolicy', 'round_net_salary', v)} />
-                    <Toggle label="Allow negative net" help="On = net pay may go below zero (e.g. over-deductions)." checked={!!w.payrollPolicy.allow_negative_net} onChange={v => setNested('payrollPolicy', 'allow_negative_net', v)} />
+                    <Toggle label="Allow negative net" help="On = net pay may go below zero." checked={!!w.payrollPolicy.allow_negative_net} onChange={v => setNested('payrollPolicy', 'allow_negative_net', v)} />
                   </div>
                 </div>
               </WizardSectionCard>
-              <WizardSectionCard title="Gratuity" icon={SlidersHorizontal}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Field label="Gratuity rate (%)" help="Number — % of basic wage."><NumInput value={w.payrollPolicy.gratuity_rate} onChange={v => setNested('payrollPolicy', 'gratuity_rate', v)} /></Field>
-                  <div className="pt-6"><Toggle label="Include gratuity" help="On = reserve a gratuity liability on each payslip." checked={!!w.payrollPolicy.include_gratuity} onChange={v => setNested('payrollPolicy', 'include_gratuity', v)} /></div>
+            </div>
+          )}
+
+          {tab === 'guide' && (
+            <div className="space-y-4">
+              <div className="border border-[var(--border-color)] rounded-xl p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center">
+                    <BookOpen className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--text-primary)]">Payroll Template Setup Guide</h3>
+                    <p className="text-xs text-[var(--text-tertiary)]">Complete walkthrough of how to configure this template.</p>
+                  </div>
                 </div>
-              </WizardSectionCard>
+                <div className="space-y-3 text-sm text-[var(--text-secondary)]">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-violet-50 border border-violet-100">
+                    <span className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 shrink-0">1</span>
+                    <div><b className="text-[var(--text-primary)]">Overview</b> — Name the template, pick the company and registered state. Set an effective date if needed.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-100">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">2</span>
+                    <div><b className="text-[var(--text-primary)]">Policy</b> — Set pay cycle, pay day, auto-payslip, pro-ration and rounding rules.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 shrink-0">3</span>
+                    <div><b className="text-[var(--text-primary)]">Statutory</b> — Configure PF, ESI, Professional Tax, LWF and Gratuity for employee, employer, and organisation defaults.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">4</span>
+                    <div><b className="text-[var(--text-primary)]">Tax</b> — Choose the income tax regime, define slabs, surcharge and exemptions.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-rose-50 border border-rose-100">
+                    <span className="w-6 h-6 rounded-full bg-rose-100 flex items-center justify-center text-xs font-bold text-rose-700 shrink-0">5</span>
+                    <div><b className="text-[var(--text-primary)]">Attendance</b> — Link attendance and leave templates for pay-period computation.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-indigo-50 border border-indigo-100">
+                    <span className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0">6</span>
+                    <div><b className="text-[var(--text-primary)]">Compliance</b> — Verify state-specific PT and LWF auto-calculations.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-cyan-50 border border-cyan-100">
+                    <span className="w-6 h-6 rounded-full bg-cyan-100 flex items-center justify-center text-xs font-bold text-cyan-700 shrink-0">7</span>
+                    <div><b className="text-[var(--text-primary)]">Components</b> — Define earnings, deductions and employer contributions that make up the salary structure.</div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">8</span>
+                    <div><b className="text-[var(--text-primary)]">Simulate</b> — Preview what these changes would do to every assigned employee's payslip before saving.</div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
-          {tab === 'earning' && (
+          {tab === 'components' && (
             <div className="space-y-4">
               <Form16Flow components={w.components} />
-              <ComponentSection type="earning" title="Earnings" icon={TrendingUp} tint="text-blue-600" desc="Added to gross pay — e.g. Basic, HRA, Conveyance, Special Allowance." empty='No earnings yet. Click "Add Earning" above.' heading="Earning" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+              <div className="flex items-center gap-1 border-b border-[var(--border-color)] mb-4">
+                {([['earning', 'Earnings', TrendingUp], ['deduction', 'Deductions', MinusCircle], ['employer', 'Employer', Wallet]] as const).map(([key, label, Icon]) => (
+                  <button key={key} onClick={() => setComponentTab(key)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      componentTab === key ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                    }`}>
+                    <Icon className="w-4 h-4" /> {label}
+                  </button>
+                ))}
+              </div>
+              {componentTab === 'earning' && (
+                <ComponentSection type="earning" title="Earnings" icon={TrendingUp} tint="text-blue-600" desc="Added to gross pay — e.g. Basic, HRA, Conveyance, Special Allowance." empty='No earnings yet. Click "Add Earning" above.' heading="Earning" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+              )}
+              {componentTab === 'deduction' && (
+                <ComponentSection type="deduction" title="Deductions" icon={MinusCircle} tint="text-rose-600" desc="Subtracted from gross pay — e.g. PF, ESI, Professional Tax, TDS." empty='No deductions yet. Click "Add Deduction" above.' heading="Deduction" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+              )}
+              {componentTab === 'employer' && (
+                <ComponentSection type="employer_contribution" title="Employer Contributions" icon={Wallet} tint="text-emerald-600" desc="Paid by the employer on top of salary." empty="No employer contributions yet." heading="Employer Contribution" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+              )}
             </div>
           )}
 
-          {tab === 'deduction' && (
+          {tab === 'simulate' && (
             <div className="space-y-4">
-              <Form16Flow components={w.components} />
-              <ComponentSection type="deduction" title="Deductions" icon={MinusCircle} tint="text-rose-600" desc="Subtracted from gross pay — e.g. PF, ESI, Professional Tax, TDS." empty='No deductions yet. Click "Add Deduction" above.' heading="Deduction" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
-            </div>
-          )}
-
-          {tab === 'employer' && (
-            <div className="space-y-4">
-              <Form16Flow components={w.components} />
-              <ComponentSection type="employer_contribution" title="Employer Contributions" icon={Wallet} tint="text-emerald-600" desc="Paid by the employer on top of salary (PF employer share, gratuity reserve)." empty="No employer contributions yet." heading="Employer Contribution" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+              <div className="border border-[var(--border-color)] rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--text-primary)]">Payroll Simulation</h3>
+                    <p className="text-xs text-[var(--text-tertiary)]">Preview what these template changes would do to every assigned employee payslip before saving.</p>
+                  </div>
+                </div>
+                {!editingId ? (
+                  <p className="text-sm text-[var(--text-tertiary)] bg-amber-50 border border-amber-100 rounded-lg p-3">
+                    Save this template first, then return here to simulate payslips for all assigned employees.
+                  </p>
+                ) : simLoading ? (
+                  <div className="flex items-center gap-3 py-8 justify-center text-sm text-[var(--text-tertiary)]">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Simulating payslips...
+                  </div>
+                ) : simData ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                        <p className="text-xs text-emerald-700">Employees in scope</p>
+                        <p className="text-lg font-bold text-emerald-800 mt-1">{simData.totalEmployees}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                        <p className="text-xs text-amber-700">Affected</p>
+                        <p className="text-lg font-bold text-amber-800 mt-1">{simData.affected}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <p className="text-xs text-blue-700">Net payroll now → after</p>
+                        <p className="text-sm font-bold text-blue-800 mt-1">
+                          {getCurrencySymbol(getAppCurrency())}{simData.totals?.currentNet?.toLocaleString('en-IN')}
+                          {' → '}
+                          {getCurrencySymbol(getAppCurrency())}{simData.totals?.proposedNet?.toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className={`p-3 rounded-lg border ${(simData.deltaNet ?? 0) === 0 ? 'bg-white border-[var(--border-color)]' : (simData.deltaNet ?? 0) > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                        <p className="text-xs text-[var(--text-tertiary)]">Change in take-home (total)</p>
+                        <p className={`text-lg font-bold mt-1 ${(simData.deltaNet ?? 0) === 0 ? 'text-[var(--text-primary)]' : (simData.deltaNet ?? 0) > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {(simData.deltaNet ?? 0) > 0 ? '+' : ''}{getCurrencySymbol(getAppCurrency())}{(simData.deltaNet ?? 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {([['affected', 'Affected only'], ['all', 'Show all']] as const).map(([id, label]) => (
+                        <button key={id} onClick={() => setSimAffectedOnly(id === 'affected')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${simAffectedOnly === (id === 'affected') ? 'bg-[var(--primary-blue)] text-white border-[var(--primary-blue)]' : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="space-y-3">
+                      {(simData.rows || []).filter((r: any) => !simAffectedOnly || (r.changed || []).length > 0).map((row: any) => (
+                        <div key={row.employeeId} className="border border-[var(--border-color)] rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-[var(--text-primary)]">{row.employeeName}{row.onTemplate ? '' : ' · not on this template'}</p>
+                              <p className="text-xs text-[var(--text-tertiary)]">Employee ID: {row.employeeCode || row.employeeId}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{row.proposed?.net?.toLocaleString('en-IN')}</p>
+                              <p className={`text-xs font-medium ${(row.delta?.net ?? 0) > 0 ? 'text-emerald-600' : (row.delta?.net ?? 0) < 0 ? 'text-red-600' : 'text-[var(--text-tertiary)]'}`}>
+                                {(row.delta?.net ?? 0) > 0 ? '+' : ''}{getCurrencySymbol(getAppCurrency())}{(row.delta?.net ?? 0).toLocaleString('en-IN')} vs now
+                              </p>
+                            </div>
+                          </div>
+                          {(row.changed || []).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {row.changed.slice(0, 8).map((k: string) => (
+                                <span key={k} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${k === 'net' ? 'bg-slate-100 text-slate-700' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
+                                  {k} {(row.delta?.[k] ?? 0) > 0 ? '+' : ''}{(row.delta?.[k] ?? 0).toLocaleString('en-IN')}
+                                </span>
+                              ))}
+                              {row.changed.length > 8 && <span className="text-[10px] text-[var(--text-disabled)]">+{row.changed.length - 8} more</span>}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {(simData.rows || []).filter((r: any) => !simAffectedOnly || (r.changed || []).length > 0).length === 0 && (
+                        <p className="text-sm text-[var(--text-disabled)] text-center py-6">
+                          {simAffectedOnly ? 'No employee is affected by these values — every payslip stays the same.' : 'No employees in scope.'}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <button onClick={runSimulate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700">
+                    <TrendingUp className="w-4 h-4" /> Run Simulation
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
           {tab === 'statutory' && (
             <div className="space-y-4">
-              <WizardSectionCard title="Provident Fund (PF)" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — % of basic deducted from employee."><NumInput value={w.statutory.pf_employee_rate} onChange={v => setNested('statutory', 'pf_employee_rate', v)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer PF contribution %."><NumInput value={w.statutory.pf_employer_rate} onChange={v => setNested('statutory', 'pf_employer_rate', v)} /></Field>
-                  <Field label="PF wage ceiling" help="Number — EPF/EPS computed on min(Basic+DA, this)."><NumInput value={w.statutory.pf_wage_ceiling} onChange={v => setNested('statutory', 'pf_wage_ceiling', v)} /></Field>
-                  <Field label="EPS wage ceiling" help="Number — pension (EPS) capped at this wage."><NumInput value={w.statutory.eps_wage_ceiling} onChange={v => setNested('statutory', 'eps_wage_ceiling', v)} /></Field>
-                  <Field label="Max monthly" help="Number — PF capped at this amount per month."><NumInput value={w.statutory.pf_max_monthly} onChange={v => setNested('statutory', 'pf_max_monthly', v)} /></Field>
-                  <Field label="Min basic for exclusion" help="Number — employees above this basic can opt out of PF."><NumInput value={w.statutory.pf_min_basic_for_exclusion} onChange={v => setNested('statutory', 'pf_min_basic_for_exclusion', v)} /></Field>
-                  <Field label="EDLI rate (%)" help="Number — EDLI insurance on top of PF."><NumInput value={w.statutory.pf_edli_rate} onChange={v => setNested('statutory', 'pf_edli_rate', v)} /></Field>
-                  <Field label="EDLI max" help="Number — EDLI capped at this amount per month."><NumInput value={w.statutory.pf_edli_max_monthly} onChange={v => setNested('statutory', 'pf_edli_max_monthly', v)} /></Field>
-                  <Field label="Admin charges (%)" help="Number — EPF admin charges."><NumInput value={w.statutory.pf_admin_rate} onChange={v => setNested('statutory', 'pf_admin_rate', v)} /></Field>
-                  <Field label="Admin min" help="Number — admin charges minimum per month."><NumInput value={w.statutory.pf_admin_min_monthly} onChange={v => setNested('statutory', 'pf_admin_min_monthly', v)} /></Field>
-                  <div className="pt-6"><Toggle label="PF applicable" help="On = deduct Provident Fund from pay." checked={!!w.statutory.pf_applicable} onChange={v => setNested('statutory', 'pf_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="ESI" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — % of gross deducted."><NumInput value={w.statutory.esi_employee_rate} onChange={v => setNested('statutory', 'esi_employee_rate', v)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer ESI %."><NumInput value={w.statutory.esi_employer_rate} onChange={v => setNested('statutory', 'esi_employer_rate', v)} /></Field>
-                  <Field label="Gross ceiling" help="Number — ESI applies only below this monthly gross."><NumInput value={w.statutory.esi_gross_ceiling} onChange={v => setNested('statutory', 'esi_gross_ceiling', v)} /></Field>
-                  <Field label="Disabled ceiling" help="Number — higher ceiling for persons with disabilities."><NumInput value={w.statutory.esi_disabled_ceiling} onChange={v => setNested('statutory', 'esi_disabled_ceiling', v)} /></Field>
-                  <div className="pt-6"><Toggle label="ESI applicable" help="On = deduct Employees' State Insurance." checked={!!w.statutory.esi_applicable} onChange={v => setNested('statutory', 'esi_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Professional Tax" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Flat amount" help="Number — fixed monthly PT. State slabs may override."><NumInput value={w.statutory.pt_monthly_amount} onChange={v => setNested('statutory', 'pt_monthly_amount', v)} /></Field>
-                  <Field label="Min gross" help="Number — PT deducted only above this gross."><NumInput value={w.statutory.pt_min_gross} onChange={v => setNested('statutory', 'pt_min_gross', v)} /></Field>
-                  <div className="pt-6"><Toggle label="PT applicable" help="On = deduct Professional Tax." checked={!!w.statutory.pt_applicable} onChange={v => setNested('statutory', 'pt_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Labour Welfare Fund (LWF)" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Employee rate (%)" help="Number — employee LWF contribution %."><NumInput value={w.statutory.lwf_employee_rate} onChange={v => setNested('statutory', 'lwf_employee_rate', v)} /></Field>
-                  <Field label="Employer rate (%)" help="Number — employer LWF contribution %."><NumInput value={w.statutory.lwf_employer_rate} onChange={v => setNested('statutory', 'lwf_employer_rate', v)} /></Field>
-                  <div className="pt-6"><Toggle label="LWF applicable" help="On = deduct Labour Welfare Fund." checked={!!w.statutory.lwf_applicable} onChange={v => setNested('statutory', 'lwf_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Gratuity" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Rate (%)" help="Number — % of basic wage."><NumInput value={w.statutory.gratuity_rate} onChange={v => setNested('statutory', 'gratuity_rate', v)} /></Field>
-                  <Field label="Eligibility years" help="Number — years of service for gratuity."><NumInput value={w.statutory.gratuity_eligible_years} onChange={v => setNested('statutory', 'gratuity_eligible_years', v)} /></Field>
-                  <Field label="Days per year" help="Number — gratuity days credited per year."><NumInput value={w.statutory.gratuity_days_per_year} onChange={v => setNested('statutory', 'gratuity_days_per_year', v)} /></Field>
-                  <Field label="Tax-exempt ceiling" help="Number — gratuity tax exemption limit."><NumInput value={w.statutory.gratuity_tax_exempt_ceiling} onChange={v => setNested('statutory', 'gratuity_tax_exempt_ceiling', v)} /></Field>
-                  <div className="pt-6"><Toggle label="Gratuity applicable" help="On = reserve a gratuity liability." checked={!!w.statutory.gratuity_applicable} onChange={v => setNested('statutory', 'gratuity_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Statutory Bonus (Payment of Bonus Act)" icon={ShieldCheck}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Minimum rate (%)" help="Number — minimum bonus % of wages."><NumInput value={w.statutory.bonus_min_rate} onChange={v => setNested('statutory', 'bonus_min_rate', v)} /></Field>
-                  <Field label="Maximum rate (%)" help="Number — maximum bonus % of wages."><NumInput value={w.statutory.bonus_max_rate} onChange={v => setNested('statutory', 'bonus_max_rate', v)} /></Field>
-                  <Field label="Wage ceiling" help="Number — bonus applies only below this monthly wage."><NumInput value={w.statutory.bonus_wage_ceiling} onChange={v => setNested('statutory', 'bonus_wage_ceiling', v)} /></Field>
-                  <div className="pt-6"><Toggle label="Bonus applicable" help="On = pay statutory bonus (min rate) to eligible employees." checked={!!w.statutory.bonus_applicable} onChange={v => setNested('statutory', 'bonus_applicable', v)} /></div>
-                </div>
-              </WizardSectionCard>
+              <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-0">
+                {([['employee', 'Employee'], ['employer', 'Employer'], ['organisation', 'Organisation Defaults']] as const).map(([key, label]) => (
+                  <button key={key} onClick={() => setStatSide(key)} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${statSide === key ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]' : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+                    {label}
+                  </button>
+                ))}
+                {statSide !== 'organisation' && editingId && (
+                  <button onClick={async () => {
+                    if (!confirm('Reset all statutory values to inherit from Organisation Defaults?')) return;
+                    try {
+                      const { resetTemplateStatutory } = await import('../services/payrollTemplateApi');
+                      const result = await resetTemplateStatutory(editingId);
+                      if (result?.template) { setState({ statutory: { ...defaultStatutory(), ...result.template.statutory } }); toast.success('Statutory reset to org defaults'); }
+                    } catch { toast.error('Failed to reset'); }
+                  }} className="ml-auto flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+                    <RotateCcw className="w-4 h-4" /> Reset to Organisation Defaults
+                  </button>
+                )}
+              </div>
+              {statSide === 'organisation' ? (
+                <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-[var(--primary-blue)]" /></div>}>
+                  <OrgStatutoryDefaults />
+                </Suspense>
+              ) : STATUTORY_SECTIONS.filter(s => s.side === statSide).map(sec => (
+                <WizardSectionCard key={sec.key} title={sec.title} icon={ShieldCheck} forceOpen={editingCard === sec.key} action={editingCard === sec.key ? undefined : cardEditBtn(sec.key, { statutory: { ...w.statutory } })}>
+                  {editingCard === sec.key ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {sec.fields.map(f => (
+                          <Field key={String(f.field)} label={f.label} help={f.help}>
+                            <NumInput value={(w.statutory[f.field] ?? null) as number | null} onChange={v => setNested('statutory', String(f.field), v)} />
+                          </Field>
+                        ))}
+                      </div>
+                      <div className="pt-2">
+                        <ApplicableSelect label={sec.applicable.label} help={sec.applicable.help} value={(w.statutory[sec.applicable.field] ?? null) as boolean | null} onChange={v => setNested('statutory', String(sec.applicable.field), v)} />
+                      </div>
+                      {cardEditFooter}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs leading-relaxed text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3">{sec.desc}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {sec.fields.map(f => (
+                          <ViewVal key={String(f.field)} label={f.label}>{fmtStat(w.statutory[f.field], f.unit)}</ViewVal>
+                        ))}
+                        <ViewVal label={sec.applicable.label}>{appLabel(w.statutory[sec.applicable.field] as boolean | null | undefined)}</ViewVal>
+                      </div>
+                    </>
+                  )}
+                </WizardSectionCard>
+              ))}
             </div>
           )}
 
           {tab === 'tax' && (
             <div className="space-y-4">
+              <div className="flex items-center gap-1 border-b border-[var(--border-color)] mb-4">
+                {([['regime', 'Regime'], ['slabs', 'Slabs'], ['exemptions', 'Exemptions']] as const).map(([key, label]) => (
+                  <button key={key} onClick={() => setTaxTab(key)}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      taxTab === key ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="text-xs text-[var(--text-tertiary)] bg-amber-50 border border-amber-200 rounded-lg p-3">
                 <b>New Regime</b> (default) — lower slabs, ₹75,000 standard deduction, no 80C/80D/HRA exemptions.
                 <b> Old Regime</b> — higher slabs but allows 80C, 80D, HRA &amp; LTA exemptions. Choose per employee via their
                 Investment Declaration; this tab defines the slab set used for TDS.
               </div>
-              <WizardSectionCard title="Regime" icon={Landmark}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Regime name" help="Text — e.g. 'New Regime' or 'Old Regime'."><TextInput value={w.taxRegime.name || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, name: v } })} /></Field>
-                  <Field label="Type" help="New, Old or Custom regime — changes slab and deduction rules.">
-                    <SearchableSelect value={w.taxRegime.regime_type || 'new'} onChange={v => setState({ taxRegime: { ...w.taxRegime, regime_type: String(v) } })} placeholder="Select Type" options={[
-                      { id: 'new', name: 'New regime' },
-                      { id: 'old', name: 'Old regime' },
-                      { id: 'custom', name: 'Custom' },
-                    ]} showAllOption={false} />
-                  </Field>
-                  <Field label="Financial year" help="Text — e.g. '2026-27'. Used for the TDS period."><TextInput value={w.taxRegime.financial_year || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} /></Field>
-                  <Field label="Standard deduction" help="Number — flat deduction from taxable income."><NumInput value={w.taxRegime.standard_deduction} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v } })} /></Field>
-                  <Field label="Rebate threshold" help="Number — income up to this is fully rebated."><NumInput value={w.taxRegime.rebate_threshold} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v } })} /></Field>
-                  <Field label="Rebate amount" help="Number — maximum tax rebated under §87A."><NumInput value={w.taxRegime.rebate_amount} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v } })} /></Field>
-                  <Field label="Cess rate (%)" help="Number — health & education cess on tax."><NumInput value={w.taxRegime.cess_rate} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v } })} /></Field>
-                  <div className="flex flex-wrap items-start gap-x-8 gap-y-3 col-span-2 pt-6">
-                    <Toggle label="Active" help="On = regime can be selected/used. Off = hidden from selection." checked={!!w.taxRegime.is_active} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_active: v } })} />
-                    <Toggle label="Default regime" help="On = fallback regime when no other is chosen." checked={!!w.taxRegime.is_default} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_default: v } })} />
-                  </div>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Exemptions & HRA caps" icon={Landmark}>
-                <p className="text-xs text-[var(--text-tertiary)] mb-3">Old-regime Chapter VI-A caps and House Rent Allowance exemption rules (section 10(13A)).</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                  <Field label="80C cap" help="Max deduction for life insurance, ELSS, PF, tuition fees etc."><NumInput value={w.taxRegime.section_80c_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_cap: v } })} placeholder="150000" /></Field>
-                  <Field label="80C cap (old regime)" help="Legacy 80C cap if it differs from the standard cap."><NumInput value={w.taxRegime.section_80c_old_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_old_cap: v } })} placeholder="150000" /></Field>
-                  <Field label="80D cap" help="Health insurance premium - self & family."><NumInput value={w.taxRegime.section_80d_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_cap: v } })} placeholder="50000" /></Field>
-                  <Field label="80D cap (senior citizen)" help="Health insurance premium - senior citizens."><NumInput value={w.taxRegime.section_80d_senior_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_senior_cap: v } })} placeholder="100000" /></Field>
-                  <Field label="80CCD(1B) NPS cap" help="Additional NPS deduction over and above 80C."><NumInput value={w.taxRegime.section_80ccd_1b_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80ccd_1b_cap: v } })} placeholder="50000" /></Field>
-                  <Field label="Home loan interest cap (u/s 24)" help="Max interest deduction on self-occupied property."><NumInput value={w.taxRegime.section_24_home_loan_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_24_home_loan_cap: v } })} placeholder="200000" /></Field>
-                  <Field label="HRA exemption - metro (%)" help="Delhi, Mumbai, Kolkata, Chennai - % of basic eligible for exemption."><NumInput value={w.taxRegime.hra_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_metro_pct: v } })} placeholder="50" /></Field>
-                  <Field label="HRA exemption - non-metro (%)" help="% of basic eligible for exemption outside metro cities."><NumInput value={w.taxRegime.hra_non_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_non_metro_pct: v } })} placeholder="40" /></Field>
-                  <Field label="Rent threshold (% of basic)" help="Exemption = rent paid minus this % of salary."><NumInput value={w.taxRegime.hra_rent_threshold_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_rent_threshold_pct: v } })} placeholder="10" /></Field>
-                  <Field label="Assumed basic (% of gross)" help="Used for HRA auto-calculation when basic is not separately available."><NumInput value={w.taxRegime.basic_pct_of_gross} onChange={v => setState({ taxRegime: { ...w.taxRegime, basic_pct_of_gross: v } })} placeholder="50" /></Field>
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Slabs" icon={Landmark}>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-[var(--text-tertiary)]">Income tax slabs (to = blank means "and above").</p>
-                  <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
-                    <Plus className="w-4 h-4" /> Add slab
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {(w.taxRegime.slabs || []).map((s, i) => (
-                    <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
-                        <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — slab lower bound, inclusive."><NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} /></Field>
-                        <Field label={`To (${getCurrencySymbol(getAppCurrency())}, blank = ∞)`} help="Number — slab upper bound. Blank means 'and above'."><NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} /></Field>
-                        <Field label="Rate (%)" help="Number — tax percentage for this slab."><NumInput value={s.rate ?? 0} onChange={v => setSlab(i, { rate: v ?? 0 })} /></Field>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
-                        <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
-                          <Plus className="w-3.5 h-3.5" /> Add New Slab
-                        </button>
-                        <button onClick={() => removeSlab(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" /> Delete This Slab
-                        </button>
-                      </div>
+              {taxTab === 'regime' && (
+                <WizardSectionCard title="Regime" icon={Landmark}>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <Field label="Regime name" help="Text — e.g. 'New Regime' or 'Old Regime'."><TextInput value={w.taxRegime.name || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, name: v } })} /></Field>
+                      <Field label="Type" help="New, Old or Custom regime.">
+                        <SearchableSelect value={w.taxRegime.regime_type || 'new'} onChange={v => setState({ taxRegime: { ...w.taxRegime, regime_type: String(v) } })} placeholder="Select Type" options={[
+                          { id: 'new', name: 'New regime' },
+                          { id: 'old', name: 'Old regime' },
+                          { id: 'custom', name: 'Custom' },
+                        ]} showAllOption={false} />
+                      </Field>
+                      <Field label="Financial year" help="Text — financial year for the TDS computation period."><TextInput value={w.taxRegime.financial_year || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} /></Field>
+                      <Field label="Standard deduction" help="Number — flat deduction from taxable income."><NumInput value={w.taxRegime.standard_deduction} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v } })} /></Field>
+                      <Field label="Rebate threshold" help="Number — income up to this is fully rebated."><NumInput value={w.taxRegime.rebate_threshold} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v } })} /></Field>
+                      <Field label="Rebate amount" help="Number — maximum tax rebated under section 87A."><NumInput value={w.taxRegime.rebate_amount} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v } })} /></Field>
+                      <Field label="Cess rate (%)" help="Number — health & education cess on tax."><NumInput value={w.taxRegime.cess_rate} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v } })} /></Field>
                     </div>
-                  ))}
-                </div>
-              </WizardSectionCard>
-              <WizardSectionCard title="Surcharge" icon={Landmark}>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-[var(--text-tertiary)]">
-                    Extra % added on tax for high incomes (applies above ₹50 lakh). Uses the highest threshold the income crosses.
-                  </p>
-                  <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
-                    <Plus className="w-4 h-4" /> Add surcharge slab
-                  </button>
-                </div>
-                {surcharges.length === 0 ? (
-                  <p className="text-sm text-[var(--text-disabled)] text-center py-6">No surcharge slabs — tax is charged at the base rate only.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {surcharges.map((s, i) => (
-                    <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
-                        <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — taxable income threshold where this rate starts, e.g. 5000000."><NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} /></Field>
-                        <Field label="Rate (%)" help={`Number — surcharge % on the tax amount, e.g. 10 for ${getCurrencySymbol(getAppCurrency())}50L-1Cr.`}><NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} /></Field>
-                      </div>
-                      <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
-                        <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
-                          <Plus className="w-3.5 h-3.5" /> Add New Surcharge
-                        </button>
-                        <button onClick={() => removeSurcharge(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" /> Delete This Surcharge
-                        </button>
-                      </div>
+                    <div className="flex items-center gap-8 pt-4">
+                      <Toggle label="Active" help="On = regime can be selected/used. Off = hidden from selection." checked={!!w.taxRegime.is_active} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_active: v } })} />
+                      <Toggle label="Default regime" help="On = fallback regime when no other is chosen." checked={!!w.taxRegime.is_default} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_default: v } })} />
                     </div>
-                  ))}
+                </WizardSectionCard>
+              )}
+              {taxTab === 'slabs' && (
+                <>
+                  <WizardSectionCard title="Slabs" icon={Landmark}>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm text-[var(--text-tertiary)]">Income tax slabs (to = blank means "and above").</p>
+                      <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
+                        <Plus className="w-4 h-4" /> Add slab
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {(w.taxRegime.slabs || []).map((s, i) => (
+                        <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — slab lower bound, inclusive."><NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} /></Field>
+                            <Field label={`To (${getCurrencySymbol(getAppCurrency())}, blank = ∞)`} help="Number — slab upper bound."><NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} /></Field>
+                            <Field label="Rate (%)" help="Number — tax percentage for this slab."><NumInput value={s.rate ?? 0} onChange={v => setSlab(i, { rate: v ?? 0 })} /></Field>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
+                            <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
+                              <Plus className="w-3.5 h-3.5" /> Add New Slab
+                            </button>
+                            <button onClick={() => removeSlab(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" /> Delete This Slab
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </WizardSectionCard>
+                  <WizardSectionCard title="Surcharge" icon={Landmark}>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm text-[var(--text-tertiary)]">
+                        Extra % added on tax for high incomes. Uses the highest threshold the income crosses.
+                      </p>
+                      <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
+                        <Plus className="w-4 h-4" /> Add surcharge slab
+                      </button>
+                    </div>
+                    {surcharges.length === 0 ? (
+                      <p className="text-sm text-[var(--text-disabled)] text-center py-6">No surcharge slabs — tax is charged at the base rate only.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {surcharges.map((s, i) => (
+                        <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
+                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — taxable income threshold where this rate starts."><NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} /></Field>
+                            <Field label="Rate (%)" help="Number — surcharge % on the tax amount."><NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} /></Field>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
+                            <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
+                              <Plus className="w-3.5 h-3.5" /> Add New Surcharge
+                            </button>
+                            <button onClick={() => removeSurcharge(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" /> Delete This Surcharge
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      </div>
+                    )}
+                  </WizardSectionCard>
+                </>
+              )}
+              {taxTab === 'exemptions' && (
+                <WizardSectionCard title="Exemptions & HRA caps" icon={Landmark}>
+                  <p className="text-xs text-[var(--text-tertiary)] mb-3">Old-regime Chapter VI-A caps and House Rent Allowance exemption rules (section 10(13A)).</p>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+                    <Field label="80C cap" help="Max deduction for life insurance, ELSS, PF, tuition fees etc."><NumInput value={w.taxRegime.section_80c_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_cap: v } })} placeholder="150000" /></Field>
+                    <Field label="80C cap (old regime)" help="Legacy 80C cap if it differs."><NumInput value={w.taxRegime.section_80c_old_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_old_cap: v } })} placeholder="150000" /></Field>
+                    <Field label="80D cap" help="Health insurance premium - self & family."><NumInput value={w.taxRegime.section_80d_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_cap: v } })} placeholder="50000" /></Field>
+                    <Field label="80D cap (senior citizen)" help="Health insurance premium - senior citizens."><NumInput value={w.taxRegime.section_80d_senior_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_senior_cap: v } })} placeholder="100000" /></Field>
+                    <Field label="80CCD(1B) NPS cap" help="Additional NPS deduction over and above 80C."><NumInput value={w.taxRegime.section_80ccd_1b_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80ccd_1b_cap: v } })} placeholder="50000" /></Field>
+                    <Field label="Home loan interest cap (u/s 24)" help="Max interest deduction on self-occupied property."><NumInput value={w.taxRegime.section_24_home_loan_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_24_home_loan_cap: v } })} placeholder="200000" /></Field>
+                    <Field label="HRA exemption - metro (%)" help="Delhi, Mumbai, Kolkata, Chennai - % of basic eligible for exemption."><NumInput value={w.taxRegime.hra_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_metro_pct: v } })} placeholder="50" /></Field>
+                    <Field label="HRA exemption - non-metro (%)" help="% of basic eligible for exemption outside metro cities."><NumInput value={w.taxRegime.hra_non_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_non_metro_pct: v } })} placeholder="40" /></Field>
+                    <Field label="Rent threshold (% of basic)" help="Exemption = rent paid minus this % of salary."><NumInput value={w.taxRegime.hra_rent_threshold_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_rent_threshold_pct: v } })} placeholder="10" /></Field>
+                    <Field label="Assumed basic (% of gross)" help="Used for HRA auto-calculation."><NumInput value={w.taxRegime.basic_pct_of_gross} onChange={v => setState({ taxRegime: { ...w.taxRegime, basic_pct_of_gross: v } })} placeholder="50" /></Field>
                   </div>
-                )}
-              </WizardSectionCard>
+                </WizardSectionCard>
+              )}
             </div>
           )}
 
@@ -1321,59 +2080,190 @@ function WizardModal(props: {
           {tab === 'compliance' && (
             <div className="space-y-4">
               <WizardSectionCard title="Jurisdiction" icon={MapPin}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Field label="Country" help="Set globally in Settings → General.">
                     <div className="w-full px-3 py-2.5 border border-[var(--border-color)] rounded-lg bg-gray-50 text-sm text-[var(--text-primary)] select-none cursor-not-allowed">{orgCountry || w.country || 'India'}</div>
                   </Field>
                   <Field label="Registered state" help="Select a state — drives auto-calculated PT and LWF slabs.">
                     <SearchableSelect value={w.registeredState || ''} onChange={v => setState({ registeredState: String(v) })} placeholder="Select State" options={STATES.map(s => ({ id: s, name: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))} showAllOption={false} clearable />
                   </Field>
+                  <Field label="Compliance scope" help="Company = only this template's company; organization = every company under the org. Without an override, everyone falls back to the platform-wide statutory default.">
+                    <SearchableSelect value={effScope} onChange={v => setScopeChoice(v === 'company' ? 'company' : 'org')} placeholder="Select scope" options={w.companyId != null ? [{ id: 'company', name: 'This company only' }, { id: 'org', name: 'Whole organization' }] : [{ id: 'org', name: 'Whole organization' }]} showAllOption={false} preserveOrder />
+                  </Field>
                 </div>
                 <p className="text-xs text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3 mt-3">
-                  Professional Tax and Labour Welfare Fund are auto-calculated from the registered state's
-                  statutory slabs — no manual slab entry needed.
+                  Professional Tax and Labour Welfare Fund are shown live from the registered state's versioned slabs. Use Edit slabs / Edit rates to create your {effScope === 'company' ? 'company' : 'organization'} override effective from a date you choose — earlier versions stay on file so past payslips never change.
                 </p>
               </WizardSectionCard>
 
               {w.registeredState && ptDetail && (
-                <WizardSectionCard title={`Professional Tax — ${ptDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[var(--border-color)] text-left text-xs text-[var(--text-tertiary)]">
-                          <th className="pb-2 font-medium pr-4">Gross From</th>
-                          <th className="pb-2 font-medium pr-4">Gross To</th>
-                          <th className="pb-2 font-medium pr-4">PT Amount</th>
-                          <th className="pb-2 font-medium">Note</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(ptDetail.slabs || []).map((slab: any, i: number) => (
-                          <tr key={i} className="border-b border-[#F1F5F9]">
-                            <td className="py-2 pr-4 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
-                            <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : '∞'}</td>
-                            <td className="py-2 pr-4 font-medium text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{slab.amount}</td>
-                            <td className="py-2 text-xs text-[var(--text-tertiary)]">{slab.description}</td>
-                          </tr>
+                <WizardSectionCard title={`Professional Tax — ${ptDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={ptEditing} action={!ptEditing ? (
+                  <button onClick={startPtEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
+                    <Pencil className="w-3.5 h-3.5" /> Edit slabs
+                  </button>
+                ) : undefined}>
+                  {ptEditing ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <Field label="Effective from" help="New slabs take effect from this date. In-force rows close the day before; earlier history is preserved.">
+                          <DatePicker value={ptEffectiveFrom} onChange={setPtEffectiveFrom} />
+                        </Field>
+                      </div>
+                      <div className="space-y-2">
+                        {ptSlabs.map((slab, i) => (
+                          <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                              <Field label="From gross" help="Slab lower bound, inclusive.">
+                                <NumInput value={slab.from_gross} onChange={v => setPtSlab(i, { from_gross: v })} />
+                              </Field>
+                              <Field label="To gross (blank = no upper limit)" help="Only the last slab may be open-ended. Adjacent slabs may touch, not overlap.">
+                                <NumInput value={slab.to_gross} onChange={v => setPtSlab(i, { to_gross: v })} />
+                              </Field>
+                              <Field label="Monthly amount" help="Flat PT charged by this slab.">
+                                <NumInput value={slab.amount} onChange={v => setPtSlab(i, { amount: v })} />
+                              </Field>
+                              <Field label="Note" help="Short label shown in history, e.g. metro or senior slab.">
+                                <TextInput value={slab.description} onChange={v => setPtSlab(i, { description: v })} />
+                              </Field>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
+                              <button onClick={addPtSlab} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
+                                <Plus className="w-3.5 h-3.5" /> Add slab
+                              </button>
+                              <button onClick={() => removePtSlab(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" /> Remove
+                              </button>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                        {ptSlabs.length === 0 && (
+                          <p className="text-sm text-[var(--text-disabled)] text-center py-6">No slabs in this draft — add at least one.</p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-end gap-2 mt-4 border-t border-[var(--border-color)] pt-4">
+                        <button onClick={cancelPtEdit} disabled={complianceSaving} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)] disabled:opacity-50">Cancel</button>
+                        <button onClick={savePt} disabled={complianceSaving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 disabled:opacity-50">
+                          {complianceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save slabs
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        {complianceBadge(ptDetail.scope, ptDetail.slabs?.[0]?.effective_from || null)}
+                      </div>
+                      <p className="text-xs leading-relaxed text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">Professional Tax is charged automatically from these in-force slabs. To change them, create your {effScope === 'company' ? 'company' : 'organization'} override with a new effective date.</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-[var(--border-color)] text-left text-xs text-[var(--text-tertiary)]">
+                              <th className="pb-2 font-medium pr-4">Gross From</th>
+                              <th className="pb-2 font-medium pr-4">Gross To</th>
+                              <th className="pb-2 font-medium pr-4">PT Amount</th>
+                              <th className="pb-2 font-medium">Note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(ptDetail.slabs || []).map((slab: any, i: number) => (
+                              <tr key={i} className="border-b border-[#F1F5F9]">
+                                <td className="py-2 pr-4 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
+                                <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : '∞'}</td>
+                                <td className="py-2 pr-4 font-medium text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{slab.amount}</td>
+                                <td className="py-2 text-xs text-[var(--text-tertiary)]">{slab.description}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="mt-2 space-y-1 text-xs text-[var(--text-tertiary)]">
+                    {Number(ptDetail.annual_max) > 0 && (
+                      <p>Annual max (in force{ptDetail.slabs?.[0]?.effective_from ? ` since ${ptDetail.slabs[0].effective_from}` : ''}): {getCurrencySymbol(getAppCurrency())}{Number(ptDetail.annual_max).toLocaleString()}</p>
+                    )}
+                    {ptDetail.notes && <p>{ptDetail.notes}</p>}
                   </div>
-                  <p className="text-xs text-[var(--text-tertiary)] mt-2">Annual max: {getCurrencySymbol(getAppCurrency())}{ptDetail.annual_max?.toLocaleString()} &middot; {ptDetail.notes}</p>
+                      {(ptDetail.history || []).length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs font-medium text-[var(--text-secondary)]">Version history (earlier versions stay on file)</p>
+                          {ptHistoryGroups(ptDetail.history).map(([eff, rows]) => (
+                            <div key={eff} className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] bg-gray-50 border border-[#F1F5F9] rounded-lg px-3 py-1.5">
+                              <span>Effective {eff} · {rows.length} slab{rows.length === 1 ? '' : 's'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </WizardSectionCard>
               )}
 
-              {w.registeredState && lwfDetail?.applicable && (
-                <WizardSectionCard title={`Labour Welfare Fund — ${lwfDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin}>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <Field label="Employee contribution" help="Employee LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employee_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
-                    <Field label="Employer contribution" help="Employer LWF rate for this state."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employer_contribution}/{lwfDetail.frequency === 'half_yearly' ? 'half-yearly' : 'month'}</span></Field>
-                    <Field label="Wage ceiling" help="LWF applies only below this monthly wage."><span className="block text-[var(--text-primary)] font-medium">{getCurrencySymbol(getAppCurrency())}{lwfDetail.max_wage_for_applicability?.toLocaleString()}</span></Field>
-                  </div>
+              {w.registeredState && lwfDetail && (
+                <WizardSectionCard title={`Labour Welfare Fund — ${lwfDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={lwfEditing} action={!lwfEditing ? (
+                  <button onClick={startLwfEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
+                    <Pencil className="w-3.5 h-3.5" /> Edit rates
+                  </button>
+                ) : undefined}>
+                  {lwfEditing ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <Field label="Effective from" help="New rates take effect from this date. Earlier versions stay on file.">
+                          <DatePicker value={lwfEffectiveFrom} onChange={setLwfEffectiveFrom} />
+                        </Field>
+                        <Field label="Frequency" help="Only monthly, half-yearly or yearly rates are accepted.">
+                          <SearchableSelect value={lwfFrequency} onChange={v => setLwfFrequency(String(v))} placeholder="Select frequency" options={LWF_FREQUENCIES} showAllOption={false} preserveOrder />
+                        </Field>
+                        <Field label="Employee contribution" help="Fixed amount per period, in your org currency.">
+                          <NumInput value={lwfEmployee} onChange={setLwfEmployee} />
+                        </Field>
+                        <Field label="Employer contribution" help="Fixed amount per period, in your org currency.">
+                          <NumInput value={lwfEmployer} onChange={setLwfEmployer} />
+                        </Field>
+                        <Field label="Wage ceiling (blank = no ceiling)" help="LWF applies only below this monthly wage.">
+                          <NumInput value={lwfWageCeiling} onChange={setLwfWageCeiling} />
+                        </Field>
+                      </div>
+                      <div className="pt-2">
+                        <Toggle label="LWF applicable" help="Off = no LWF is levied for this version." checked={lwfApplicable} onChange={setLwfApplicable} />
+                      </div>
+                      <div className="flex items-center justify-end gap-2 mt-4 border-t border-[var(--border-color)] pt-4">
+                        <button onClick={cancelLwfEdit} disabled={complianceSaving} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)] disabled:opacity-50">Cancel</button>
+                        <button onClick={saveLwf} disabled={complianceSaving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 disabled:opacity-50">
+                          {complianceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save rates
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        {complianceBadge(lwfDetail.scope, lwfDetail.effective_from || null)}
+                      </div>
+                      {lwfDetail.applicable ? (
+                        <>
+                          <p className="text-xs leading-relaxed text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">Labour Welfare Fund amounts are stated per period and converted to a monthly equivalent by the payroll engine.</p>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <ViewVal label="Employee contribution">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employee_contribution}/{lwfUnit(lwfDetail.frequency)}</ViewVal>
+                            <ViewVal label="Employer contribution">{getCurrencySymbol(getAppCurrency())}{lwfDetail.employer_contribution}/{lwfUnit(lwfDetail.frequency)}</ViewVal>
+                            <ViewVal label="Wage ceiling">{lwfDetail.max_wage_for_applicability != null ? `${getCurrencySymbol(getAppCurrency())}${lwfDetail.max_wage_for_applicability?.toLocaleString()}` : 'No ceiling'}</ViewVal>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-[var(--text-disabled)] py-2">LWF is not levied in this state by default — zero employee and employer contribution. Use Edit rates if your organization still contributes voluntarily.</p>
+                      )}
+                      {(lwfDetail.history || []).length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs font-medium text-[var(--text-secondary)]">Version history (earlier versions stay on file)</p>
+                          {[...lwfDetail.history].sort((a: any, b: any) => ((a.effective_from || '') < (b.effective_from || '') ? 1 : -1)).map((h: any) => (
+                            <div key={h.id ?? `${h.effective_from}-${h.employee_contribution}`} className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] bg-gray-50 border border-[#F1F5F9] rounded-lg px-3 py-1.5">
+                              <span>Effective {h.effective_from || 'undated'} · {getCurrencySymbol(getAppCurrency())}{h.employee_contribution} emp / {getCurrencySymbol(getAppCurrency())}{h.employer_contribution} er per {lwfUnit(h.frequency)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </WizardSectionCard>
               )}
 
-              {w.registeredState && !ptDetail && !lwfDetail?.applicable && (
+              {w.registeredState && !ptDetail && !lwfDetail && (
                 <WizardSectionCard title="State compliance" icon={MapPin}>
                   <p className="text-sm text-[var(--text-disabled)] text-center py-6">No PT/LWF compliance data available for this state.</p>
                 </WizardSectionCard>
@@ -1382,23 +2272,6 @@ function WizardModal(props: {
           )}
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-color)] bg-[var(--background)]">
-          <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {w.components.length} components</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {(w.taxRegime.slabs || []).length} tax slabs</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {w.registeredState || 'no state'}</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Cancel</button>
-            <button onClick={onSave} disabled={saving || !w.name.trim()}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {editingId ? 'Save Changes' : 'Create Template'}
-            </button>
           </div>
         </div>
       </div>

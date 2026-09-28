@@ -1,8 +1,23 @@
 ﻿import { useRef, useState, useEffect } from 'react';
 import { Upload, Loader2, FileText, X, Eye, CheckCircle2, Trash2, Paperclip } from 'lucide-react';
 import api from '../services/api';
+import { uploadUrl } from '../utils/uploadUrl';
 import toast from 'react-hot-toast';
 import { FORM_CONTROL_HEIGHT } from './FormField';
+
+/** Everything the backend /employees/document endpoint accepts. */
+export const DOC_ACCEPT =
+  'image/jpeg,image/png,image/gif,image/bmp,image/webp,image/tiff,' +
+  'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,' +
+  'application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
+  'application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,' +
+  'text/plain,text/csv,application/rtf';
+
+/** Shared help text shown under every upload field. */
+export const DOC_HELP_TEXT =
+  'Images: JPG, PNG, GIF, BMP, WebP, TIFF · Docs: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, TXT, CSV, RTF · Max 8 MB';
+
+export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 interface DocumentUploadProps {
   label: string;
@@ -66,6 +81,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setUploading(true);
     setError('');
     try {
+      if (f.size > MAX_UPLOAD_BYTES) {
+        setError(`File too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB)`);
+        return;
+      }
       const form = new FormData();
       form.append('file', f);
       form.append('docType', docType);
@@ -92,10 +111,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     }
   };
 
-  const showUrl = preview || existingUrl || '';
+  const showUrl = uploadUrl(preview || existingUrl || '');
   const triggerFileInput = () => fileRef.current?.click();
   const isImage = Boolean(
-    preview || existingUrl?.match(/\.(png|jpe?g|webp|gif)(\?.*)?$/i) || existingUrl?.startsWith('data:image/'),
+    preview || existingUrl?.match(/\.(png|jpe?g|webp|gif|bmp|tiff?)(\?.*)?$/i) || existingUrl?.startsWith('data:image/'),
   );
 
   const handleClear = () => {
@@ -108,7 +127,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     <input
       ref={fileRef}
       type="file"
-      accept="image/jpeg,image/png,application/pdf,image/webp"
+      accept={DOC_ACCEPT}
       className="hidden"
       onChange={(e) => {
         const f = e.target.files?.[0] || null;
@@ -126,6 +145,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         : file?.name || (showUrl ? 'Document attached' : 'No file chosen');
 
     return (
+      <>
       <div
         className={`w-full ${FORM_CONTROL_HEIGHT} px-3 flex items-center gap-2 border border-[var(--border-color)] rounded-lg bg-white ${className}`}
         title={error || parsedNumber ? `${error || ''} ${parsedNumber ? `Detected: ${parsedNumber}` : ''}`.trim() : undefined}
@@ -178,6 +198,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           </>
         )}
       </div>
+      <p className="mt-1 text-[10px] text-[#94A3B8] leading-4">{DOC_HELP_TEXT}</p>
+      </>
     );
   }
 
@@ -221,7 +243,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
               </span>
             )}
           </div>
-          <p className="text-[10px] text-[#94A3B8] mt-1.5">JPG, PNG, PDF, WebP (Max 5MB)</p>
+          <p className="text-[10px] text-[#94A3B8] mt-1.5">{DOC_HELP_TEXT}</p>
           {uploading && (
             <p className="text-[10px] text-[#1C64F2] mt-1 flex items-center gap-1">
               <Loader2 className="w-3 h-3 animate-spin" /> Uploading...

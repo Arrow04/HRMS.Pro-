@@ -355,6 +355,7 @@ class StatutoryRuleEngine:
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
         is_disabled: bool = False,
+        keep_covered: bool = False,
     ) -> Dict[str, float]:
         """Calculate ESI using the rule engine."""
         rule = self.resolve('esi_contribution', as_of, country, state_code, organization_id)
@@ -371,7 +372,7 @@ class StatutoryRuleEngine:
         er_rate = float(rule.get('employer_rate', 0.0))
         ceiling = float(rule.get('disabled_ceiling' if is_disabled else 'gross_ceiling', 0.0))
 
-        applicable = gross_salary <= ceiling
+        applicable = gross_salary <= ceiling or (keep_covered and ceiling > 0)
 
         return {
             'esi_applicable': applicable,
@@ -473,17 +474,17 @@ class StatutoryRuleEngine:
                 base_tax += taxable * rate / 100
             prev = upper_val
 
-        # Rebate
-        if annual_taxable <= rebate_threshold:
-            base_tax = max(0.0, base_tax - rebate_amount)
-
-        # Surcharge
-        surcharge = 0.0
+        # Rebate with new-regime marginal relief + surcharge with marginal
+        # relief (shared engine helper so rule-driven tax matches DB-driven tax).
+        from services.compliance_engine import apply_tax_relief
         surcharge_slabs = rule.get('surcharge', [])
-        sorted_surcharge = sorted(surcharge_slabs, key=lambda s: float(s.get('from', 0)))
-        for s in sorted_surcharge:
-            if annual_taxable >= float(s.get('from', 0)):
-                surcharge = base_tax * float(s.get('rate', 0)) / 100
+        base_tax, _rebate_given, surcharge = apply_tax_relief(
+            base_tax, annual_taxable, sorted_slabs,
+            rebate_threshold=rebate_threshold,
+            rebate_amount=rebate_amount,
+            regime_type=regime,
+            surcharge_slabs=surcharge_slabs,
+        )
 
         cess = (base_tax + surcharge) * cess_rate / 100
 

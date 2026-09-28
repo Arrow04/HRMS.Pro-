@@ -91,6 +91,37 @@ def _resolve_nps_definition(db: Optional[Session], employee, as_of: date) -> Dic
                 return chosen
         except Exception:
             pass
+        # No published rule: fall back to the org's statutory NPS rates so the
+        # Organisation Defaults screen actually drives payroll. Applicability
+        # is still decided by the employee flag / published rule in
+        # calculate_nps — this only supplies the rates.
+        try:
+            from models import StatutorySetting
+            org_id = employee.organization_id
+            company_id = getattr(employee, "company_id", None)
+            q = db.query(StatutorySetting).filter(
+                StatutorySetting.organization_id == org_id,
+                StatutorySetting.status == "active",
+            )
+            row = None
+            if company_id is not None:
+                row = q.filter(StatutorySetting.company_id == company_id).first()
+            if row is None:
+                row = q.filter(StatutorySetting.company_id.is_(None)).first() or q.first()
+            if row is not None and (row.nps_employee_rate or row.nps_employer_rate):
+                return {
+                    "kind": "composite",
+                    "outputs": {
+                        "employee_rate": {"kind": "param", "value": float(row.nps_employee_rate or 0)},
+                        "employer_rate": {"kind": "param", "value": float(row.nps_employer_rate or 0)},
+                        "wage_basis": {"kind": "param", "value": "BASIC_DA"},
+                        "ccd1_pct_cap": {"kind": "param", "value": 10.0},
+                        "ccd1b_cap": {"kind": "param", "value": 50000.0},
+                        "ccd2_pct": {"kind": "param", "value": 14.0},
+                    },
+                }
+        except Exception:
+            pass
     return DEFAULT_NPS_DEFINITION
 
 

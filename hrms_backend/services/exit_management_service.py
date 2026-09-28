@@ -182,10 +182,15 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
     leave_encashment = _leave_encashment(db, employee, monthly_gross)
 
     # Statutory bonus (Payment of Bonus Act) pro-rated for the exit year.
+    # Gated by the visible bonus_applicable toggle on StatutorySetting.
     bonus_payable = 0.0
     try:
-        cfg = ((getattr(org, "settings", None) or {}).get("payroll") or {})
-        if cfg.get("statutoryBonus", False):
+        from models import StatutorySetting
+        _bonus_setting = db.query(StatutorySetting).filter(
+            StatutorySetting.organization_id == org.id,
+            StatutorySetting.status == "active",
+        ).first()
+        if _bonus_setting is not None and _bonus_setting.bonus_applicable:
             from services.compliance_engine import calculate_bonus
             months_worked = min(12, max(1, (leaving_day.timetuple().tm_yday // 30) or 1))
             b = calculate_bonus(monthly_gross, months_worked)

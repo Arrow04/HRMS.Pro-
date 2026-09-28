@@ -41,8 +41,13 @@ def _mk_att_policy(db_session, org):
     return ap
 
 
-def test_generate_allows_multiple_payslips(client, db_session, admin_token):
-    """Multiple payslips per employee/period are allowed (no 409 duplicate guard)."""
+def test_generate_blocks_duplicate_payslips(client, db_session, admin_token):
+    """Generating twice for one employee/period never creates a duplicate row.
+
+    A duplicate payslip is a double-payment hazard: the second generate call
+    must report skipped instead of adding another payable row. Supplementary /
+    off-cycle payslips remain possible via manual Process Payroll.
+    """
     org = db_session.query(Organization).filter(
         Organization.id == _admin_org(db_session)
     ).first()
@@ -52,11 +57,12 @@ def test_generate_allows_multiple_payslips(client, db_session, admin_token):
     second = client.post(f"/api/payroll/generate?employeeId={emp.id}&month=6&year=2026", headers=h)
     assert first.status_code == 200
     assert second.status_code == 200
+    assert second.json().get("skipped") is True
     count = db_session.query(Payroll).filter(
         Payroll.employee_id == emp.id, Payroll.month == 6, Payroll.year == 2026,
         Payroll.deleted_at.is_(None),
     ).count()
-    assert count == 2
+    assert count == 1
 
 
 def test_generate_all_returns_run(client, db_session, admin_token):
@@ -529,12 +535,17 @@ def test_fnf_recovery_from_loans(db_session):
 
 
 def test_salary_revision_components_apply(db_session):
-    """A salary revision's components drive payroll from the effective month."""
+    """A salary revision's components drive payroll from the effective month.
+
+    The employee's own components below are a sanctioned manual override
+    (_entry_mode=manual) so they stand before the revision; unmarked stored
+    splits are only a display cache and never shadow the template/policy.
+    """
     from datetime import date
     from models import Attendance, SalaryRevision
     from services.payroll_service import calculate_payroll
     org, emp = _mk(db_session)
-    emp.salary_components = {"basic": 30000, "hra": 12000}
+    emp.salary_components = {"basic": 30000, "hra": 12000, "_entry_mode": "manual"}
     db_session.flush()
     for d in range(1, 31):
         db_session.add(Attendance(employee_id=emp.id, date=date(2026, 6, d),

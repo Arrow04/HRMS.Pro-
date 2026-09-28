@@ -221,6 +221,16 @@ def init_db():
                     with engine.connect() as conn:
                         conn.execute(text("ALTER TABLE payrolls ADD COLUMN registered_state VARCHAR(100)"))
                         conn.commit()
+                payrolls_columns3 = [col['name'] for col in inspector.get_columns('payrolls')]
+                if 'salary_currency' not in payrolls_columns3:
+                    with engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE payrolls ADD COLUMN salary_currency VARCHAR(10)"))
+                        conn.commit()
+                payrolls_columns4 = [col['name'] for col in inspector.get_columns('payrolls')]
+                if 'currency_exchange_rate' not in payrolls_columns4:
+                    with engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE payrolls ADD COLUMN currency_exchange_rate FLOAT"))
+                        conn.commit()
             except Exception as e:
                 print(f"Payroll jurisdiction column sync warning: {e}")
 
@@ -317,7 +327,11 @@ def init_db():
                         "bonus_applicable BOOLEAN DEFAULT FALSE",
                         "bonus_min_rate FLOAT DEFAULT 8.33",
                         "bonus_max_rate FLOAT DEFAULT 20.0",
-                        "bonus_wage_ceiling FLOAT DEFAULT 21000.0",
+                        "bonus_eligible_ceiling FLOAT DEFAULT 21000.0",
+                        "bonus_wage_ceiling FLOAT DEFAULT 7000.0",
+                        "eps_employer_rate FLOAT DEFAULT 8.33",
+                        "nps_employee_rate FLOAT",
+                        "nps_employer_rate FLOAT",
                     ):
                         col_name = col_def.split()[0]
                         if col_name not in stat_cols:
@@ -655,7 +669,6 @@ def init_db():
                 status="active",
                 default_currency=os.environ.get("DEFAULT_CURRENCY", "INR"),
                 timezone=os.environ.get("DEFAULT_TIMEZONE", "Asia/Kolkata"),
-                registered_state="Karnataka",
             )
             db.add(org)
             db.commit()
@@ -753,7 +766,7 @@ def init_db():
                 organization_id=org.id,
                 pf_applicable=True,
                 pf_employee_rate=12.0,
-                pf_employer_rate=12.0,
+                pf_employer_rate=3.67,
                 pf_max_monthly=1800.0,
                 pf_min_basic_for_exclusion=15000.0,
                 esi_applicable=True,

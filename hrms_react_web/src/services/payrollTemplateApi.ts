@@ -32,6 +32,18 @@ export interface PayrollTemplateComponent {
   is_active?: boolean;
   priority?: number;
   tax_category?: string;
+  taxability?: string | null;
+  pf_applicable?: boolean | null;
+  esi_applicable?: boolean | null;
+  pt_applicable?: boolean | null;
+  lwf_applicable?: boolean | null;
+  gratuity_applicable?: boolean | null;
+  bonus_applicable?: boolean | null;
+  nps_applicable?: boolean | null;
+  tiered_config?: { from: number; to?: number | null; rate: number }[] | null;
+  shift_differential_config?: Record<string, number> | null;
+  input_variables?: string[] | null;
+  depends_on?: (string | number)[] | null;
 }
 
 export interface TaxSlabInput {
@@ -83,7 +95,7 @@ export interface PayrollTemplateAttendance {
 }
 
 export interface PayrollTemplateStatutory {
-  pf_applicable?: boolean;
+  pf_applicable?: boolean | null;
   pf_employee_rate?: number;
   pf_employer_rate?: number;
   pf_wage_ceiling?: number;
@@ -94,26 +106,30 @@ export interface PayrollTemplateStatutory {
   pf_admin_rate?: number;
   pf_admin_min_monthly?: number;
   eps_wage_ceiling?: number;
-  esi_applicable?: boolean;
+  eps_employer_rate?: number;
+  esi_applicable?: boolean | null;
   esi_employee_rate?: number;
   esi_employer_rate?: number;
   esi_gross_ceiling?: number;
   esi_disabled_ceiling?: number;
-  pt_applicable?: boolean;
+  pt_applicable?: boolean | null;
   pt_monthly_amount?: number;
   pt_min_gross?: number;
-  lwf_applicable?: boolean;
+  lwf_applicable?: boolean | null;
   lwf_employee_rate?: number;
   lwf_employer_rate?: number;
-  gratuity_applicable?: boolean;
+  gratuity_applicable?: boolean | null;
   gratuity_rate?: number;
   gratuity_eligible_years?: number;
   gratuity_days_per_year?: number;
   gratuity_tax_exempt_ceiling?: number;
-  bonus_applicable?: boolean;
+  bonus_applicable?: boolean | null;
   bonus_min_rate?: number;
   bonus_max_rate?: number;
+  bonus_eligible_ceiling?: number;
   bonus_wage_ceiling?: number;
+  nps_employee_rate?: number;
+  nps_employer_rate?: number;
 }
 
 export interface PayrollTemplate {
@@ -139,6 +155,7 @@ export interface PayrollTemplate {
   tax_regime_name?: string | null;
   component_count?: number;
   employee_count?: number;
+  effective_from?: string;
   created_at?: string;
   updated_at?: string;
   payroll_policy?: PayrollTemplatePolicy | null;
@@ -166,6 +183,7 @@ export interface PayrollTemplatePayload {
   payDay?: number | null;
   autoPayslip?: boolean;
   emailPayslip?: boolean;
+  effectiveFrom?: string;
 }
 
 export const getPayrollTemplates = (companyId?: number) =>
@@ -182,6 +200,9 @@ export const updatePayrollTemplate = (id: number, payload: PayrollTemplatePayloa
 
 export const deletePayrollTemplate = (id: number) =>
   api.delete(`/payroll-templates/${id}`).then(r => r.data);
+
+export const resetTemplateStatutory = (id: number) =>
+  api.post<{ message: string; template: PayrollTemplate }>(`/payroll-templates/${id}/reset-statutory`).then(r => r.data);
 
 export const snapshotFromOrg = () =>
   api.post<{ message: string; template: PayrollTemplate }>('/payroll-templates/from-org').then(r => r.data);

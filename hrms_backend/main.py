@@ -30,7 +30,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import case, event, func, inspect, or_, text
@@ -45,7 +45,8 @@ from controllers.dynamic_permissions_controller import router as dynamic_permiss
 from controllers.employee_controller import router as employee_controller_router
 from controllers.permissions_controller import router as permissions_controller_router
 from controllers.superadmin_controller import router as superadmin_controller_router
-from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
+from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme, SECRET_KEY as JWT_SECRET_KEY, ALGORITHM as JWT_ALGORITHM
+from jose import JWTError, jwt as jose_jwt
 from core.datetime_utils import ist_now_naive
 from core.api_versioning import APIVersionMiddleware
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache, ping_redis
@@ -347,8 +348,34 @@ def _check_upload_access(path: str, user: User) -> bool:
 
 
 @app.get("/uploads/{path:path}")
-async def serve_uploaded_file(path: str, current_user: User = Depends(get_current_user)):
-    if not _check_upload_access(f"/{path}", current_user):
+async def serve_uploaded_file(
+    path: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    # <img>/<a> tags cannot send an Authorization header, so for this route
+    # only the JWT is also accepted as a ?token= query parameter. Same
+    # validation as core.auth.get_current_user (signature, sub, active,
+    # token_version, org linkage) — never weaker.
+    auth_header = request.headers.get("Authorization") or ""
+    bearer = token or (auth_header[7:] if auth_header.startswith("Bearer ") else None)
+    if not bearer:
+        raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        payload = jose_jwt.decode(bearer, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        user_id = int(payload.get("sub"))
+    except (JWTError, TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+    if payload.get("tv", 0) != (user.token_version or 0):
+        raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+    if user.role != "superadmin" and user.organization_id is None:
+        raise HTTPException(status_code=403, detail="Account is not linked to an organization")
+    if not _check_upload_access(f"/{path}", user):
         raise HTTPException(status_code=403, detail="You do not have permission to access this file")
     file_path = os.path.join(_uploads_dir, path)
     if not os.path.isfile(file_path):

@@ -1177,12 +1177,33 @@ class NotificationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PayrollPreviewRequest(BaseModel):
+    """Dry-run salary structure: what payroll WOULD be for these inputs.
+
+    Works for saved employees (employeeId) and for unsaved drafts (baseSalary +
+    payrollTemplateId + mode) — the salary tab calculator uses it so the preview
+    is computed by the very same engine as a payroll run.
+    """
+    employeeId: Optional[int] = None
+    baseSalary: Optional[float] = None
+    payFrequency: Optional[str] = None
+    payrollTemplateId: Optional[int] = None
+    salaryMode: Optional[str] = None
+    salaryComponents: Optional[Dict[str, Any]] = None
+    month: Optional[int] = None
+    year: Optional[int] = None
+    companyId: Optional[int] = None
+    departmentId: Optional[int] = None
+
+
 class BonusCreate(BaseModel):
     employeeId: int
     month: int
     year: int
     amount: float
     reason: Optional[str] = None
+    # Which ad-hoc earning this is: bonus | incentive | commission
+    type: Optional[str] = "bonus"
 
 
 class BonusResponse(BaseModel):
@@ -1193,5 +1214,6 @@ class BonusResponse(BaseModel):
     year: int
     amount: float
     reason: Optional[str] = None
+    type: Optional[str] = "bonus"
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,5 +1,6 @@
 import { Ban, CheckCircle2, Edit2, Trash2, Users, X, LogOut, RotateCcw } from 'lucide-react';import React, { memo, useState } from 'react';
 import { joinEmployeeName, personDisplayName } from '../utils/employeeNameUtils';
+import { uploadUrl } from '../utils/uploadUrl';
 import SearchableSelect from './SearchableSelect';
 import ToggleSwitch from './ToggleSwitch';
 import DateRangePicker from './DateRangePicker';
@@ -198,7 +199,7 @@ const EmployeeSection = ({
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
                     {item.photoUrl ? (
-                      <img src={item.photoUrl} alt={personDisplayName(item)} className="w-full h-full object-cover" />
+                      <img src={uploadUrl(item.photoUrl)} alt={personDisplayName(item)} className="w-full h-full object-cover" />
                     ) : (
                       <Users className="w-4 h-4 text-white" />
                     )}

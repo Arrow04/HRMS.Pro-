@@ -25,8 +25,9 @@ const IfscInput: React.FC<IfscInputProps> = ({
   const [showStatus, setShowStatus] = useState(false);
 
   const handleChange = (v: string) => {
-    onChange(v);
-    validateDebounced(v);
+    const val = v.toUpperCase();
+    onChange(val);
+    validateDebounced(val);
     setShowStatus(true);
   };
 
@@ -58,7 +59,7 @@ const IfscInput: React.FC<IfscInputProps> = ({
       </div>
       {showStatus && status.ok && (
         <p className="mt-1 text-xs text-emerald-600">
-          {status.bank}{status.branch ? ` · ${status.branch}` : ''}
+          {status.bank}{status.branch ? ` - ${status.branch}` : ''}
         </p>
       )}
       {showStatus && status.error && (

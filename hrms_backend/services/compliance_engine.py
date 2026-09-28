@@ -31,15 +31,18 @@ def calculate_pf(gross_basic: float, setting: StatutorySetting) -> dict:
     if not setting.pf_applicable:
         return {"employee": 0, "employer": 0, "eps": 0, "edlis": 0, "admin": 0}
 
-    capped_basic = min(gross_basic, setting.pf_min_basic_for_exclusion)
+    # Computation base is capped by the wage ceiling — never by the opt-out
+    # threshold (those are different statutory concepts that only share a default).
+    wage_ceiling = float(getattr(setting, 'pf_wage_ceiling', None) or 0.0) or float(getattr(setting, 'pf_min_basic_for_exclusion', None) or 15000.0)
+    capped_basic = min(gross_basic, wage_ceiling)
     
     employee_share = round(capped_basic * setting.pf_employee_rate / 100, 2)
     employee_share = min(employee_share, setting.pf_max_monthly)
     
     employer_share = round(capped_basic * setting.pf_employer_rate / 100, 2)
     
-    # EPS — read rate and ceiling from DB
-    eps_rate = float(getattr(setting, 'eps_rate', None) or 0.0)
+    # EPS — prefer the current eps_employer_rate field, fall back to legacy eps_rate
+    eps_rate = float(getattr(setting, 'eps_employer_rate', None) or getattr(setting, 'eps_rate', None) or 0.0)
     eps_ceiling = float(getattr(setting, 'eps_wage_ceiling', None) or 0.0)
     eps = round(min(capped_basic, eps_ceiling) * eps_rate / 100, 2)
     
@@ -63,20 +66,69 @@ def calculate_pf(gross_basic: float, setting: StatutorySetting) -> dict:
 
 # ── ESI Calculation ───────────────────────────────────────────────────────
 
-def calculate_esi(gross_salary: float, setting: StatutorySetting) -> dict:
+# ESIC Rule 52: employees at/below this average daily wage pay no employee
+# share (the employer share is still due). Daily wage = monthly gross / 26.
+ESI_LOW_WAGE_DAILY_AVG = 176.0
+ESI_WAGE_DAYS_DIVISOR = 26.0
+
+
+def esi_employee_exempt(monthly_gross: float) -> bool:
+    """True when the employee's ESI share is waived under the low-wage rule."""
+    try:
+        return (float(monthly_gross or 0) / ESI_WAGE_DAYS_DIVISOR) <= ESI_LOW_WAGE_DAILY_AVG
+    except (TypeError, ValueError):
+        return False
+
+
+def calculate_esi(gross_salary: float, setting: StatutorySetting, is_disabled: bool = False,
+                  keep_covered: bool = False) -> dict:
     """Calculate ESI as per ESI Act 1948.
-    
-    Employee: 0.75% of gross wages
+
+    Employee: 0.75% of gross wages (waived at/below Rs.176 average daily wage
+    = monthly/26 per ESIC Rule 52; employer share still due)
     Employer: 3.25% of gross wages
-    Applicable for gross wages <= ₹21,000/month (₹25,000 for persons with disability)
+    Applicable for gross wages <= ceiling (Rs.21,000 general, Rs.25,000
+    disabled). The ceiling decides coverage, not the amount — a covered
+    employee contributes on full gross. keep_covered=True continues
+    insurrance to the end of the Apr-Sep / Oct-Mar contribution period even
+    after wages cross the ceiling (ESIC contribution-period rule).
     """
-    if not setting.esi_applicable or gross_salary > setting.esi_gross_ceiling:
+    ceiling = float(getattr(setting, 'esi_disabled_ceiling', None) or 0.0) if is_disabled else float(getattr(setting, 'esi_gross_ceiling', None) or 0.0)
+    if not setting.esi_applicable or (gross_salary > ceiling and not keep_covered):
         return {"employee": 0, "employer": 0}
 
+    employee = 0.0 if esi_employee_exempt(gross_salary) else round(gross_salary * setting.esi_employee_rate / 100, 2)
     return {
-        "employee": round(gross_salary * setting.esi_employee_rate / 100, 2),
+        "employee": employee,
         "employer": round(gross_salary * setting.esi_employer_rate / 100, 2),
     }
+
+
+def esi_period_months(year: int, month: int) -> list:
+    """Earlier months of the ESIC contribution period (Apr-Sep / Oct-Mar)."""
+    if 4 <= month <= 9:
+        return [(year, m) for m in range(4, month)]
+    if month >= 10:
+        return [(year, m) for m in range(10, month)]
+    return [(year - 1, 10), (year - 1, 11), (year - 1, 12)] + [(year, m) for m in range(1, month)]
+
+
+def esi_covered_earlier(db, employee_id: int, year: int, month: int) -> bool:
+    """True when the employee was ESI-insured earlier in the current
+    contribution period - coverage continues to the period end even if this
+    month's wages cross the ceiling."""
+    from sqlalchemy import and_, or_
+    from models import Payroll
+    prior = esi_period_months(year, month)
+    if not prior:
+        return False
+    window = or_(*[and_(Payroll.year == y, Payroll.month == m) for y, m in prior])
+    row = db.query(Payroll.id).filter(
+        Payroll.employee_id == employee_id,
+        window,
+        or_(Payroll.esi_deduction > 0, Payroll.esi_employer_contribution > 0),
+    ).first()
+    return row is not None
 
 
 # ── Professional Tax ──────────────────────────────────────────────────────
@@ -90,21 +142,70 @@ def _resolve_state_key(state_code: Optional[str]) -> Optional[str]:
     return _rs(state_code)
 
 
-def _pt_rows_from_db(db, state_key: str, as_of) -> Optional[list]:
+def resolve_jurisdiction_state(*candidates) -> Optional[str]:
+    """Return the first candidate value that resolves to a known state key.
+
+    Candidates are tried in precedence order, e.g. employee state_code /
+    work_state, payroll template registered_state, org registered_state.
+    """
+    for c in candidates:
+        c = (c or "").strip()
+        if c and _resolve_state_key(c):
+            return c
+    return None
+
+
+def _active_rows_for_scope(db, model, state_key: str, as_of, organization_id=None, company_id=None):
+    """Effective-dated rows for a state resolved by scope tier:
+    company override -> org override -> platform default -> None (static).
+
+    A tier is all-or-nothing so a partial override can never silently mix
+    with a broader tier's slab set. Returns (rows, scope) where scope is
+    'company' | 'organization' | 'platform' | None.
+    """
+    def _q(org, comp):
+        q = (
+            db.query(model)
+            .filter(model.state_code == state_key)
+            .filter(model.effective_from <= as_of)
+            .filter((model.effective_to.is_(None)) | (model.effective_to >= as_of))
+        )
+        if org is None:
+            q = q.filter(model.organization_id.is_(None))
+        else:
+            q = q.filter(model.organization_id == org)
+            if comp is None:
+                q = q.filter(model.company_id.is_(None))
+            else:
+                q = q.filter(model.company_id == comp)
+        return q.all()
+
+    if organization_id is not None and company_id is not None:
+        rows = _q(organization_id, company_id)
+        if rows:
+            return rows, "company"
+    if organization_id is not None:
+        rows = _q(organization_id, None)
+        if rows:
+            return rows, "organization"
+    rows = _q(None, None)
+    if rows:
+        return rows, "platform"
+    return None, None
+
+
+def _pt_rows_from_db(
+    db, state_key: str, as_of, organization_id: int = None, company_id: int = None,
+) -> Optional[list]:
     """Return effective-dated PT slabs for a state, or None to fall back to static."""
     try:
         from models import StatePTSlab
-        q = (
-            db.query(StatePTSlab)
-            .filter(StatePTSlab.state_code == state_key)
-            .filter(StatePTSlab.effective_from <= as_of)
-            .filter(
-                (StatePTSlab.effective_to.is_(None)) | (StatePTSlab.effective_to >= as_of)
-            )
-            .order_by(StatePTSlab.from_gross.asc())
-            .all()
+        rows, _scope = _active_rows_for_scope(
+            db, StatePTSlab, state_key, as_of, organization_id, company_id,
         )
-        return q if q else None
+        if rows:
+            rows.sort(key=lambda r: (r.from_gross or 0.0))
+        return rows or None
     except Exception:
         return None
 
@@ -114,6 +215,8 @@ def calculate_professional_tax(
     state_code: Optional[str],
     db: Session = None,
     as_of=None,
+    organization_id: Optional[int] = None,
+    company_id: Optional[int] = None,
 ) -> dict:
     """Calculate Professional Tax based on state-wise slabs.
 
@@ -130,7 +233,7 @@ def calculate_professional_tax(
     as_of = as_of or datetime.utcnow().date()
 
     if db is not None:
-        rows = _pt_rows_from_db(db, state_key, as_of)
+        rows = _pt_rows_from_db(db, state_key, as_of, organization_id, company_id)
         if rows is not None:
             for slab in rows:
                 if slab.from_gross <= gross_salary:
@@ -152,20 +255,19 @@ def calculate_professional_tax(
 
 # ── LWF Calculation ───────────────────────────────────────────────────────
 
-def _lwf_row_from_db(db, state_key: str, as_of) -> Optional[object]:
+def _lwf_row_from_db(
+    db, state_key: str, as_of, organization_id: int = None, company_id: int = None,
+) -> Optional[object]:
     """Return the effective-dated LWF config for a state, or None to fall back to static."""
     try:
         from models import StateLWFConfig
-        return (
-            db.query(StateLWFConfig)
-            .filter(StateLWFConfig.state_code == state_key)
-            .filter(StateLWFConfig.effective_from <= as_of)
-            .filter(
-                (StateLWFConfig.effective_to.is_(None)) | (StateLWFConfig.effective_to >= as_of)
-            )
-            .order_by(StateLWFConfig.effective_from.desc())
-            .first()
+        rows, _scope = _active_rows_for_scope(
+            db, StateLWFConfig, state_key, as_of, organization_id, company_id,
         )
+        if not rows:
+            return None
+        rows.sort(key=lambda r: (r.effective_from or date.min), reverse=True)
+        return rows[0]
     except Exception:
         return None
 
@@ -175,6 +277,8 @@ def calculate_lwf(
     state_code: Optional[str],
     db: Session = None,
     as_of=None,
+    organization_id: Optional[int] = None,
+    company_id: Optional[int] = None,
 ) -> dict:
     """Calculate Labour Welfare Fund based on state contribution rules.
 
@@ -196,7 +300,7 @@ def calculate_lwf(
     as_of = as_of or datetime.utcnow().date()
 
     if db is not None:
-        row = _lwf_row_from_db(db, state_key, as_of)
+        row = _lwf_row_from_db(db, state_key, as_of, organization_id, company_id)
         if row is not None:
             if not row.applicable:
                 return {"employee": 0, "employer": 0, "applicable": False, "state": row.state_name or state_key, "source": "db"}
@@ -209,6 +313,9 @@ def calculate_lwf(
             if frequency == "half_yearly":
                 emp_contrib = round(emp_contrib / 6, 2)
                 employer_contrib = round(employer_contrib / 6, 2)
+            elif frequency == "yearly":
+                emp_contrib = round(emp_contrib / 12, 2)
+                employer_contrib = round(employer_contrib / 12, 2)
             return {
                 "employee": emp_contrib,
                 "employer": employer_contrib,
@@ -230,10 +337,13 @@ def calculate_lwf(
     employer_contrib = state_data.get("employer_contribution", 0)
     frequency = state_data.get("frequency", "monthly")
 
-    # Convert half-yearly to monthly
+    # Convert half-yearly / yearly to a monthly figure
     if frequency == "half_yearly":
         emp_contrib = round(emp_contrib / 6, 2)
         employer_contrib = round(employer_contrib / 6, 2)
+    elif frequency == "yearly":
+        emp_contrib = round(emp_contrib / 12, 2)
+        employer_contrib = round(employer_contrib / 12, 2)
 
     return {
         "employee": emp_contrib,
@@ -273,20 +383,23 @@ def calculate_gratuity(basic_da: float, years_of_service: int, setting: Optional
 
 # ── Bonus Calculation ─────────────────────────────────────────────────────
 
-def calculate_bonus(gross_salary: float, months_worked: int) -> dict:
+def calculate_bonus(gross_salary: float, months_worked: int, min_rate: float = 8.33,
+                    max_rate: float = 20.0, calc_ceiling: float = 7000.0,
+                    eligible_ceiling: float = 21000.0) -> dict:
     """Calculate bonus as per Payment of Bonus Act 1965.
-    
-    Minimum bonus: 8.33% of salary
-    Maximum bonus: 20% of salary
-    Applicable for salary <= ₹21,000/month
+
+    Eligibility: monthly salary within the eligibility ceiling. The payout is
+    then computed on salary capped at the calculation ceiling, between the
+    minimum and maximum rates. All three knobs come from StatutorySetting.
     """
-    if gross_salary > 21000:
+    if gross_salary > eligible_ceiling:
         return {"amount": 0, "minimum": 0, "maximum": 0, "eligible": False}
-    
-    annual_salary = gross_salary * months_worked
-    min_bonus = round(annual_salary * 8.33 / 100, 2)
-    max_bonus = round(annual_salary * 20 / 100, 2)
-    
+
+    bonus_wages = min(gross_salary, calc_ceiling)
+    annual_salary = bonus_wages * months_worked
+    min_bonus = round(annual_salary * min_rate / 100, 2)
+    max_bonus = round(annual_salary * max_rate / 100, 2)
+
     return {
         "minimum": min_bonus,
         "maximum": max_bonus,
@@ -296,6 +409,87 @@ def calculate_bonus(gross_salary: float, months_worked: int) -> dict:
 
 
 # ── Income Tax / TDS Calculation ──────────────────────────────────────────
+
+def _normalize_tax_slabs(slabs):
+    """Normalize ORM rows or dicts to sorted (from, to|None, rate) tuples.
+    Rates are clamped to 0-100 so legacy bad rows can never invert money."""
+    out = []
+    for s in slabs or []:
+        if isinstance(s, dict):
+            frm = float(s.get("from_amount", s.get("from", 0)) or 0)
+            to = s.get("to_amount", s.get("to"))
+            rate = float(s.get("rate", 0) or 0)
+        else:
+            frm = float(getattr(s, "from_amount", 0) or 0)
+            to = getattr(s, "to_amount", None)
+            rate = float(getattr(s, "rate", 0) or 0)
+        rate = max(0.0, min(100.0, rate))
+        out.append((frm, float(to) if to is not None else None, rate))
+    return sorted(out, key=lambda t: t[0])
+
+
+def _slab_tax_at(income, slabs):
+    """Slab tax for an income using normalized slabs."""
+    tax = 0.0
+    for frm, to, rate in slabs:
+        if income <= frm:
+            break
+        top = to if to is not None else income
+        part = min(income, top) - frm
+        if part > 0:
+            tax += part * rate / 100.0
+    return tax
+
+
+def apply_tax_relief(slab_tax, taxable_income, slabs,
+                     rebate_threshold=0, rebate_amount=0,
+                     regime_type="new", surcharge_slabs=None):
+    """87A rebate with new-regime marginal relief + surcharge with marginal relief.
+
+    Below/at the threshold the rebate wipes slab tax out. Just above it (new
+    regime), tax is capped at the excess over the threshold so a small rise in
+    income never costs more in tax than the income gained. Surcharge uses the
+    highest threshold crossed, capped at (slab tax at that threshold + excess
+    over it) per CBDT marginal-relief rules. Assumes contiguous slabs from 0,
+    which is how all seeded and UI-built slab sets are stored.
+    Returns (tax_after_rebate, rebate_given, surcharge).
+    """
+    threshold = float(rebate_threshold or 0)
+    cap_amount = float(rebate_amount or 0)
+    tax = float(slab_tax)
+    rebate = 0.0
+    if threshold > 0 and cap_amount > 0:
+        if taxable_income <= threshold:
+            rebate = min(tax, cap_amount)
+            tax = max(0.0, tax - cap_amount)
+        elif (regime_type or "new") == "new":
+            capped = max(0.0, taxable_income - threshold)
+            if tax > capped:
+                rebate = tax - capped
+                tax = capped
+    surcharge = 0.0
+    top_from = None
+    top_rate = 0.0
+    for s in surcharge_slabs or []:
+        try:
+            if isinstance(s, dict):
+                s_from = float(s.get("from", 0))
+                s_rate = float(s.get("rate", 0))
+            else:
+                s_from = float(getattr(s, "from", 0))
+                s_rate = float(getattr(s, "rate", 0))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if taxable_income >= s_from and (top_from is None or s_from >= top_from):
+            top_from, top_rate = s_from, s_rate
+    if top_from is not None and top_rate > 0:
+        surcharge = tax * top_rate / 100.0
+        base_at_threshold = _slab_tax_at(top_from, _normalize_tax_slabs(slabs))
+        cap_total = base_at_threshold + (taxable_income - top_from)
+        if tax + surcharge > cap_total:
+            surcharge = max(0.0, cap_total - tax)
+    return tax, rebate, surcharge
+
 
 def calculate_income_tax(annual_gross: float, regime: TaxRegime, slabs: list[TaxSlab],
                          deductions_80c: float = 0, deductions_80d: float = 0,
@@ -341,16 +535,17 @@ def calculate_income_tax(annual_gross: float, regime: TaxRegime, slabs: list[Tax
         if slab_income > 0:
             tax += slab_income * slab.rate / 100
     
-    # Rebate u/s 87A
-    if taxable_income <= regime.rebate_threshold and regime.rebate_amount > 0:
-        tax = max(0, tax - regime.rebate_amount)
+    # Rebate u/s 87A (with new-regime marginal relief) + surcharge
+    # (with marginal relief) via the shared helper so every tax path agrees.
+    tax, _rebate_given, surcharge = apply_tax_relief(
+        tax, taxable_income, slabs,
+        rebate_threshold=getattr(regime, "rebate_threshold", 0),
+        rebate_amount=getattr(regime, "rebate_amount", 0),
+        regime_type=getattr(regime, "regime_type", "new"),
+        surcharge_slabs=getattr(regime, "surcharge_config", None),
+    )
     
-    # Surcharge — read threshold from surcharge_config or use regime settings
-    surcharge = 0
-    if regime.surcharge_config:
-        for s_slab in regime.surcharge_config:
-            if taxable_income >= s_slab["from"]:
-                surcharge = tax * s_slab["rate"] / 100
+    # Surcharge is computed inside apply_tax_relief above.
     
     # Health & Education Cess
     cess = (tax + surcharge) * regime.cess_rate / 100
@@ -483,7 +678,11 @@ def process_monthly_payroll(
 
     # ── Statutory deductions (rates from StatutorySetting in DB) ──
     pf = calculate_pf(basic, setting)
-    esi = calculate_esi(gross, setting)
+    esi = calculate_esi(
+        gross, setting,
+        is_disabled=bool(getattr(employee, 'is_person_with_disability', False)),
+        keep_covered=esi_covered_earlier(db, employee.id, year, month),
+    )
     pt = calculate_professional_tax(gross, state_code, db=db, as_of=period_date)
     lwf = calculate_lwf(gross, state_code, db=db, as_of=period_date)
 

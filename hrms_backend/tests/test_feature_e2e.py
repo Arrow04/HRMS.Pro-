@@ -258,3 +258,134 @@ class TestAttendanceAndLeaves:
         }, headers=h)
         assert lst.status_code == 200
         assert str(emp_id) in lst.text
+
+
+class TestPayrollConfigValidation:
+    """Wizard inputs must be validated on write: negative rates, impossible
+    slabs, unknown calc types, out-of-range knobs are rejected with 400."""
+
+    @staticmethod
+    def _tpl(**over):
+        payload = {"name": "ValidationTpl", "components": [
+            {"name": "Basic", "component_type": "earning",
+             "calculation_type": "percentage", "calculation_value": 50}]}
+        payload.update(over)
+        return payload
+
+    def test_negative_statutory_rejected(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates",
+                        json=self._tpl(statutory={"pf_employee_rate": -12.0}), headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_zero_statutory_accepted(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json=self._tpl(
+            statutory={"esi_disabled_ceiling": 0.0, "pt_monthly_amount": 0.0}), headers=h)
+        assert r.status_code in (200, 201), r.text
+        tid = (r.json().get("template") or r.json()).get("id")
+        got = client.get(f"/api/payroll-templates/{tid}", headers=h).json()
+        stat = (got.get("template") or got).get("statutory") or {}
+        assert stat.get("pt_monthly_amount") == 0.0
+
+    def test_bad_slab_rate_rejected(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json=self._tpl(
+            taxRegime={"name": "Bad", "slabs": [
+                {"from_amount": 0, "to_amount": 400000, "rate": 150}]}), headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_inverted_slab_rejected(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json=self._tpl(
+            taxRegime={"name": "Bad2", "slabs": [
+                {"from_amount": 500000, "to_amount": 400000, "rate": 20}]}), headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_unknown_calc_type_rejected(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json={"name": "BadCalc", "components": [
+            {"name": "X", "component_type": "earning",
+             "calculation_type": "magic", "calculation_value": 5}]}, headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_min_cap_above_max_rejected(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json={"name": "BadCaps", "components": [
+            {"name": "X", "component_type": "earning",
+             "calculation_type": "fixed", "calculation_value": 5,
+             "min_cap": 100, "max_cap": 50}]}, headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_decimal_places_range(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json=self._tpl(
+            payrollPolicy={"decimal_places": 9}), headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_working_days_range(self, api):
+        client, h = api
+        r = client.post("/api/payroll-templates", json=self._tpl(
+            attendancePolicy={"working_days_per_week": 9}), headers=h)
+        assert r.status_code == 400, r.text
+
+    def test_org_statutory_negative_rejected(self, api):
+        client, h = api
+        r = client.put("/api/payroll-config/statutory-settings",
+                       json={"pf_employee_rate": -1.0}, headers=h)
+        assert r.status_code in (400, 422), r.text
+
+    def test_engine_clamps_legacy_negative_rate(self):
+        from services.compliance_engine import _normalize_tax_slabs
+        out = _normalize_tax_slabs([{"from_amount": 0, "to_amount": None, "rate": -5}])
+        assert out[0][2] == 0.0
+
+
+class TestPreRunDeductions:
+    """Pre-run deduction queue: upsert semantics, validation, removal."""
+
+    @staticmethod
+    def _mk_emp(client, h, code):
+        import time as _t
+        r = client.post("/api/employees", json={
+            "firstName": "Pre", "lastName": code,
+            "email": f"pre{code}.{int(_t.time() * 1000)}@example.com",
+            "employeeCode": f"PRE{code}", "baseSalary": 600000, "status": "active",
+        }, headers=h)
+        assert r.status_code in (200, 201), r.text
+        b = r.json()
+        return b.get("id") or (b.get("employee") or {}).get("id")
+
+    def test_queue_upsert_and_remove(self, api):
+        client, h = api
+        e1 = self._mk_emp(client, h, "Q1")
+        e2 = self._mk_emp(client, h, "Q2")
+        r = client.post("/api/payroll/pre-deductions", json={
+            "month": 6, "year": 2026,
+            "items": [
+                {"employeeId": e1, "amount": 1300, "reason": "canteen"},
+                {"employeeId": e2, "amount": 500, "reason": "advance recovery"},
+            ]}, headers=h)
+        assert r.status_code == 200, r.text
+        g = client.get("/api/payroll/pre-deductions", params={"month": 6, "year": 2026}, headers=h).json()
+        assert g["total"] == 1800
+        assert len(g["items"]) == 2
+
+        # Re-queue e1 -> replaces e1's row only; e2 untouched.
+        client.post("/api/payroll/pre-deductions", json={
+            "month": 6, "year": 2026,
+            "items": [{"employeeId": e1, "amount": 900, "reason": "canteen revised"}]}, headers=h)
+        g2 = client.get("/api/payroll/pre-deductions", params={"month": 6, "year": 2026}, headers=h).json()
+        amts = {i["employeeId"]: i["amount"] for i in g2["items"]}
+        assert amts == {e1: 900, e2: 500}
+
+        bad = client.post("/api/payroll/pre-deductions", json={
+            "month": 6, "year": 2026,
+            "items": [{"employeeId": e1, "amount": -5}]}, headers=h)
+        assert bad.status_code == 400
+
+        row_id = next(i["id"] for i in g2["items"] if i["employeeId"] == e1)
+        d = client.delete(f"/api/payroll/pre-deductions/{row_id}", headers=h)
+        assert d.status_code == 200
+        g3 = client.get("/api/payroll/pre-deductions", params={"month": 6, "year": 2026}, headers=h).json()
+        assert [i["employeeId"] for i in g3["items"]] == [e2]

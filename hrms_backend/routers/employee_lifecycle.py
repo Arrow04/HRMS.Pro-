@@ -873,6 +873,16 @@ def save_onboarding_data(
     current_user: User = Depends(get_current_user),
 ):
     """Save the full onboarding form data to the employee record."""
+    # TEMP DEBUG — remove after diagnosing achievements save issue
+    try:
+        import json as _json
+        with open(r"C:\Users\sayak\AppData\Local\Temp\opencode\update_debug.log", "a", encoding="utf-8") as _f:
+            _f.write("\n=== PUT onboarding-data/%s keys=%s\n" % (employee_id, sorted(payload.keys())))
+            for _k in ("achievementsDetails", "activitiesDetails", "experienceDetails", "achievements_details", "activities_details", "experience_details"):
+                if _k in payload:
+                    _f.write("  %s = %s\n" % (_k, _json.dumps(payload[_k])[:300]))
+    except Exception:
+        pass
     emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     from utils.helpers import convert_camel_to_snake
@@ -1028,6 +1038,18 @@ def save_onboarding_data(
         emp.skills_list = data["skills_list"]
     elif "skillsList" in payload and isinstance(payload["skillsList"], list):
         emp.skills_list = payload["skillsList"]
+
+    # IT setup fields (dates, text, checklist booleans)
+    from routers.employees import IT_CHECKLIST_COLUMNS, IT_DATE_FIELDS, IT_TEXT_FIELDS, _date_or_none
+    for f in IT_TEXT_FIELDS:
+        if f in data:
+            setattr(emp, f, data[f] or None)
+    for f in IT_DATE_FIELDS:
+        if f in data:
+            setattr(emp, f, _date_or_none(data[f]))
+    for _, col in IT_CHECKLIST_COLUMNS:
+        if col in data:
+            setattr(emp, col, bool(data[col]))
 
     # Salary
     if "base_salary" in data and data["base_salary"] is not None:

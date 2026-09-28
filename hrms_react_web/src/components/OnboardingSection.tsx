@@ -15,6 +15,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import EmployeeFormModal from './EmployeeFormModal';
 import type { EmployeeFormData as SharedFormData } from './EmployeeFormModal';
+import { computeProfileCompletion } from '../utils/profileCompletion';
 import {
   Search, UserPlus, LogIn, X, Upload, User, Heart, MapPin, IdCard,
   GraduationCap, Award, Briefcase, HeartHandshake, Building2, Smartphone,
@@ -271,27 +272,29 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
     });
   }, [employees, search, filterCompanyId, filterBranchId, filterDepartmentId, filterStatus, filterStartDate, filterEndDate]);
 
-  // Progress is based on how many onboarding fields the user has actually filled,
-  // not the step. So even an "onboarded" employee can show <100% if work remains.
+  // Prefer the server-computed value: table rows come from the slim picker
+  // endpoint, so the full record isn't available here. Falls back to the
+  // shared client calculation when absent.
   const computeOnboardingProgress = (item: Employee): number => {
-    const fields = [
-      'phone', 'dateOfBirth', 'gender', 'bloodGroup', 'maritalStatus',
-      'currentAddress', 'permanentAddress', 'emergencyContact', 'emergencyPhone',
-      'educationLevel', 'institution', 'degree', 'graduationYear', 'skills',
-      'bankName', 'bankAccountNumber', 'ifscCode', 'pfNumber', 'pfUan', 'esicNumber',
-      'panNumber', 'aadharNumber', 'designation', 'departmentId', 'companyId', 'employmentType',
-    ];
-    const rec = item as unknown as Record<string, unknown>;
-    const nameFilled = joinEmployeeName(item.firstName, item.lastName) ? 1 : 0;
-    const filled = nameFilled + fields.filter((f) => {
-      const v = rec[f];
-      return v !== undefined && v !== null && v !== '' && v !== 0;
-    }).length;
-    return Math.round((filled / (fields.length + 1)) * 100);
+    const serverPct = (item as unknown as { profileCompletion?: number }).profileCompletion;
+    if (typeof serverPct === 'number') return serverPct;
+    return computeProfileCompletion(item as unknown as Record<string, unknown>);
   };
 
-  const handleStartOnboarding = (employee: Employee) => {
+  const handleStartOnboarding = async (employee: Employee) => {
     setSelectedEmployee(employee);
+    // Table rows come from the slim picker endpoint (no education/skills/
+    // experience/achievements/activities/bank arrays) — fetch the full record
+    // first so previously saved details are still there when the modal opens.
+    let full: Record<string, unknown> = employee as unknown as Record<string, unknown>;
+    try {
+      const res = await api.get(`/employees/${employee.id}`);
+      if (res.data && typeof res.data === 'object') {
+        full = { ...full, ...res.data };
+      }
+    } catch {
+      // offline / fetch failure — fall back to the picker row
+    }
     // Format dates to YYYY-MM-DD for date inputs
     const formatDate = (dateStr: string | null | undefined) => {
       if (!dateStr) return '';
@@ -299,7 +302,7 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
     };
 
     setOnboardingFormData({
-      ...employee,
+      ...full,
       // Map various fields that might have different names
       firstName: employee.firstName || '',
       lastName: employee.lastName || '',

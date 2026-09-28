@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Upload, Eye, X, ImageIcon } from 'lucide-react';
 import { FORM_CONTROL_HEIGHT } from './FormField';
+import { uploadUrl } from '../utils/uploadUrl';
 
 interface CompactImageUploadProps {
   value?: string;
@@ -48,7 +49,7 @@ const CompactImageUpload: React.FC<CompactImageUploadProps> = ({
       />
       {value ? (
         <div className="w-7 h-7 rounded overflow-hidden border border-[#E2E8F0] bg-[#F8FAFC] shrink-0">
-          <img src={value} alt="Preview" className="w-full h-full object-cover" />
+          <img src={uploadUrl(value)} alt="Preview" className="w-full h-full object-cover" />
         </div>
       ) : (
         <ImageIcon className="w-4 h-4 text-[#94A3B8] shrink-0" />

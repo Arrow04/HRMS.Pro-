@@ -204,20 +204,15 @@ def _safe_eval(expr: str, ctx: Dict[str, Any]) -> Any:
 # ── Policy Loaders ──
 
 def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int, gross: float, working_days: int) -> float:
-    """Statutory bonus per the Payment of Bonus Act (India), driven by StatutoryRuleEngine.
+    """Statutory bonus per the Payment of Bonus Act (India), driven by StatutorySetting.
 
-    Applies when the org is in India, bonus_applicable is on, and gross wages are
-    within the eligibility ceiling. Returns the minimum statutory bonus (8.33%)
-    spread across 12 months.
-
-    Per the Act, bonus is payable on wages up to ₹21,000/month ceiling.
-    Employees earning above ₹21,000 still get bonus calculated on the ceiling.
+    Rule-engine result wins when a published bonus rule applies. Otherwise the
+    visible bonus_applicable toggle gates the payout: eligible monthly salaries
+    get the minimum bonus rate on calculation-capped wages, spread monthly.
     """
     try:
         from datetime import date as _date
-        cfg = ((getattr(employee.organization, "settings", None) or {}).get("payroll", {}) or {})
-        if not cfg.get("statutoryBonus", False):
-            return 0.0
+        from services.compliance_engine import calculate_bonus
         country = _effective_country(employee).lower()
         as_of = _date(year, month, 1)
         engine = _get_rule_engine(db, employee, as_of)
@@ -225,16 +220,18 @@ def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int,
         result = engine.calculate_bonus(gross, as_of, country, state_code, employee.organization_id)
         if result.get('bonus_applicable') and result.get('bonus_amount'):
             return float(result['bonus_amount'])
-        # Statutory minimum per the Payment of Bonus Act: 8.33% of bonus
-        # wages (ceiling-capped), spread across 12 months.
-        ceiling = 21000.0
         try:
             stat = _get_statutory_settings(db, employee)
-            ceiling = float(getattr(stat, "bonus_wage_ceiling", None) or 21000.0)
         except Exception:
-            pass
-        from services.compliance_engine import calculate_bonus
-        b = calculate_bonus(min(float(gross), ceiling), 12)
+            stat = None
+        if not stat or not getattr(stat, "bonus_applicable", False):
+            return 0.0
+        eligible_ceiling = float(getattr(stat, "bonus_eligible_ceiling", None) or 21000.0)
+        if float(gross) > eligible_ceiling:
+            return 0.0
+        calc_cap = float(getattr(stat, "bonus_wage_ceiling", None) or 7000.0)
+        min_rate = float(getattr(stat, "bonus_min_rate", None) or 8.33)
+        b = calculate_bonus(min(float(gross), calc_cap), 12, min_rate=min_rate, calc_ceiling=calc_cap, eligible_ceiling=eligible_ceiling)
         return round(float(b.get("minimum", 0)) / 12.0, 2)
     except Exception:
         return 0.0
@@ -548,18 +545,14 @@ def _compute_cumulative_tds(
             if taxable > 0:
                 base_tax += taxable * slab.rate / 100.0
             prev = upper
-        rebate_threshold = tax_regime.rebate_threshold or 0
-        if annual_taxable <= rebate_threshold and tax_regime.rebate_amount:
-            base_tax = max(0.0, base_tax - tax_regime.rebate_amount)
-        if tax_regime.surcharge_config:
-            # Sort by "from" threshold ascending; pick the highest applicable slab (marginal surcharge)
-            sorted_surcharge = sorted(tax_regime.surcharge_config, key=lambda s: float(s.get("from", 0)))
-            for s_slab in sorted_surcharge:
-                try:
-                    if annual_taxable >= float(s_slab.get("from", 0)):
-                        surcharge = base_tax * float(s_slab.get("rate", 0)) / 100.0
-                except (TypeError, ValueError):
-                    continue
+        from services.compliance_engine import apply_tax_relief
+        base_tax, _rebate_given, surcharge = apply_tax_relief(
+            base_tax, annual_taxable, tax_regime.slabs,
+            rebate_threshold=tax_regime.rebate_threshold,
+            rebate_amount=tax_regime.rebate_amount,
+            regime_type=getattr(tax_regime, "regime_type", "new"),
+            surcharge_slabs=tax_regime.surcharge_config,
+        )
         cess = (base_tax + surcharge) * (tax_regime.cess_rate or 0) / 100.0 if tax_regime.cess_rate is not None else 0.0
 
     annual_tax = base_tax + surcharge + cess
@@ -705,10 +698,15 @@ def _effective_salary_components(db: Session, employee: Employee, year: int, mon
             .first()
         )
         if rev and rev.salary_components:
-            return dict(rev.salary_components)
+            comps = dict(rev.salary_components)
+            comps["_source"] = "revision"
+            return comps
     except Exception:
         pass
-    return dict(employee.salary_components or {})
+    comps = dict(employee.salary_components or {})
+    if comps:
+        comps.setdefault("_source", "employee")
+    return comps
 
 
 def _get_effective_annual_ctc(db: Session, employee: Employee, year: int, month: int) -> float:
@@ -952,6 +950,43 @@ def _effective_country(employee: Employee, scoped: Optional[dict] = None, templa
     return str(getattr(employee.organization, "country", None) or "").strip() or None
 
 
+def _apply_statutory_overlay(setting: Any, overlay: Optional[dict]) -> None:
+    """Layer template-style statutory overrides onto a settings object.
+
+    Semantics: missing / null = inherit (leave the value as-is), explicit value
+    — including False — = override. Shared by template resolution and by the
+    dry-run simulator so both interpret proposed statutory exactly the same.
+    """
+    if not overlay:
+        return
+    for attr in (
+        "pf_applicable", "esi_applicable", "pt_applicable",
+        "lwf_applicable", "gratuity_applicable", "bonus_applicable",
+    ):
+        if overlay.get(attr) is not None:
+            try:
+                setattr(setting, attr, bool(overlay[attr]))
+            except Exception:
+                pass
+    for attr in (
+        "pf_employee_rate", "pf_employer_rate", "pf_max_monthly",
+        "pf_min_basic_for_exclusion", "pf_wage_ceiling", "eps_wage_ceiling",
+        "eps_employer_rate", "nps_employee_rate", "nps_employer_rate",
+        "pf_edli_rate", "pf_edli_max_monthly", "pf_admin_rate", "pf_admin_min_monthly",
+        "esi_employee_rate", "esi_employer_rate",
+        "esi_gross_ceiling", "esi_disabled_ceiling",
+        "pt_monthly_amount", "pt_min_gross",
+        "lwf_employee_rate", "lwf_employer_rate", "gratuity_rate",
+        "gratuity_eligible_years", "gratuity_days_per_year", "gratuity_tax_exempt_ceiling",
+        "bonus_min_rate", "bonus_max_rate", "bonus_eligible_ceiling", "bonus_wage_ceiling",
+    ):
+        if overlay.get(attr) is not None:
+            try:
+                setattr(setting, attr, float(overlay[attr]))
+            except (TypeError, ValueError):
+                pass
+
+
 def _get_statutory_settings(db: Session, employee: Employee,
                             scoped: Optional[dict] = None,
                             template: Optional[PayrollTemplate] = None) -> StatutorySetting:
@@ -962,12 +997,19 @@ def _get_statutory_settings(db: Session, employee: Employee,
     payroll template overrides, so a Dubai office can run UAE rules while the
     India office runs PF/ESI under the same org.
     """
-    setting = db.query(StatutorySetting).filter(
+    row = db.query(StatutorySetting).filter(
         StatutorySetting.organization_id == employee.organization_id,
         StatutorySetting.status == "active",
     ).first()
     country = _effective_country(employee, scoped, template)
-    if not setting:
+    if row is not None:
+        # ALWAYS work on a transient copy: the scoped / template overlays below
+        # must never mutate the persisted org-level row (a later commit would
+        # silently write template values into org settings).
+        from sqlalchemy import inspect as _sa_inspect
+        cols = [c.key for c in _sa_inspect(StatutorySetting).mapper.column_attrs]
+        setting = StatutorySetting(**{k: getattr(row, k) for k in cols})
+    else:
         # Return a disabled default — user must configure StatutorySetting for their country.
         # NO country-specific defaults here; the engine refuses to guess.
         setting = StatutorySetting(
@@ -975,16 +1017,22 @@ def _get_statutory_settings(db: Session, employee: Employee,
             pf_applicable=False,
             pf_employee_rate=0.0,
             pf_employer_rate=0.0,
+            pf_wage_ceiling=0.0,
             pf_max_monthly=0.0,
             pf_min_basic_for_exclusion=0.0,
             pf_edli_rate=0.0,
             pf_edli_max_monthly=0.0,
             pf_admin_rate=0.0,
             pf_admin_min_monthly=0.0,
+            eps_wage_ceiling=0.0,
+            eps_employer_rate=0.0,
+            nps_employee_rate=0.0,
+            nps_employer_rate=0.0,
             esi_applicable=False,
             esi_employee_rate=0.0,
             esi_employer_rate=0.0,
             esi_gross_ceiling=0.0,
+            esi_disabled_ceiling=0.0,
             pt_applicable=False,
             pt_monthly_amount=0.0,
             pt_min_gross=0.0,
@@ -993,6 +1041,14 @@ def _get_statutory_settings(db: Session, employee: Employee,
             lwf_employer_rate=0.0,
             gratuity_applicable=False,
             gratuity_rate=0.0,
+            gratuity_eligible_years=0.0,
+            gratuity_days_per_year=0.0,
+            gratuity_tax_exempt_ceiling=0.0,
+            bonus_applicable=False,
+            bonus_min_rate=0.0,
+            bonus_max_rate=0.0,
+            bonus_eligible_ceiling=0.0,
+            bonus_wage_ceiling=0.0,
         )
     # Apply scoped overrides (company/branch level). The DB setting is the source
     # of truth — no code overrides based on country. If the user configured
@@ -1042,35 +1098,7 @@ def _get_statutory_settings(db: Session, employee: Employee,
     # Template statutory overrides have the highest priority.
     if template is not None and template.statutory:
         tstat = template.statutory
-        for attr, key in (
-            ("pf_applicable", "pf_applicable"),
-            ("esi_applicable", "esi_applicable"),
-            ("pt_applicable", "pt_applicable"),
-            ("lwf_applicable", "lwf_applicable"),
-            ("gratuity_applicable", "gratuity_applicable"),
-            ("bonus_applicable", "bonus_applicable"),
-        ):
-            if tstat.get(key) is not None:
-                try:
-                    setattr(setting, attr, bool(tstat[key]))
-                except Exception:
-                    pass
-        for attr in (
-            "pf_employee_rate", "pf_employer_rate", "pf_max_monthly",
-            "pf_min_basic_for_exclusion", "pf_wage_ceiling", "eps_wage_ceiling",
-            "pf_edli_rate", "pf_edli_max_monthly", "pf_admin_rate", "pf_admin_min_monthly",
-            "esi_employee_rate", "esi_employer_rate",
-            "esi_gross_ceiling", "esi_disabled_ceiling",
-            "pt_monthly_amount", "pt_min_gross",
-            "lwf_employee_rate", "lwf_employer_rate", "gratuity_rate",
-            "gratuity_eligible_years", "gratuity_days_per_year", "gratuity_tax_exempt_ceiling",
-            "bonus_min_rate", "bonus_max_rate", "bonus_wage_ceiling",
-        ):
-            if tstat.get(attr) is not None:
-                try:
-                    setattr(setting, attr, float(tstat[attr]))
-                except (TypeError, ValueError):
-                    pass
+        _apply_statutory_overlay(setting, tstat)
     return setting
 
 
@@ -1101,11 +1129,13 @@ def _resolve_esi_from_rule_engine(
     country: str,
     state_code: Optional[str],
     organization_id: int,
+    is_disabled: bool = False,
+    keep_covered: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Try to resolve ESI calculation from the rule engine. Returns None if no rule found."""
     rule = engine.resolve('esi_contribution', as_of, country, state_code, organization_id)
     if rule:
-        return engine.calculate_esi(gross_salary, as_of, country, state_code, organization_id)
+        return engine.calculate_esi(gross_salary, as_of, country, state_code, organization_id, is_disabled=is_disabled, keep_covered=keep_covered)
     return None
 
 
@@ -1183,27 +1213,45 @@ def _apply_state_compliance(
     country: Optional[str] = None,
     db: Session = None,
     as_of=None,
+    template: Optional[PayrollTemplate] = None,
 ) -> dict:
-    """Auto-compute PT and LWF from the effective jurisdiction's registered_state.
+    """Auto-compute PT and LWF from the effective jurisdiction's state.
 
     This is our competitive moat — Keka requires manual PT slab updates.
-    We look up the effective country + org's registered state and calculate exact
-    PT/LWF using the state compliance engine, overriding static StatutorySetting values.
+    Jurisdiction precedence: the employee's own work state (state_code /
+    work_state), then the assigned payroll template's registered_state (the
+    state picked in the template wizard), then the org's registered_state.
+    PT/LWF are calculated with the state compliance engine, overriding
+    static StatutorySetting values.
 
     Returns dict with keys: pt_amount, pt_applicable, lwf_applicable,
     lwf_employee, lwf_employer, state_code.
     """
     org = employee.organization
     country = (country or getattr(org, "country", None) or "India").strip().lower()
-    state = (org.registered_state or "").strip()
-    key = resolve_state_key(state) if state else None
+    state = ""
+    key = None
+    for _candidate in (
+        getattr(employee, "state_code", None),
+        getattr(employee, "work_state", None),
+        getattr(template, "registered_state", None),
+        getattr(org, "registered_state", None),
+    ):
+        _candidate = (_candidate or "").strip()
+        if not _candidate:
+            continue
+        _key = resolve_state_key(_candidate)
+        if _key:
+            state, key = _candidate, _key
+            break
 
     # India-specific state compliance (PT/LWF) only applies to India orgs.
     # Other countries use the org-configurable StatutorySetting instead, so the
     # engine stays country-agnostic (usable in India and beyond).
     if country != "india":
-        lwf_emp = (basic_salary * stat_settings.lwf_employee_rate / 100) if stat_settings.lwf_applicable else 0.0
-        lwf_epr = (basic_salary * stat_settings.lwf_employer_rate / 100) if stat_settings.lwf_applicable else 0.0
+        # LWF is a fixed monthly amount everywhere it exists — never a % of basic.
+        lwf_emp = float(getattr(stat_settings, "lwf_employee_rate", None) or 0.0) if stat_settings.lwf_applicable else 0.0
+        lwf_epr = float(getattr(stat_settings, "lwf_employer_rate", None) or 0.0) if stat_settings.lwf_applicable else 0.0
         return {
             "pt_amount": stat_settings.pt_monthly_amount if stat_settings.pt_applicable else 0.0,
             "pt_applicable": stat_settings.pt_applicable,
@@ -1223,15 +1271,16 @@ def _apply_state_compliance(
     }
 
     if not key:
-        # No state configured — fall back to static StatutorySetting values
+        # No state configured — fall back to static StatutorySetting values.
+        # LWF is a fixed monthly amount (matching the state engine's units).
         pt_amount = stat_settings.pt_monthly_amount if stat_settings.pt_applicable else 0.0
         pt_applicable = stat_settings.pt_applicable and basic_salary > stat_settings.pt_min_gross
         lwf_employee = (
-            basic_salary * stat_settings.lwf_employee_rate / 100
+            float(getattr(stat_settings, "lwf_employee_rate", None) or 0.0)
             if stat_settings.lwf_applicable else 0.0
         )
         lwf_employer = (
-            basic_salary * stat_settings.lwf_employer_rate / 100
+            float(getattr(stat_settings, "lwf_employer_rate", None) or 0.0)
             if stat_settings.lwf_applicable else 0.0
         )
         return {
@@ -1245,20 +1294,25 @@ def _apply_state_compliance(
 
     # Auto PT from state compliance engine (effective-dated DB slabs, static fallback)
     from services.compliance_engine import calculate_professional_tax, calculate_lwf as engine_calculate_lwf
-    pt_result = calculate_professional_tax(gross_salary, key, db=db, as_of=as_of)
+    _scope_org = getattr(employee, "organization_id", None)
+    _scope_comp = getattr(employee, "company_id", None)
+    pt_result = calculate_professional_tax(
+        gross_salary, key, db=db, as_of=as_of,
+        organization_id=_scope_org, company_id=_scope_comp,
+    )
     pt_amount = pt_result.get("amount", 0.0)
     pt_applicable = pt_amount > 0
 
     # Auto LWF from state compliance engine
-    lwf_result = engine_calculate_lwf(gross_salary, key, db=db, as_of=as_of)
+    lwf_result = engine_calculate_lwf(
+        gross_salary, key, db=db, as_of=as_of,
+        organization_id=_scope_org, company_id=_scope_comp,
+    )
     lwf_applicable = lwf_result.get("applicable", False)
     lwf_employee = lwf_result.get("employee", 0.0)
     lwf_employer = lwf_result.get("employer", 0.0)
-    # Half-yearly LWF states (e.g. TN, Kerala, Rajasthan) return the half-yearly amount;
-    # convert to a monthly figure so we don't over-charge ~6x every month.
-    if lwf_result.get("frequency") == "half_yearly":
-        lwf_employee = lwf_employee / 6
-        lwf_employer = lwf_employer / 6
+    # NOTE: the engine already returns a monthly figure (it converts
+    # half_yearly ÷6 and yearly ÷12) — do not divide again here.
 
     logger.info(f"State compliance auto-calculated: state={key}, pt={pt_amount}, lwf_emp={lwf_employee}, lwf_epr={lwf_employer}, gross={gross_salary}")
 
@@ -1730,7 +1784,11 @@ def _calc_component_value(
     base_name = comp.calculation_base or "basic"
     base_val = computed.get(base_name, 0.0) if base_name in computed else monthly_basic
     if base_name == "basic":
-        base_val = monthly_basic
+        # % of Basic must use the *computed* Basic component (e.g. HRA = 40% of
+        # Basic where Basic itself is 50% of gross). Falls back to the monthly
+        # base when no Basic component has run yet (computed["basic"] is seeded
+        # with monthly_basic before the component loop).
+        base_val = computed.get("basic", monthly_basic)
     elif base_name == "gross" and "gross_salary" in computed:
         base_val = computed["gross_salary"]
     elif base_name == "net" and "net_salary" in computed:
@@ -1740,11 +1798,11 @@ def _calc_component_value(
 
     # ── Fixed ──
     if calc_type == "fixed":
-        val = float(comp.calculation_value)
+        val = float(comp.calculation_value or 0)
 
     # ── Percentage ──
     elif calc_type == "percentage":
-        val = base_val * float(comp.calculation_value) / 100.0
+        val = base_val * float(comp.calculation_value or 0) / 100.0
 
     # ── Formula (with conditionals, comparisons, functions) ──
     elif calc_type == "formula" and comp.formula:
@@ -1837,16 +1895,21 @@ def _get_annual_tax(annual_taxable_income: float, regime: TaxRegime) -> float:
                 tax += taxable * slab.rate / 100.0
         prev = upper
 
-    # Rebate (DB-driven, no hardcoded defaults)
-    rebate_threshold = getattr(regime, 'rebate_threshold', None)
-    if rebate_threshold and annual_taxable_income <= rebate_threshold:
-        rebate = getattr(regime, 'rebate_amount', None) or tax
-        tax = max(0.0, tax - rebate)
+    # Rebate + surcharge with marginal relief (shared engine helper so the
+    # planner, payslips and Form 16 can never disagree).
+    from services.compliance_engine import apply_tax_relief
+    tax, _rebate_given, surcharge = apply_tax_relief(
+        tax, annual_taxable_income, slabs,
+        rebate_threshold=getattr(regime, 'rebate_threshold', None),
+        rebate_amount=getattr(regime, 'rebate_amount', None),
+        regime_type=getattr(regime, 'regime_type', 'new'),
+        surcharge_slabs=getattr(regime, 'surcharge_config', None),
+    )
 
     # Cess (DB-driven, defaults to 0)
     cess_rate = getattr(regime, 'cess_rate', None) or 0.0
-    cess = tax * cess_rate / 100.0
-    tax += cess
+    cess = (tax + surcharge) * cess_rate / 100.0
+    tax += surcharge + cess
 
     return tax
 
@@ -1956,6 +2019,13 @@ def calculate_payroll(
     override_loan_deduction: Optional[float] = None,
     override_advance_deduction: Optional[float] = None,
     override_other_deductions: Optional[float] = None,
+    # Preview mode: full-month structure without attendance proration (used by
+    # the salary-tab calculator so it shows monthly figures, not period actuals).
+    assume_full_attendance: bool = False,
+    # Dry-run simulation: compute with a PROPOSED component set / statutory
+    # overlay instead of the resolved config (nothing is persisted).
+    override_components: Optional[List[Any]] = None,
+    override_statutory: Optional[dict] = None,
 ) -> dict:
     """
     Calculate payroll for one employee for the given month/year using
@@ -1987,11 +2057,43 @@ def calculate_payroll(
     att_policy = _get_attendance_policy(db, employee, _date(year, month, dim))
     scoped_payroll = resolve_scoped_payroll_config(db, employee)
     stat_settings = _get_statutory_settings(db, employee, scoped_payroll, payroll_template)
+    if override_statutory:
+        # Dry-run: layer the proposed statutory on top of the resolved settings.
+        _apply_statutory_overlay(stat_settings, override_statutory)
     jurisdiction_country = _effective_country(employee, scoped_payroll, payroll_template)
     tax_regime = _get_tax_regime(db, employee)
-    components = _get_components(db, pay_policy)
+    components = override_components if override_components is not None else _get_components(db, pay_policy)
     rounding = pay_policy.rounding_method
     places = pay_policy.decimal_places
+
+    # ── Multi-currency ──
+    # All money math below runs in the policy currency so statutory rules
+    # (denominated in local law currency) stay exact. When the policy allows
+    # it and the employee is paid in another currency, employee-side salary
+    # inputs are converted up front; admin overrides, loans, advances and
+    # perquisites are always policy-currency figures. Never guess a rate:
+    # without a positive stored rate the run stays single-currency.
+    policy_currency = (getattr(pay_policy, 'default_currency', None) or 'INR')
+    try:
+        policy_currency = str(policy_currency).upper()
+    except Exception:
+        policy_currency = 'INR'
+    emp_currency = getattr(employee, 'salary_currency', None) or policy_currency
+    try:
+        emp_currency = str(emp_currency).upper()
+    except Exception:
+        emp_currency = policy_currency
+    fx_rate = getattr(employee, 'currency_exchange_rate', None)
+    try:
+        fx_rate = float(fx_rate) if fx_rate not in (None, '') else None
+    except (TypeError, ValueError):
+        fx_rate = None
+    fx_active = bool(getattr(pay_policy, 'allow_multi_currency', False)) and emp_currency != policy_currency and bool(fx_rate and fx_rate > 0)
+    def _fx_to_policy(amount):
+        try:
+            return float(amount or 0) * fx_rate if fx_active else float(amount or 0)
+        except (TypeError, ValueError):
+            return 0.0
 
     # ── Attendance ──
     payout = _compute_attendance_payout(db, employee, month, year, att_policy, pay_policy)
@@ -2001,12 +2103,26 @@ def calculate_payroll(
     dim = payout["days_in_month"]
     employed_this_month = payout["employed_this_month"]
     factor = payout["factor"]
+    if assume_full_attendance:
+        # Structure preview: monthly figures only — ignore attendance proration
+        # and mid-month noise so the salary-tab calculator shows the clean split.
+        employed_this_month = True
+        factor = 1.0
+        paid_days = float(dim)
+        working_days = float(dim)
+        att = dict(payout)
+        att.update({
+            "factor": 1.0, "paid_days": paid_days, "working_days": working_days,
+            "present_days": float(dim), "absent_days": 0.0, "unpaid_days": 0.0,
+            "leave_days": 0.0, "half_days": 0.0, "holiday_days": 0.0,
+            "overtime_hours": 0.0, "employed_this_month": True,
+        })
 
     # ── Base Salary ──
     # Monthly base in effect for this month: revision (annual-denominated) or
     # the employee's base_salary interpreted by their pay_frequency
     # (daily / weekly / monthly / annual). See _get_effective_monthly_base.
-    monthly_basic = _get_effective_monthly_base(db, employee, year, month)
+    monthly_basic = _fx_to_policy(_get_effective_monthly_base(db, employee, year, month))
 
     # ── Custom salary components from the Salary tab (if provided) ──
     # The employee form's Salary tab stores per-field monthly amounts in
@@ -2016,8 +2132,33 @@ def calculate_payroll(
     # affects the payslip from the effective month.
     component_detail: List[Dict[str, Any]] = []
     component_deduction_total = 0.0
+    component_employee_deduction_keys: List[str] = []
     computed: Dict[str, float] = {}
+    # Present in every branch so the return dict can always expose the full split.
+    other_allowance = 0.0
+    travel = 0.0
+    performance_bonus = 0.0
     custom_comps = _effective_salary_components(db, employee, year, month)
+    if fx_active:
+        _fx_amount_keys = (
+            "basic", "hra", "da", "conveyance", "medical",
+            "specialAllowance", "special_allowance",
+            "otherAllowance", "other_allowance",
+            "travel", "performanceBonus", "performance_bonus",
+        )
+        custom_comps = {
+            **custom_comps,
+            **{k: _fx_to_policy(v) for k, v in custom_comps.items() if k in _fx_amount_keys},
+        }
+    # The payroll template is the single source of truth. Stored
+    # salary_components are authoritative ONLY in manual entry mode (a
+    # sanctioned hand-set override) or when they come from an effective-dated
+    # SalaryRevision. Anything else is a display cache of a past split and must
+    # never shadow the current template — template edits propagate on every run.
+    _comps_source = str(custom_comps.get("_source") or "").strip().lower()
+    _comps_mode = str(custom_comps.get("_entry_mode") or "").strip().lower()
+    if not (_comps_source == "revision" or _comps_mode == "manual"):
+        custom_comps = {}
     if any(custom_comps.get(k) for k in (
         "basic", "hra", "specialAllowance", "otherAllowance",
         "conveyance", "medical", "travel", "performanceBonus",
@@ -2139,6 +2280,7 @@ def calculate_payroll(
         computed["basic"] = monthly_basic
         basic_full = monthly_basic
         component_deduction_keys: List[str] = []
+        component_employee_deduction_keys: List[str] = []
 
         # Load per-employee per-period input variables (for piece-rate, hourly, commission, etc.)
         input_vars: Dict[str, float] = {}
@@ -2194,6 +2336,11 @@ def calculate_payroll(
             computed[comp_key] = val
             if comp.component_type in ("deduction", "employer_contribution"):
                 component_deduction_keys.append(comp_key)
+            if comp.component_type == "deduction":
+                # Only true employee deductions reduce net pay.
+                # employer_contribution rows are employer cost (CTC) — they are
+                # excluded from gross but must NEVER be deducted from net.
+                component_employee_deduction_keys.append(comp_key)
 
             component_detail.append({
                 "component_id": comp.id,
@@ -2203,6 +2350,46 @@ def calculate_payroll(
                 "value": val,
             })
 
+        # ── Base coverage (balance rule) ──────────────────────────────────
+        # The monthly base must be fully allocated by the salary structure:
+        # fixed + percentage components can under-allocate it, and the
+        # remainder belongs to the Special Allowance — the standard Indian
+        # payroll "balancing figure" (fully taxable, no proofs needed). Falls
+        # back to Other Allowance when the structure has no Special Allowance.
+        # Without this, a template like Basic 50% + HRA 40% of Basic + fixed
+        # Conveyance/Medical would pay only ₹17,000 of a ₹20,000 base.
+        _core_keys = ("basic", "hra", "da", "conveyance", "medical",
+                      "special_allowance", "other_allowance")
+        _core_sum = _round_val(
+            sum(float(computed.get(k, 0.0) or 0.0) for k in _core_keys), rounding, places,
+        )
+        _base_target = _round_val(monthly_basic * factor, rounding, places)
+        if 0 < _core_sum < _base_target:
+            _balance = _round_val(_base_target - _core_sum, rounding, places)
+            _bal_key = None
+            for _k in ("special_allowance", "other_allowance"):
+                if _k in computed or any(
+                    str(cd.get("name", "")).lower().replace(" ", "_") == _k for cd in component_detail
+                ):
+                    _bal_key = _k
+                    break
+            if _bal_key is None:
+                _bal_key = "special_allowance"
+                computed[_bal_key] = _balance
+                component_detail.append({
+                    "component_id": None, "name": "Special Allowance",
+                    "display_name": "Special Allowance", "type": "earning",
+                    "value": _balance,
+                })
+            else:
+                computed[_bal_key] = _round_val(
+                    float(computed.get(_bal_key, 0.0) or 0.0) + _balance, rounding, places,
+                )
+                for cd in component_detail:
+                    if str(cd.get("name", "")).lower().replace(" ", "_") == _bal_key:
+                        cd["value"] = computed[_bal_key]
+                        break
+
         # Map to standard fields for backward compatibility
         basic = computed.get("basic", monthly_basic)
         hra = computed.get("hra", 0.0)
@@ -2210,6 +2397,9 @@ def calculate_payroll(
         conveyance = computed.get("conveyance", 0.0)
         medical = computed.get("medical", 0.0)
         special_allowance = computed.get("special_allowance", 0.0)
+        other_allowance = computed.get("other_allowance", 0.0)
+        travel = computed.get("travel", 0.0)
+        performance_bonus = computed.get("performance_bonus", 0.0)
         # Gross = only earning components (deduction components must never inflate earnings)
         gross_salary = sum(
             v for k, v in computed.items()
@@ -2219,7 +2409,7 @@ def calculate_payroll(
         gross_salary = _round_val(gross_salary, rounding, places)
         computed["gross_salary"] = gross_salary
         component_deduction_total = _round_val(
-            sum(computed.get(k, 0.0) for k in component_deduction_keys), rounding, places,
+            sum(computed.get(k, 0.0) for k in component_employee_deduction_keys), rounding, places,
         )
 
     # ── Additional Earnings ──
@@ -2303,7 +2493,8 @@ def calculate_payroll(
                 "type": "earnings", "value": leave_encashment,
             })
 
-    # ── State Compliance (auto PT/LWF from org's registered_state) ──
+    # ── State Compliance (auto PT/LWF from the effective jurisdiction) ──
+    # Employee work state → template's registered_state → org's registered_state.
     try:
         from datetime import date as _date
         period_date = _date(year, month, 1)
@@ -2311,7 +2502,7 @@ def calculate_payroll(
         period_date = None
     state_compliance = _apply_state_compliance(
         stat_settings, employee, gross_salary, basic, jurisdiction_country,
-        db=db, as_of=period_date,
+        db=db, as_of=period_date, template=payroll_template,
     )
 
     # ── Statutory Deductions (from policy + state compliance) ──
@@ -2332,10 +2523,7 @@ def calculate_payroll(
     pf_applicable = stat_settings.pf_applicable
     pf_edli = 0.0
     pf_admin = 0.0
-    if custom_pf:
-        pf_employee = _round_val(float(custom_pf), rounding, places)
-        pf_employer = _round_val(float(custom_pf), rounding, places)
-    elif pf_applicable:
+    if pf_applicable:
         _pf_as_of = month_start
         _pf_rule_engine = _get_rule_engine(db, employee, _pf_as_of)
         _pf_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
@@ -2389,7 +2577,7 @@ def calculate_payroll(
                 if component_detail:
                     try:
                         eps_ceiling = float(getattr(stat_settings, "eps_wage_ceiling", None) or 15000.0)
-                        eps_rate_val = float(getattr(stat_settings, "eps_rate", None) or 8.33)
+                        eps_rate_val = float(getattr(stat_settings, "eps_employer_rate", None) or getattr(stat_settings, "eps_rate", None) or 8.33)
                         eps_cap = min(pf_wages, eps_ceiling)
                         pf_eps = _round_val(eps_cap * eps_rate_val / 100, rounding, places)
                         component_detail.extend([
@@ -2402,19 +2590,51 @@ def calculate_payroll(
     else:
         pf_employee = 0.0
         pf_employer = 0.0
+    # A sanctioned hand-set employee PF share (manual entry mode) overrides ONLY
+    # the employee deduction. The employer contribution always follows the
+    # statutory split — a hand-set amount is an employee-side adjustment, never
+    # a CTC rule. (When PF is off entirely there is no employer share either.)
+    if custom_pf:
+        pf_employee = _round_val(float(custom_pf), rounding, places)
     pf_employee = override_pf_deduction if override_pf_deduction is not None else pf_employee
 
-    # ESI — Rule Engine first, then fallback to legacy StatutorySetting
+    # ESI — Rule Engine first, then fallback to legacy StatutorySetting.
+    # The disabled ceiling applies in both paths; the Rs.176/day low-wage
+    # exemption waives only the employee share in both paths. ESIC
+    # contribution-period continuation: employees insured earlier in the
+    # Apr-Sep / Oct-Mar period stay covered to period end even when this
+    # month's wages cross the ceiling.
+    _is_disabled = bool(getattr(employee, 'is_person_with_disability', False))
+    _gross_ceiling = float(getattr(stat_settings, 'esi_gross_ceiling', None) or 0.0)
+    _disabled_ceiling = float(getattr(stat_settings, 'esi_disabled_ceiling', None) or 0.0)
+    _esi_ceiling = (_disabled_ceiling if _disabled_ceiling > 0 else _gross_ceiling) if _is_disabled else _gross_ceiling
     _esi_rule_engine = _get_rule_engine(db, employee, month_start)
     _esi_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
     _esi_result = _resolve_esi_from_rule_engine(
         _esi_rule_engine, gross_salary, month_start,
         jurisdiction_country, _esi_state_code, employee.organization_id,
+        is_disabled=_is_disabled,
     )
+    _esi_continues = False
+    _esi_blocked = gross_salary > 0 and (
+        (_esi_ceiling > 0 and gross_salary > _esi_ceiling)
+        or (_esi_result is not None and not _esi_result['esi_applicable'])
+    )
+    if _esi_blocked:
+        from services.compliance_engine import esi_covered_earlier
+        _esi_continues = esi_covered_earlier(db, employee.id, year, month)
+        if _esi_continues and _esi_result is not None:
+            _esi_result = _resolve_esi_from_rule_engine(
+                _esi_rule_engine, gross_salary, month_start,
+                jurisdiction_country, _esi_state_code, employee.organization_id,
+                is_disabled=_is_disabled, keep_covered=True,
+            )
     if _esi_result:
-        esi_applicable = _esi_result['esi_applicable']
+        # The rule verdict governs; the template ceiling only narrows coverage
+        # when positively configured (never-configured orgs defer to the rule).
+        esi_applicable = (_esi_result['esi_applicable'] and (gross_salary <= _esi_ceiling if _esi_ceiling > 0 else True)) or _esi_continues
     else:
-        esi_applicable = stat_settings.esi_applicable and gross_salary <= stat_settings.esi_gross_ceiling
+        esi_applicable = stat_settings.esi_applicable and (gross_salary <= _esi_ceiling or _esi_continues)
     if custom_esi:
         esi = _round_val(float(custom_esi), rounding, places)
     else:
@@ -2422,6 +2642,9 @@ def calculate_payroll(
             esi = _round_val(_esi_result['esi_employee'], rounding, places)
         else:
             esi = _round_val(_esi_wages_base * stat_settings.esi_employee_rate / 100, rounding, places) if esi_applicable else 0.0
+        from services.compliance_engine import esi_employee_exempt
+        if esi > 0 and esi_employee_exempt(gross_salary):
+            esi = 0.0
     esi = override_esi_deduction if override_esi_deduction is not None else esi
     if _esi_result:
         esi_employer = _round_val(_esi_result['esi_employer'], rounding, places)
@@ -2559,6 +2782,37 @@ def calculate_payroll(
     advance_deduction = _round_val(float(override_advance_deduction or 0), rounding, places)
     other_deductions = _round_val(float(override_other_deductions or 0), rounding, places)
 
+    # Statutory deductions (PF / ESI / PT / LWF) are owned by the statutory
+    # block above — they are the single source of truth for those amounts.
+    # A template *deduction component* with the same meaning is a derived
+    # display row only: never sum both sides (double-count guard). The guard is
+    # active only when the statutory amount actually applies, so a template
+    # whose statutory block is off can still carry its own PF/ESI component.
+    _statutory_component_aliases = (
+        (pf_employee, ("pf", "pf_deduction", "provident_fund", "employee_pf", "pf_contribution")),
+        (esi, ("esi", "esi_deduction", "employee_esi")),
+        (professional_tax, ("professional_tax", "pt", "prof_tax")),
+        (lwf_employee, ("lwf", "lwf_deduction", "labour_welfare_fund")),
+    )
+    _statutory_duplicate = 0.0
+    for _stat_val, _stat_keys in _statutory_component_aliases:
+        if _stat_val and float(_stat_val) > 0:
+            for _k in _stat_keys:
+                if _k in component_employee_deduction_keys:
+                    _statutory_duplicate += float(computed.get(_k, 0.0) or 0.0)
+                    # The component row is display-only: show the amount that is
+                    # actually charged (the statutory block's), never the
+                    # template's duplicate figure.
+                    computed[_k] = float(_stat_val)
+                    for cd in component_detail:
+                        if str(cd.get("name", "")).lower().replace(" ", "_") == _k:
+                            cd["value"] = float(_stat_val)
+                            break
+    if _statutory_duplicate:
+        component_deduction_total = max(0.0, _round_val(
+            component_deduction_total - _statutory_duplicate, rounding, places,
+        ))
+
     total_deductions = _round_val(
         pf_employee + esi + professional_tax + lwf_employee + tds
         + nps_employee
@@ -2572,6 +2826,30 @@ def calculate_payroll(
     if not pay_policy.allow_negative_net and net_salary < 0:
         net_salary = _round_val(max(0.0, total_earnings - total_deductions), rounding, places)
 
+    # Pre-run deductions queued on the Payroll page (canteen, recovery, fine).
+    # Added here - the single point shared by preview, generate and
+    # recalculate - so preview and payslip can never disagree. Post-tax
+    # recovery: TDS is intentionally untouched.
+    pre_deductions = []
+    try:
+        from models import PayrollPreDeduction
+        _pre_rows = db.query(PayrollPreDeduction).filter(
+            PayrollPreDeduction.employee_id == employee.id,
+            PayrollPreDeduction.month == month,
+            PayrollPreDeduction.year == year,
+            PayrollPreDeduction.deleted_at.is_(None),
+        ).all()
+        _pre_total = _round_val(sum(float(r.amount or 0) for r in _pre_rows), rounding, places)
+        pre_deductions = [{"amount": float(r.amount or 0), "reason": r.reason or ""} for r in _pre_rows]
+    except Exception:
+        _pre_total = 0.0
+    if _pre_total:
+        other_deductions = _round_val(other_deductions + _pre_total, rounding, places)
+        total_deductions = _round_val(total_deductions + _pre_total, rounding, places)
+        net_salary = _round_val(total_earnings - total_deductions, rounding, places)
+        if not pay_policy.allow_negative_net and net_salary < 0:
+            net_salary = _round_val(0.0, rounding, places)
+
     # Minimum wage compliance (mandate section 25): warnings only - the engine
     # never silently accepts under-payment, but it also never mutates payroll.
     minimum_wage = None
@@ -2580,6 +2858,7 @@ def calculate_payroll(
         _mw_state = (
             getattr(employee, "state_code", None)
             or getattr(employee, "work_state", None)
+            or (getattr(payroll_template, "registered_state", None) if payroll_template else None)
             or (getattr(employee.organization, "registered_state", None) if employee.organization else None)
         )
         minimum_wage = check_minimum_wages(
@@ -2608,6 +2887,9 @@ def calculate_payroll(
         "conveyance": conveyance,
         "medical": medical,
         "special_allowance": special_allowance,
+        "other_allowance": other_allowance,
+        "travel_allowance": travel,
+        "performance_bonus": performance_bonus,
         "gross_salary": gross_salary,
         # Additional earnings
         "overtime_pay": overtime_pay,
@@ -2647,6 +2929,7 @@ def calculate_payroll(
         "loan_deduction": loan_deduction,
         "advance_deduction": advance_deduction,
         "other_deductions": other_deductions,
+        "pre_deductions": pre_deductions,
         "total_deductions": total_deductions,
         # Net
         "net_salary": net_salary,
@@ -2666,12 +2949,129 @@ def calculate_payroll(
         "component_breakdown": component_detail if component_detail else None,
         # Jurisdiction snapshot (country/state in force for this period)
         "country": jurisdiction_country,
-        "registered_state": (getattr(employee.organization, "registered_state", None) or None) if jurisdiction_country.lower() == "india" else None,
+        "registered_state": (
+            (
+                getattr(employee, "state_code", None)
+                or getattr(employee, "work_state", None)
+                or (getattr(payroll_template, "registered_state", None) if payroll_template else None)
+                or (getattr(employee.organization, "registered_state", None) if employee.organization else None)
+                or None
+            )
+            if jurisdiction_country.lower() == "india" else None
+        ),
+        # Currency snapshot: money figures above are in the policy currency.
+        # The display layer converts to salary_currency via currency_exchange_rate.
+        "salary_currency": emp_currency,
+        "currency_exchange_rate": fx_rate if fx_active else None,
+        "computation_currency": policy_currency,
         # Status
         "status": "draft",
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
     }
+
+
+def is_pending_adhoc_row(payroll: Any) -> bool:
+    """True when this row is a pending-ad-hoc stub created by Add Bonus /
+    incentive before the payroll run.
+
+    Flag-based (payrolls.is_pending_adhoc): generated payslips never carry the
+    flag, so real rows — including zero-pay LOP months — are never mistaken for
+    stubs.
+    """
+    return bool(getattr(payroll, "is_pending_adhoc", False))
+
+
+def recompute_payroll_totals(payroll: Any, allow_negative_net: bool = False) -> None:
+    """Recompute total_earnings / net_salary from the stored columns.
+
+    Server-side source of truth for row totals so ad-hoc additions (bonuses,
+    incentives, commissions) always reach take-home pay:
+        total_earnings = gross + overtime + bonus + commission + incentive + other
+        net            = total_earnings - total_deductions
+    Mirrors the engine's own total/net formula in calculate_payroll.
+    """
+    total_earnings = round(
+        float(payroll.gross_salary or 0)
+        + float(payroll.overtime_pay or 0)
+        + float(payroll.bonus or 0)
+        + float(payroll.commission or 0)
+        + float(payroll.incentive or 0)
+        + float(payroll.other_earnings or 0),
+        2,
+    )
+    payroll.total_earnings = total_earnings
+    net = round(total_earnings - float(payroll.total_deductions or 0), 2)
+    payroll.net_salary = net if (allow_negative_net or net >= 0) else 0.0
+
+
+def make_preview_employee(
+    db: Session,
+    organization_id: int,
+    *,
+    source: Optional[Employee] = None,
+    base_salary: Optional[float] = None,
+    pay_frequency: Optional[str] = None,
+    payroll_template_id: Optional[int] = None,
+    salary_components: Optional[dict] = None,
+    salary_mode: Optional[str] = None,
+    company_id: Optional[int] = None,
+    department_id: Optional[int] = None,
+) -> Employee:
+    """Build a transient (never persisted) Employee for salary previews.
+
+    Copies payroll-relevant fields from the source employee when given, applies
+    the draft overrides, and enforces the entry-mode precedence exactly like a
+    payroll run: manual mode keeps the provided components (sanctioned
+    override); every other mode recomputes from the template.
+
+    The preview employee intentionally has NO id: attendance, loans and
+    revisions belong to real runs, not to a structure preview. The org is set
+    with set_committed_value so no backref ever touches the session.
+    """
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    emp = Employee()
+    if source is not None:
+        for field in (
+            "company_id", "department_id", "base_salary", "pay_frequency",
+            "payroll_template_id", "payroll_policy_id", "salary_template_id",
+            "tax_regime_id", "salary_components", "join_date", "date_of_leaving",
+            "termination_date", "state_code", "work_state",
+            "salary_currency", "currency_exchange_rate",
+        ):
+            if hasattr(Employee, field):
+                setattr(emp, field, getattr(source, field, None))
+    emp.id = None
+    emp.organization_id = organization_id
+    emp.status = "active"
+    org = db.query(Organization).filter(
+        Organization.id == organization_id,
+        Organization.deleted_at.is_(None),
+    ).first()
+    if org is not None:
+        set_committed_value(emp, "organization", org)
+    if company_id is not None:
+        emp.company_id = company_id
+    if department_id is not None:
+        emp.department_id = department_id
+    if base_salary is not None:
+        emp.base_salary = base_salary
+    if pay_frequency:
+        emp.pay_frequency = pay_frequency
+    if payroll_template_id is not None:
+        emp.payroll_template_id = payroll_template_id
+    if salary_mode is not None or salary_components is not None:
+        mode = str(salary_mode or "").strip().lower()
+        if mode == "manual" and salary_components:
+            comps = dict(salary_components)
+            comps["_entry_mode"] = "manual"
+            emp.salary_components = comps
+        else:
+            # Auto modes: the template is the single source of truth — any
+            # stored split is display cache and must not shadow it.
+            emp.salary_components = {}
+    return emp
 
 
 def generate_payroll_record(

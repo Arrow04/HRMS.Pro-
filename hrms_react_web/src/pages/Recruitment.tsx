@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
+import { useAppConfig } from '../context/AppConfigContext';
 import { formatEmployeeLabel, normalizePickerEmployee } from '../utils/employeePickerUtils';
 import { joinEmployeeName, personDisplayName, personInitials, splitEmployeeName, toFullNamePayload } from '../utils/employeeNameUtils';
 import { runAutomation } from '../services/aiAutomation';
@@ -167,6 +168,7 @@ const calcRatingFromScores = (comm?: number, tech?: number, overall?: number): n
 
 const Recruitment = () => {
   const queryClient = useQueryClient();
+  const { dialCode } = useAppConfig();
   const [activeTab, setActiveTab] = useState<'jobs' | 'candidates' | 'interviews' | 'offered' | 'onboarding'>('jobs');
 const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1833,7 +1835,7 @@ const renderJobForm = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <PhoneInput value={String(formData.phone || '')} onChange={(v) => setFormData({...formData, phone: v})} placeholder="e.g. 98765 43210" inputClassName="w-full px-4 py-2 border border-gray-200 rounded-r-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <PhoneInput value={String(formData.phone || '')} onChange={(v) => setFormData({...formData, phone: v})} defaultDial={dialCode} placeholder="98765 43210" inputClassName="w-full px-4 py-2 border border-gray-200 rounded-r-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             <p className="mt-1 text-xs text-gray-400">Contact number with country code</p>
           </div>
           <div>

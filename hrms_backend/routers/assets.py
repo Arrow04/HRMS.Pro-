@@ -34,7 +34,7 @@ from core.tenant import org_owned, get_employee_in_org
 from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
 from database import Base, SessionLocal, engine, get_db
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PerformanceReview, ReportExecutionLog, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
-from services.payroll_service import calculate_payroll, generate_payroll_record
+from services.payroll_service import calculate_payroll, generate_payroll_record, recompute_payroll_totals, is_pending_adhoc_row
 from utils.helpers import convert_camel_to_snake
 
 router = APIRouter(tags=["Assets"])
@@ -326,7 +326,7 @@ def get_bonuses(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Payroll).filter(
-        Payroll.bonus > 0,
+        or_(Payroll.bonus > 0, Payroll.incentive > 0, Payroll.commission > 0),
         Payroll.deleted_at.is_(None),
     )
     if current_user.organization_id:
@@ -348,7 +348,7 @@ def get_bonuses(
     bonuses = []
     for p in results:
         emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == p.employee_id).first()
-        bonuses.append({
+        base = {
             "id": p.id,
             "employeeId": p.employee_id,
             "employeeName": f"{emp.first_name} {emp.last_name}" if emp else None,
@@ -356,9 +356,14 @@ def get_bonuses(
             "email": emp.email if emp else None,
             "month": p.month,
             "year": p.year,
-            "amount": p.bonus,
             "reason": p.notes or "",
-        })
+        }
+        # One entry per ad-hoc earning type so incentives and commissions are
+        # visible and removable on their own.
+        for _field, _type in (("bonus", "bonus"), ("incentive", "incentive"), ("commission", "commission")):
+            _amount = float(getattr(p, _field, 0) or 0)
+            if _amount > 0:
+                bonuses.append({**base, "type": _type, "amount": _amount})
     return bonuses
 
 
@@ -368,6 +373,10 @@ def create_bonus(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _type = (data.type or "bonus").strip().lower()
+    _field = {"bonus": "bonus", "incentive": "incentive", "commission": "commission"}.get(_type)
+    if not _field:
+        raise HTTPException(status_code=400, detail="type must be one of: bonus, incentive, commission")
     existing = db.query(Payroll).filter(
         Payroll.employee_id == data.employeeId,
         Payroll.month == data.month,
@@ -375,12 +384,16 @@ def create_bonus(
         Payroll.deleted_at.is_(None),
     ).first()
     if existing:
+        if existing.status == "locked":
+            raise HTTPException(status_code=409, detail="Payroll period is locked")
         _ex_emp = db.query(Employee).filter(Employee.id == existing.employee_id).first()
         if _ex_emp is not None:
             assert_company_allowed(db, current_user, _ex_emp.company_id)
-        existing.bonus = (existing.bonus or 0) + data.amount
+        setattr(existing, _field, float(getattr(existing, _field, 0) or 0) + float(data.amount))
         if data.reason:
-            existing.notes = (existing.notes or "") + f"; Bonus: {data.reason}"
+            existing.notes = (existing.notes or "") + f"; {_type.capitalize()}: {data.reason}"
+        # Ad-hoc earnings must reach take-home pay: recompute totals server-side.
+        recompute_payroll_totals(existing)
     else:
         emp = db.query(Employee).filter(Employee.deleted_at.is_(None), Employee.id == data.employeeId).first()
         if not emp:
@@ -390,14 +403,58 @@ def create_bonus(
             employee_id=data.employeeId,
             month=data.month,
             year=data.year,
-            bonus=data.amount,
             notes=data.reason,
             organization_id=current_user.organization_id,
             gross_salary=0,
             net_salary=0,
             status="draft",
+            is_pending_adhoc=True,
         )
+        setattr(p, _field, float(data.amount))
+        # Pending-ad-hoc row: totals reflect the recorded amount until the full
+        # payroll run merges it (see payroll generate-all stub merge).
+        recompute_payroll_totals(p)
         db.add(p)
     db.commit()
-    return {"message": "Bonus recorded"}
+    return {"message": f"{_type.capitalize()} recorded"}
+
+
+@router.delete("/api/bonuses/{payroll_id}", tags=["Payroll"])
+def delete_bonus(
+    payroll_id: int,
+    type: str = "bonus",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove one ad-hoc earning (bonus / incentive / commission) from a payroll.
+
+    Zeroes the matching column and recomputes totals so net pay follows. When
+    the row was a pending-ad-hoc stub (no salary substance yet) and nothing
+    ad-hoc remains, the row itself is removed.
+    """
+    _type = (type or "bonus").strip().lower()
+    _field = {"bonus": "bonus", "incentive": "incentive", "commission": "commission"}.get(_type)
+    if not _field:
+        raise HTTPException(status_code=400, detail="type must be one of: bonus, incentive, commission")
+    p = db.query(Payroll).filter(
+        Payroll.id == payroll_id,
+        Payroll.deleted_at.is_(None),
+    )
+    if current_user.organization_id:
+        p = p.filter(Payroll.organization_id == current_user.organization_id)
+    payroll = p.first()
+    if not payroll:
+        raise HTTPException(status_code=404, detail="Payroll not found")
+    if payroll.status == "locked":
+        raise HTTPException(status_code=409, detail="Payroll period is locked")
+    _ex_emp = db.query(Employee).filter(Employee.id == payroll.employee_id).first()
+    if _ex_emp is not None:
+        assert_company_allowed(db, current_user, _ex_emp.company_id)
+    setattr(payroll, _field, 0.0)
+    recompute_payroll_totals(payroll)
+    _adhoc_left = any(float(getattr(payroll, f, 0) or 0) > 0 for f in ("bonus", "incentive", "commission"))
+    if is_pending_adhoc_row(payroll) and not _adhoc_left:
+        payroll.deleted_at = datetime.utcnow()
+    db.commit()
+    return {"message": f"{_type.capitalize()} removed"}
 

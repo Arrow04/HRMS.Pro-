@@ -31,7 +31,7 @@ EMPLOYEE_DOC_MAX_UPLOAD_BYTES = int(
 
 IDENTITY_DOC_TYPES = frozenset({
     "aadhar", "pan", "voter", "drivingLicense", "passport",
-    "photo", "resume", "birthCertificate", "certificate",
+    "photo", "resume", "birthCertificate", "certificate", "relievingLetter",
 })
 
 

@@ -19,6 +19,8 @@ import DatePicker from '../components/DatePicker';
 import IfscInput from '../components/IfscInput';
 import StateSelect from '../components/StateSelect';
 import PincodeInput from '../components/PincodeInput';
+import PhoneInput from '../components/PhoneInput';
+import { useAppConfig } from '../context/AppConfigContext';
 import type { Attendance, Employee, Expense, Holiday, LeaveApplication, Payroll } from '../types';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import type { LookupValue } from '../services/masterDataService';
@@ -147,6 +149,8 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
     onError: () => toast.error('Failed to update profile'),
   });
 
+  const { dialCode } = useAppConfig();
+
   if (!isOpen) return null;
 
   const handleSave = () => { if (formData) updateMutation.mutate(formData); };
@@ -201,7 +205,13 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
               </div>
               <div className="space-y-1">
                 <label className={labelClass}>Phone Number</label>
-                <input type="tel" value={formData.phone || ''} onChange={e => setFormData({ ...formData, phone: e.target.value })} className={inputClass} placeholder="+1 234 567 8900" />
+                <PhoneInput
+                  value={formData.phone || ''}
+                  onChange={v => setFormData({ ...formData, phone: v })}
+                  defaultDial={dialCode}
+                  placeholder="98765 43210"
+                  inputClassName="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-r-lg text-sm text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition placeholder-gray-400"
+                />
                 <p className="mt-1 text-xs text-gray-400">10-digit mobile with country code</p>
               </div>
               <div className="space-y-1">

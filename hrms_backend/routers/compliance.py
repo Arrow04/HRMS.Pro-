@@ -72,7 +72,7 @@ def calculate_esi(
     ).first()
     if not setting:
         raise HTTPException(status_code=400, detail="Statutory settings not configured")
-    return calculate_esi(gross_salary, setting)
+    return calculate_esi(gross_salary, setting, is_disabled=bool(getattr(emp, 'is_person_with_disability', False)))
 
 
 @router.get("/api/payroll/calculate/pt/{employee_id}")
@@ -90,9 +90,21 @@ def calculate_professional_tax(
         if not emp:
             raise HTTPException(status_code=404, detail="Employee not found")
     org = db.query(Organization).filter(Organization.id == emp.organization_id).first()
-    state_code = org.registered_state.lower().replace(" ", "_") if org and org.registered_state else None
+    from services.compliance_engine import resolve_jurisdiction_state
+    from services.payroll_service import _get_employee_template
+    tpl = _get_employee_template(db, emp)
+    state_code = resolve_jurisdiction_state(
+        getattr(emp, "state_code", None),
+        getattr(emp, "work_state", None),
+        getattr(tpl, "registered_state", None),
+        getattr(org, "registered_state", None) if org else None,
+    )
     from datetime import date as _date
-    return calculate_professional_tax(gross_salary, state_code, db=db, as_of=_date.today())
+    return calculate_professional_tax(
+        gross_salary, state_code, db=db, as_of=_date.today(),
+        organization_id=emp.organization_id,
+        company_id=getattr(emp, "company_id", None),
+    )
 
 
 @router.get("/api/payroll/calculate/income-tax/{employee_id}")
