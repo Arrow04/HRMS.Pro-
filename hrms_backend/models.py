@@ -1311,6 +1311,32 @@ class PayrollPreDeduction(Base):
     deleted_at = Column(DateTime, nullable=True, index=True)
 
 
+class StatutoryRuleConfig(Base):
+    """Database-driven statutory rule configuration.
+
+    Stores current standard values, legal references, and effective dates
+    for Indian payroll statutory rules. When the government changes a rule,
+    update this table and the entire UI reflects the change automatically.
+    """
+    __tablename__ = 'statutory_rule_configs'
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), nullable=True, index=True)
+    category = Column(String(50), nullable=False, index=True)
+    rule_key = Column(String(100), nullable=False, index=True)
+    label = Column(String(200), nullable=False)
+    standard_value = Column(String(200), nullable=True)
+    current_value = Column(Float, nullable=True)
+    unit = Column(String(20), nullable=True)
+    notification_ref = Column(String(500), nullable=True)
+    legal_basis = Column(String(500), nullable=True)
+    effective_date = Column(Date, nullable=True)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default='active')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class PayrollRun(Base):
     """Tracks a bulk payroll generation run (background job).
 

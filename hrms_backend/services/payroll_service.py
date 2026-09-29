@@ -212,7 +212,7 @@ def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int,
     """
     try:
         from datetime import date as _date
-        from services.compliance_engine import calculate_bonus
+        from services.compliance_engine import calculate_bonus, _get_statutory_constant
         country = _effective_country(employee).lower()
         as_of = _date(year, month, 1)
         engine = _get_rule_engine(db, employee, as_of)
@@ -226,11 +226,11 @@ def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int,
             stat = None
         if not stat or not getattr(stat, "bonus_applicable", False):
             return 0.0
-        eligible_ceiling = float(getattr(stat, "bonus_eligible_ceiling", None) or 21000.0)
+        eligible_ceiling = float(getattr(stat, "bonus_eligible_ceiling", None) or _get_statutory_constant(db, 'bonus_eligible_ceiling', 21000.0))
         if float(gross) > eligible_ceiling:
             return 0.0
-        calc_cap = float(getattr(stat, "bonus_wage_ceiling", None) or 7000.0)
-        min_rate = float(getattr(stat, "bonus_min_rate", None) or 8.33)
+        calc_cap = float(getattr(stat, "bonus_wage_ceiling", None) or _get_statutory_constant(db, 'bonus_wage_ceiling', 7000.0))
+        min_rate = float(getattr(stat, "bonus_min_rate", None) or _get_statutory_constant(db, 'bonus_min_rate', 8.33))
         b = calculate_bonus(min(float(gross), calc_cap), 12, min_rate=min_rate, calc_ceiling=calc_cap, eligible_ceiling=eligible_ceiling)
         return round(float(b.get("minimum", 0)) / 12.0, 2)
     except Exception:
@@ -2643,7 +2643,7 @@ def calculate_payroll(
         else:
             esi = _round_val(_esi_wages_base * stat_settings.esi_employee_rate / 100, rounding, places) if esi_applicable else 0.0
         from services.compliance_engine import esi_employee_exempt
-        if esi > 0 and esi_employee_exempt(gross_salary):
+        if esi > 0 and esi_employee_exempt(gross_salary, db):
             esi = 0.0
     esi = override_esi_deduction if override_esi_deduction is not None else esi
     if _esi_result:

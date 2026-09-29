@@ -9,6 +9,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import api from '../services/api';
 import SearchableSelect from './SearchableSelect';
+import DatePicker from './DatePicker';
 import ToggleSwitch from './ToggleSwitch';
 
 /* ---------- tiny form primitives (same look as payroll configuration) ---------- */
@@ -60,11 +61,11 @@ const blankWizard = (): WizardState => ({
 });
 const WIZ_TABS = [
   { id: 'overview', label: 'Overview', icon: Building2, color: 'text-blue-600' },
-  { id: 'types', label: 'Type Quotas', icon: CalendarDays, color: 'text-emerald-600' },
   { id: 'accrual', label: 'Accrual & Carry', icon: RefreshCw, color: 'text-violet-600' },
   { id: 'encashment', label: 'Encashment', icon: PiggyBank, color: 'text-amber-600' },
   { id: 'holidays', label: 'Holidays', icon: CalendarOff, color: 'text-rose-600' },
   { id: 'rules', label: 'Application Rules', icon: Shield, color: 'text-cyan-600' },
+  { id: 'types', label: 'Type Quotas', icon: CalendarDays, color: 'text-emerald-600' },
 ];
 
 const WIZARD_HELP: Record<string, string> = {
@@ -363,9 +364,15 @@ function LeaveWizardModal(props: {
               <p className="text-xs text-[#64748B]">Configure everything once, reuse everywhere.</p>
             </div>
           </div>
-          <button onClick={() => setWizard(null)} title="Close" className="p-2 rounded-lg text-[#64748B] hover:bg-gray-100 hover:text-[#C81E1E] transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setWizard(null)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Close</button>
+            {!readOnly && (
+              <button onClick={onSubmit} disabled={saving || !wizard.name.trim()}
+                className="px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
+                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Template'}
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Progress bar */}
@@ -432,33 +439,46 @@ function LeaveWizardModal(props: {
               </div>
               <div className="space-y-4">
               {wizTab === 'overview' && (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Field label="Template Name" help="A friendly name so you can identify this template (e.g. Standard India 2026 — Acme).">
-                      <input className={inputCls} disabled={readOnly} value={wizard.name} placeholder="Standard India 2026 — Acme" onChange={(e) => setW('name', e.target.value)} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <Field label="Template Name" help="A descriptive name to identify this leave template (e.g. 'Standard India 2026 — Acme' or 'Factory Workers — Gujarat'). Employees, HR and payroll staff will see this name when selecting templates.">
+                    <input className={inputCls} disabled={readOnly} value={wizard.name} placeholder="Standard India 2026 — Acme" onChange={(e) => setW('name', e.target.value)} />
+                  </Field>
+                  <Field label="Company *" help="Only employees belonging to this company can be assigned this template. Each company can have multiple templates for different employee groups (e.g. staff vs workers, permanent vs contract). This is a mandatory field.">
+                    <SearchableSelect value={wizard.companyId ?? ''} onChange={(v) => setW('companyId', v === '' ? null : Number(v))}
+                      options={(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
+                  </Field>
+                  <Field label="Effective From" help="The date from which this template's leave rules (quotas, accrual, carry forward) take effect. Payroll and leave calculations for periods before this date will use the previously active template. Editing quotas later creates a new version — historical data is never rewritten.">
+                    <DatePicker value={wizard.effectiveFrom} onChange={(val) => setW('effectiveFrom', val)} />
+                  </Field>
+                  <Field label="Description" help="Notes about who this template is for and any special circumstances. For example: 'Standard policy for all permanent full-time staff at the Mumbai office' or 'Reduced leave for probationers at the factory'. Helps HR identify the right template quickly.">
+                    <input className={inputCls} disabled={readOnly} value={wizard.description} placeholder="Default policy for all full-time staff" onChange={(e) => setW('description', e.target.value)} />
+                  </Field>
+                  <Field label="Status" help="Active templates can be assigned to employees and appear in leave applications. Inactive templates are hidden from new assignments but preserved for historical records and existing employee balances. Use inactive for retired or outdated policies.">
+                    <ToggleSwitch checked={wizard.status === 'active'} onChange={(v) => setW('status', v ? 'active' : 'inactive')} disabled={readOnly} align="left" />
+                  </Field>
+                </div>
+              )}
+              {wizTab === 'rules' && (
+                <SectionCard title="Application Rules" icon={Shield}>
+                  <Field label="Enable half-day leave" help="When ON, employees can apply for half-day leaves (either first half or second half of the day). When OFF, all leave applications are for full days only. Half-day leaves are useful for medical appointments, personal errands, or short absences. The 'Min days for half-day' setting below controls when this option appears.">
+                    <ToggleSwitch checked={wizard.enable_half_day} onChange={(v) => setW('enable_half_day', v)} disabled={readOnly} align="left" />
+                  </Field>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <Field label="Min days for half-day" help="Minimum number of consecutive leave days an employee must have applied for before the half-day option becomes available. For example, 2 means half-day is only allowed when applying for 2+ consecutive days. Leave blank = half-day always available (if enabled above).">
+                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.min_leave_for_half_day ?? ''} placeholder="No minimum" onFocus={(e) => e.target.select()} onChange={(e) => setW('min_leave_for_half_day', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
-                    <Field label="Company *" help="Only employees of this company can pick this template. One company can have several templates (e.g. staff vs workers).">
-                      <SearchableSelect value={wizard.companyId ?? ''} onChange={(v) => setW('companyId', v === '' ? null : Number(v))}
-                        options={(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
+                    <Field label="Advance notice (days)" help="Minimum number of days before the leave start date that the application must be submitted. For example, 7 means leave must be applied at least 7 days in advance. Applications submitted within this window are rejected. Leave blank = no advance notice required (apply anytime).">
+                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.advance_notice_days ?? ''} placeholder="No advance notice" onFocus={(e) => e.target.select()} onChange={(e) => setW('advance_notice_days', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
-                    <Field label="Effective From" help="Quotas apply from this date. Editing quotas later creates a new version — history is never rewritten.">
-                      <input type="date" className={inputCls} disabled={readOnly} value={wizard.effectiveFrom} onChange={(e) => setW('effectiveFrom', e.target.value)} />
+                    <Field label="Max consecutive days" help="Maximum number of consecutive leave days an employee can apply for in a single application. For example, 5 means an employee cannot apply for more than 5 days in one request. Leave blank = no limit. Useful for preventing long unplanned absences.">
+                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.max_consecutive_days ?? ''} placeholder="No limit" onFocus={(e) => e.target.select()} onChange={(e) => setW('max_consecutive_days', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Field label="Description" help="What this template is for and who should get it.">
-                      <input className={inputCls} disabled={readOnly} value={wizard.description} placeholder="Default policy for all full-time staff" onChange={(e) => setW('description', e.target.value)} />
-                    </Field>
-                    <Field label="Status" help="Inactive templates stay visible for history but can't be picked for new employees.">
-                      <SearchableSelect value={wizard.status} onChange={(v) => setW('status', String(v))}
-                        options={[{ id: 'active', name: 'Active' }, { id: 'inactive', name: 'Inactive' }]} disabled={readOnly} />
-                    </Field>
-                  </div>
-                </>
+                </SectionCard>
               )}
               {wizTab === 'types' && (
                 <SectionCard title="Per-type quotas" icon={CalendarDays}>
-                  <p className="text-[11px] text-[var(--text-tertiary)]">Company override of the org defaults (Leave page → Leave Types). Only numbers set here win for employees on this template — type names come from Master Data and can't be changed here. Switch a type off to grant zero for this company.</p>
+                  <p className="text-[11px] text-[var(--text-tertiary)]">Override the organization-wide leave type quotas (set on the Leave Types page) for this specific company template. Only numbers you enter here take effect for employees on this template — leave types and their names come from the system and cannot be changed here. Toggle a type OFF to grant zero days of that leave for this company (e.g. disable Maternity Leave for a factory template).</p>
                   <div className="space-y-2">
                     {wizard.rows.map((r, i) => (
                       <div key={r.leave_type_id ?? r.code} className="grid grid-cols-12 gap-2 items-center border border-[var(--border-color)] rounded-lg px-3 py-2">
@@ -488,113 +508,76 @@ function LeaveWizardModal(props: {
               {wizTab === 'accrual' && (
                 <>
                   <SectionCard title="Accrual" icon={RefreshCw}>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Field label="Method" help="Monthly = quota drips in each month. Lump sum = full quota on Jan 1 (or join date).">
+                    <Field label="Lapse unused" help="When ON, unused leave days expire at the end of the year instead of being carried forward. Use this if your company has a strict use-it-or-lose-it policy. When OFF, unused days may carry forward (depending on the Carry Forward settings below).">
+                      <ToggleSwitch checked={wizard.lapse_unused} onChange={(v) => setW('lapse_unused', v)} disabled={readOnly} align="left" />
+                    </Field>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <Field label="Accrual method" help="How leave quota is distributed: Monthly (drips evenly each month), Quarterly (4 times a year), Yearly (full quota on Jan 1), or Lump sum (entire quota on join date). Monthly is most common for permanent employees.">
                         <SearchableSelect value={wizard.accrual_method} onChange={(v) => setW('accrual_method', String(v))}
                           options={[{ id: 'monthly', name: 'Monthly' }, { id: 'lump', name: 'Lump sum' }, { id: 'quarterly', name: 'Quarterly' }, { id: 'yearly', name: 'Yearly' }]} disabled={readOnly} />
                       </Field>
-                      <Field label="Accrual day" help="Day of month when leave is credited (1-28).">
+                      <Field label="Accrual day" help="Day of each month when leave days are credited to the employee's balance (1–28). For example, 1 = leave is added on the 1st of every month. Day 29/30/31 are not allowed since not all months have them.">
                         <input type="number" min={1} max={28} disabled={readOnly} className={inputCls} value={wizard.accrual_day ?? ''} onFocus={(e) => e.target.select()} onChange={(e) => setW('accrual_day', e.target.value === '' ? null : Number(e.target.value))} />
                       </Field>
-                      <Field label="Probation rate %" help="% of quota a probationer accrues (blank = same as confirmed).">
+                      <Field label="Probation accrual rate %" help="Percentage of the full leave quota that probationers accrue. For example, 50 means a probationer gets half the leave days of a confirmed employee. Leave blank = same as confirmed employees (full quota). Probation period is set on the employee profile.">
                         <input type="number" min={0} max={100} disabled={readOnly} className={inputCls} value={wizard.probation_accrual_rate ?? ''} placeholder="Same as confirmed" onFocus={(e) => e.target.select()} onChange={(e) => setW('probation_accrual_rate', e.target.value === '' ? null : Number(e.target.value))} />
                       </Field>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Field label="Max balance cap" help="Balance never grows past this, no matter the quota.">
+                      <Field label="Max balance cap" help="Maximum leave balance an employee can accumulate at any point. Balance never grows past this limit even if they have unused leave from previous years. For example, 30 means an employee can never have more than 30 days in their balance. Leave blank for no cap.">
                         <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.max_balance_cap ?? ''} placeholder="No cap" onFocus={(e) => e.target.select()} onChange={(e) => setW('max_balance_cap', e.target.value === '' ? null : Number(e.target.value))} />
-                      </Field>
-                      <Field label="Lapse unused" help="Expire unused leave days at year end instead of carrying forward.">
-                        <ToggleSwitch checked={wizard.lapse_unused} onChange={(v) => setW('lapse_unused', v)} disabled={readOnly} align="left" />
                       </Field>
                     </div>
                   </SectionCard>
                   <SectionCard title="Carry forward" icon={RefreshCw}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Field label="Enabled" help="Unused days roll into next year. Off = use-it-or-lose-it.">
-                        <ToggleSwitch checked={wizard.carry_forward_enabled} onChange={(v) => setW('carry_forward_enabled', v)} disabled={readOnly} align="left" />
-                      </Field>
-                      <Field label="Max days" help="At most this many unused days carry over.">
+                    <Field label="Carry forward enabled" help="When ON, unused leave days roll into the next year instead of expiring. When OFF, all unused days are lost at year end (use-it-or-lose-it). This interacts with the 'Lapse unused' toggle in Accrual — if both are ON, lapse takes priority.">
+                      <ToggleSwitch checked={wizard.carry_forward_enabled} onChange={(v) => setW('carry_forward_enabled', v)} disabled={readOnly} align="left" />
+                    </Field>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <Field label="Max carry forward days" help="Maximum number of unused leave days that can be carried into the next year. Any excess beyond this limit is forfeited. For example, 5 means at most 5 days carry forward. Leave blank for no limit.">
                         <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.carry_forward_max_days ?? ''} placeholder="No limit" onFocus={(e) => e.target.select()} onChange={(e) => setW('carry_forward_max_days', e.target.value === '' ? null : Number(e.target.value))} />
                       </Field>
-                      <Field label="Expiry" help="Carried days must be used within this window.">
+                      <Field label="Expiry period" help="How long carried-forward days remain valid. Options: Year end (expire Dec 31), Quarter (90 days), Half year (180 days), or Never (valid until used). After expiry, unused carried days are automatically forfeited.">
                         <SearchableSelect value={wizard.carry_forward_expiry} onChange={(v) => setW('carry_forward_expiry', String(v))}
                           options={[{ id: 'year_end', name: 'Year end' }, { id: 'quarter', name: 'Quarter' }, { id: 'half-year', name: 'Half year' }, { id: 'never', name: 'Never' }]} disabled={readOnly} />
                       </Field>
-                      <Field label="Use it or lose it" help="Carried days expire if not used by the expiry date.">
-                        <ToggleSwitch checked={wizard.carry_forward_use_it_or_lose_it} onChange={(v) => setW('carry_forward_use_it_or_lose_it', v)} disabled={readOnly} align="left" />
-                      </Field>
                     </div>
+                    <Field label="Use it or lose it" help="When ON, carried-forward leave days expire if not used by the expiry date above. When OFF, carried days remain valid beyond the expiry (effectively making the expiry setting irrelevant). Most companies set this ON to prevent unlimited leave accumulation.">
+                      <ToggleSwitch checked={wizard.carry_forward_use_it_or_lose_it} onChange={(v) => setW('carry_forward_use_it_or_lose_it', v)} disabled={readOnly} align="left" />
+                    </Field>
                   </SectionCard>
                 </>
               )}
               {wizTab === 'encashment' && (
                 <SectionCard title="Encashment (paid out on exit)" icon={PiggyBank}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="Enabled" help="Unused encashable days are paid in FnF settlement.">
-                      <ToggleSwitch checked={wizard.encashment_enabled} onChange={(v) => setW('encashment_enabled', v)} disabled={readOnly} align="left" />
-                    </Field>
-                    <Field label="Min balance required" help="Encashment only if remaining balance is at least this.">
+                  <Field label="Encashment enabled" help="When ON, unused encashable leave days are paid out as cash during Full & Final settlement when an employee exits the company. The amount is calculated based on the encashment rate and the employee's daily salary. When OFF, no encashment happens on exit.">
+                    <ToggleSwitch checked={wizard.encashment_enabled} onChange={(v) => setW('encashment_enabled', v)} disabled={readOnly} align="left" />
+                  </Field>
+                  <Field label="Taxable" help="When ON, the encashed amount is treated as taxable income and included in the employee's TDS calculation during FnF settlement. When OFF, encashment is tax-free (up to ₹25 lakh limit under Section 10(10AA) for accumulated leave on retirement/voluntary retirement).">
+                    <ToggleSwitch checked={wizard.encashment_taxable} onChange={(v) => setW('encashment_taxable', v)} disabled={readOnly} align="left" />
+                  </Field>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <Field label="Min balance required" help="Encashment only triggers if the employee's remaining leave balance is at least this many days. For example, 5 means encashment only happens if the employee has 5+ unused days. This ensures employees retain a minimum leave buffer. Leave blank for no minimum.">
                       <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.encashment_min_balance ?? ''} placeholder="No minimum" onFocus={(e) => e.target.select()} onChange={(e) => setW('encashment_min_balance', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
-                    <Field label="Encashment rate" help="Fraction of daily salary paid (0.83 = 83%). Blank = full daily rate.">
-                      <input type="number" min={0} max={1} step="0.01" disabled={readOnly} className={inputCls} value={wizard.encashment_rate ?? ''} placeholder="Full rate" onFocus={(e) => e.target.select()} onChange={(e) => setW('encashment_rate', e.target.value === '' ? null : Number(e.target.value))} />
-                    </Field>
-                    <Field label="Taxable" help="Whether the encashed amount attracts income tax in payroll.">
-                      <ToggleSwitch checked={wizard.encashment_taxable} onChange={(v) => setW('encashment_taxable', v)} disabled={readOnly} align="left" />
+                    <Field label="Encashment rate" help="Fraction of the employee's daily salary paid per encashed day. For example, 0.83 = 83% of daily salary. Leave blank = full daily rate (100%). This is a multiplier: encashment amount = days × daily salary × this rate. Indian law caps leave encashment at ₹25 lakh tax-free on retirement.">
+                      <input type="number" min={0} max={1} step={0.01} disabled={readOnly} className={inputCls} value={wizard.encashment_rate ?? ''} placeholder="Full rate" onFocus={(e) => e.target.select()} onChange={(e) => setW('encashment_rate', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
                   </div>
                 </SectionCard>
               )}
               {wizTab === 'holidays' && (
                 <SectionCard title="Holiday Rules" icon={CalendarOff}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="Optional holiday limit" help="Max optional holidays an employee can choose per year. Blank = no optional holidays.">
+                  <Field label="Auto-apply national holidays" help="When ON, company holidays (defined in the Holidays page) are automatically marked as paid days off for all employees on this template — no leave application needed. When OFF, employees must apply for leave on holidays (if they want the day off). Most companies set this ON.">
+                    <ToggleSwitch checked={wizard.holiday_auto_apply_national} onChange={(v) => setW('holiday_auto_apply_national', v)} disabled={readOnly} align="left" />
+                  </Field>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <Field label="Optional holiday limit" help="Maximum number of optional holidays an employee can choose per year from the company's optional holiday list. Employees pick which optional holidays they want to observe (e.g. Diwali, Christmas, Eid). Leave blank = no optional holidays allowed.">
                       <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.holiday_optional_limit ?? ''} placeholder="No optional holidays" onFocus={(e) => e.target.select()} onChange={(e) => setW('holiday_optional_limit', e.target.value === '' ? null : Number(e.target.value))} />
-                    </Field>
-                    <Field label="Auto-apply national holidays" help="Automatically mark national holidays as paid days off.">
-                      <ToggleSwitch checked={wizard.holiday_auto_apply_national} onChange={(v) => setW('holiday_auto_apply_national', v)} disabled={readOnly} align="left" />
-                    </Field>
-                  </div>
-                </SectionCard>
-              )}
-              {wizTab === 'rules' && (
-                <SectionCard title="Application Rules" icon={Shield}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="Enable half-day leave" help="Allow employees to apply for half-day leaves.">
-                      <ToggleSwitch checked={wizard.enable_half_day} onChange={(v) => setW('enable_half_day', v)} disabled={readOnly} align="left" />
-                    </Field>
-                    <Field label="Min days for half-day" help="Minimum consecutive leave days required before half-day is allowed.">
-                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.min_leave_for_half_day ?? ''} placeholder="No minimum" onFocus={(e) => e.target.select()} onChange={(e) => setW('min_leave_for_half_day', e.target.value === '' ? null : Number(e.target.value))} />
-                    </Field>
-                    <Field label="Advance notice (days)" help="Leave must be applied at least this many days in advance.">
-                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.advance_notice_days ?? ''} placeholder="No advance notice" onFocus={(e) => e.target.select()} onChange={(e) => setW('advance_notice_days', e.target.value === '' ? null : Number(e.target.value))} />
-                    </Field>
-                    <Field label="Max consecutive days" help="Maximum consecutive leave days allowed in one application.">
-                      <input type="number" min={0} disabled={readOnly} className={inputCls} value={wizard.max_consecutive_days ?? ''} placeholder="No limit" onFocus={(e) => e.target.select()} onChange={(e) => setW('max_consecutive_days', e.target.value === '' ? null : Number(e.target.value))} />
                     </Field>
                   </div>
                 </SectionCard>
               )}
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-color)] bg-[var(--background)]">
-          <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {wizard.rows.length} leave types</span>
-            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> {activeTypes} active</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setWizard(null)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Close</button>
-            {!readOnly && (
-              <button onClick={onSubmit} disabled={saving || !wizard.name.trim()}
-                className="px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Template'}
-              </button>
-            )}
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Plus, Pencil, Trash2, Loader2, X, Building2, SlidersHorizontal, RotateCcw, Layers,
-  ShieldCheck, Landmark, Clock, MapPin, CheckCircle2, ChevronDown, ChevronUp,
+  ShieldCheck, Landmark, Clock, MapPin, CheckCircle2, ChevronDown, ChevronUp, Info,
   FileText, Save, CalendarDays, TrendingUp, MinusCircle, Wallet, UserPlus, Search, BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -37,139 +37,169 @@ const STATES = [
 
 const PAY_CYCLES = ['daily', 'weekly', 'monthly', 'yearly'];
 
-type StatField = { field: keyof PayrollTemplateStatutory; label: string; help: string; unit: '%' | 'money' | 'num' };
-type StatSection = { key: string; title: string; desc: string; side: 'employee' | 'employer'; fields: StatField[]; applicable: { field: keyof PayrollTemplateStatutory; label: string; help: string } };
+type StatField = { field: keyof PayrollTemplateStatutory; label: string; help: string; unit: '%' | 'money' | 'num'; rule_key?: string; standardValue?: string; notification?: string };
+type StatSection = { key: string; title: string; desc: string; side: 'employee' | 'employer'; fields: StatField[]; applicable: { field: keyof PayrollTemplateStatutory; label: string; help: string }; notification?: string };
 
 const STATUTORY_SECTIONS: StatSection[] = [
   {
     key: 'stat-pf-emp', title: 'Provident Fund (PF)', side: 'employee',
-    desc: "Provident Fund — the employee contributes the employee rate % of basic wages (up to the PF wage ceiling).",
+    desc: "Provident Fund - the employee contributes the employee rate % of basic wages (up to the PF wage ceiling). This is a mandatory retirement savings scheme under the EPF Act 1952.",
+    notification: 'EPFO Circular dated 22 Sep 2014 (wage ceiling Rs.15,000); EPF Rate Order FY 2024-25',
     fields: [
-      { field: 'pf_employee_rate', label: 'Employee rate', help: 'Number — % of basic deducted from employee.', unit: '%' },
-      { field: 'pf_wage_ceiling', label: 'PF wage ceiling', help: 'Number — EPF computed on min(Basic+DA, this).', unit: 'money' },
-      { field: 'pf_max_monthly', label: 'Max monthly', help: 'Number — PF deducted capped at this amount per month.', unit: 'money' },
-      { field: 'pf_min_basic_for_exclusion', label: 'Min basic for exclusion', help: 'Number — employees above this basic can opt out of PF.', unit: 'money' },
+      { field: 'pf_employee_rate', label: 'Employee rate', help: 'Percentage of basic wages deducted from the employee each month. Standard rate is 12%. The employee share goes into the EPF account and earns interest. Higher rates are allowed (voluntary contribution) but the employer match remains at 3.67%.', unit: '%', rule_key: 'pf_employee_rate' },
+      { field: 'pf_wage_ceiling', label: 'PF wage ceiling', help: 'Maximum basic+DA on which PF is computed. Standard ceiling is Rs.25,000/month. If an employee\'s basic+DA exceeds this, PF is calculated on the ceiling, not the actual salary.', unit: 'money', rule_key: 'pf_wage_ceiling' },
+      { field: 'pf_max_monthly', label: 'Max monthly', help: 'Absolute maximum PF amount deducted per month (cap). Standard cap is Rs.3,000 (12% of Rs.25,000). Even if basic is higher, deduction never exceeds this.', unit: 'money', rule_key: 'pf_max_monthly' },
+      { field: 'pf_min_basic_for_exclusion', label: 'Min basic for exclusion', help: 'Employees earning basic above this amount can opt out of PF (Section 15(2)(a) of EPF Act). Standard threshold is Rs.25,000/month.', unit: 'money', rule_key: 'pf_min_basic_for_exclusion' },
     ],
-    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = deduct Provident Fund. Off = never deduct for this template.' },
+    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = deduct employee PF contribution every month. Off = no PF deduction for employees on this template.' },
   },
   {
     key: 'stat-esi-emp', title: 'ESI', side: 'employee',
-    desc: "Employees' State Insurance — employee contributes a % of gross while wages stay under the ceiling; once insured, coverage continues through the end of the Apr–Sep / Oct–Mar contribution period even if wages later cross the ceiling.",
+    desc: "Employees' State Insurance - employee contributes 0.75% of gross wages while under the ceiling. Once insured in a contribution period (Apr-Sep / Oct-Mar), coverage continues to the period end even if wages later cross the ceiling.",
+    notification: 'ESI Act 1948, Section 9; ESIC Rate Notification dated 13 Jun 2024',
     fields: [
-      { field: 'esi_employee_rate', label: 'Employee rate', help: 'Number — % of gross deducted.', unit: '%' },
-      { field: 'esi_gross_ceiling', label: 'Gross ceiling', help: 'Number — ESI applies only below this monthly gross.', unit: 'money' },
-      { field: 'esi_disabled_ceiling', label: 'Disabled ceiling', help: 'Number — higher ceiling for persons with disabilities.', unit: 'money' },
+      { field: 'esi_employee_rate', help: 'Percentage of gross wages deducted from the employee. Standard rate is 0.75%. The employee share is waived when average daily wages <= Rs.176 (monthly <= Rs.4,576) - employer still pays their share.', unit: '%', label: 'Employee rate', standardValue: '0.75%', notification: 'ESIC Rate Notification dated 13 Jun 2024' },
+      { field: 'esi_gross_ceiling', help: 'Maximum monthly gross wages for ESI coverage. Standard ceiling is Rs.21,000/month (Rs.25,000 for persons with disabilities). Once insured in a period, coverage continues until the period end even if wages exceed the ceiling.', unit: 'money', label: 'Gross ceiling', standardValue: 'Rs.21,000/month', notification: 'ESIC Rate Notification dated 13 Jun 2024; S.O. 2120(E)' },
+      { field: 'esi_disabled_ceiling', help: 'Higher ceiling for employees with disabilities (under RPwD Act 2016). Standard is Rs.25,000/month vs Rs.21,000 for general employees. Set to 0 to use the general ceiling for everyone.', unit: 'money', label: 'Disabled ceiling', standardValue: 'Rs.25,000/month', notification: 'RPwD Act 2016; ESIC notification for disabled persons' },
     ],
-    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: "Inherit = follow org statutory settings. On = deduct Employees' State Insurance. Off = never deduct." },
+    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: 'Inherit = follow org statutory settings. On = deduct employee ESI contribution when gross <= ceiling. Off = no ESI deduction for this template.' },
   },
   {
     key: 'stat-pt', title: 'Professional Tax', side: 'employee',
-    desc: "Professional Tax — a flat monthly state tax. State PT slabs override this flat amount when configured.",
+    desc: "Professional Tax - a flat monthly state tax levied on employment income. Rates vary by state. State PT slabs configured under Compliance > State Rules override this flat amount when active.",
+    notification: 'State-specific Acts (e.g. Maharashtra PT Act 1975, Karnataka PT Act 1976)',
     fields: [
-      { field: 'pt_monthly_amount', label: 'Flat amount', help: 'Number — fixed monthly PT. State slabs may override.', unit: 'money' },
-      { field: 'pt_min_gross', label: 'Min gross', help: 'Number — PT deducted only above this gross.', unit: 'money' },
+      { field: 'pt_monthly_amount', help: 'Fixed monthly Professional Tax amount deducted from the employee. State PT slabs (set under Compliance > State Rules) override this value when configured and active for the employee\'s state. Use this as the fallback for states without slab configuration.', unit: 'money', label: 'Flat amount', standardValue: 'Varies by state (e.g. Rs.200/month Maharashtra)', notification: 'State-specific PT Act; maximum Rs.2,500/year per Section 16(iii) of IT Act' },
+      { field: 'pt_min_gross', help: 'Minimum monthly gross wages above which Professional Tax is deducted. Employees earning below this threshold are exempt from PT. Standard varies by state. Set to 0 to always deduct.', unit: 'money', label: 'Min gross', standardValue: 'Varies by state', notification: 'State-specific PT Act' },
     ],
-    applicable: { field: 'pt_applicable', label: 'PT applicable', help: 'Inherit = follow org/state settings. On = deduct Professional Tax. Off = never deduct.' },
+    applicable: { field: 'pt_applicable', label: 'PT applicable', help: 'Inherit = follow org/state settings. On = deduct Professional Tax from the employee. Off = no PT deduction. State-specific PT slabs may override this toggle.' },
   },
   {
     key: 'stat-lwf-emp', title: 'Labour Welfare Fund (LWF)', side: 'employee',
-    desc: "Labour Welfare Fund — employee contribution in states that levy LWF.",
+    desc: "Labour Welfare Fund - a fixed monthly contribution by the employee in states that levy LWF (e.g. Maharashtra, Karnataka, Tamil Nadu). LWF is not levied in all states.",
+    notification: 'State-specific LWF Acts (e.g. Maharashtra LWF Act 1953, Section 7)',
     fields: [
-      { field: 'lwf_employee_rate', label: 'Employee rate', help: 'Number — fixed amount deducted as employee LWF contribution.', unit: 'money' },
+      { field: 'lwf_employee_rate', help: 'Fixed monthly amount deducted as the employee\'s LWF contribution. This is a flat amount, not a percentage. State LWF rates (Compliance > State Rules) override this when configured. Deduction frequency is monthly (half-yearly/yearly rates are converted automatically).', unit: 'money', label: 'Employee rate', standardValue: 'Varies by state (e.g. Rs.6 Maharashtra)', notification: 'State-specific LWF Act; frequency varies by state' },
     ],
-    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = deduct Labour Welfare Fund. Off = never deduct.' },
+    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = deduct LWF from the employee. Off = no LWF deduction. Only applicable in states that mandate LWF (Maharashtra, Karnataka, Tamil Nadu, etc.).' },
   },
   {
-    key: 'stat-nps-emp', title: 'NPS — Employee', side: 'employee',
-    desc: "National Pension System — employee contributes a % of basic to NPS (u/s 80CCD(1)).",
+    key: 'stat-nps-emp', title: 'NPS - Employee', side: 'employee',
+    desc: "National Pension System - employee contributes a % of basic to NPS under Section 80CCD(1). This is in addition to PF. NPS contributions are invested in market-linked pension funds and locked until retirement (age 60).",
+    notification: 'PFRDA Act 2013; Section 80CCD(1) of IT Act; PFRDA Circular on contribution limits',
     fields: [
-      { field: 'nps_employee_rate', label: 'Employee rate', help: 'Number — % of basic contributed to NPS (up to 10%).', unit: '%' },
+      { field: 'nps_employee_rate', help: 'Percentage of basic wages contributed by the employee to NPS. Maximum allowed is 10% of basic (up to Rs.50,000 additional deduction under 80CCD(1B)). Contributions are locked until age 60 with partial withdrawal options.', unit: '%', label: 'Employee rate', standardValue: 'Up to 10% of basic', notification: 'Section 80CCD(1) IT Act; PFRDA Circular on contribution limits' },
     ],
-    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = deduct NPS from employee salary. Off = skip for this template.' },
+    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = deduct NPS from employee salary every month. Off = no NPS deduction for this template. NPS is voluntary - only applicable when the employee opts in under Section 80CCD(1).' },
   },
   {
     key: 'stat-pf-employer', title: 'Employer PF & Pension', side: 'employer',
-    desc: "Employer PF contribution — EPF, EPS pension, EDLI insurance and admin charges.",
+    desc: "Employer PF contribution - the organization contributes EPF (3.67%), EPS pension (8.33%), EDLI insurance (0.5%), and admin charges (0.5%) on top of the employee's PF deduction.",
+    notification: 'EPFO Circular dated 22 Sep 2014; EPF Rate Order FY 2024-25',
     fields: [
-      { field: 'pf_employer_rate', label: 'EPF rate', help: 'Number — employer EPF contribution.', unit: '%' },
-      { field: 'eps_employer_rate', label: 'EPS rate', help: 'Number — employer pension contribution.', unit: '%' },
-      { field: 'eps_wage_ceiling', label: 'EPS wage ceiling', help: 'Number — pension (EPS) capped at this wage.', unit: 'money' },
-      { field: 'pf_edli_rate', label: 'EDLI rate', help: 'Number — EDLI insurance.', unit: '%' },
-      { field: 'pf_edli_max_monthly', label: 'EDLI max', help: 'Number — EDLI capped at this amount per month.', unit: 'money' },
-      { field: 'pf_admin_rate', label: 'Admin charges', help: 'Number — EPF admin charges.', unit: '%' },
-      { field: 'pf_admin_min_monthly', label: 'Admin min', help: 'Number — admin charges minimum per month.', unit: 'money' },
+      { field: 'pf_employer_rate', help: 'Employer\'s EPF (Employees\' Provident Fund) contribution rate. Standard is 3.67% of basic wages. This goes into the employee\'s EPF account along with the employee\'s 12%. Together they earn interest declared by EPFO annually.', unit: '%', label: 'EPF rate', standardValue: '3.67%', notification: 'EPF Rate Order FY 2024-25' },
+      { field: 'eps_employer_rate', help: 'Employer\'s EPS (Employees\' Pension Scheme) contribution rate. Standard is 8.33% of pensionable wages. This amount goes to the pension fund (not the employee\'s EPF account). The difference between EPF (3.67%) and EPS (8.33%) is managed by EPFO.', unit: '%', label: 'EPS rate', standardValue: '8.33%', notification: 'EPF Rate Order FY 2024-25; EPS Scheme 1995' },
+      { field: 'eps_wage_ceiling', help: 'Maximum pensionable wages for EPS contribution. Standard is Rs.15,000/month. EPS contribution is computed on min(Basic+DA, this ceiling). If the employee\'s wages exceed this, EPS is still calculated on Rs.15,000 while EPF continues on the actual wages.', unit: 'money', label: 'EPS wage ceiling', standardValue: 'Rs.15,000/month', notification: 'EPFO Circular dated 22 Sep 2014' },
+      { field: 'pf_edli_rate', help: 'EDLI (Employees\' Deposit Linked Insurance) contribution rate. Standard is 0.5% of PF wages. This is a life insurance scheme - if an employee dies during service, the family receives up to Rs.7 lakh based on the PF balance. Employer pays this on top of EPF+EPS.', unit: '%', label: 'EDLI rate', standardValue: '0.5%', notification: 'EPF Rate Order FY 2024-25; EDLI Scheme 1976' },
+      { field: 'pf_edli_max_monthly', help: 'Maximum PF wages on which EDLI is computed. Standard is Rs.15,000/month. EDLI contribution = 0.5% * min(Basic+DA, this amount). Set to 0 to use the same wage ceiling as PF.', unit: 'money', label: 'EDLI max', standardValue: 'Rs.15,000/month', notification: 'EPFO Circular dated 22 Sep 2014' },
+      { field: 'pf_admin_rate', help: 'EPF administrative charges rate. Standard is 0.5% of PF wages. This covers EPFO\'s operational costs for managing the PF accounts. Charged monthly along with the EPF/EPS contributions.', unit: '%', label: 'Admin charges', standardValue: '0.5%', notification: 'EPFO Circular on admin charges' },
+      { field: 'pf_admin_min_monthly', help: 'Minimum EPF admin charges per month. Standard is Rs.75/month per establishment. If the calculated admin charges (0.5% * wages) fall below this, the minimum is applied.', unit: 'money', label: 'Admin min', standardValue: 'Rs.75/month', notification: 'EPFO Circular on admin charges' },
     ],
-    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = apply employer PF/EPS/EDLI. Off = skip for this template.' },
+    applicable: { field: 'pf_applicable', label: 'PF applicable', help: 'Inherit = follow org statutory settings. On = apply all employer PF/EPS/EDLI/admin contributions. Off = skip all employer-side PF charges for this template.' },
   },
   {
-    key: 'stat-esi-employer', title: 'ESI — Employer', side: 'employer',
-    desc: "Employer ESI contribution — the organization matches the employee's ESI contribution.",
+    key: 'stat-esi-employer', title: 'ESI - Employer', side: 'employer',
+    desc: "Employer ESI contribution - the organization contributes 3.25% of gross wages to ESI when the employee is covered (gross <= ceiling). This is separate from the employee's 0.75% contribution.",
+    notification: 'ESI Act 1948, Section 9; ESIC Rate Notification dated 13 Jun 2024',
     fields: [
-      { field: 'esi_employer_rate', label: 'Employer rate', help: 'Number — employer ESI %.', unit: '%' },
+      { field: 'esi_employer_rate', help: 'Percentage of gross wages contributed by the employer to ESI. Standard rate is 3.25%. The employer share is always due once the employee is ESI-covered - even if the employee\'s share is waived (low-wage rule). Applied only when gross <= ceiling.', unit: '%', label: 'Employer rate', standardValue: '3.25%', notification: 'ESIC Rate Notification dated 13 Jun 2024' },
     ],
-    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: "Inherit = follow org statutory settings. On = apply employer ESI. Off = skip for this template." },
+    applicable: { field: 'esi_applicable', label: 'ESI applicable', help: 'Inherit = follow org statutory settings. On = employer pays ESI contribution for covered employees. Off = no employer ESI for this template.' },
   },
   {
-    key: 'stat-lwf-employer', title: 'LWF — Employer', side: 'employer',
-    desc: "Employer LWF contribution — the organization matches the employee's LWF contribution.",
+    key: 'stat-lwf-employer', title: 'LWF - Employer', side: 'employer',
+    desc: "Employer LWF contribution - the organization matches the employee's LWF contribution in states that levy LWF. LWF is a fixed flat amount, not a percentage.",
+    notification: 'State-specific LWF Acts (e.g. Maharashtra LWF Act 1953)',
     fields: [
-      { field: 'lwf_employer_rate', label: 'Employer rate', help: 'Number — fixed amount contributed by employer as LWF.', unit: 'money' },
+      { field: 'lwf_employer_rate', help: 'Fixed monthly amount contributed by the employer towards LWF. This matches the employee\'s contribution. State LWF rates (Compliance > State Rules) override this when configured. Deduction frequency is monthly.', unit: 'money', label: 'Employer rate', standardValue: 'Varies by state', notification: 'State-specific LWF Act' },
     ],
-    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = apply employer LWF. Off = skip for this template.' },
+    applicable: { field: 'lwf_applicable', label: 'LWF applicable', help: 'Inherit = follow org/state settings. On = employer pays LWF contribution. Off = no employer LWF for this template.' },
   },
   {
-    key: 'stat-nps-employer', title: 'NPS — Employer', side: 'employer',
-    desc: "Employer NPS contribution under section 80CCD(2).",
+    key: 'stat-nps-employer', title: 'NPS - Employer', side: 'employer',
+    desc: "Employer NPS contribution under Section 80CCD(2). The employer contributes up to 14% of basic to the employee's NPS account. This is tax-free for the employee (no cap under 80CCD(2)).",
+    notification: 'PFRDA Act 2013; Section 80CCD(2) of IT Act',
     fields: [
-      { field: 'nps_employer_rate', label: 'Employer rate', help: 'Number — % of basic employer contributes to NPS.', unit: '%' },
+      { field: 'nps_employer_rate', help: 'Percentage of basic wages contributed by the employer to NPS under Section 80CCD(2). Maximum is 14% of basic. This contribution is fully tax-free for the employee (no Rs.50,000 cap like 80CCD(1B)). Only applicable when NPS is enabled for the employee.', unit: '%', label: 'Employer rate', standardValue: 'Up to 14% of basic', notification: 'Section 80CCD(2) IT Act; PFRDA Circular' },
     ],
-    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = employer contributes to NPS. Off = skip for this template.' },
+    applicable: { field: 'pf_applicable', label: 'NPS applicable', help: 'Inherit = follow org settings. On = employer contributes to employee\'s NPS account. Off = no employer NPS for this template.' },
   },
   {
     key: 'stat-gratuity', title: 'Gratuity', side: 'employer',
-    desc: "Gratuity — an employer-funded retirement benefit accrued at the rate % of basic per year of service.",
+    desc: "Gratuity - an employer-funded retirement benefit paid to employees who complete 5+ years of continuous service. Accrued at 15 days of basic per year of service, tax-exempt up to Rs.20 lakh under Section 10(10).",
+    notification: 'Payment of Gratuity Act 1972, Section 4; IT Act Section 10(10); amendment increasing exemption to Rs.20L (01 Jan 2024)',
     fields: [
-      { field: 'gratuity_rate', label: 'Rate', help: 'Number — % of basic wage.', unit: '%' },
-      { field: 'gratuity_eligible_years', label: 'Eligibility years', help: 'Number — years of service for gratuity.', unit: 'num' },
-      { field: 'gratuity_days_per_year', label: 'Days per year', help: 'Number — gratuity days credited per year.', unit: 'num' },
-      { field: 'gratuity_tax_exempt_ceiling', label: 'Tax-exempt ceiling', help: 'Number — gratuity tax exemption limit.', unit: 'money' },
+      { field: 'gratuity_rate', help: 'Percentage of basic wages used to compute monthly gratuity accrual. Standard is 4.81% (15 days / 26 days * 100%). The employer sets aside this % of basic every month as a gratuity liability. At exit, the total accumulated amount is paid to the employee.', unit: '%', label: 'Rate', standardValue: '4.81% (15/26 * 100)', notification: 'Payment of Gratuity Act 1972, Section 4(1)' },
+      { field: 'gratuity_eligible_years', help: 'Minimum years of continuous service required for gratuity eligibility. Under the Payment of Gratuity Act, this is 5 years. Employees who leave before completing this period are not entitled to gratuity. Set to 0 to make all employees eligible.', unit: 'num', label: 'Eligibility years', standardValue: '5 years', notification: 'Payment of Gratuity Act 1972, Section 4(1)' },
+      { field: 'gratuity_days_per_year', help: 'Number of days of basic credited per year of service for gratuity calculation. Standard is 15 days (Payment of Gratuity Act). Some organizations use higher values (e.g. 20 or 30 days) as an enhanced benefit.', unit: 'num', label: 'Days per year', standardValue: '15 days', notification: 'Payment of Gratuity Act 1972, Section 4(1)' },
+      { field: 'gratuity_tax_exempt_ceiling', help: 'Maximum gratuity amount exempt from income tax under Section 10(10). Current limit is Rs.20 lakh (enhanced from Rs.10 lakh in 2018). Any gratuity above this ceiling is taxable. Set to 0 to use the statutory limit automatically.', unit: 'money', label: 'Tax-exempt ceiling', standardValue: 'Rs.20 lakh', notification: 'IT Act Section 10(10); Notification dated 01 Jan 2024' },
     ],
-    applicable: { field: 'gratuity_applicable', label: 'Gratuity applicable', help: 'Inherit = follow org settings. On = reserve a gratuity liability. Off = none for this template.' },
+    applicable: { field: 'gratuity_applicable', label: 'Gratuity applicable', help: 'Inherit = follow org settings. On = reserve a monthly gratuity liability for employees on this template. Off = no gratuity for this template.' },
   },
   {
     key: 'stat-bonus', title: 'Statutory Bonus', side: 'employer',
-    desc: "Statutory Bonus — employees earning up to the eligibility ceiling qualify; the payout is computed on wages capped at the calculation cap, between the minimum and maximum rates.",
+    desc: "Statutory Bonus - the Payment of Bonus Act 1965 mandates that employees earning up to the eligibility ceiling receive a bonus between 8.33% (minimum) and 20% (maximum) of wages, computed on wages capped at the calculation cap.",
+    notification: 'Payment of Bonus Act 1965, Section 10 & 11; Bonus (Amendment) Act 2015 (eligibility ceiling Rs.21,000)',
     fields: [
-      { field: 'bonus_min_rate', label: 'Minimum rate', help: 'Number — minimum bonus % of wages.', unit: '%' },
-      { field: 'bonus_max_rate', label: 'Maximum rate', help: 'Number — maximum bonus % of wages.', unit: '%' },
-      { field: 'bonus_eligible_ceiling', label: 'Eligibility ceiling', help: 'Number — employees earning above this monthly wage are not eligible.', unit: 'money' },
-      { field: 'bonus_wage_ceiling', label: 'Calculation cap', help: 'Number — bonus is computed on wages capped at this monthly amount.', unit: 'money' },
+      { field: 'bonus_min_rate', help: 'Minimum bonus percentage mandated by the Payment of Bonus Act 1965. Standard is 8.33% of wages (capped at the calculation cap). Employers must pay at least this much. Higher amounts are voluntary.', unit: '%', label: 'Minimum rate', standardValue: '8.33%', notification: 'Payment of Bonus Act 1965, Section 10' },
+      { field: 'bonus_max_rate', help: 'Maximum bonus percentage allowed under the Act. Standard is 20% of wages. Employers can pay up to this without additional regulatory approval. Bonus above 20% is treated as ex-gratia.', unit: '%', label: 'Maximum rate', standardValue: '20%', notification: 'Payment of Bonus Act 1965, Section 11' },
+      { field: 'bonus_eligible_ceiling', help: 'Maximum monthly wage (basic + DA) below which an employee is eligible for statutory bonus. Current ceiling is Rs.21,000/month. Employees earning above this are not entitled to statutory bonus under the Act.', unit: 'money', label: 'Eligibility ceiling', standardValue: 'Rs.21,000/month', notification: 'Bonus (Amendment) Act 2015; S.O. 3333(E)' },
+      { field: 'bonus_wage_ceiling', help: 'Maximum monthly wage on which bonus is calculated. Current cap is Rs.7,000/month. Even if the employee earns Rs.15,000, bonus is computed on Rs.7,000 only. This is the calculation base, separate from the eligibility ceiling.', unit: 'money', label: 'Calculation cap', standardValue: 'Rs.7,000/month', notification: 'Payment of Bonus Act 1965, Section 12' },
     ],
-    applicable: { field: 'bonus_applicable', label: 'Bonus applicable', help: 'Inherit = follow org settings. On = pay statutory bonus. Off = none for this template.' },
+    applicable: { field: 'bonus_applicable', label: 'Bonus applicable', help: 'Inherit = follow org settings. On = pay statutory bonus to eligible employees (wages <= eligibility ceiling). Off = no statutory bonus for this template. Manual bonuses can still be added via Payroll Adjustments.' },
   },
 ];
 
-// Form 16 (Part B) heads — where each component sits in the salary computation.
+// Maps statutory field names to statutory_rule_configs.rule_key for dynamic values
+const FIELD_TO_RULE_KEY: Record<string, string> = {
+  pf_employee_rate: 'pf_employee_rate', pf_wage_ceiling: 'pf_wage_ceiling',
+  pf_max_monthly: 'pf_max_monthly', pf_min_basic_for_exclusion: 'pf_min_basic_for_exclusion',
+  pf_employer_rate: 'pf_employer_rate', eps_employer_rate: 'eps_employer_rate',
+  eps_wage_ceiling: 'eps_wage_ceiling', pf_edli_rate: 'pf_edli_rate',
+  pf_edli_max_monthly: 'pf_edli_max_monthly', pf_admin_rate: 'pf_admin_rate',
+  pf_admin_min_monthly: 'pf_admin_min_monthly',
+  esi_employee_rate: 'esi_employee_rate', esi_gross_ceiling: 'esi_gross_ceiling',
+  esi_disabled_ceiling: 'esi_disabled_ceiling', esi_employer_rate: 'esi_employer_rate',
+  pt_monthly_amount: 'pt_monthly_amount', pt_min_gross: 'pt_min_gross',
+  lwf_employee_rate: 'lwf_employee_rate', lwf_employer_rate: 'lwf_employer_rate',
+  nps_employee_rate: 'nps_employee_rate', nps_employer_rate: 'nps_employer_rate',
+  gratuity_rate: 'gratuity_rate', gratuity_eligible_years: 'gratuity_eligible_years',
+  gratuity_days_per_year: 'gratuity_days_per_year', gratuity_tax_exempt_ceiling: 'gratuity_tax_exempt_ceiling',
+  bonus_min_rate: 'bonus_min_rate', bonus_max_rate: 'bonus_max_rate',
+  bonus_eligible_ceiling: 'bonus_eligible_ceiling', bonus_wage_ceiling: 'bonus_wage_ceiling',
+};
+
+// Form 16 (Part B) heads - where each component sits in the salary computation.
 const TAX_CATEGORIES: Record<string, { value: string; label: string; help: string }[]> = {
   earning: [
-    { value: 'salary_17_1', label: 'Salary u/s 17(1)', help: 'Basic, DA, Special Allowance, Overtime, Bonus — taxed as salary.' },
-    { value: 'exempt_10', label: 'Exempt allowance u/s 10', help: 'HRA u/s 10(13A), LTA u/s 10(5), Children Education/Hostel, Uniform, Transport — exempt to the extent of actuals.' },
+    { value: 'salary_17_1', label: 'Salary u/s 17(1)', help: 'Basic, DA, Special Allowance, Overtime, Bonus - taxed as salary.' },
+    { value: 'exempt_10', label: 'Exempt allowance u/s 10', help: 'HRA u/s 10(13A), LTA u/s 10(5), Children Education/Hostel, Uniform, Transport - exempt to the extent of actuals.' },
     { value: 'perquisite_17_2', label: 'Perquisite u/s 17(2)', help: 'Non-cash or subsidized benefits (company car, accommodation, gym, ESOPs) at taxable value.' },
     { value: 'profit_17_3', label: 'Profit in lieu u/s 17(3)', help: 'Severance pay, termination compensation, or payments before joining / after resignation.' },
   ],
   deduction: [
-    { value: 'exempt_10', label: 'Exempt allowance u/s 10', help: 'HRA u/s 10(13A), LTA u/s 10(5), etc. — excluded from gross before tax.' },
-    { value: 'chapter_vi_a', label: 'Chapter VI-A u/s 80', help: 'EPF, ELSS, insurance u/s 80C, health u/s 80D, NPS u/s 80CCD(1) — subtracted from adjusted income.' },
-    { value: 'professional_tax_16', label: 'Professional Tax u/s 16(iii)', help: 'State-level tax withheld from salary (up to ₹2,500/year).' },
+    { value: 'exempt_10', label: 'Exempt allowance u/s 10', help: 'HRA u/s 10(13A), LTA u/s 10(5), etc. - excluded from gross before tax.' },
+    { value: 'chapter_vi_a', label: 'Chapter VI-A u/s 80', help: 'EPF, ELSS, insurance u/s 80C, health u/s 80D, NPS u/s 80CCD(1) - subtracted from adjusted income.' },
+    { value: 'professional_tax_16', label: 'Professional Tax u/s 16(iii)', help: 'State-level tax withheld from salary (up to Rs.2,500/year).' },
     { value: 'post_tax_statutory', label: 'Post-tax statutory (ESIC)', help: 'ESIC employee contribution 0.75% of gross (while under the ceiling) - deducted from net pay. Note: employee EPF is deductible u/s 80C (Chapter VI-A), not post-tax.' },
-    { value: 'post_tax_other', label: 'Other post-tax deduction', help: 'LOP, notice recovery, loan/advance recovery, asset damage, insurance premium, canteen/transport — deducted from net pay.' },
+    { value: 'post_tax_other', label: 'Other post-tax deduction', help: 'LOP, notice recovery, loan/advance recovery, asset damage, insurance premium, canteen/transport - deducted from net pay.' },
     { value: 'tds_192', label: 'TDS u/s 192', help: 'Income tax withheld on salary under section 192.' },
   ],
   employer_contribution: [
-    { value: 'employer_epf', label: 'EPF u/s 80CCD(2)', help: 'Employer 12% of basic — 3.67% EPF + 8.33% EPS. Deductible in both regimes.' },
+    { value: 'employer_epf', label: 'EPF u/s 80CCD(2)', help: 'Employer 12% of basic - 3.67% EPF + 8.33% EPS. Deductible in both regimes.' },
     { value: 'employer_esic', label: 'ESIC (employer)', help: 'Employer ESIC 3.25% of gross salary, if eligible.' },
     { value: 'employer_gratuity', label: 'Gratuity', help: 'Employer deposit into gratuity fund (4.81% of basic).' },
-    { value: 'employer_nps', label: 'NPS corporate', help: 'Employer NPS contribution u/s 80CCD(2) — up to 10% of basic.' },
+    { value: 'employer_nps', label: 'NPS corporate', help: 'Employer NPS contribution u/s 80CCD(2) - up to 10% of basic.' },
     { value: 'employer_gmc', label: 'Group Medical / GPA', help: 'Employer-paid group medical cover (GMC) or personal accident (GPA) premium per employee.' },
   ],
 };
@@ -180,7 +210,7 @@ function defaultTaxCategory(type: string): string {
   return 'employer_epf';
 }
 
-// ── Defaults ──
+// -- Defaults --
 
 function defaultPolicy() {
   return {
@@ -355,7 +385,7 @@ function toPayload(w: WizardState): PayrollTemplatePayload {
   };
 }
 
-// ── Small field components ──
+// -- Small field components --
 
 function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
   return (
@@ -495,7 +525,7 @@ function ShiftMultiplierEditor({ value, onChange }: { value: Record<string, numb
           <Field label="Shift label" help="Must match the shift name from attendance (lowercased).">
             <TextInput value={label} onChange={v => rename(label, v)} />
           </Field>
-          <Field label="Multiplier" help="Number — pay is base rate × hours × this.">
+          <Field label="Multiplier" help="Number - pay is base rate * hours * this.">
             <NumInput value={vals[label] ?? 1.0} onChange={v => patch(label, v)} />
           </Field>
         </div>
@@ -574,22 +604,22 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         </span>
         <span className="text-sm font-semibold text-[var(--text-primary)]">{heading}</span>
       </div>
-      {/* Row 1 — identity */}
+      {/* Row 1 - identity */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
-        <Field label="Name" help="Text — internal name, e.g. Basic, HRA, PF.">
+        <Field label="Name" help="Internal name used in formulas and the engine. Use short, clear names like 'Basic', 'HRA', 'PF', 'ESI'. This name is referenced by other components in formulas (e.g. 'basic * 0.4' uses the Basic component's computed value).">
           <TextInput value={c.name} onChange={v => setComp(i, { name: v })} placeholder="e.g. Basic" />
         </Field>
-        <Field label="Display name" help="Text — label printed on the payslip.">
+        <Field label="Display name" help="Label printed on the payslip and shown to employees. This is what employees see on their salary slip. Can be more descriptive than the internal name (e.g. internal 'HRA' to display 'House Rent Allowance').">
           <TextInput value={c.display_name || ''} onChange={v => setComp(i, { display_name: v })} placeholder="e.g. Basic Salary" />
         </Field>
-        <Field label="Type" help="Earning = added, Deduction = subtracted, Employer contribution = cost to company.">
+        <Field label="Type" help="Earning = added to gross pay (salary, allowances, bonus). Deduction = subtracted from gross (PF, ESI, PT, loan). Employer contribution = cost to company paid on top of gross (employer PF, ESI, gratuity). The type determines which side of the payslip the component appears on.">
           <SearchableSelect value={c.component_type} onChange={v => setComp(i, { component_type: String(v) as any })} placeholder="Select Type" options={[
             { id: 'earning', name: 'Earning' },
             { id: 'deduction', name: 'Deduction' },
             { id: 'employer_contribution', name: 'Employer contribution' },
           ]} showAllOption={false} />
         </Field>
-        <Field label="Calc type" help="Percentage, Fixed, Formula, Hourly (overtime rate x hours), Piece rate (per-unit x units), Tiered (overtime-style brackets) or Shift differential (shift x multiplier).">
+        <Field label="Calc type" help="How the component value is computed: Percentage (% of a base), Fixed (flat amount), Formula (custom expression), Hourly (rate * hours), Piece rate (rate * units), Tiered (progressive brackets like overtime), Shift differential (shift-specific multipliers). The calc type determines which fields appear below.">
           <SearchableSelect value={c.calculation_type} onChange={v => setComp(i, { calculation_type: String(v) as any })} placeholder="Select Calc type" options={[
             { id: 'percentage', name: 'Percentage' },
             { id: 'fixed', name: 'Fixed' },
@@ -602,10 +632,10 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         </Field>
       </div>
 
-      {/* Row 2 — calculation */}
+      {/* Row 2 - calculation */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
         {c.calculation_type === 'percentage' ? (
-          <Field label="Base" help="What the percentage applies to: Basic, Gross or Net.">
+          <Field label="Base" help="What the percentage applies to: Basic (component value of 'basic'), Gross (total earnings before deductions), or Net (after deductions). For HRA, base is typically 'basic'. For conveyance, base is typically 'gross'.">
             <SearchableSelect value={c.calculation_base || 'basic'} onChange={v => setComp(i, { calculation_base: String(v) as any })} placeholder="Select Base" options={[
               { id: 'basic', name: 'Basic' },
               { id: 'gross', name: 'Gross' },
@@ -613,46 +643,46 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
             ]} showAllOption={false} />
           </Field>
         ) : c.calculation_type === 'formula' ? (
-          <Field label="Formula" help="Full expression — basic, base, rate, prior components by name, attendance hours. 'tax' = income tax. Bad formulas evaluate to 0.">
+          <Field label="Formula" help="Full expression using component names as variables. Available: basic, base, rate, attendance hours, prior components by name. Use 'tax' for income tax. Bad/invalid formulas evaluate to 0 silently. Example: 'basic * 0.4' or 'base * rate / 100'.">
             <TextInput value={c.formula || ''} onChange={v => setComp(i, { formula: v })} placeholder="e.g. base * 0.4" />
           </Field>
         ) : c.calculation_type === 'hourly' ? (
-          <Field label="Hourly rate" help="Number — pay per hour. Multiplied by hours_worked each month.">
+          <Field label="Hourly rate" help="Base rate per hour of work. Monthly pay = hourly rate * hours_worked (from attendance). Hours are sourced from the attendance system's clock-in/clock-out records. Use for shift workers or hourly-rated employees.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         ) : c.calculation_type === 'piece_rate' ? (
-          <Field label="Rate per unit" help="Number — pay per unit. Multiplied by units_produced each month.">
+          <Field label="Rate per unit" help="Pay for each unit produced. Monthly pay = rate * units_produced (from attendance or production data). Use for factory workers paid per item manufactured. Units are sourced from attendance records or manual entry.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         ) : c.calculation_type === 'shift_differential' ? (
-          <Field label="Base hourly rate" help="Number — base rate per hour, multiplied by the shift multiplier below.">
+          <Field label="Base hourly rate" help="Base rate per hour before shift multipliers. The final pay = base rate * hours * shift multiplier. For example, if base rate is 100 and night shift multiplier is 1.25, night shift pay = 100 * hours * 1.25.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         ) : c.calculation_type === 'tiered' ? (
           <div className="md:col-span-2">
-            <Field label="Tiered quantity" help="Progressive brackets on overtime-style hours. Each row: from hours → to hours (blank = no cap) → multiplier. Blank quantity units earn 0 for that month.">
-              <span className="text-[11px] text-[var(--text-tertiary)]">Brackets use the same shape the engine reads — hours × rate, any brackets.</span>
+            <Field label="Tiered quantity" help="Progressive brackets for overtime or piece-rate components. Each bracket defines: From (units) to To (units, blank = unlimited) to Rate per unit. Units below the first bracket earn 0. The engine applies brackets in order: (quantity_in_bracket * rate) summed across brackets.">
+              <span className="text-[11px] text-[var(--text-tertiary)]">Configure brackets below. Each row = one tier with from/to/rate.</span>
             </Field>
           </div>
         ) : (
-          <Field label="Amount" help="Number — flat amount for fixed-type components.">
+          <Field label="Amount" help="Flat amount for fixed-type components. This exact amount is added/subtracted every month regardless of attendance or other factors. Use for fixed allowances like conveyance, medical, or fixed deductions like a recurring loan EMI.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
         {c.calculation_type !== 'formula' && c.calculation_type !== 'tiered' && c.calculation_type !== 'shift_differential' && (
-          <Field label="Value" help="Number — the % or amount.">
+          <Field label="Value" help="The numeric value used in calculation: percentage (e.g. 50 for 50%), fixed amount, hourly rate, or piece rate. For percentage type, this is the % applied to the base. For fixed type, this is the flat amount. For hourly, this is the rate per hour.">
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
         {(c.calculation_type === 'tiered' || c.calculation_type === 'shift_differential') && (
-          <Field label="Value" help={c.calculation_type === 'tiered' ? 'Number — percentage multiplier applied after brackets (100 = brackets already hold rates, anything else scales them by %).' : 'Number — unused for shift differential, kept for reporting.'}>
+          <Field label="Value" help={c.calculation_type === 'tiered' ? 'Optional multiplier applied after brackets. Set to 100 if bracket rates already hold the final values. Set to 1 if brackets are multipliers of the base value. Default is 1.' : 'Reserved for reporting and documentation. Not used in the shift differential calculation itself - the multipliers in the shift config drive the pay.'}>
             <NumInput value={c.calculation_value} onChange={v => setComp(i, { calculation_value: v })} />
           </Field>
         )}
-        <Field label={`Max cap (${getCurrencySymbol(getAppCurrency())})`} help="Number — upper limit of the value. Blank = no cap.">
+        <Field label={`Max cap (${getCurrencySymbol(getAppCurrency())})`} help="Upper limit on the computed value. If the calculated amount exceeds this, it is capped at this value. Leave blank for no cap. Useful for components with variable calculations that need a ceiling (e.g. HRA metro cap, conveyance maximum).">
           <NumInput value={c.max_cap ?? null} onChange={v => setComp(i, { max_cap: v })} />
         </Field>
-        <Field label={`Min cap (${getCurrencySymbol(getAppCurrency())})`} help="Number — lower limit of the value. Blank = no floor.">
+        <Field label={`Min cap (${getCurrencySymbol(getAppCurrency())})`} help="Lower limit on the computed value. If the calculated amount falls below this, it is raised to this value. Leave blank for no floor. Useful for minimum guarantees (e.g. minimum DA even if percentage yields a small amount).">
           <NumInput value={c.min_cap ?? null} onChange={v => setComp(i, { min_cap: v })} />
         </Field>
       </div>
@@ -662,21 +692,21 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         <div className="space-y-2">
           {((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []).map((t, ti) => (
             <div key={ti} className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-              <Field label="From (units)" help="Number — bracket lower bound, inclusive.">
+              <Field label="From (units)" help="Lower bound of this bracket (inclusive). The first bracket typically starts at 0. Must be less than the 'To' value of this bracket.">
                 <NumInput value={t.from ?? 0} onChange={v => {
                   const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
                   next[ti] = { ...next[ti], from: v ?? 0 };
                   setComp(i, { tiered_config: next });
                 }} />
               </Field>
-              <Field label="To (blank = no cap)" help="Number — bracket upper bound. Only the last bracket may be open-ended.">
+              <Field label="To (blank = no cap)" help="Upper bound of this bracket (exclusive). Leave blank for the last bracket to be open-ended (catches everything above 'From'). Must be greater than 'From' of the same bracket.">
                 <NumInput value={t.to ?? null} onChange={v => {
                   const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
                   next[ti] = { ...next[ti], to: v };
                   setComp(i, { tiered_config: next });
                 }} />
               </Field>
-              <Field label="Rate" help="Number — pay per unit (or multiplier when Value = 100).">
+              <Field label="Rate" help="Number - pay per unit (or multiplier when Value = 100).">
                 <NumInput value={t.rate ?? 0} onChange={v => {
                   const next = [...(((c.tiered_config as { from: number; to?: number | null; rate: number }[] | null | undefined) || []))];
                   next[ti] = { ...next[ti], rate: v ?? 0 };
@@ -699,17 +729,17 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
       {/* Shift multipliers */}
       {c.calculation_type === 'shift_differential' && (
         <div className="space-y-2">
-          <p className="text-[11px] text-[var(--text-tertiary)]">Multiplier per shift label coming from attendance (shift_type). Unknown labels fall back to ×1.0.</p>
+          <p className="text-[11px] text-[var(--text-tertiary)]">Multiplier per shift label coming from attendance (shift_type). Unknown labels fall back to *1.0.</p>
           <ShiftMultiplierEditor value={(c.shift_differential_config as Record<string, number> | null | undefined) || {}} onChange={v => setComp(i, { shift_differential_config: v })} />
         </div>
       )}
 
-      {/* Row 3 — Form 16 head, priority, exempt limit, remove */}
+      {/* Row 3 - Form 16 head, priority, exempt limit, remove */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
-        <Field label="Tax head (Form 16)" help={TAX_CATEGORIES[c.component_type]?.find(o => o.value === (c.tax_category || defaultTaxCategory(c.component_type)))?.help || 'Where this component sits in Form 16 Part B.'}>
+        <Field label="Tax head (Form 16)" help="Where this component sits in Form 16 Part B for TDS calculation. Salary u/s 17(1) for regular earnings, Exempt allowance u/s 10 for HRA/LTA, Chapter VI-A u/s 80 for PF/NPS/ELSS deductions, Professional Tax u/s 16(iii). The tax head determines how the amount flows into the TDS engine.">
           <SearchableSelect value={c.tax_category || defaultTaxCategory(c.component_type)} onChange={v => setComp(i, { tax_category: String(v) })} placeholder="Select Tax head" options={(TAX_CATEGORIES[c.component_type] || []).map(opt => ({ id: opt.value, name: opt.label }))} showAllOption={false} />
         </Field>
-        <Field label="Taxability" help="How this line is treated for income tax: taxable, partially, non-taxable or conditional.">
+        <Field label="Taxability" help="How this component is treated for income tax: Taxable (fully included in taxable income), Partially taxable (only a portion is taxable, e.g. HRA exemption), Non-taxable (excluded from taxable income entirely, e.g. gratuity up to Rs.20L), Conditional (taxable only if certain conditions are met).">
           <SearchableSelect value={c.taxability || ''} onChange={v => setComp(i, { taxability: String(v) || null })} placeholder="Not set" options={[
             { id: 'taxable', name: 'Taxable' },
             { id: 'partially_taxable', name: 'Partially taxable' },
@@ -717,11 +747,11 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
             { id: 'conditional', name: 'Conditional' },
           ]} showAllOption={false} clearable />
         </Field>
-        <Field label="Priority (calc order)" help="Select the calc order — lower runs first. Priorities are auto-assigned.">
+        <Field label="Priority (calc order)" help="Calculation order within this type group. Lower numbers run first. For example, Basic (priority 1) must compute before HRA (priority 2) because HRA depends on Basic. Priority auto-assigns when you add components, but you can reorder manually.">
           <SearchableSelect value={rank} onChange={v => onPriority(Number(v))} placeholder="Select Priority" options={Array.from({ length: Math.max(groupCount, 1) }, (_, n) => ({ id: n + 1, name: String(n + 1) }))} showAllOption={false} />
         </Field>
         {c.is_tax_exempt && (
-          <Field label={`Tax exempt limit (${getCurrencySymbol(getAppCurrency())})`} help="Number — amount exempt up to this ceiling.">
+          <Field label={`Tax exempt limit (${getCurrencySymbol(getAppCurrency())})`} help="Maximum amount of this component that is exempt from income tax per year. Any amount above this limit becomes taxable. For example, LTA exemption limit is the actual travel cost (up to the limit). Leave blank = fully exempt up to the computed amount.">
             <NumInput value={c.tax_exempt_limit ?? null} onChange={v => setComp(i, { tax_exempt_limit: v })} />
           </Field>
         )}
@@ -730,7 +760,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
       {/* Depends on */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
         <div className="md:col-span-2">
-          <Field label="Depends on" help="Document which components must compute first — set Priority so they run earlier. Selecting here reorders automatically.">
+          <Field label="Depends on" help="List components that must be calculated BEFORE this one. The engine computes dependencies first, then uses their values in this component's formula. Setting dependencies auto-reorders priorities. Use this when a component references another component's value (e.g. HRA depends on Basic).">
             <DependsOnEditor value={(c.depends_on as (string | number)[] | null | undefined) || []} options={peers.filter(p => p.key !== String(c.name || '').toLowerCase())} onChange={keys => {
               setComp(i, { depends_on: keys });
               if ((window as any).__componentReorder) (window as any).__componentReorder(i, keys);
@@ -739,18 +769,18 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         </div>
       </div>
 
-      {/* Row 4 — toggles */}
+      {/* Row 4 - toggles */}
       <div className="flex flex-wrap gap-x-8 gap-y-3 items-start border-t border-[var(--border-color)] pt-3">
-        <Toggle label="Taxable" help="On = counts towards taxable income." checked={!!c.is_taxable} onChange={v => setComp(i, { is_taxable: v })} />
-        <Toggle label="Statutory" help="On = legally mandated (PF, ESI, PT, TDS)." checked={!!c.is_statutory} onChange={v => setComp(i, { is_statutory: v })} />
-        <Toggle label="Pro-rate" help="On = value pro-rated for partial months." checked={!!c.apply_pro_ration} onChange={v => setComp(i, { apply_pro_ration: v })} />
-        <Toggle label="Active" help="Off = kept but not used on payslips." checked={!!c.is_active} onChange={v => setComp(i, { is_active: v })} />
-        <Toggle label="Tax exempt" help="On = fully excluded from taxable income." checked={!!c.is_tax_exempt} onChange={v => setComp(i, { is_tax_exempt: v })} />
+        <Toggle label="Taxable" help="When ON, this component's value is included in the employee's taxable income for TDS calculation. Earnings like Basic, HRA, Special Allowance are typically taxable. Deductions like PF, ESI are typically not taxable at the deduction stage (but reduce gross). Set OFF for fully tax-exempt components." checked={!!c.is_taxable} onChange={v => setComp(i, { is_taxable: v })} />
+        <Toggle label="Statutory" help="When ON, marks this component as a legally mandated deduction/contribution (PF, ESI, PT, TDS). Statutory components are computed by the engine based on statutory settings - manual overrides in this card are ignored. The engine double-counts guard prevents template components from duplicating statutory calculations." checked={!!c.is_statutory} onChange={v => setComp(i, { is_statutory: v })} />
+        <Toggle label="Pro-rate" help="When ON, this component's value is proportionally reduced for partial months (e.g. employee joins mid-month or takes unpaid leave). Monthly value = full value * (paid days / total days). Most earnings use pro-ration; statutory deductions (PF, ESI) typically do not." checked={!!c.apply_pro_ration} onChange={v => setComp(i, { apply_pro_ration: v })} />
+        <Toggle label="Active" help="When ON, this component is included in payslip calculations. When OFF, the component is kept in the template for historical reference but excluded from all future payslips. Use OFF to retire a component without deleting it (preserves audit trail)." checked={!!c.is_active} onChange={v => setComp(i, { is_active: v })} />
+        <Toggle label="Tax exempt" help="When ON, this component's value is fully excluded from taxable income (not just partially exempt). The tax head still classifies it in Form 16, but the TDS engine ignores the amount. Use for fully exempt allowances like Conveyance (up to Rs.1,600/month) or children education allowance." checked={!!c.is_tax_exempt} onChange={v => setComp(i, { is_tax_exempt: v })} />
       </div>
 
-      {/* Row 5 — per-component statutory applicability */}
+      {/* Row 5 - per-component statutory applicability */}
       <div className="space-y-1 border-t border-[var(--border-color)] pt-3">
-        <p className="text-[11px] font-medium text-[var(--text-tertiary)]">Statutory applicability — which statutory bases this component feeds (blank = follow template/org defaults).</p>
+        <p className="text-[11px] font-medium text-[var(--text-tertiary)]">Statutory applicability - which statutory deductions use this component in their calculation. Leave all as Inherit (blank) to follow template/org defaults. Only override when a specific component should or shouldn't feed into a statutory base (e.g. exclude HRA from PF wages, or include special allowance in ESI). Blank = follow template/org defaults. Inherit = use default rules. On = always include. Off = never include.</p>
         <div className="flex flex-wrap gap-x-8 gap-y-3 items-start">
           <ApplicableToggle label="PF" checked={(c.pf_applicable ?? null) as boolean | null} onChange={v => setComp(i, { pf_applicable: v })} />
           <ApplicableToggle label="ESI" checked={(c.esi_applicable ?? null) as boolean | null} onChange={v => setComp(i, { esi_applicable: v })} />
@@ -762,7 +792,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
         </div>
       </div>
 
-      {/* Bottom bar — add row + delete */}
+      {/* Bottom bar - add row + delete */}
       <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
         <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add New Component
@@ -826,18 +856,18 @@ function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) 
       <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-4 py-3 bg-[var(--background)] border-b border-[var(--border-color)]">
         <Landmark className="w-4 h-4 text-amber-600" />
         <span className="font-medium text-sm text-[var(--text-primary)]">Form 16 (Part B) computation flow</span>
-        <span className="text-xs text-[var(--text-tertiary)] flex-1 text-left">— how your components flow into taxable income</span>
+        <span className="text-xs text-[var(--text-tertiary)] flex-1 text-left">- how your components flow into taxable income</span>
         {open ? <ChevronUp className="w-4 h-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="w-4 h-4 text-[var(--text-tertiary)]" />}
       </button>
       {open && (
       <div className="p-4 space-y-2 text-xs">
         {[
           { step: '1', label: 'Gross Salary', detail: 'Salary u/s 17(1) + Perquisites u/s 17(2) + Profits in lieu u/s 17(3)', count: components.filter(c => c.component_type === 'earning').length },
-          { step: '2', label: 'Exemptions u/s 10', detail: 'Exempt allowances — HRA u/s 10(13A), LTA u/s 10(5), etc.', count: components.filter(c => c.tax_category === 'exempt_10').length },
-          { step: '3', label: 'Net Salary', detail: 'Gross Salary − Exemptions', count: null },
+          { step: '2', label: 'Exemptions u/s 10', detail: 'Exempt allowances - HRA u/s 10(13A), LTA u/s 10(5), etc.', count: components.filter(c => c.tax_category === 'exempt_10').length },
+          { step: '3', label: 'Net Salary', detail: 'Gross Salary - Exemptions', count: null },
           { step: '4', label: 'Deductions u/s 16', detail: 'Standard Deduction u/s 16(ia) + Professional Tax u/s 16(iii)', count: components.filter(c => c.tax_category === 'professional_tax_16').length },
-          { step: '5', label: 'Adjusted Income', detail: 'Net Salary − Deductions u/s 16 = Income under head Salaries', count: null },
-          { step: '6', label: 'Chapter VI-A u/s 80', detail: '80C (EPF, ELSS, insurance), 80D, 80CCD(1) NPS — subtracted next', count: components.filter(c => c.tax_category === 'chapter_vi_a').length },
+          { step: '5', label: 'Adjusted Income', detail: 'Net Salary - Deductions u/s 16 = Income under head Salaries', count: null },
+          { step: '6', label: 'Chapter VI-A u/s 80', detail: '80C (EPF, ELSS, insurance), 80D, 80CCD(1) NPS - subtracted next', count: components.filter(c => c.tax_category === 'chapter_vi_a').length },
           { step: '7', label: 'Taxable Income', detail: 'Slab tax + surcharge + cess (Regime/Slabs/Surcharge tabs)', count: null },
           { step: '8', label: 'TDS & post-tax deductions', detail: 'TDS u/s 192 plus ESIC, loan/advance recovery and other post-tax items, then Net Pay', count: components.filter(c => ['post_tax_statutory', 'post_tax_other', 'tds_192'].includes(c.tax_category || '')).length },
         ].map(row => (
@@ -856,9 +886,9 @@ function Form16Flow({ components }: { components: PayrollTemplateComponent[] }) 
   );
 }
 
-// ── Leave types (paid vs unpaid) — company-scoped, shown here so attendance stays in sync with payroll ──
+// -- Leave types (paid vs unpaid) - company-scoped, shown here so attendance stays in sync with payroll --
 
-// ── Component ──
+// -- Component --
 
 export default function PayrollConfiguration({ standalone = false }: { standalone?: boolean }) {
   const queryClient = useQueryClient();
@@ -873,6 +903,21 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
     queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: statutoryRules = [] } = useQuery({
+    queryKey: ['statutory-rules'],
+    queryFn: async () => { try { const r = await api.get('/statutory-rules'); return r.data || []; } catch { return []; } },
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Build lookup map: rule_key to { standard_value, notification_ref, description }
+  const ruleConfigMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const r of statutoryRules) {
+      map[r.rule_key] = r;
+    }
+    return map;
+  }, [statutoryRules]);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['payroll-templates', companyFilter],
@@ -919,7 +964,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
 
   const companyName = useMemo(() => {
     const m = new Map(companies.map((c: any) => [c.id, c.name]));
-    return (id: number | null) => (id == null ? 'All Companies' : m.get(id) || '—');
+    return (id: number | null) => (id == null ? 'All Companies' : m.get(id) || '-');
   }, [companies]);
 
   const filtered = templates;
@@ -983,12 +1028,12 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
               </div>
               <p className="text-xs text-[var(--text-secondary)] mb-4 line-clamp-2">{t.description || 'No description'}</p>
               <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-                <Meta label="Policy" value={t.policy_name || '—'} />
-                <Meta label="Attendance" value={t.attendance_name || '—'} />
-                <Meta label="Tax regime" value={t.tax_regime_name || '—'} />
+                <Meta label="Policy" value={t.policy_name || '-'} />
+                <Meta label="Attendance" value={t.attendance_name || '-'} />
+                <Meta label="Tax regime" value={t.tax_regime_name || '-'} />
                 <Meta label="Components" value={String(t.component_count ?? 0)} />
                 <Meta label="Employees" value={String(t.employee_count ?? 0)} />
-                <Meta label="State" value={t.registered_state || '—'} />
+                <Meta label="State" value={t.registered_state || '-'} />
                 <Meta label="Pay cycle" value={t.pay_cycle || 'monthly'} />
                 <Meta label="Pay day" value={t.pay_day ? `Day ${t.pay_day}` : 'Last day'} />
               </div>
@@ -1013,7 +1058,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
 
       {filtered.length === 0 && !isLoading && (
         <p className="text-sm text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3">
-          No company templates yet — click <b>Create Template</b> above to build one for a company.
+          No company templates yet - click <b>Create Template</b> above to build one for a company.
         </p>
       )}
 
@@ -1034,6 +1079,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
           }}
           onClose={() => { setWizard(null); setEditingId(null); }}
           userOrgName={(user as any)?.organizationName || 'Your Organization'}
+          ruleConfigMap={ruleConfigMap}
         />
       )}
     </div>
@@ -1063,7 +1109,7 @@ function Meta({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── Wizard Modal ──
+// -- Wizard Modal --
 
 const WIZARD_TABS = [
   { id: 'guide', label: 'Guide', icon: BookOpen, color: 'text-violet-600' },
@@ -1101,8 +1147,9 @@ function WizardModal(props: {
   onSave: () => void;
   onClose: () => void;
   userOrgName: string;
+  ruleConfigMap: Record<string, any>;
 }) {
-  const { state: w, tab, setTab, setState, setNested, companies, editingId, saving, onSave, onClose } = props;
+  const { state: w, tab, setTab, setState, setNested, companies, editingId, saving, onSave, onClose, ruleConfigMap } = props;
   const accent = '#1C64F2';
   const { country: orgCountry } = useAppConfig();
 
@@ -1128,9 +1175,9 @@ function WizardModal(props: {
   const effScope = scopeChoice === 'company' && w.companyId != null ? 'company' : 'org';
   const complianceCompanyId = effScope === 'company' ? w.companyId : null;
   const complianceBadge = (scope: string | null | undefined, since: string | null | undefined) => {
-    if (scope === 'company') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override · company{since ? ` · since ${since}` : ''}</span>;
-    if (scope === 'organization') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override · org-wide{since ? ` · since ${since}` : ''}</span>;
-    if (scope === 'platform') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">Platform default — applies to everyone</span>;
+    if (scope === 'company') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override   company{since ? `   since ${since}` : ''}</span>;
+    if (scope === 'organization') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Your override   org-wide{since ? `   since ${since}` : ''}</span>;
+    if (scope === 'platform') return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">Platform default - applies to everyone</span>;
     return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">State default (statutory)</span>;
   };
   const lwfUnit = (frequency: string | null | undefined) => (frequency === 'half_yearly' ? 'half-yearly' : frequency === 'yearly' ? 'year' : 'month');
@@ -1237,7 +1284,7 @@ function WizardModal(props: {
         slabs: ordered.map(s => ({ from_gross: s.from_gross as number, to_gross: s.to_gross as number | null, amount: s.amount as number, description: s.description })),
         companyId: complianceCompanyId,
       });
-      toast.success(res?.message || 'PT slabs saved — historical versions preserved');
+      toast.success(res?.message || 'PT slabs saved - historical versions preserved');
       await reloadCompliance();
       setPtEditing(false);
     } catch (e) {
@@ -1275,7 +1322,7 @@ function WizardModal(props: {
         frequency: lwfFrequency,
         max_wage_for_applicability: lwfWageCeiling == null ? null : Number(lwfWageCeiling),
       });
-      toast.success(res?.message || 'LWF rates saved — historical versions preserved');
+      toast.success(res?.message || 'LWF rates saved - historical versions preserved');
       await reloadCompliance();
       setLwfEditing(false);
     } catch (e) {
@@ -1541,13 +1588,13 @@ function WizardModal(props: {
                 {tab === 'overview' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Field label="Template name *" help="Text — e.g. 'IT Staff - India'. Shown on the employee form and payroll page.">
+                <Field label="Template name *" help="Text - e.g. 'IT Staff - India'. Shown on the employee form and payroll page.">
                   <TextInput value={w.name} onChange={v => setState({ name: v })} placeholder="e.g. IT Staff - India" />
                 </Field>
-                <Field label="Country" help="Set globally in Settings → General. Used for statutory applicability.">
+                <Field label="Country" help="Set globally in Settings to General. Used for statutory applicability.">
                   <div className="w-full px-3 py-2.5 border border-[var(--border-color)] rounded-lg bg-gray-50 text-sm text-[var(--text-primary)] select-none cursor-not-allowed">{orgCountry || w.country || 'India'}</div>
                 </Field>
-                <Field label="Registered state" help="Select a state — drives auto-calculated PT and LWF slabs.">
+                <Field label="Registered state" help="Select a state - drives auto-calculated PT and LWF slabs.">
                   <SearchableSelect value={w.registeredState || ''} onChange={v => setState({ registeredState: String(v) })} placeholder="Select State" options={STATES.map(s => ({ id: s, name: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))} showAllOption={false} clearable />
                 </Field>
                 <Field label="Company" help="Select the legal entity this template pays.">
@@ -1555,10 +1602,10 @@ function WizardModal(props: {
                 </Field>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Field label="Template effective from" help="Date — when this template becomes effective for assigned employees.">
+                <Field label="Template effective from" help="Date - when this template becomes effective for assigned employees.">
                   <DatePicker value={w.effectiveFrom || ''} onChange={v => setState({ effectiveFrom: v })} placeholder="Select date" />
                 </Field>
-                <Field label="Description" help="Optional — note what this template is for.">
+                <Field label="Description" help="Optional - note what this template is for.">
                   <textarea className={inputCls} rows={1} value={w.description} onChange={e => setState({ description: e.target.value })} placeholder="What is this template for?" />
                 </Field>
                 <div className="pt-6">
@@ -1576,13 +1623,13 @@ function WizardModal(props: {
             <div className="space-y-4">
               <WizardSectionCard title="Payroll Policy" icon={SlidersHorizontal}>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Field label="Policy name" help="Text — internal label for this pay policy."><TextInput value={w.payrollPolicy.name || ''} onChange={v => setNested('payrollPolicy', 'name', v)} /></Field>
-                  <Field label="Currency" help="Text — ISO 4217 code, e.g. INR or USD."><TextInput value={w.payrollPolicy.default_currency || 'INR'} onChange={v => setNested('payrollPolicy', 'default_currency', v)} /></Field>
-                  <Field label="Reporting currency" help="Text — ISO code used for company-level reports. Blank = same as currency."><TextInput value={w.payrollPolicy.reporting_currency || ''} onChange={v => setNested('payrollPolicy', 'reporting_currency', v)} placeholder="Same as currency" /></Field>
+                  <Field label="Policy name" help="Text - internal label for this pay policy."><TextInput value={w.payrollPolicy.name || ''} onChange={v => setNested('payrollPolicy', 'name', v)} /></Field>
+                  <Field label="Currency" help="Text - ISO 4217 code, e.g. INR or USD."><TextInput value={w.payrollPolicy.default_currency || 'INR'} onChange={v => setNested('payrollPolicy', 'default_currency', v)} /></Field>
+                  <Field label="Reporting currency" help="Text - ISO code used for company-level reports. Blank = same as currency."><TextInput value={w.payrollPolicy.reporting_currency || ''} onChange={v => setNested('payrollPolicy', 'reporting_currency', v)} placeholder="Same as currency" /></Field>
                   <Field label="Pay cycle" help="How often payroll runs: daily, weekly, monthly or yearly.">
                     <SearchableSelect value={w.payCycle || 'monthly'} onChange={v => setState({ payCycle: String(v) })} placeholder="Select Pay cycle" options={PAY_CYCLES.map(c => ({ id: c, name: c[0].toUpperCase() + c.slice(1) }))} showAllOption={false} />
                   </Field>
-                  <Field label="Pay day (blank = last day)" help="Number (1-31) — the day salary is disbursed.">
+                  <Field label="Pay day (blank = last day)" help="Number (1-31) - the day salary is disbursed.">
                     <NumInput value={w.payDay} onChange={v => setState({ payDay: v })} placeholder="Last day" />
                   </Field>
                   <div className="flex items-center gap-8 col-span-4 pt-4">
@@ -1645,35 +1692,35 @@ function WizardModal(props: {
                 <div className="space-y-3 text-sm text-[var(--text-secondary)]">
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-violet-50 border border-violet-100">
                     <span className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 shrink-0">1</span>
-                    <div><b className="text-[var(--text-primary)]">Overview</b> — Name the template, pick the company and registered state. Set an effective date if needed.</div>
+                    <div><b className="text-[var(--text-primary)]">Overview</b> - Name the template, pick the company and registered state. Set an effective date if needed.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-100">
                     <span className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 shrink-0">2</span>
-                    <div><b className="text-[var(--text-primary)]">Policy</b> — Set pay cycle, pay day, auto-payslip, pro-ration and rounding rules.</div>
+                    <div><b className="text-[var(--text-primary)]">Policy</b> - Set pay cycle, pay day, auto-payslip, pro-ration and rounding rules.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
                     <span className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-700 shrink-0">3</span>
-                    <div><b className="text-[var(--text-primary)]">Statutory</b> — Configure PF, ESI, Professional Tax, LWF and Gratuity for employee, employer, and organisation defaults.</div>
+                    <div><b className="text-[var(--text-primary)]">Statutory</b> - Configure PF, ESI, Professional Tax, LWF and Gratuity for employee, employer, and organisation defaults.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
                     <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">4</span>
-                    <div><b className="text-[var(--text-primary)]">Tax</b> — Choose the income tax regime, define slabs, surcharge and exemptions.</div>
+                    <div><b className="text-[var(--text-primary)]">Tax</b> - Choose the income tax regime, define slabs, surcharge and exemptions.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-rose-50 border border-rose-100">
                     <span className="w-6 h-6 rounded-full bg-rose-100 flex items-center justify-center text-xs font-bold text-rose-700 shrink-0">5</span>
-                    <div><b className="text-[var(--text-primary)]">Attendance</b> — Link attendance and leave templates for pay-period computation.</div>
+                    <div><b className="text-[var(--text-primary)]">Attendance</b> - Link attendance and leave templates for pay-period computation.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-indigo-50 border border-indigo-100">
                     <span className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 shrink-0">6</span>
-                    <div><b className="text-[var(--text-primary)]">Compliance</b> — Verify state-specific PT and LWF auto-calculations.</div>
+                    <div><b className="text-[var(--text-primary)]">Compliance</b> - Verify state-specific PT and LWF auto-calculations.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-cyan-50 border border-cyan-100">
                     <span className="w-6 h-6 rounded-full bg-cyan-100 flex items-center justify-center text-xs font-bold text-cyan-700 shrink-0">7</span>
-                    <div><b className="text-[var(--text-primary)]">Components</b> — Define earnings, deductions and employer contributions that make up the salary structure.</div>
+                    <div><b className="text-[var(--text-primary)]">Components</b> - Define earnings, deductions and employer contributions that make up the salary structure.</div>
                   </div>
                   <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
                     <span className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center text-xs font-bold text-amber-700 shrink-0">8</span>
-                    <div><b className="text-[var(--text-primary)]">Simulate</b> — Preview what these changes would do to every assigned employee's payslip before saving.</div>
+                    <div><b className="text-[var(--text-primary)]">Simulate</b> - Preview what these changes would do to every assigned employee's payslip before saving.</div>
                   </div>
                 </div>
               </div>
@@ -1694,10 +1741,10 @@ function WizardModal(props: {
                 ))}
               </div>
               {componentTab === 'earning' && (
-                <ComponentSection type="earning" title="Earnings" icon={TrendingUp} tint="text-blue-600" desc="Added to gross pay — e.g. Basic, HRA, Conveyance, Special Allowance." empty='No earnings yet. Click "Add Earning" above.' heading="Earning" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+                <ComponentSection type="earning" title="Earnings" icon={TrendingUp} tint="text-blue-600" desc="Added to gross pay - e.g. Basic, HRA, Conveyance, Special Allowance." empty='No earnings yet. Click "Add Earning" above.' heading="Earning" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
               )}
               {componentTab === 'deduction' && (
-                <ComponentSection type="deduction" title="Deductions" icon={MinusCircle} tint="text-rose-600" desc="Subtracted from gross pay — e.g. PF, ESI, Professional Tax, TDS." empty='No deductions yet. Click "Add Deduction" above.' heading="Deduction" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
+                <ComponentSection type="deduction" title="Deductions" icon={MinusCircle} tint="text-rose-600" desc="Subtracted from gross pay - e.g. PF, ESI, Professional Tax, TDS." empty='No deductions yet. Click "Add Deduction" above.' heading="Deduction" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
               )}
               {componentTab === 'employer' && (
                 <ComponentSection type="employer_contribution" title="Employer Contributions" icon={Wallet} tint="text-emerald-600" desc="Paid by the employer on top of salary." empty="No employer contributions yet." heading="Employer Contribution" components={w.components} setComp={setComp} removeComp={removeComp} addComp={addComp} addAfter={addAfter} setPriority={setPriority} />
@@ -1737,10 +1784,10 @@ function WizardModal(props: {
                         <p className="text-lg font-bold text-amber-800 mt-1">{simData.affected}</p>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
-                        <p className="text-xs text-blue-700">Net payroll now → after</p>
+                        <p className="text-xs text-blue-700">Net payroll now vs after</p>
                         <p className="text-sm font-bold text-blue-800 mt-1">
                           {getCurrencySymbol(getAppCurrency())}{simData.totals?.currentNet?.toLocaleString('en-IN')}
-                          {' → '}
+                          {' to '}
                           {getCurrencySymbol(getAppCurrency())}{simData.totals?.proposedNet?.toLocaleString('en-IN')}
                         </p>
                       </div>
@@ -1764,7 +1811,7 @@ function WizardModal(props: {
                         <div key={row.employeeId} className="border border-[var(--border-color)] rounded-lg p-3">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-[var(--text-primary)]">{row.employeeName}{row.onTemplate ? '' : ' · not on this template'}</p>
+                              <p className="text-sm font-medium text-[var(--text-primary)]">{row.employeeName}{row.onTemplate ? '' : '   not on this template'}</p>
                               <p className="text-xs text-[var(--text-tertiary)]">Employee ID: {row.employeeCode || row.employeeId}</p>
                             </div>
                             <div className="text-right">
@@ -1788,7 +1835,7 @@ function WizardModal(props: {
                       ))}
                       {(simData.rows || []).filter((r: any) => !simAffectedOnly || (r.changed || []).length > 0).length === 0 && (
                         <p className="text-sm text-[var(--text-disabled)] text-center py-6">
-                          {simAffectedOnly ? 'No employee is affected by these values — every payslip stays the same.' : 'No employees in scope.'}
+                          {simAffectedOnly ? 'No employee is affected by these values - every payslip stays the same.' : 'No employees in scope.'}
                         </p>
                       )}
                     </div>
@@ -1846,10 +1893,34 @@ function WizardModal(props: {
                   ) : (
                     <>
                       <p className="text-xs leading-relaxed text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3">{sec.desc}</p>
+                      {(() => {
+                        // Get notification from first field's rule_key config
+                        const firstField = sec.fields[0];
+                        const firstRuleKey = FIELD_TO_RULE_KEY[firstField?.field || ''];
+                        const firstRule = firstRuleKey ? ruleConfigMap[firstRuleKey] : null;
+                        const notification = firstRule?.notification_ref || sec.notification;
+                        return notification ? (
+                          <p className="text-[10px] text-[var(--primary-blue)] bg-blue-50/50 border border-blue-100/50 rounded-lg px-3 py-1.5 mt-1 flex items-center gap-1.5">
+                            <Info className="w-3 h-3 shrink-0" /> Legal basis: {notification}
+                          </p>
+                        ) : null;
+                      })()}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        {sec.fields.map(f => (
-                          <ViewVal key={String(f.field)} label={f.label}>{fmtStat(w.statutory[f.field], f.unit)}</ViewVal>
-                        ))}
+                        {sec.fields.map(f => {
+                          const ruleKey = FIELD_TO_RULE_KEY[f.field];
+                          const rule = ruleKey ? ruleConfigMap[ruleKey] : null;
+                          return (
+                            <div key={String(f.field)}>
+                              <ViewVal label={f.label}>{fmtStat(w.statutory[f.field], f.unit)}</ViewVal>
+                              {rule?.standard_value && (
+                                <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">Standard: {rule.standard_value}</p>
+                              )}
+                              {rule?.notification_ref && (
+                                <p className="text-[10px] text-[var(--primary-blue)] mt-0.5">Ref: {rule.notification_ref}</p>
+                              )}
+                            </div>
+                          );
+                        })}
                         <ViewVal label={sec.applicable.label}>{appLabel(w.statutory[sec.applicable.field] as boolean | null | undefined)}</ViewVal>
                       </div>
                     </>
@@ -1859,10 +1930,10 @@ function WizardModal(props: {
             </div>
           )}
 
-          {tab === 'tax' && (
+              {tab === 'tax' && (
             <div className="space-y-4">
               <div className="flex items-center gap-1 border-b border-[var(--border-color)] mb-4">
-                {([['regime', 'Regime'], ['slabs', 'Slabs'], ['exemptions', 'Exemptions']] as const).map(([key, label]) => (
+                {([['regime', 'Regime'], ['slabs', 'Slabs & Surcharge'], ['exemptions', 'Exemptions & HRA']] as const).map(([key, label]) => (
                   <button key={key} onClick={() => setTaxTab(key)}
                     className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                       taxTab === key ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
@@ -1872,38 +1943,49 @@ function WizardModal(props: {
                 ))}
               </div>
               <div className="text-xs text-[var(--text-tertiary)] bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <b>New Regime</b> (default) — lower slabs, ₹75,000 standard deduction, no 80C/80D/HRA exemptions.
-                <b> Old Regime</b> — higher slabs but allows 80C, 80D, HRA &amp; LTA exemptions. Choose per employee via their
-                Investment Declaration; this tab defines the slab set used for TDS.
+                <b>New Regime</b> (default from FY 2020-21) - lower slabs, Rs.75,000 standard deduction (FY 2024-25 onwards), no 80C/80D/HRA exemptions. Most employees are on this unless they actively opt for Old Regime via Investment Declaration.
+                <b> Old Regime</b> - higher slabs but allows 80C, 80D, HRA & LTA exemptions. Choose per employee via their Investment Declaration; this tab defines the slab set used for TDS.
               </div>
               {taxTab === 'regime' && (
                 <WizardSectionCard title="Regime" icon={Landmark}>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <Field label="Regime name" help="Text — e.g. 'New Regime' or 'Old Regime'."><TextInput value={w.taxRegime.name || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, name: v } })} /></Field>
-                      <Field label="Type" help="New, Old or Custom regime.">
+                      <Field label="Regime name" help="Descriptive name for this tax regime (e.g. 'New Regime FY 2024-25', 'Old Regime'). Appears in the employee's payslip and TDS computation. Use clear naming to distinguish between regimes for different financial years.">
+                        <TextInput value={w.taxRegime.name || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, name: v } })} />
+                      </Field>
+                      <Field label="Type" help="New Regime (default from FY 2020-21) - lower slabs, standard deduction, no exemptions. Old Regime - higher slabs but allows 80C/80D/HRA/LTA deductions. Custom - for any non-standard tax computation. The type determines which exemptions apply.">
                         <SearchableSelect value={w.taxRegime.regime_type || 'new'} onChange={v => setState({ taxRegime: { ...w.taxRegime, regime_type: String(v) } })} placeholder="Select Type" options={[
                           { id: 'new', name: 'New regime' },
                           { id: 'old', name: 'Old regime' },
                           { id: 'custom', name: 'Custom' },
                         ]} showAllOption={false} />
                       </Field>
-                      <Field label="Financial year" help="Text — financial year for the TDS computation period."><TextInput value={w.taxRegime.financial_year || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} /></Field>
-                      <Field label="Standard deduction" help="Number — flat deduction from taxable income."><NumInput value={w.taxRegime.standard_deduction} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v } })} /></Field>
-                      <Field label="Rebate threshold" help="Number — income up to this is fully rebated."><NumInput value={w.taxRegime.rebate_threshold} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v } })} /></Field>
-                      <Field label="Rebate amount" help="Number — maximum tax rebated under section 87A."><NumInput value={w.taxRegime.rebate_amount} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v } })} /></Field>
-                      <Field label="Cess rate (%)" help="Number — health & education cess on tax."><NumInput value={w.taxRegime.cess_rate} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v } })} /></Field>
+                      <Field label="Financial year" help="Financial year this regime applies to (e.g. '2024-25' for Apr 2024 - Mar 2025). TDS is computed for the entire FY using these slabs. Change this when the government announces new slabs for the next FY.">
+                        <TextInput value={w.taxRegime.financial_year || ''} onChange={v => setState({ taxRegime: { ...w.taxRegime, financial_year: v } })} />
+                      </Field>
+                      <Field label="Standard deduction" help="Flat deduction from taxable income available to all salaried employees under Section 16(ia). New Regime: Rs.75,000 (FY 2024-25 onwards, increased from Rs.50,000). Old Regime: Rs.50,000. This reduces taxable income before slab rates apply.">
+                        <NumInput value={w.taxRegime.standard_deduction} onChange={v => setState({ taxRegime: { ...w.taxRegime, standard_deduction: v } })} />
+                      </Field>
+                      <Field label="Rebate threshold" help="Maximum taxable income up to which Section 87A rebate applies. New Regime: Rs.7,00,000 (FY 2024-25). Old Regime: Rs.5,00,000. If taxable income is below this, the entire tax liability is rebated (up to the rebate amount). Above this, no rebate.">
+                        <NumInput value={w.taxRegime.rebate_threshold} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_threshold: v } })} />
+                      </Field>
+                      <Field label="Rebate amount" help="Maximum tax rebate under Section 87A. New Regime: Rs.25,000 (FY 2024-25, up from Rs.7,500). Old Regime: Rs.12,500. If taxable income is below the threshold, tax is reduced by this amount (but not below zero). Marginal relief applies - if crossing the threshold costs more than the rebate, tax is capped at the threshold-level tax.">
+                        <NumInput value={w.taxRegime.rebate_amount} onChange={v => setState({ taxRegime: { ...w.taxRegime, rebate_amount: v } })} />
+                      </Field>
+                      <Field label="Cess rate (%)" help="Health & Education Cess levied on (tax + surcharge). Standard rate is 4% (Section 115BAC/115BAD). This is applied after surcharge computation. The cess is not eligible for any deduction or rebate.">
+                        <NumInput value={w.taxRegime.cess_rate} onChange={v => setState({ taxRegime: { ...w.taxRegime, cess_rate: v } })} />
+                      </Field>
                     </div>
                     <div className="flex items-center gap-8 pt-4">
-                      <Toggle label="Active" help="On = regime can be selected/used. Off = hidden from selection." checked={!!w.taxRegime.is_active} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_active: v } })} />
-                      <Toggle label="Default regime" help="On = fallback regime when no other is chosen." checked={!!w.taxRegime.is_default} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_default: v } })} />
+                      <Toggle label="Active" help="When ON, this regime is available for selection in employee Investment Declarations and can be used for TDS computation. When OFF, the regime is hidden but historical payslips using it are preserved. Use OFF for superseded regimes." checked={!!w.taxRegime.is_active} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_active: v } })} />
+                      <Toggle label="Default regime" help="When ON, this regime is automatically applied to employees who haven't made an Investment Declaration. Only one regime should be default. The New Regime is the default from FY 2020-21. If an employee hasn't chosen, this regime's slabs are used for TDS." checked={!!w.taxRegime.is_default} onChange={v => setState({ taxRegime: { ...w.taxRegime, is_default: v } })} />
                     </div>
                 </WizardSectionCard>
               )}
               {taxTab === 'slabs' && (
                 <>
-                  <WizardSectionCard title="Slabs" icon={Landmark}>
+                  <WizardSectionCard title="Income Tax Slabs" icon={Landmark}>
                     <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm text-[var(--text-tertiary)]">Income tax slabs (to = blank means "and above").</p>
+                      <p className="text-sm text-[var(--text-tertiary)]">Progressive tax slabs - income is taxed at increasing rates as it crosses each threshold. The engine applies slabs in order: income in each slab is taxed at that slab's rate. Gaps between slabs are not taxed. The last slab (no "To" value) catches everything above its "From" amount.</p>
                       <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
                         <Plus className="w-4 h-4" /> Add slab
                       </button>
@@ -1912,9 +1994,15 @@ function WizardModal(props: {
                       {(w.taxRegime.slabs || []).map((s, i) => (
                         <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
-                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — slab lower bound, inclusive."><NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} /></Field>
-                            <Field label={`To (${getCurrencySymbol(getAppCurrency())}, blank = ∞)`} help="Number — slab upper bound."><NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} /></Field>
-                            <Field label="Rate (%)" help="Number — tax percentage for this slab."><NumInput value={s.rate ?? 0} onChange={v => setSlab(i, { rate: v ?? 0 })} /></Field>
+                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Lower bound of this slab (inclusive). Income up to this amount is taxed at the previous slab's rate. The first slab typically starts at 0. Must be at least 0.">
+                              <NumInput value={s.from_amount ?? 0} onChange={v => setSlab(i, { from_amount: v ?? 0 })} />
+                            </Field>
+                            <Field label={`To (${getCurrencySymbol(getAppCurrency())}, blank = no cap)`} help="Upper bound of this slab (exclusive). Income in the range [From, To) is taxed at this slab's rate. Leave blank for the final open-ended slab (catches everything above From). Must be greater than From of the same slab.">
+                              <NumInput value={s.to_amount ?? null} onChange={v => setSlab(i, { to_amount: v })} />
+                            </Field>
+                            <Field label="Rate (%)" help="Tax percentage applied to income within this slab. For example, 5 means 5% tax on income in this range. The engine computes: tax = (min(income, To) - From) * rate / 100. Zero rate = exempt bracket. Max 100%.">
+                              <NumInput value={s.rate ?? 0} onChange={v => setSlab(i, { rate: v ?? 0 })} />
+                            </Field>
                           </div>
                           <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
                             <button onClick={addSlab} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
@@ -1931,28 +2019,32 @@ function WizardModal(props: {
                   <WizardSectionCard title="Surcharge" icon={Landmark}>
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-sm text-[var(--text-tertiary)]">
-                        Extra % added on tax for high incomes. Uses the highest threshold the income crosses.
+                        Surcharge is an additional percentage levied on the tax amount (not income) for high-income earners. It applies after income tax computation but before cess. Marginal relief ensures that crossing a surcharge threshold never costs more than staying just below it. The engine applies the highest surcharge slab that the taxable income crosses.
                       </p>
                       <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-[var(--primary-blue)] hover:bg-blue-100">
                         <Plus className="w-4 h-4" /> Add surcharge slab
                       </button>
                     </div>
                     {surcharges.length === 0 ? (
-                      <p className="text-sm text-[var(--text-disabled)] text-center py-6">No surcharge slabs — tax is charged at the base rate only.</p>
+                      <p className="text-sm text-[var(--text-disabled)] text-center py-6">No surcharge slabs - tax is charged at the base rate only.</p>
                     ) : (
                       <div className="space-y-2">
                         {surcharges.map((s, i) => (
                         <div key={i} className="border border-[var(--border-color)] rounded-xl p-3 space-y-3">
                           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
-                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Number — taxable income threshold where this rate starts."><NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} /></Field>
-                            <Field label="Rate (%)" help="Number — surcharge % on the tax amount."><NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} /></Field>
+                            <Field label={`From (${getCurrencySymbol(getAppCurrency())})`} help="Taxable income threshold where this surcharge rate starts. For example, Rs.50L for 10% surcharge, Rs.1Cr for 15%, Rs.2Cr for 25%, Rs.5Cr for 37%. The engine applies the rate corresponding to the highest threshold the income crosses. Marginal relief caps the surcharge at the income just below this threshold.">
+                              <NumInput value={s.from ?? 0} onChange={v => setSurcharge(i, { from: v ?? 0 })} />
+                            </Field>
+                            <Field label="Rate (%)" help="Surcharge percentage applied to the tax amount (not income). For example, 10 means 10% surcharge on the computed tax. Standard rates: 10% (income Rs.50L-Rs.1Cr), 15% (Rs.1Cr-Rs.2Cr), 25% (Rs.2Cr-Rs.5Cr), 37% (above Rs.5Cr). Max 15% for New Regime.">
+                              <NumInput value={s.rate ?? 0} onChange={v => setSurcharge(i, { rate: v ?? 0 })} />
+                            </Field>
                           </div>
                           <div className="flex items-center justify-between border-t border-[var(--border-color)] pt-3">
                             <button onClick={addSurcharge} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--primary-blue)] hover:bg-blue-50 transition-colors">
-                              <Plus className="w-3.5 h-3.5" /> Add New Surcharge
+                              <Plus className="w-3.5 h-3.5" /> Add New Slab
                             </button>
                             <button onClick={() => removeSurcharge(i)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" /> Delete This Surcharge
+                              <Trash2 className="w-3.5 h-3.5" /> Delete This Slab
                             </button>
                           </div>
                         </div>
@@ -1964,18 +2056,38 @@ function WizardModal(props: {
               )}
               {taxTab === 'exemptions' && (
                 <WizardSectionCard title="Exemptions & HRA caps" icon={Landmark}>
-                  <p className="text-xs text-[var(--text-tertiary)] mb-3">Old-regime Chapter VI-A caps and House Rent Allowance exemption rules (section 10(13A)).</p>
+                  <p className="text-xs text-[var(--text-tertiary)] mb-3">Old-regime Chapter VI-A deductions and House Rent Allowance exemption rules (Section 10(13A) read with Rule 2A). These apply only when the employee has opted for the Old Regime via Investment Declaration. New Regime does not allow these deductions.</p>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
-                    <Field label="80C cap" help="Max deduction for life insurance, ELSS, PF, tuition fees etc."><NumInput value={w.taxRegime.section_80c_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_cap: v } })} placeholder="150000" /></Field>
-                    <Field label="80C cap (old regime)" help="Legacy 80C cap if it differs."><NumInput value={w.taxRegime.section_80c_old_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_old_cap: v } })} placeholder="150000" /></Field>
-                    <Field label="80D cap" help="Health insurance premium - self & family."><NumInput value={w.taxRegime.section_80d_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_cap: v } })} placeholder="50000" /></Field>
-                    <Field label="80D cap (senior citizen)" help="Health insurance premium - senior citizens."><NumInput value={w.taxRegime.section_80d_senior_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_senior_cap: v } })} placeholder="100000" /></Field>
-                    <Field label="80CCD(1B) NPS cap" help="Additional NPS deduction over and above 80C."><NumInput value={w.taxRegime.section_80ccd_1b_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80ccd_1b_cap: v } })} placeholder="50000" /></Field>
-                    <Field label="Home loan interest cap (u/s 24)" help="Max interest deduction on self-occupied property."><NumInput value={w.taxRegime.section_24_home_loan_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_24_home_loan_cap: v } })} placeholder="200000" /></Field>
-                    <Field label="HRA exemption - metro (%)" help="Delhi, Mumbai, Kolkata, Chennai - % of basic eligible for exemption."><NumInput value={w.taxRegime.hra_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_metro_pct: v } })} placeholder="50" /></Field>
-                    <Field label="HRA exemption - non-metro (%)" help="% of basic eligible for exemption outside metro cities."><NumInput value={w.taxRegime.hra_non_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_non_metro_pct: v } })} placeholder="40" /></Field>
-                    <Field label="Rent threshold (% of basic)" help="Exemption = rent paid minus this % of salary."><NumInput value={w.taxRegime.hra_rent_threshold_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_rent_threshold_pct: v } })} placeholder="10" /></Field>
-                    <Field label="Assumed basic (% of gross)" help="Used for HRA auto-calculation."><NumInput value={w.taxRegime.basic_pct_of_gross} onChange={v => setState({ taxRegime: { ...w.taxRegime, basic_pct_of_gross: v } })} placeholder="50" /></Field>
+                    <Field label="80C cap" help="Maximum deduction under Section 80C for life insurance premiums, ELSS mutual funds, PF contribution, children's tuition fees, home loan principal, NSC, SCSS etc. Standard limit is Rs.1,50,000 per FY. This is the aggregate cap - all 80C investments share this limit.">
+                      <NumInput value={w.taxRegime.section_80c_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_cap: v } })} placeholder="150000" />
+                    </Field>
+                    <Field label="80C cap (old regime)" help="Separate 80C cap for Old Regime if different from the standard limit. Some organizations use this for backward compatibility. Set to the same value as 80C cap if not different.">
+                      <NumInput value={w.taxRegime.section_80c_old_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80c_old_cap: v } })} placeholder="150000" />
+                    </Field>
+                    <Field label="80D cap" help="Maximum deduction for health insurance premiums paid for self and family under Section 80D. Standard limit is Rs.25,000 (Rs.50,000 for senior citizens 60+). Includes preventive health check-up up to Rs.5,000 within this limit.">
+                      <NumInput value={w.taxRegime.section_80d_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_cap: v } })} placeholder="50000" />
+                    </Field>
+                    <Field label="80D cap (senior citizen)" help="Maximum deduction for health insurance premiums for senior citizens (aged 60+). Standard limit is Rs.1,00,000 (enhanced from Rs.50,000). Covers self + family + parents who are senior citizens.">
+                      <NumInput value={w.taxRegime.section_80d_senior_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80d_senior_cap: v } })} placeholder="100000" />
+                    </Field>
+                    <Field label="80CCD(1B) NPS cap" help="Additional deduction for NPS contributions over and above the 80C limit. Standard limit is Rs.50,000 per FY. This is in addition to the 80C cap of Rs.1,50,000. Available under both Old and New Regime. Employee must have opted for NPS.">
+                      <NumInput value={w.taxRegime.section_80ccd_1b_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_80ccd_1b_cap: v } })} placeholder="50000" />
+                    </Field>
+                    <Field label="Home loan interest cap (u/s 24)" help="Maximum deduction for interest paid on housing loan for self-occupied property under Section 24(b). Standard limit is Rs.2,00,000 per FY. For let-out property, there is no upper limit (entire interest is deductible). Pre-construction interest is deductible in 5 equal installments.">
+                      <NumInput value={w.taxRegime.section_24_home_loan_cap} onChange={v => setState({ taxRegime: { ...w.taxRegime, section_24_home_loan_cap: v } })} placeholder="200000" />
+                    </Field>
+                    <Field label="HRA exemption - metro (%)" help="Percentage of basic salary eligible for HRA exemption in metro cities (Delhi, Mumbai, Kolkata, Chennai) under Section 10(13A). Standard is 50%. The exemption is the minimum of: (a) actual HRA received, (b) 50% of basic, (c) rent paid minus 10% of basic.">
+                      <NumInput value={w.taxRegime.hra_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_metro_pct: v } })} placeholder="50" />
+                    </Field>
+                    <Field label="HRA exemption - non-metro (%)" help="Percentage of basic salary eligible for HRA exemption in non-metro cities under Section 10(13A). Standard is 40%. Same formula as metro but with 40% instead of 50%. Non-metro = all cities except Delhi, Mumbai, Kolkata, Chennai.">
+                      <NumInput value={w.taxRegime.hra_non_metro_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_non_metro_pct: v } })} placeholder="40" />
+                    </Field>
+                    <Field label="Rent threshold (% of basic)" help="The percentage of basic salary that is deducted from rent paid to compute HRA exemption. Standard is 10% - HRA exemption = rent paid minus 10% of basic. If rent paid is less than this threshold, no HRA exemption.">
+                      <NumInput value={w.taxRegime.hra_rent_threshold_pct} onChange={v => setState({ taxRegime: { ...w.taxRegime, hra_rent_threshold_pct: v } })} placeholder="10" />
+                    </Field>
+                    <Field label="Assumed basic (% of gross)" help="Assumed basic salary as a percentage of gross, used when the actual basic component is not defined. Standard is 50%. The HRA exemption formula uses this to compute the basic component for employees without a separate Basic component in their salary structure.">
+                      <NumInput value={w.taxRegime.basic_pct_of_gross} onChange={v => setState({ taxRegime: { ...w.taxRegime, basic_pct_of_gross: v } })} placeholder="50" />
+                    </Field>
                   </div>
                 </WizardSectionCard>
               )}
@@ -1985,14 +2097,14 @@ function WizardModal(props: {
           {tab === 'attendance' && (
             <div className="space-y-4">
               <div className="text-xs text-[var(--text-tertiary)] bg-rose-50 border border-rose-200 rounded-lg p-3 leading-relaxed">
-                <b>How attendance flows into salary:</b> the linked templates above drive everything —
-                Present / Late / Work-from-home = full paid day · Absent = unpaid · Half-day = full or 50% per the attendance template ·
-                Holiday = paid or unpaid per the attendance template · Leave = paid or unpaid per its type from the linked leave template ·
-                Week-offs are excluded from pay entirely. Unpaid days cut salary as <b>(Monthly Gross ÷ days in month) × unpaid days</b>.
-                To change any rule, edit the source template in Attendance / Leave → Configuration.
+                <b>How attendance flows into salary:</b> the linked templates above drive everything -
+                Present / Late / Work-from-home = full paid day   Absent = unpaid   Half-day = full or 50% per the attendance template  
+                Holiday = paid or unpaid per the attendance template   Leave = paid or unpaid per its type from the linked leave template  
+                Week-offs are excluded from pay entirely. Unpaid days cut salary as <b>(Monthly Gross / days in month) * unpaid days</b>.
+                To change any rule, edit the source template in Attendance / Leave - Configuration.
               </div>
               <WizardSectionCard title="Linked templates" icon={Building2}>
-                <p className="text-[11px] text-[var(--text-tertiary)]">Pick the company templates once — their rules auto-apply here and to every employee on this payroll template. Shared templates stay read-only below; edit them in Attendance / Leave → Configuration.</p>
+                <p className="text-[11px] text-[var(--text-tertiary)]">Pick the company templates once - their rules auto-apply here and to every employee on this payroll template. Shared templates stay read-only below; edit them in Attendance / Leave - Configuration.</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Field label="Company *" help="Required - picks which company's templates you can link.">
                     <SearchableSelect
@@ -2030,7 +2142,7 @@ function WizardModal(props: {
                 </div>
                 {w.attendanceLinked && (
                   <p className="text-[11px] text-[var(--primary-blue)] bg-blue-50 border border-blue-100 rounded-lg p-2.5">
-                    Rules below are a read-only preview of the linked template — edit them in Attendance → Configuration.
+                    Rules below are a read-only preview of the linked template - edit them in Attendance - Configuration.
                     <button type="button" onClick={() => linkAttendance(null)} className="ml-2 underline font-medium">Clear selection</button>
                   </p>
                 )}
@@ -2046,14 +2158,14 @@ function WizardModal(props: {
               </WizardSectionCard>
               {w.attendancePolicyId ? (
                 <WizardSectionCard title="Linked attendance rules" icon={Clock}>
-                  <p className="text-[11px] text-[var(--text-tertiary)]">Read-only summary of the linked template — edit it in Attendance → Configuration.</p>
+                  <p className="text-[11px] text-[var(--text-tertiary)]">Read-only summary of the linked template - edit it in Attendance - Configuration.</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                     {[
-                      { label: 'Workweek', value: (() => { const days = String(w.attendancePolicy.working_days || '').split(',').map((s: string) => s.trim()).filter(Boolean); const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; return days.length ? `${days.length} days (${days.map((d: string) => names[Number(d)] || d).join(', ')})` : '—'; })() },
+                      { label: 'Workweek', value: (() => { const days = String(w.attendancePolicy.working_days || '').split(',').map((s: string) => s.trim()).filter(Boolean); const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; return days.length ? `${days.length} days (${days.map((d: string) => names[Number(d)] || d).join(', ')})` : '-'; })() },
                       { label: 'Half day', value: w.attendancePolicy.half_day_as_full_paid ? 'Full paid' : 'Half paid' },
                       { label: 'Paid leave', value: w.attendancePolicy.paid_leave_as_present ? 'As present' : 'Unpaid absence' },
                       { label: 'Holiday', value: w.attendancePolicy.holiday_as_present ? 'Paid' : 'Unpaid' },
-                      { label: 'Overtime', value: `${w.attendancePolicy.overtime_threshold_hours ?? 8}h × ${w.attendancePolicy.overtime_rate ?? 1.5}` },
+                      { label: 'Overtime', value: `${w.attendancePolicy.overtime_threshold_hours ?? 8}h * ${w.attendancePolicy.overtime_rate ?? 1.5}` },
                       { label: 'Late after', value: `${w.attendancePolicy.late_mark_threshold_minutes ?? 15} min` },
                       { label: 'Half-day below', value: `${w.attendancePolicy.half_day_threshold_hours ?? 4}h` },
                       { label: 'Missing checkout', value: String(w.attendancePolicy.missing_checkout_rule || 'half_day').replace(/_/g, ' ') },
@@ -2071,7 +2183,7 @@ function WizardModal(props: {
                 <div className="text-center py-8 text-[var(--text-tertiary)] border border-dashed border-[var(--border-color)] rounded-xl">
                   <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm font-medium">No attendance template linked</p>
-                  <p className="text-xs mt-1">Pick one above — its workweek, mapping and thresholds will apply to payroll.</p>
+                  <p className="text-xs mt-1">Pick one above - its workweek, mapping and thresholds will apply to payroll.</p>
                 </div>
               )}
             </div>
@@ -2081,10 +2193,10 @@ function WizardModal(props: {
             <div className="space-y-4">
               <WizardSectionCard title="Jurisdiction" icon={MapPin}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Field label="Country" help="Set globally in Settings → General.">
+                  <Field label="Country" help="Set globally in Settings to General.">
                     <div className="w-full px-3 py-2.5 border border-[var(--border-color)] rounded-lg bg-gray-50 text-sm text-[var(--text-primary)] select-none cursor-not-allowed">{orgCountry || w.country || 'India'}</div>
                   </Field>
-                  <Field label="Registered state" help="Select a state — drives auto-calculated PT and LWF slabs.">
+                  <Field label="Registered state" help="Select a state - drives auto-calculated PT and LWF slabs.">
                     <SearchableSelect value={w.registeredState || ''} onChange={v => setState({ registeredState: String(v) })} placeholder="Select State" options={STATES.map(s => ({ id: s, name: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))} showAllOption={false} clearable />
                   </Field>
                   <Field label="Compliance scope" help="Company = only this template's company; organization = every company under the org. Without an override, everyone falls back to the platform-wide statutory default.">
@@ -2092,12 +2204,12 @@ function WizardModal(props: {
                   </Field>
                 </div>
                 <p className="text-xs text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3 mt-3">
-                  Professional Tax and Labour Welfare Fund are shown live from the registered state's versioned slabs. Use Edit slabs / Edit rates to create your {effScope === 'company' ? 'company' : 'organization'} override effective from a date you choose — earlier versions stay on file so past payslips never change.
+                  Professional Tax and Labour Welfare Fund are shown live from the registered state's versioned slabs. Use Edit slabs / Edit rates to create your {effScope === 'company' ? 'company' : 'organization'} override effective from a date you choose - earlier versions stay on file so past payslips never change.
                 </p>
               </WizardSectionCard>
 
               {w.registeredState && ptDetail && (
-                <WizardSectionCard title={`Professional Tax — ${ptDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={ptEditing} action={!ptEditing ? (
+                <WizardSectionCard title={`Professional Tax - ${ptDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={ptEditing} action={!ptEditing ? (
                   <button onClick={startPtEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
                     <Pencil className="w-3.5 h-3.5" /> Edit slabs
                   </button>
@@ -2137,7 +2249,7 @@ function WizardModal(props: {
                           </div>
                         ))}
                         {ptSlabs.length === 0 && (
-                          <p className="text-sm text-[var(--text-disabled)] text-center py-6">No slabs in this draft — add at least one.</p>
+                          <p className="text-sm text-[var(--text-disabled)] text-center py-6">No slabs in this draft - add at least one.</p>
                         )}
                       </div>
                       <div className="flex items-center justify-end gap-2 mt-4 border-t border-[var(--border-color)] pt-4">
@@ -2167,7 +2279,7 @@ function WizardModal(props: {
                             {(ptDetail.slabs || []).map((slab: any, i: number) => (
                               <tr key={i} className="border-b border-[#F1F5F9]">
                                 <td className="py-2 pr-4 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
-                                <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : '∞'}</td>
+                                <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : 'No limit'}</td>
                                 <td className="py-2 pr-4 font-medium text-[var(--text-primary)]">{getCurrencySymbol(getAppCurrency())}{slab.amount}</td>
                                 <td className="py-2 text-xs text-[var(--text-tertiary)]">{slab.description}</td>
                               </tr>
@@ -2186,7 +2298,7 @@ function WizardModal(props: {
                           <p className="text-xs font-medium text-[var(--text-secondary)]">Version history (earlier versions stay on file)</p>
                           {ptHistoryGroups(ptDetail.history).map(([eff, rows]) => (
                             <div key={eff} className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] bg-gray-50 border border-[#F1F5F9] rounded-lg px-3 py-1.5">
-                              <span>Effective {eff} · {rows.length} slab{rows.length === 1 ? '' : 's'}</span>
+                              <span>Effective {eff}   {rows.length} slab{rows.length === 1 ? '' : 's'}</span>
                             </div>
                           ))}
                         </div>
@@ -2197,7 +2309,7 @@ function WizardModal(props: {
               )}
 
               {w.registeredState && lwfDetail && (
-                <WizardSectionCard title={`Labour Welfare Fund — ${lwfDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={lwfEditing} action={!lwfEditing ? (
+                <WizardSectionCard title={`Labour Welfare Fund - ${lwfDetail.state_name || w.registeredState.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`} icon={MapPin} forceOpen={lwfEditing} action={!lwfEditing ? (
                   <button onClick={startLwfEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
                     <Pencil className="w-3.5 h-3.5" /> Edit rates
                   </button>
@@ -2246,14 +2358,14 @@ function WizardModal(props: {
                           </div>
                         </>
                       ) : (
-                        <p className="text-sm text-[var(--text-disabled)] py-2">LWF is not levied in this state by default — zero employee and employer contribution. Use Edit rates if your organization still contributes voluntarily.</p>
+                        <p className="text-sm text-[var(--text-disabled)] py-2">LWF is not levied in this state by default - zero employee and employer contribution. Use Edit rates if your organization still contributes voluntarily.</p>
                       )}
                       {(lwfDetail.history || []).length > 0 && (
                         <div className="mt-4 space-y-2">
                           <p className="text-xs font-medium text-[var(--text-secondary)]">Version history (earlier versions stay on file)</p>
                           {[...lwfDetail.history].sort((a: any, b: any) => ((a.effective_from || '') < (b.effective_from || '') ? 1 : -1)).map((h: any) => (
                             <div key={h.id ?? `${h.effective_from}-${h.employee_contribution}`} className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] bg-gray-50 border border-[#F1F5F9] rounded-lg px-3 py-1.5">
-                              <span>Effective {h.effective_from || 'undated'} · {getCurrencySymbol(getAppCurrency())}{h.employee_contribution} emp / {getCurrencySymbol(getAppCurrency())}{h.employer_contribution} er per {lwfUnit(h.frequency)}</span>
+                              <span>Effective {h.effective_from || 'undated'}   {getCurrencySymbol(getAppCurrency())}{h.employee_contribution} emp / {getCurrencySymbol(getAppCurrency())}{h.employer_contribution} er per {lwfUnit(h.frequency)}</span>
                             </div>
                           ))}
                         </div>

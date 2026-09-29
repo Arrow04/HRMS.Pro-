@@ -182,6 +182,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterYear, setFilterYear] = useState('');
+  const [filterCompany, setFilterCompany] = useState<string>('all');
+  const [filterBranch, setFilterBranch] = useState<string>('all');
+  const [filterDepartment, setFilterDepartment] = useState<string>('all');
 
   const { data: balances = [], isLoading: balanceLoading } = useQuery({
     queryKey: ['leave-balances', filterYear],

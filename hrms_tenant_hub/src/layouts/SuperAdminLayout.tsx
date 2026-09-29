@@ -17,6 +17,7 @@ const SIDEBAR_LINKS = [
   { path: '/superadmin/health', label: 'Health', icon: Activity },
   { path: '/superadmin/audit-logs', label: 'Audit Logs', icon: ClipboardList },
   { path: '/superadmin/feature-flags', label: 'Features', icon: Server },
+  { path: '/superadmin/statutory-rules', label: 'Statutory Rules', icon: Shield },
 ];
 
 const ALL_PAGES = SIDEBAR_LINKS.map(l => ({
@@ -262,31 +263,6 @@ export default function SuperAdminLayout() {
             </NavLink>
           ))}
         </nav>
-
-        {/* User Section */}
-        {!sidebarCollapsed && (
-          <div className="px-3 pb-2">
-            <div
-              className="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
-              style={{
-                borderColor: 'var(--border-light)',
-                backgroundColor: 'var(--surface-secondary)',
-              }}
-            >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
-                {(user?.fullName || 'A').charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                  {user?.fullName || 'Admin'}
-                </p>
-                <p className="text-[10px] capitalize truncate" style={{ color: 'var(--text-tertiary)' }}>
-                  {user?.role || 'superadmin'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* HRMS App Link */}
         <div className="p-2 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>

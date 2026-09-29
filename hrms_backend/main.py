@@ -147,6 +147,7 @@ from routers.helpdesk import router as helpdesk_router
 from routers.aggregations import router as aggregations_router
 from routers.search import router as search_router
 from routers.statutory_rules import router as statutory_rules_router
+from routers.statutory_rule_config import router as statutory_rule_config_router
 from services.payroll_service import calculate_payroll, generate_payroll_record
 from utils.helpers import convert_camel_to_snake
 
@@ -750,6 +751,7 @@ app.include_router(batch_operations_router)
 app.include_router(aggregations_router)
 app.include_router(search_router)
 app.include_router(statutory_rules_router)
+app.include_router(statutory_rule_config_router)
 
 # --- Test Route ---
 

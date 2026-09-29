@@ -68,20 +68,42 @@ def calculate_pf(gross_basic: float, setting: StatutorySetting) -> dict:
 
 # ESIC Rule 52: employees at/below this average daily wage pay no employee
 # share (the employer share is still due). Daily wage = monthly gross / 26.
-ESI_LOW_WAGE_DAILY_AVG = 176.0
-ESI_WAGE_DAYS_DIVISOR = 26.0
+# These are now read from statutory_rule_configs table via _get_statutory_constant().
+_ESI_LOW_WAGE_DAILY_AVG_DEFAULT = 176.0
+_ESI_WAGE_DAYS_DIVISOR_DEFAULT = 26.0
 
 
-def esi_employee_exempt(monthly_gross: float) -> bool:
+def _get_statutory_constant(db, rule_key: str, default: float) -> float:
+    """Read a statutory constant from the config table, falling back to default.
+    
+    Uses the global config (organization_id=NULL) so all orgs share the same
+    legal constants. When the government changes a rule, update the config
+    and every org's engine adapts automatically.
+    """
+    try:
+        from models import StatutoryRuleConfig
+        row = db.query(StatutoryRuleConfig).filter(
+            StatutoryRuleConfig.rule_key == rule_key,
+            StatutoryRuleConfig.organization_id.is_(None),
+            StatutoryRuleConfig.status == 'active',
+        ).first()
+        return float(row.current_value) if row and row.current_value is not None else default
+    except Exception:
+        return default
+
+
+def esi_employee_exempt(monthly_gross: float, db=None) -> bool:
     """True when the employee's ESI share is waived under the low-wage rule."""
     try:
-        return (float(monthly_gross or 0) / ESI_WAGE_DAYS_DIVISOR) <= ESI_LOW_WAGE_DAILY_AVG
+        daily_avg = _get_statutory_constant(db, 'esi_wage_days_divisor', _ESI_WAGE_DAYS_DIVISOR_DEFAULT) if db else _ESI_WAGE_DAYS_DIVISOR_DEFAULT
+        threshold = _get_statutory_constant(db, 'esi_low_wage_daily_avg', _ESI_LOW_WAGE_DAILY_AVG_DEFAULT) if db else _ESI_LOW_WAGE_DAILY_AVG_DEFAULT
+        return (float(monthly_gross or 0) / daily_avg) <= threshold
     except (TypeError, ValueError):
         return False
 
 
 def calculate_esi(gross_salary: float, setting: StatutorySetting, is_disabled: bool = False,
-                  keep_covered: bool = False) -> dict:
+                  keep_covered: bool = False, db=None) -> dict:
     """Calculate ESI as per ESI Act 1948.
 
     Employee: 0.75% of gross wages (waived at/below Rs.176 average daily wage
@@ -97,7 +119,7 @@ def calculate_esi(gross_salary: float, setting: StatutorySetting, is_disabled: b
     if not setting.esi_applicable or (gross_salary > ceiling and not keep_covered):
         return {"employee": 0, "employer": 0}
 
-    employee = 0.0 if esi_employee_exempt(gross_salary) else round(gross_salary * setting.esi_employee_rate / 100, 2)
+    employee = 0.0 if esi_employee_exempt(gross_salary, db) else round(gross_salary * setting.esi_employee_rate / 100, 2)
     return {
         "employee": employee,
         "employer": round(gross_salary * setting.esi_employer_rate / 100, 2),
@@ -673,8 +695,9 @@ def process_monthly_payroll(
     components = salary_result["components"]
     gross = salary_result["gross"]
 
-    # Extract basic for PF calculation (use component "basic" or 50% of gross)
-    basic = components.get("basic", gross * 0.5)
+    # Extract basic for PF calculation (use component "basic" or configurable fallback % of gross)
+    basic_fallback_pct = _get_statutory_constant(db, 'basic_salary_fallback_pct', 50.0) if db else 50.0
+    basic = components.get("basic", gross * (basic_fallback_pct / 100))
 
     # ── Statutory deductions (rates from StatutorySetting in DB) ──
     pf = calculate_pf(basic, setting)
