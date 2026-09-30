@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
@@ -326,6 +326,7 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [reviewStatus, setReviewStatus] = useState('all');
   const [reviewMonth, setReviewMonth] = useState<number | 'all'>('all');
   const [reviewYear, setReviewYear] = useState<number | 'all'>('all');
+  const [payslipPage, setPayslipPage] = useState(1);
 
 const { data: paymentMethodOptions = [] } = useMasterData('PAYMENT_METHOD');
 const { data: monthOptions = [] } = useMasterData('PAYROLL_MONTH');
@@ -724,10 +725,10 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     setPayrollConfirm({ p: null, action: 'bulk-process', ids: rows.map((p: PayslipRecord) => p.id), count: rows.length, month, year });
   };
 
-  const { data: payslips = [], isLoading, isFetching, isError: payslipsError, refetch: refetchPayslips } = useQuery({
-    queryKey: ['payslips', runMonth, runYear, runCompanyId, runBranchId, runDepartmentId, reviewMonth, reviewYear, reviewCompanyId, reviewBranchId, reviewDeptId],
+  const { data: payslipsResponse, isLoading, isFetching, isError: payslipsError, refetch: refetchPayslips } = useQuery({
+    queryKey: ['payslips', runMonth, runYear, runCompanyId, runBranchId, runDepartmentId, reviewMonth, reviewYear, reviewCompanyId, reviewBranchId, reviewDeptId, payslipPage],
     queryFn: async () => {
-      const params: Record<string, unknown> = {};
+      const params: Record<string, unknown> = { limit: 50, page: payslipPage };
       const months = new Set([runMonth, reviewMonth]);
       const years = new Set([runYear, reviewYear]);
       const companies = new Set([runCompanyId, reviewCompanyId].filter(c => c !== 'all'));
@@ -742,11 +743,15 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
       const response = await api.get('/payroll', { params });
       const body = response.data;
-      return body?.data ?? (Array.isArray(body) ? body : []);
+      const items = body?.data ?? (Array.isArray(body) ? body : []);
+      const meta = Array.isArray(body) ? undefined : (body?.meta || body?.pagination);
+      return { items: Array.isArray(items) ? items : [], meta };
     },
     staleTime: 2 * 60 * 1000,
     placeholderData: keepPreviousData,
   });
+  const payslips = useMemo(() => payslipsResponse?.items || [], [payslipsResponse]);
+  const payslipMeta = payslipsResponse?.meta;
 
   // Converted payroll summary (multi-currency reporting)
   useQuery({
@@ -2368,6 +2373,13 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                   searchKeys={(p: PayslipRecord) => `${p.employeeName} ${p.employeeCode} ${p.month} ${p.year} ${p.status || ''}`}
                   searchPlaceholder="Search payslips..."
                   emptyMessage="No payslips found for this period"
+                  serverPagination={{
+                    page: payslipPage,
+                    pageSize: 50,
+                    total: payslipMeta?.total || 0,
+                    onPageChange: setPayslipPage,
+                  }}
+                  isLoading={isLoading}
                   logEntityType="payroll"
                   logFor={(p: PayslipRecord) => ({ id: p.id, label: `${p.employeeName} — ${monthLabel(p.month, p.year)}` })}
                   onEdit={(p) => openPayrollEdit(p as PayslipRecord)}

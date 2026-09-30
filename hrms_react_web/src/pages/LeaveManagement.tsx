@@ -35,6 +35,7 @@ import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import QueryErrorState from '../components/QueryErrorState';
+import { useUndoDelete } from '../hooks/useUndoDelete';
 
 const TABS = [
   { id: 'requests', label: 'Leave Requests', icon: CalendarDays },
@@ -149,7 +150,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   });
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number, name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LeaveRow | null>(null);
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: LeaveRow[] } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: LeaveRow[] } | null>(null);
@@ -159,6 +160,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [historyLeaveId, setHistoryLeaveId] = useState<number | null>(null);
+  const [leavePage, setLeavePage] = useState(1);
 
   const { data: approvalHistory = [], isLoading: historyLoading } = useQuery({
     queryKey: ['leave-history', historyLeaveId],
@@ -213,15 +215,20 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
   const employees = pickerEmployees.map(normalizePickerEmployee);
 
-  const { data: leaves = [], isLoading: loadingLeaves, isFetching, isError: leavesError, refetch: refetchLeaves } = useQuery({
-    queryKey: ['leaves', includeInactive],
+  const { data: leavesData, isLoading: loadingLeaves, isFetching, isError: leavesError, refetch: refetchLeaves } = useQuery({
+    queryKey: ['leaves', includeInactive, leavePage],
     queryFn: async () => {
-      const response = await api.get('/leaves', { params: { includeInactive } });
-      return response.data || [];
+      const response = await api.get('/leaves', { params: { includeInactive, limit: 50, page: leavePage } });
+      const body = response.data || [];
+      const items = Array.isArray(body) ? body : (body?.data || body?.items || []);
+      const meta = Array.isArray(body) ? undefined : (body?.meta || body?.pagination);
+      return { items: Array.isArray(items) ? items : [], meta };
     },
     staleTime: 2 * 60 * 1000,
     enabled: activeTab === 'requests',
   });
+  const leaves = leavesData?.items || [];
+  const leaveMeta = leavesData?.meta;
 
   const { data: leaveTypes = [], isError: leaveTypesError, refetch: refetchLeaveTypes } = useQuery<LeaveTypeRow[]>({
     queryKey: ['leave-types', leaveTypeCompanyFilter],
@@ -320,11 +327,29 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => api.delete(`/leaves/${id}`),
     onSuccess: () => {
-      toast.success('Leave deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
     },
     onError: () => toast.error('Failed to delete leave'),
     onSettled: () => setDeleteTarget(null)
+  });
+
+  const restoreLeave = async (leave: LeaveRow) => {
+    const fd = new FormData();
+    if (leave.employeeId) fd.append('employeeId', String(leave.employeeId));
+    if (leave.leaveTypeId) fd.append('leaveTypeId', String(leave.leaveTypeId));
+    if (leave.startDate) fd.append('startDate', String(leave.startDate));
+    if (leave.endDate) fd.append('endDate', String(leave.endDate));
+    if (leave.reason) fd.append('reason', String(leave.reason));
+    if (leave.isHalfDay) fd.append('isHalfDay', 'true');
+    return api.post('/leaves', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  };
+
+  const { deleteWithUndo } = useUndoDelete<LeaveRow>({
+    entityName: 'Leave',
+    onDelete: (l) => deleteMutation.mutateAsync(l.id),
+    onRestore: restoreLeave,
+    onDeleteDone: () => queryClient.invalidateQueries({ queryKey: ['leaves'] }),
+    onRestoreDone: () => queryClient.invalidateQueries({ queryKey: ['leaves'] }),
   });
 
   const updateLeaveMutation = useMutation({
@@ -339,8 +364,8 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   });
 
   
-  const handleDelete = (id: number, name: string) => {
-    setDeleteTarget({ id, name });
+  const handleDelete = (leave: LeaveRow) => {
+    setDeleteTarget(leave);
   };
 
   const handleEditLeave = (leave: LeaveRow) => {
@@ -894,6 +919,13 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                   searchKeys={(leave: LeaveRow) => `${leave.employeeName} ${leave.leaveType} ${leave.reason || ''} ${leave.status || ''}`}
                   searchPlaceholder="Search leave requests..."
                   emptyMessage="No leave requests found" persistKey="leaves-requests"
+                  serverPagination={{
+                    page: leavePage,
+                    pageSize: 50,
+                    total: leaveMeta?.total || 0,
+                    onPageChange: setLeavePage,
+                  }}
+                  isLoading={loadingLeaves}
                   logEntityType="leave"
                   logFor={(leave: LeaveRow) => ({ id: leave.id, label: `${leave.employeeName} — ${leave.leaveType}` })}
                   bulkActions={[
@@ -973,7 +1005,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                         <button onClick={() => setEditingLeave(leave)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-delete-leave-${leave.id}`} content="Delete">
-                        <button onClick={() => handleDelete(leave.id, leave.employeeName || `Leave #${leave.id}`)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(leave)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-history-leave-${leave.id}`} content="Approval History">
                         <button onClick={() => { setHistoryLeaveId(leave.id); setShowHistoryModal(true); }} className="p-2 text-[#64748B] hover:bg-[#F1F5F9] rounded-lg transition-colors" title="Approval History"><Clock className="w-4 h-4" /></button>
@@ -1330,8 +1362,8 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-        itemName={deleteTarget?.name || 'this leave'}
+        onConfirm={() => deleteTarget && deleteWithUndo(deleteTarget)}
+        itemName={deleteTarget?.employeeName || deleteTarget?.leaveTypeName || (deleteTarget ? `Leave #${deleteTarget.id}` : 'this leave')}
         isDeleting={deleteMutation.isPending}
       />
 
@@ -1432,7 +1464,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         onClose={() => setBulkDeleteTarget(null)}
         onConfirm={() => {
           if (!bulkDeleteTarget) return;
-          bulkDeleteTarget.items.forEach((l) => deleteMutation.mutate(l.id));
+          bulkDeleteTarget.items.forEach((l) => deleteWithUndo(l));
           setBulkDeleteTarget(null);
         }}
         count={bulkDeleteTarget?.items.length ?? 0}

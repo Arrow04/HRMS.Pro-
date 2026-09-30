@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import AccountingPanel from '../components/AccountingPanel';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import DataTable, { type DataTableColumn } from '../components/DataTable';
 import DatePicker from '../components/DatePicker';
 import Modal from '../components/Modal';
 import SearchableSelect from '../components/SearchableSelect';
@@ -572,6 +573,153 @@ export default function PayrollConsole() {
     URL.revokeObjectURL(url);
   };
 
+  const ruleColumns: DataTableColumn<PayrollRule>[] = [
+    {
+      key: 'ruleType',
+      header: 'Type',
+      sortable: true,
+      sortValue: (r) => r.ruleType,
+      render: (r) => (
+        <span className="font-medium text-[var(--text-primary)]">
+          {r.ruleType}{r.ruleSubtype ? ` / ${r.ruleSubtype}` : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'scope',
+      header: 'Scope',
+      sortable: true,
+      sortValue: (r) => `${r.stateCode || r.country}${r.organizationId ? ' · org' : ' · central'}`,
+      render: (r) => (
+        <>{r.stateCode || r.country}{r.organizationId ? ' · org' : ' · central'}</>
+      ),
+    },
+    {
+      key: 'effectiveFrom',
+      header: 'Effective',
+      sortable: true,
+      sortValue: (r) => r.effectiveFrom,
+      render: (r) => (
+        <>{r.effectiveFrom}{r.effectiveTo ? ` → ${r.effectiveTo}` : ''}</>
+      ),
+    },
+    {
+      key: 'version',
+      header: 'Version',
+      sortable: true,
+      sortValue: (r) => r.version,
+      render: (r) => <>v{r.version}</>,
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      sortValue: (r) => r.status,
+      render: (r) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs ${
+          r.status === 'active' ? 'bg-green-100 text-green-700'
+            : r.status === 'draft' ? 'bg-yellow-100 text-yellow-700'
+            : 'bg-gray-100 text-gray-600'}`}>
+          {r.status}
+        </span>
+      ),
+    },
+  ];
+
+  const arrearsColumns: DataTableColumn<Record<string, unknown>>[] = [
+    {
+      key: 'employee',
+      header: 'Employee',
+      sortable: true,
+      sortValue: (a) => employeeLabel(a.employeeId),
+      render: (a) => employeeLabel(a.employeeId),
+    },
+    {
+      key: 'period',
+      header: 'Period',
+      sortable: true,
+      sortValue: (a) => {
+        const p = a.period as { fromYear?: number; fromMonth?: number } | undefined;
+        return `${p?.fromYear ?? ''}-${String(p?.fromMonth ?? '').padStart(2, '0')}`;
+      },
+      render: (a) => {
+        const p = a.period as { fromYear?: number; fromMonth?: number } | undefined;
+        return <>{p?.fromYear}-{String(p?.fromMonth).padStart(2, '0')}</>;
+      },
+    },
+    {
+      key: 'source',
+      header: 'Source',
+      sortable: true,
+      sortValue: (a) => String(a.source ?? ''),
+      render: (a) => String(a.source),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      sortable: true,
+      sortValue: (a) => Number(a.amount ?? 0),
+      render: (a) => <span className="font-medium">{fmt(a.amount as number)}</span>,
+    },
+    {
+      key: 'kind',
+      header: 'Kind',
+      sortable: true,
+      sortValue: (a) => String(a.kind ?? ''),
+      render: (a) => (
+        <span className={`px-2 py-0.5 rounded-full text-xs ${
+          a.kind === 'arrears' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+          {String(a.kind)}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      sortValue: (a) => String(a.status ?? ''),
+      render: (a) => String(a.status),
+    },
+  ];
+
+  const batchColumns: DataTableColumn<Record<string, unknown>>[] = [
+    {
+      key: 'batchRef',
+      header: 'Batch',
+      sortable: true,
+      sortValue: (b) => String(b.batchRef ?? ''),
+      render: (b) => <span className="font-medium">{String(b.batchRef)}</span>,
+    },
+    {
+      key: 'period',
+      header: 'Period',
+      sortable: true,
+      sortValue: (b) => `${b.year ?? ''}-${String(b.month ?? '').padStart(2, '0')}`,
+      render: (b) => <>{String(b.year)}-{String(b.month).padStart(2, '0')}</>,
+    },
+    {
+      key: 'employees',
+      header: 'Employees',
+      sortable: true,
+      sortValue: (b) => Number(b.employeeCount ?? 0),
+      render: (b) => String(b.employeeCount),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      sortable: true,
+      sortValue: (b) => Number(b.totalAmount ?? 0),
+      render: (b) => fmt(b.totalAmount as number),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      sortValue: (b) => String(b.status ?? ''),
+      render: (b) => String(b.status),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -656,75 +804,97 @@ export default function PayrollConsole() {
           </div>
 
           <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[var(--text-secondary)] border-b border-[var(--border-color)]">
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Due date</th>
-                  <th className="px-4 py-3">Filing</th>
-                  <th className="px-4 py-3">Period</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                  <th className="px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(calendar?.items || [])
-                  .filter(i => calendarFilter === 'all' || i.status === calendarFilter)
-                  .map(i => {
+            <DataTable
+              data={(calendar?.items || []).filter(i => calendarFilter === 'all' || i.status === calendarFilter)}
+              columns={[
+                {
+                  key: 'status',
+                  header: 'Status',
+                  sortable: true,
+                  sortValue: (i) => i.status,
+                  render: (i) => {
                     const pill =
                       i.status === 'overdue' ? 'bg-red-100 text-red-700'
                         : i.status === 'due_soon' ? 'bg-amber-100 text-amber-700'
                         : i.status === 'filed' ? 'bg-green-100 text-green-700'
                         : 'bg-gray-100 text-gray-600';
                     return (
-                      <tr key={i.periodKey} className="border-b border-[var(--border-color)] last:border-0">
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pill}`}>
-                            {i.status === 'due_soon' ? 'Due soon' : i.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`font-medium ${i.status === 'overdue' ? 'text-red-600' : 'text-[var(--text-primary)]'}`}>
-                            {new Date(i.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-[var(--text-primary)]">{i.name}</div>
-                          <div className="text-[11px] text-[var(--text-tertiary)]">{i.authority}</div>
-                        </td>
-                        <td className="px-4 py-3">{i.periodLabel}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-[var(--text-primary)]">
-                          {i.amount > 0 ? fmt(i.amount) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {i.status === 'filed' ? (
-                              <>
-                                <span className="text-[11px] text-green-700">
-                                  ✓ {i.filedByName || 'filed'}
-                                </span>
-                                <button onClick={() => unmarkFiled(i)} className="text-[var(--text-tertiary)] text-xs font-medium hover:underline">
-                                  Undo
-                                </button>
-                              </>
-                            ) : (
-                              <button onClick={() => markFiled(i)}
-                                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700">
-                                Mark filed
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pill}`}>
+                        {i.status === 'due_soon' ? 'Due soon' : i.status}
+                      </span>
                     );
-                  })}
-                {!calendar?.items?.length && !busy && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--text-tertiary)]">
-                    No filing obligations found.
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+                  },
+                },
+                {
+                  key: 'dueDate',
+                  header: 'Due date',
+                  sortable: true,
+                  sortValue: (i) => i.dueDate,
+                  render: (i) => (
+                    <span className={`font-medium ${i.status === 'overdue' ? 'text-red-600' : 'text-[var(--text-primary)]'}`}>
+                      {new Date(i.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'filing',
+                  header: 'Filing',
+                  sortable: true,
+                  sortValue: (i) => i.name,
+                  render: (i) => (
+                    <>
+                      <div className="font-medium text-[var(--text-primary)]">{i.name}</div>
+                      <div className="text-[11px] text-[var(--text-tertiary)]">{i.authority}</div>
+                    </>
+                  ),
+                },
+                {
+                  key: 'period',
+                  header: 'Period',
+                  sortable: true,
+                  sortValue: (i) => i.periodLabel,
+                  render: (i) => i.periodLabel,
+                },
+                {
+                  key: 'amount',
+                  header: 'Amount',
+                  sortable: true,
+                  align: 'right',
+                  sortValue: (i) => i.amount,
+                  render: (i) => (
+                    <span className="font-semibold text-[var(--text-primary)]">
+                      {i.amount > 0 ? fmt(i.amount) : '—'}
+                    </span>
+                  ),
+                },
+              ]}
+              rowKey={(i) => i.periodKey}
+              isLoading={busy}
+              searchable
+              searchKeys={(i) => `${i.name} ${i.authority} ${i.periodLabel} ${i.status}`}
+              searchPlaceholder="Search filings..."
+              emptyMessage="No filing obligations found."
+              exportFilename="compliance_calendar.csv"
+              actions={(i) => (
+                <div className="flex items-center gap-2">
+                  {i.status === 'filed' ? (
+                    <>
+                      <span className="text-[11px] text-green-700">
+                        ✓ {i.filedByName || 'filed'}
+                      </span>
+                      <button onClick={() => unmarkFiled(i)} className="text-[var(--text-tertiary)] text-xs font-medium hover:underline">
+                        Undo
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => markFiled(i)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-green-600 text-white hover:bg-green-700">
+                      Mark filed
+                    </button>
+                  )}
+                </div>
+              )}
+            />
           </div>
           <p className="text-xs text-[var(--text-tertiary)]">
             Due dates are configurable per org (<b>settings.payroll.filing_due_dates</b>) and are reminders, not legal advice — verify against the latest gazette notifications.
@@ -739,57 +909,33 @@ export default function PayrollConsole() {
           <p><b className="text-[var(--text-primary)]">Actions.</b> <b>Trace</b> shows which rule wins for a date and why. <b>Supersede</b> sets an end date (the engine stops choosing it after that day). <b>Delete</b> is a soft delete for mistakes — past payroll runs keep their history. Government references on each field come from the latest gazette notifications recorded in the config.</p>
         </div>
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[var(--text-secondary)] border-b border-[var(--border-color)]">
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Scope</th>
-                <th className="px-4 py-3">Effective</th>
-                <th className="px-4 py-3">Version</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map(r => (
-                <tr key={r.id} className="border-b border-[var(--border-color)] last:border-0">
-                  <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
-                    {r.ruleType}{r.ruleSubtype ? ` / ${r.ruleSubtype}` : ''}
-                  </td>
-                  <td className="px-4 py-3">{r.stateCode || r.country}{r.organizationId ? ' · org' : ' · central'}</td>
-                  <td className="px-4 py-3">{r.effectiveFrom}{r.effectiveTo ? ` → ${r.effectiveTo}` : ''}</td>
-                  <td className="px-4 py-3">v{r.version}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${
-                      r.status === 'active' ? 'bg-green-100 text-green-700'
-                        : r.status === 'draft' ? 'bg-yellow-100 text-yellow-700'
-                        : 'bg-gray-100 text-gray-600'}`}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 flex gap-2">
-                    <button onClick={() => showTrace(r)} className="text-[var(--primary-blue)] text-xs font-medium">Trace</button>
-                    {r.status === 'draft' && (
-                      <button onClick={() => publish(r)} className="text-green-600 text-xs font-medium">Publish</button>
-                    )}
-                    {r.status === 'active' && (
-                      <button
-                        onClick={() => { setSupersedeRule(r); setSupersedeDate(new Date().toISOString().slice(0, 10)); }}
-                        className="text-amber-600 text-xs font-medium">
-                        Supersede
-                      </button>
-                    )}
-                    <button onClick={() => setDeleteRule(r)} className="text-red-600 text-xs font-medium">Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {!rules.length && !busy && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--text-tertiary)]">
-                  No rules yet. Published statutory rules drive every calculation.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+          <DataTable
+            data={rules}
+            columns={ruleColumns}
+            rowKey={(r) => r.id}
+            isLoading={busy}
+            searchable
+            searchKeys={(r) => `${r.ruleType} ${r.ruleSubtype || ''} ${r.stateCode || ''} ${r.country} ${r.status} v${r.version}`}
+            searchPlaceholder="Search rules..."
+            emptyMessage="No rules yet. Published statutory rules drive every calculation."
+            exportFilename="statutory_rules.csv"
+            actions={(r) => (
+              <div className="flex gap-2">
+                <button onClick={() => showTrace(r)} className="text-[var(--primary-blue)] text-xs font-medium">Trace</button>
+                {r.status === 'draft' && (
+                  <button onClick={() => publish(r)} className="text-green-600 text-xs font-medium">Publish</button>
+                )}
+                {r.status === 'active' && (
+                  <button
+                    onClick={() => { setSupersedeRule(r); setSupersedeDate(new Date().toISOString().slice(0, 10)); }}
+                    className="text-amber-600 text-xs font-medium">
+                    Supersede
+                  </button>
+                )}
+                <button onClick={() => setDeleteRule(r)} className="text-red-600 text-xs font-medium">Delete</button>
+              </div>
+            )}
+          />
           {trace && (
             <div className="p-4 border-t border-[var(--border-color)] bg-[var(--background)] text-xs">
               <div className="font-semibold mb-1 text-[var(--text-primary)]">Resolution trace</div>
@@ -951,91 +1097,50 @@ export default function PayrollConsole() {
 
       {tab === 'arrears' && (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[var(--text-secondary)] border-b border-[var(--border-color)]">
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Period</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Kind</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {arrears.map(a => (
-                <tr key={String(a.id)} className="border-b border-[var(--border-color)] last:border-0">
-                  <td className="px-4 py-3">{employeeLabel(a.employeeId)}</td>
-                  <td className="px-4 py-3">{(a.period as { fromYear?: number })?.fromYear}-{String((a.period as { fromMonth?: number })?.fromMonth).padStart(2, '0')}</td>
-                  <td className="px-4 py-3">{String(a.source)}</td>
-                  <td className="px-4 py-3 font-medium">{fmt(a.amount as number)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${
-                      a.kind === 'arrears' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {String(a.kind)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">{String(a.status)}</td>
-                  <td className="px-4 py-3">
-                    {a.status !== 'applied' && (
-                      <button
-                        onClick={() => openPeriodDlg({ kind: 'apply', arrear: a })}
-                        className="text-[var(--primary-blue)] text-xs font-medium">Apply</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {!arrears.length && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--text-tertiary)]">
-                  No arrears. Retro rule changes appear here as adjustments.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+          <DataTable
+            data={arrears}
+            columns={arrearsColumns}
+            rowKey={(a) => String(a.id)}
+            isLoading={busy}
+            searchable
+            searchKeys={(a) => `${employeeLabel(a.employeeId)} ${String(a.source)} ${String(a.kind)} ${String(a.status)}`}
+            searchPlaceholder="Search arrears..."
+            emptyMessage="No arrears. Retro rule changes appear here as adjustments."
+            exportFilename="arrears.csv"
+            actions={(a) => (
+              a.status !== 'applied' && (
+                <button
+                  onClick={() => openPeriodDlg({ kind: 'apply', arrear: a })}
+                  className="text-[var(--primary-blue)] text-xs font-medium">Apply</button>
+              )
+            )}
+          />
         </div>
       )}
 
       {tab === 'payments' && (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[var(--text-secondary)] border-b border-[var(--border-color)]">
-                <th className="px-4 py-3">Batch</th>
-                <th className="px-4 py-3">Period</th>
-                <th className="px-4 py-3">Employees</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {batches.map(b => (
-                <tr key={String(b.id)} className="border-b border-[var(--border-color)] last:border-0">
-                  <td className="px-4 py-3 font-medium">{String(b.batchRef)}</td>
-                  <td className="px-4 py-3">{String(b.year)}-{String(b.month).padStart(2, '0')}</td>
-                  <td className="px-4 py-3">{String(b.employeeCount)}</td>
-                  <td className="px-4 py-3">{fmt(b.totalAmount as number)}</td>
-                  <td className="px-4 py-3">{String(b.status)}</td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={async () => {
-                        const blob = await downloadBatchFile(b.id as number);
-                        download(blob as Blob, `${String(b.batchRef)}.csv`);
-                      }}
-                      className="text-[var(--primary-blue)] text-xs font-medium flex items-center gap-1">
-                      <FileDown className="w-3.5 h-3.5" /> Bank file
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!batches.length && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--text-tertiary)]">
-                  No payment batches yet.
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+          <DataTable
+            data={batches}
+            columns={batchColumns}
+            rowKey={(b) => String(b.id)}
+            isLoading={busy}
+            searchable
+            searchKeys={(b) => `${String(b.batchRef)} ${String(b.status)} ${String(b.year)}-${String(b.month)}`}
+            searchPlaceholder="Search batches..."
+            emptyMessage="No payment batches yet."
+            exportFilename="payment_batches.csv"
+            actions={(b) => (
+              <button
+                onClick={async () => {
+                  const blob = await downloadBatchFile(b.id as number);
+                  download(blob as Blob, `${String(b.batchRef)}.csv`);
+                }}
+                className="text-[var(--primary-blue)] text-xs font-medium flex items-center gap-1">
+                <FileDown className="w-3.5 h-3.5" /> Bank file
+              </button>
+            )}
+          />
         </div>
       )}
 

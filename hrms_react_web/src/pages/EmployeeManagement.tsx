@@ -46,6 +46,7 @@ import BulkUploadModal from '../components/BulkUploadModal';
 import DatePicker from '../components/DatePicker';
 import DateRangePicker from '../components/DateRangePicker';
 import { useEmployeeData } from '../hooks/useEmployeeData';
+import { useUndoDelete } from '../hooks/useUndoDelete';
 import { normalizeArray } from '../utils/normalize';
 import StatsCard from '../components/StatsCard';
 import PageHero from '../components/PageHero';
@@ -625,7 +626,6 @@ const EmployeeManagement = () => {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => api.delete(`/employees/${id}`),
     onSuccess: () => {
-      toast.success('Employee deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employeeStats', filterOrgId, filterCompanyId] });
       queryClient.invalidateQueries({ queryKey: ['exitEmployees'] });
@@ -636,6 +636,24 @@ const EmployeeManagement = () => {
       setEmployeeToDelete(null);
     },
     onError: () => toast.error('Failed to delete employee'),
+  });
+
+  const { deleteWithUndo } = useUndoDelete<{ id: number; name: string }>({
+    entityName: 'Employee',
+    onDelete: (e) => deleteMutation.mutateAsync(e.id),
+    onRestore: (e) => api.patch(`/employees/${e.id}/restore`),
+    onDeleteDone: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employeeStats', filterOrgId, filterCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['exitEmployees'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['onboardingEmployees'] });
+    },
+    onRestoreDone: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['employeeStats', filterOrgId, filterCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ['exitEmployees'] });
+    },
   });
 
   const restoreArchivedMutation = useMutation({
@@ -1330,7 +1348,7 @@ const EmployeeManagement = () => {
         <ConfirmDeleteModal
           isOpen={!!employeeToDelete}
           onClose={() => setEmployeeToDelete(null)}
-          onConfirm={() => employeeToDelete && deleteMutation.mutate(employeeToDelete.id)}
+          onConfirm={() => employeeToDelete && deleteWithUndo(employeeToDelete)}
           itemName={employeeToDelete?.name || 'this employee'}
           isDeleting={deleteMutation.isPending}
         />

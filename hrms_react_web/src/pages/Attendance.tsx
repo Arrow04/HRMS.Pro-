@@ -46,6 +46,7 @@ import Tooltip from '../components/Tooltip';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import QueryErrorState from '../components/QueryErrorState';
 import { personDisplayName } from '../utils/employeeNameUtils';
+import { useUndoDelete } from '../hooks/useUndoDelete';
 
 type TabId = 'records' | 'duty-shift' | 'duty-roster' | 'configuration';
 
@@ -160,7 +161,7 @@ const TABS = [
 const Attendance = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabId>('records');
-  const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; id: number | string } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; record: AttendanceRow } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: AttendanceRow[] } | null>(null);
   const [quickActionTarget, setQuickActionTarget] = useState<{ type: 'single'; record: AttendanceRow } | { type: 'bulk'; records: AttendanceRow[] } | null>(null);
   const [quickStatus, setQuickStatus] = useState('');
@@ -172,6 +173,7 @@ const Attendance = () => {
   const [companyFilter, setCompanyFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [attendancePage, setAttendancePage] = useState(1);
   const [showManualModal, setShowManualModal] = useState(false);
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
 
@@ -249,20 +251,22 @@ const Attendance = () => {
   const { data: branches = [] } = useQuery<OptionItem[]>({ queryKey: ['branches', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/branches', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
   const { data: departments = [] } = useQuery<OptionItem[]>({ queryKey: ['departments', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/departments', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
 
-  const { data: attendanceData, isLoading: isAttendanceLoading, isFetching, isError: attendanceError, refetch: refetchAttendance } = useQuery<AttendanceType[]>({
-    queryKey: ['attendance', startDate, endDate, includeInactive],
+  const { data: attendanceResponse, isLoading: isAttendanceLoading, isFetching, isError: attendanceError, refetch: refetchAttendance } = useQuery({
+    queryKey: ['attendance', startDate, endDate, includeInactive, attendancePage],
     queryFn: async () => {
       const res = await api.get('/attendance', {
-        params: { startDate, endDate, includeInactive }
+        params: { startDate, endDate, includeInactive, limit: 50, page: attendancePage }
       });
       const body = res.data;
-      const raw = Array.isArray(body) ? body : (body?.data || []);
+      const raw = Array.isArray(body) ? body : (body?.data || body?.items || []);
       const normalized = normalizeKeys(raw);
-      return normalized as AttendanceType[];
+      const meta = Array.isArray(body) ? undefined : (body?.meta || body?.pagination);
+      return { items: normalized as AttendanceType[], meta };
     }
   });
 
-  const attendanceRecords = useMemo(() => attendanceData || [], [attendanceData]);
+  const attendanceRecords = useMemo(() => attendanceResponse?.items || [], [attendanceResponse]);
+  const attendanceMeta = attendanceResponse?.meta;
 
   const { data: shifts = [], isLoading: loadingShifts } = useQuery<ShiftRecord[]>({
     queryKey: ['shifts'],
@@ -760,10 +764,9 @@ const Attendance = () => {
       const response = await api.post('/attendance/bulk-delete', { records });
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setConfirmTarget(null);
-      toast.success(data.message || 'Attendance records deleted');
     },
     onError: () => {
       // Error logged
@@ -772,12 +775,54 @@ const Attendance = () => {
     }
   });
 
+  const deleteRecordMutation = useMutation({
+    mutationFn: async (id: number | string) => api.delete(`/attendance/${id}`),
+    onError: () => toast.error('Delete failed'),
+  });
+
+  const restoreAttendanceRecord = async (record: AttendanceRow) => {
+    const toNum = (v: number | string | undefined) => (v === undefined || v === '' ? undefined : Number(v));
+    return api.post('/attendance/manual', {
+      employeeId: record.employeeId,
+      date: record.date,
+      checkIn: record.checkIn || undefined,
+      checkOut: record.checkOut || undefined,
+      status: record.status,
+      notes: record.notes || undefined,
+      reason: record.reason || undefined,
+      shiftId: toNum(record.shiftId),
+      companyId: toNum(record.companyId),
+      branchId: toNum(record.branchId),
+      departmentId: toNum(record.departmentId),
+      workHours: record.workHours,
+      scheduledHours: record.scheduledHours ?? 8,
+      overtimeHours: record.overtimeHours ?? 0,
+      breakHours: record.breakHours ?? 0,
+      isManualEntry: true,
+      isLate: record.isLate ?? false,
+      lateMinutes: record.lateMinutes ?? 0,
+      isEarlyDeparture: record.isEarlyDeparture ?? false,
+      earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+      location: record.location || undefined,
+      checkInLocationName: record.checkInLocationName || undefined,
+      checkOutLocationName: record.checkOutLocationName || undefined,
+    });
+  };
+
+  const { deleteWithUndo } = useUndoDelete<AttendanceRow>({
+    entityName: 'Attendance record',
+    onDelete: (r) => deleteRecordMutation.mutateAsync(r.id),
+    onRestore: restoreAttendanceRecord,
+    onDeleteDone: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+    onRestoreDone: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+  });
+
   // =============================================================================
   // RENDER
   // =============================================================================
 
   const [hasLoaded, setHasLoaded] = useState(false);
-  if (!hasLoaded && attendanceData !== undefined) setHasLoaded(true);
+  if (!hasLoaded && attendanceResponse !== undefined) setHasLoaded(true);
 
   const isInitialAttendanceLoading = !hasLoaded && isFetching;
   if (isInitialAttendanceLoading) {
@@ -972,6 +1017,13 @@ const Attendance = () => {
                   searchKeys={(record: AttendanceRow) => `${record.employeeName || ''} ${record.status || ''} ${record.date || ''}`}
                   searchPlaceholder="Search attendance..."
                   emptyMessage="No attendance records found"
+                  serverPagination={{
+                    page: attendancePage,
+                    pageSize: 50,
+                    total: attendanceMeta?.total || 0,
+                    onPageChange: setAttendancePage,
+                  }}
+                  isLoading={isAttendanceLoading}
                   logEntityType="attendance"
                   logFor={(record: AttendanceRow) => ({ id: record.id ?? `${record.employeeId}-${record.date}`, label: `${record.employeeName} â€” ${record.date}` })}
                   selectable
@@ -1105,7 +1157,7 @@ const Attendance = () => {
                         <Zap className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => setConfirmTarget({ type: 'delete-record', id: record.id })}
+                        onClick={() => setConfirmTarget({ type: 'delete-record', record })}
                         className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1833,21 +1885,16 @@ const Attendance = () => {
         onConfirm={() => {
           if (confirmTarget) {
             if (confirmTarget.type === 'delete-record') {
-              api.delete(`/attendance/${confirmTarget.id}`)
-                .then(() => {
-                  queryClient.invalidateQueries({ queryKey: ['attendance'] });
-                  toast.success('Record deleted');
-                })
-                .catch(() => toast.error('Delete failed'));
+              deleteWithUndo(confirmTarget.record);
             } else if (confirmTarget.type === 'bulk-delete') {
-              bulkDeleteMutation.mutate(confirmTarget.records.map(r => ({ employeeId: r.employeeId, date: r.date as string })));
+              confirmTarget.records.forEach((r) => deleteWithUndo(r));
             } else {
               deleteShiftMutation.mutate(confirmTarget.id);
             }
             setConfirmTarget(null);
           }
         }}
-        isPending={bulkDeleteMutation.isPending}
+        isPending={bulkDeleteMutation.isPending || deleteRecordMutation.isPending}
         variant={confirmTarget?.type === 'deactivate-shift' ? 'warning' : 'danger'}
         title={
           confirmTarget?.type === 'bulk-delete'
@@ -1876,7 +1923,7 @@ const Attendance = () => {
         onClose={() => setBulkDeleteTarget(null)}
         onConfirm={() => {
           if (!bulkDeleteTarget) return;
-          bulkDeleteMutation.mutate(bulkDeleteTarget.items.map(r => ({ employeeId: r.employeeId, date: r.date as string })));
+          bulkDeleteTarget.items.forEach((r) => deleteWithUndo(r));
           setBulkDeleteTarget(null);
         }}
         count={bulkDeleteTarget?.items.length ?? 0}
