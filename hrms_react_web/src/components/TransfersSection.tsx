@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowRightLeft, Calendar, Loader2, CheckCircle2, XCircle, Info, Search, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -209,11 +209,13 @@ const TransfersSection = ({ companiesList, branchesList, departmentsList, design
 
   // Reset the form every time the modal opens so stale data never carries over
   // (skipped when opening in edit mode — the prefill is applied instead)
-  useEffect(() => {
+  const [prevModalState, setPrevModalState] = useState({ showModal, editingTransferId });
+  if (prevModalState.showModal !== showModal || prevModalState.editingTransferId !== editingTransferId) {
+    setPrevModalState({ showModal, editingTransferId });
     if (showModal && !editingTransferId) {
       setFormData({ type: 'permanent', start_date: new Date().toISOString().split('T')[0] });
     }
-  }, [showModal]);
+  }
 
   const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
   const employees = pickerEmployees.map(normalizePickerEmployee) as EmployeeOption[];

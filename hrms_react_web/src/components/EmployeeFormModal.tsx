@@ -579,6 +579,17 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     return () => clearTimeout(t);
   }, [open, salaryMode, docEmployeeId, formData.baseSalary, formData.payrollTemplateId]);
 
+  // Hooks must run unconditionally — they stay before the `!open` early return.
+  // Live progress — percentage of key form fields that have been filled in.
+  // Shared with the onboarding table so both always show the same number.
+  const formDataRecord = formData as unknown as Record<string, unknown>;
+  const progress = useMemo(() => computeProfileCompletion(formDataRecord), [formDataRecord]);
+
+  const phoneDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emailDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codeDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reviewPhotoRef = useRef<HTMLInputElement>(null);
+
   if (!open) return null;
 
   const set = (patch: Partial<EmployeeFormData>) => setFormData((prev) => ({ ...prev, ...patch }));
@@ -893,7 +904,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     }
   };
 
-  const reviewPhotoRef = useRef<HTMLInputElement>(null);
   const handleReviewPhoto = async (f: File | null) => {
     if (!f) return;
     if (!f.type.startsWith('image/')) { toast.error('Please choose an image file'); return; }
@@ -1042,18 +1052,8 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const input = (val: unknown) => String(val || '');
   const num = (val: unknown) => String(val ?? '');
 
-  // Live progress — percentage of key form fields that have been filled in.
-  // Shared with the onboarding table so both always show the same number.
-  const formDataRecord = formData as unknown as Record<string, unknown>;
-
-  const progress = useMemo(() => computeProfileCompletion(formDataRecord), [formData]);
-
   // NOTE: all frontend guards are disabled — values pass straight through on
   // every keystroke and on save. The server is the single source of validation.
-
-  const phoneDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const emailDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const codeDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Generate a unique 7-char alphanumeric employee code (e.g. A3F9K2M) and
   // verify it's not already used before setting it.

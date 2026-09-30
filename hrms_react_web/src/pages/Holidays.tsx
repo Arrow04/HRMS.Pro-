@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Palmtree, Plus, Upload, Download, Calendar, Building2,
   Edit2, Trash2, X, RotateCcw, TrendingUp, Sun, Loader2, Info, Clock
@@ -53,7 +53,6 @@ const Holidays = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [, setMounted] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<HolidayRow | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -83,10 +82,6 @@ const Holidays = () => {
     alternativeDate: '',
     notes: ''
   });
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Queries
   const { data: holidays = [], isLoading: loadingHolidays, isFetching } = useQuery({
@@ -433,12 +428,7 @@ const Holidays = () => {
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  useEffect(() => {
-    if (holidays.length > 0 && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [holidays, hasLoaded]);
+  if (!hasLoaded && holidays.length > 0) setHasLoaded(true);
 
   const isInitialHolidayLoading = !hasLoaded && isFetching;
   if (isInitialHolidayLoading) {

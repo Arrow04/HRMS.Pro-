@@ -159,7 +159,13 @@ const DataTable = <T,>({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [data, query, sortKey, sortDir]);
+  // Reset page/selection when the underlying data or filters change
+  const [prevFilterKey, setPrevFilterKey] = useState({ data, query, sortKey, sortDir });
+  if (prevFilterKey.data !== data || prevFilterKey.query !== query || prevFilterKey.sortKey !== sortKey || prevFilterKey.sortDir !== sortDir) {
+    setPrevFilterKey({ data, query, sortKey, sortDir });
+    setPage(1);
+    setSelected(new Set());
+  }
 
   const isServerMode = !!serverPagination;
 

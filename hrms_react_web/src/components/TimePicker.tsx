@@ -32,7 +32,10 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, className = ''
   const [period, setPeriod] = useState<'AM' | 'PM'>('AM');
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // Reset internal state when opened (or when value changes while open)
+  const [prevOpenValue, setPrevOpenValue] = useState({ isOpen, value });
+  if (prevOpenValue.isOpen !== isOpen || prevOpenValue.value !== value) {
+    setPrevOpenValue({ isOpen, value });
     if (isOpen) {
       if (value) {
         const [h, m] = value.split(':').map(Number);
@@ -45,7 +48,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, className = ''
         setPeriod('AM');
       }
     }
-  }, [isOpen, value]);
+  }
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

@@ -6,6 +6,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function useWebSocket(userId: number | undefined) {
   const connected = useRef(false);
+  const connectRef = useRef<(() => void) | null>(null);
 
   const connect = useCallback(() => {
     if (!userId || connected.current) return;
@@ -41,8 +42,8 @@ export function useWebSocket(userId: number | undefined) {
 
       ws.onclose = () => {
         connected.current = false;
-        // Reconnect after 3s
-        reconnectTimer = setTimeout(() => connect(), 3000);
+        // Reconnect after 3s — via ref so `connect` is never read before it is declared
+        reconnectTimer = setTimeout(() => connectRef.current?.(), 3000);
       };
 
       ws.onerror = () => {
@@ -52,6 +53,7 @@ export function useWebSocket(userId: number | undefined) {
   }, [userId]);
 
   useEffect(() => {
+    connectRef.current = connect;
     connect();
     return () => {
       if (ws) { ws.close(); ws = null; }

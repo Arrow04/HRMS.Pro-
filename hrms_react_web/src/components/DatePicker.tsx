@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import {
   format,
@@ -55,14 +55,17 @@ const DatePicker: React.FC<DatePickerProps> = ({
     return false;
   };
 
-  useEffect(() => {
+  // Reset internal state when opened (or when value changes while open)
+  const [prevOpenValue, setPrevOpenValue] = useState({ isOpen, value });
+  if (prevOpenValue.isOpen !== isOpen || prevOpenValue.value !== value) {
+    setPrevOpenValue({ isOpen, value });
     if (isOpen) {
       setTempDate(value ? new Date(value) : null);
       setCurrentMonth(value ? new Date(value) : startOfToday());
       setViewMode('month');
       setDecadeStart(Math.floor((value ? new Date(value) : new Date()).getFullYear() / 10) * 10);
     }
-  }, [isOpen, value]);
+  }
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));

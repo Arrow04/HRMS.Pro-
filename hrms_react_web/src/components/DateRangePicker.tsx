@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { 
   format, 
@@ -49,8 +49,10 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
     return Math.floor(y / 10) * 10;
   });
 
-  // Reset internal state when opened
-  useEffect(() => {
+  // Reset internal state when opened (or when range changes while open)
+  const [prevOpenValue, setPrevOpenValue] = useState({ isOpen, startDate, endDate });
+  if (prevOpenValue.isOpen !== isOpen || prevOpenValue.startDate !== startDate || prevOpenValue.endDate !== endDate) {
+    setPrevOpenValue({ isOpen, startDate, endDate });
     if (isOpen) {
       setTempStart(startDate ? new Date(startDate) : null);
       setTempEnd(endDate ? new Date(endDate) : null);
@@ -58,7 +60,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
       setViewMode('month');
       setDecadeStart(Math.floor((startDate ? new Date(startDate) : new Date()).getFullYear() / 10) * 10);
     }
-  }, [isOpen, startDate, endDate]);
+  }
 
   const handleQuickSelect = (selection: QuickSelect) => {
     setActiveQuickSelect(selection);

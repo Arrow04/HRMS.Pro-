@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState } from 'react';
 import {
   Plus, CheckCircle2, XCircle, RotateCcw, Clock, X,
   Wallet, Download, Upload, Loader2, Info, CreditCard, Settings, User
@@ -8,7 +8,7 @@ import api from '../services/api';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import toast from 'react-hot-toast';
-import { getCurrencySymbol, formatCurrency, getAppCurrency } from '../services/currencyService';
+import { getCurrencySymbol, formatCurrency } from '../services/currencyService';
 import DateRangePicker from '../components/DateRangePicker';
 import DatePicker from '../components/DatePicker';
 import SearchableSelect from '../components/SearchableSelect';
@@ -68,13 +68,12 @@ const Expenses = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('records');
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: ExpenseRow[] } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [currency, setCurrency] = useState(getAppCurrency());
+  const [currency] = useState('INR');
   const [isClosing, setIsClosing] = useState(false);
   // All backend fields for Expense model
   const [newExpense, setNewExpense] = useState({
@@ -102,12 +101,6 @@ const Expenses = () => {
     justification: '',
     notes: ''
   });
-
-  useEffect(() => {
-    setMounted(true);
-    // Set currency to INR
-    setCurrency('INR');
-  }, []);
 
   const currencySymbol = getCurrencySymbol(currency);
 
@@ -392,12 +385,7 @@ const Expenses = () => {
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  useEffect(() => {
-    if (expenses.length > 0 && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [expenses, hasLoaded]);
+  if (!hasLoaded && expenses.length > 0) setHasLoaded(true);
 
   const isInitialExpenseLoading = !hasLoaded && isFetching;
   if (isInitialExpenseLoading) {

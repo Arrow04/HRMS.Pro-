@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { LeaveApplication, LeaveBalance, Company, Department, Branch } from '../types';
 import {
   Plus, CheckCircle2, XCircle, RotateCcw, Clock, CalendarDays, CalendarCheck, Edit2, Trash2, X,
@@ -707,12 +707,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   ];
 
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  useEffect(() => {
-    if (leaves.length > 0 && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [leaves, hasLoaded]);
+  if (!hasLoaded && leaves.length > 0) setHasLoaded(true);
 
   const isInitialLeaveLoading = !hasLoaded && isFetching;
   if (isInitialLeaveLoading) {

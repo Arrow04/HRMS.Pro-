@@ -307,7 +307,6 @@ export default function PayrollConsole() {
         setExplainEmployees(Array.isArray(list) ? list : []);
       })
       .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, explainCompanyId]);
   const runPlanner = async () => {
     if (!plannerEmpId) { toast.error('Pick an employee first'); return; }

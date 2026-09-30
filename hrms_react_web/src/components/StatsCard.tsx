@@ -30,11 +30,18 @@ const COLOR_MAP: Record<string, { bg: string; text: string; icon: string; gradie
 };
 
 const useCountUp = (target: number, active: boolean, duration = 700) => {
-  const [display, setDisplay] = useState(0);
+  const [display, setDisplay] = useState(() => (active ? 0 : target));
   const prevTarget = useRef(0);
 
+  // Sync display to target immediately when counting is not active
+  const [prevSync, setPrevSync] = useState({ target, active });
+  if (prevSync.target !== target || prevSync.active !== active) {
+    setPrevSync({ target, active });
+    if (!active) setDisplay(target);
+  }
+
   useEffect(() => {
-    if (!active) { setDisplay(target); return; }
+    if (!active) return;
     const start = prevTarget.current;
     const delta = target - start;
     if (delta === 0) return;

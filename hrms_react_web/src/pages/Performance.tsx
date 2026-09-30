@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+﻿import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   Sparkles, Plus, TrendingUp, Target, Star, X, Pencil,
   CheckCircle2, Users, BarChart3, Info, RotateCcw, Loader2, Download, Upload, Settings, Trash2
@@ -1519,12 +1519,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   };
 
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  useEffect(() => {
-    if (reviews.length > 0 && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [reviews, hasLoaded]);
+  if (!hasLoaded && reviews.length > 0) setHasLoaded(true);
 
   const isInitialPerfLoading = !hasLoaded && isFetching;
   if (isInitialPerfLoading) {

@@ -120,14 +120,12 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 
   // If a default dial is provided/changes after mount (e.g. app country loads
   // async), adopt it — but only when the user hasn't picked one yet.
-  useEffect(() => {
-    if (defaultDial) {
-      setDial((prev) => {
-        const local = stripDial(value).replace(/[^\d]/g, '');
-        return local ? prev : defaultDial;
-      });
-    }
-  }, [defaultDial, value, stripDial]);
+  const [prevDefaultDial, setPrevDefaultDial] = useState(defaultDial);
+  if (defaultDial !== prevDefaultDial) {
+    setPrevDefaultDial(defaultDial);
+    const local = stripDial(value).replace(/[^\d]/g, '');
+    if (!local) setDial(defaultDial);
+  }
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -141,14 +139,13 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 
   useEffect(() => {
     if (open && searchRef.current) searchRef.current.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Keep the panel anchored while the page/modal scrolls or the window resizes.
   useEffect(() => {
     if (!open) return;
-    updatePos();
-    const onMove = () => updatePos();
+    const raf = requestAnimationFrame(() => updatePos());
+    const onMove = () => { cancelAnimationFrame(raf); requestAnimationFrame(() => updatePos()); };
     window.addEventListener('scroll', onMove, true);
     window.addEventListener('resize', onMove);
     return () => {

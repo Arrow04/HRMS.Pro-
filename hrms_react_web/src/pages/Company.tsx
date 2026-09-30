@@ -124,6 +124,10 @@ interface EmployeeListItem {
   companies?: { id: number; name: string }[];
 }
 
+// Stable module-level empty list — avoids reading a ref during render while
+// still giving memoized consumers a consistent reference.
+const EMPTY_EMPLOYEES: EmployeeListItem[] = [];
+
 // =============================================================================
 // COMPANY PAGE - FRESH REBUILD v6.0
 // Dashboard-style vibrant design with backend integration
@@ -172,7 +176,6 @@ const Company = () => {
   const employeeSearchRef = useRef<HTMLDivElement>(null);
   const [isSearchingEmployees, setIsSearchingEmployees] = useState(false);
   const [employeeSearchResults, setEmployeeSearchResults] = useState<EmployeeListItem[]>([]);
-  const stableEmptyRef = useRef<EmployeeListItem[]>([]);
 
   const currentTab = TABS.find((t) => t.id === activeTab) || TABS[0];
   
@@ -224,7 +227,7 @@ const Company = () => {
     staleTime: 10 * 60 * 1000,
     enabled: activeTab === 'departments' || showModal
   });
-  const employees = employeesData ?? stableEmptyRef.current;
+  const employees = employeesData ?? EMPTY_EMPLOYEES;
 
 
   // Fetch stats data
@@ -275,6 +278,7 @@ const Company = () => {
     staleTime: 5 * 60 * 1000
   });
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredItems = useMemo(() => {
     return items.filter((item: EntityItem) => {
       const searchTarget = activeTab === 'designations' ? item.title : item.name;
@@ -311,14 +315,22 @@ const Company = () => {
   };
 
   // Handle employee search with debounce
+  const [prevEmpSearch, setPrevEmpSearch] = useState(employeeSearch);
+  if (employeeSearch !== prevEmpSearch) {
+    setPrevEmpSearch(employeeSearch);
+    if (employeeSearch.length < 2) {
+      setEmployeeSearchResults([]);
+      setShowEmployeeDropdown(false);
+    }
+  }
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
-    
+
     if (employeeSearch.length >= 2) {
-      setIsSearchingEmployees(true);
       searchTimeoutRef.current = setTimeout(() => {
+        setIsSearchingEmployees(true);
         // Filter employees by the selected company (formData.companyId) first,
         // then by name/code search.
         const selectedCompanyId = formData.companyId ? Number(formData.companyId) : null;
@@ -338,11 +350,8 @@ const Company = () => {
         setIsSearchingEmployees(false);
         setShowEmployeeDropdown(true);
       }, 300);
-    } else {
-      setEmployeeSearchResults([]);
-      setShowEmployeeDropdown(false);
     }
-    
+
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
@@ -550,11 +559,9 @@ const Company = () => {
 
   const isInitialLoading = !hasLoaded && isFetching;
 
-  useEffect(() => {
-    if (items.length > 0 && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [items, hasLoaded]);
+  if (items.length > 0 && !hasLoaded) {
+    setHasLoaded(true);
+  }
 
   if (isInitialLoading) {
     return (

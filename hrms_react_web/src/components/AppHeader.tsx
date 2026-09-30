@@ -156,7 +156,12 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
 
   const commands = buildCommands();
 
-  useEffect(() => { setActiveIndex(0); }, [searchQuery, searchOpen]);
+  // Reset highlighted command when the query or palette visibility changes
+  const [prevSearchKey, setPrevSearchKey] = useState<[string, boolean]>([searchQuery, searchOpen]);
+  if (prevSearchKey[0] !== searchQuery || prevSearchKey[1] !== searchOpen) {
+    setPrevSearchKey([searchQuery, searchOpen]);
+    setActiveIndex(0);
+  }
 
   const filteredCommands = commands
     .map(group => ({

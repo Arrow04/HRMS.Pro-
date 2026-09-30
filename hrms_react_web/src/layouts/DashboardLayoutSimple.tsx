@@ -46,6 +46,22 @@ const DashboardLayoutSimple = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Filter sidebar links based on user permissions and role
+  const filteredLinks = useMemo(() => {
+    if (!user) return [];
+
+    return SIDEBAR_LINKS.filter((link) => {
+      // Admin/Superadmin/HR roles see all modules
+      if (['admin', 'superadmin', 'hr_admin', 'hr_manager', 'hr_executive'].includes(user.role)) {
+        return true;
+      }
+
+      // Employee roles: filter by module permissions
+      const module = ROUTE_TO_MODULE[link.path];
+      return module ? canAccessModule(module) : false;
+    });
+  }, [user, canAccessModule, hasRole]);
+
   // Redirect unauthenticated users to login
   useEffect(() => {
     if (!isLoading && !isAuthenticated && location.pathname !== '/login') {
@@ -92,22 +108,6 @@ const DashboardLayoutSimple = () => {
       </div>
     );
   }
-
-  // Filter sidebar links based on user permissions and role
-  const filteredLinks = useMemo(() => {
-    if (!user) return [];
-
-    return SIDEBAR_LINKS.filter((link) => {
-      // Admin/Superadmin/HR roles see all modules
-      if (['admin', 'superadmin', 'hr_admin', 'hr_manager', 'hr_executive'].includes(user.role)) {
-        return true;
-      }
-
-      // Employee roles: filter by module permissions
-      const module = ROUTE_TO_MODULE[link.path];
-      return module ? canAccessModule(module) : false;
-    });
-  }, [user, canAccessModule, hasRole]);
 
   const currentLabel =
     SIDEBAR_LINKS.find((l) => l.path === location.pathname)?.label || 'Dashboard';

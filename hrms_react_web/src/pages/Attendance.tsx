@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import type { Attendance as AttendanceType, Employee } from '../types';
 
 // Normalize snake_case API responses to camelCase for consistent frontend access
@@ -165,7 +165,6 @@ const Attendance = () => {
   const [quickStatus, setQuickStatus] = useState('');
   const [quickTab, setQuickTab] = useState<'attendance' | 'leave'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
-  const [, setCurrentPage] = useState(1);
   const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState('all');
@@ -174,11 +173,6 @@ const Attendance = () => {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [showManualModal, setShowManualModal] = useState(false);
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, startDate, endDate, statusFilter, companyFilter, branchFilter, departmentFilter]);
-
 
   const [, setFormTab] = useState('basic');
   const [isClosing, setIsClosing] = useState(false);
@@ -202,9 +196,8 @@ const Attendance = () => {
   const [shiftForm, setShiftForm] = useState({
     name: '', code: '', shift_type: 'morning', start_time: '09:00', end_time: '17:00',
     grace_minutes: 15, break_duration: 60, working_days: '1,2,3,4,5',
-    color: '#3B82F6', description: '', organization_id: 0, company_id: null as number | null, branch_id: null as number | null, department_id: null as number | null, status: 'active'
+    color: '#3B82F6', description: '', organization_id: 0, company_id: null as number | null, branch_id: null as number | null, department_id: null as number | null,     status: 'active'
   });
-  const [, setMounted] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const blankManualEntry = () => ({
     employeeId: '', organizationId: '', companyId: '', branchId: '', departmentId: '', shiftId: '',
@@ -222,10 +215,6 @@ const Attendance = () => {
   });
 
   const [manualEntry, setManualEntry] = useState(blankManualEntry);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // =============================================================================
   // DATA QUERIES
@@ -789,12 +778,7 @@ const Attendance = () => {
   // =============================================================================
 
   const [hasLoaded, setHasLoaded] = useState(false);
-
-  useEffect(() => {
-    if (attendanceData !== undefined && !hasLoaded) {
-      setHasLoaded(true);
-    }
-  }, [attendanceData, hasLoaded]);
+  if (!hasLoaded && attendanceData !== undefined) setHasLoaded(true);
 
   const isInitialAttendanceLoading = !hasLoaded && isFetching;
   if (isInitialAttendanceLoading) {
