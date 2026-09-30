@@ -6,5 +6,6 @@
  * and still validates everything.
  *
  * To restore every guard: set this to false. Nothing else changes.
+ * In production, this MUST be false — controlled by VITE_DEMO_MODE env var.
  */
-export const DEMO_NO_GUARDS = true;
+export const DEMO_NO_GUARDS = import.meta.env.VITE_DEMO_MODE === 'true';

@@ -533,7 +533,7 @@ const DataTable = <T,>({
                 return (
                   <tr
                     key={rk}
-                    className={`${onRowClick ? 'cursor-pointer' : ''} ${rowPad} border-b border-[var(--border-color)] ${hoverRow === rk ? 'bg:#F3F4F6' : ''}`}
+                    className={`${onRowClick ? 'cursor-pointer' : ''} ${rowPad} border-b border-[var(--border-color)] ${hoverRow === rk ? 'bg-[#F3F4F6]' : ''}`}
                     onMouseOver={() => { if (!isSel) setHoverRow(rk) }}
                     onMouseOut={() => { if (!isSel) setHoverRow(null) }}
                     onClick={() => onRowClick?.(row)}
