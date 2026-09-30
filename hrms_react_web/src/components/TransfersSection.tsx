@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, ArrowRightLeft, Calendar, Loader2, CheckCircle2, XCircle, Info, Building2, Search, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { ArrowRightLeft, Calendar, Loader2, CheckCircle2, XCircle, Info, Search, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatAppDate } from '../services/appSettingsService';
 import api from '../services/api';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import { normalizePickerEmployee } from '../utils/employeePickerUtils';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import { useMasterData } from '../hooks/useMasterData';
 import DateRangePicker from '../components/DateRangePicker';
@@ -90,6 +90,7 @@ interface TransferRecord {
   to_branch_names?: string[];
   to_department_id?: number;
   to_department_name?: string;
+  to_designation_id?: number;
   type: string;
   status: string;
   start_date: string;
@@ -214,7 +215,7 @@ const TransfersSection = ({ companiesList, branchesList, departmentsList, design
     }
   }, [showModal]);
 
-  const { data: pickerEmployees = [], isLoading: loadingEmployees } = useEmployeePicker({ status: 'active' });
+  const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
   const employees = pickerEmployees.map(normalizePickerEmployee) as EmployeeOption[];
 
   const { data: transfers = [], isLoading: loadingTransfers } = useQuery<TransferRecord[]>({
@@ -373,9 +374,9 @@ const TransfersSection = ({ companiesList, branchesList, departmentsList, design
     if (employee) {
       // An employee may belong to multiple branches — capture all of them
       const branchIds = employee.branch_ids ?? employee.branchIds ?? [];
-      const branchObjs = (employee.branches || []).length > 0
+      const branchObjs = ((employee.branches || []).length > 0
         ? employee.branches
-        : branchIds.map((id: number) => ({ id, name: allBranches?.find((b: Branch) => b.id === id)?.name }));
+        : branchIds.map((id: number) => ({ id, name: allBranches?.find((b: Branch) => b.id === id)?.name }))) ?? [];
       const primaryBranch = branchObjs.length > 0 ? branchObjs[0].id : (employee.branch_id ?? employee.branchId ?? undefined);
       setFormData({
         ...formData,
@@ -392,7 +393,6 @@ const TransfersSection = ({ companiesList, branchesList, departmentsList, design
   };
 
   const handleEditTransfer = (t: TransferRecord) => {
-    const emp = employees.find((e: EmployeeOption) => e.id === t.employee_id);
     const branchObjs = (t.from_branch_ids || (t.from_branch_id ? [t.from_branch_id] : []))
       .map((id) => ({ id, name: allBranches?.find((b: Branch) => b.id === id)?.name || '' }));
     setFormData({

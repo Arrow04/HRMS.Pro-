@@ -1,6 +1,15 @@
 ﻿import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
-import type { Employee, Company, Department, Branch, Designation, OnboardingTask, PaginatedResponse } from '../types';
+import type { Employee, Company, Department, Branch } from '../types';
 type Option = { value: string | number; label: string; code?: string; name?: string };
+
+interface OrgTreeNode {
+  id: number;
+  name?: string;
+  email?: string;
+  department?: string;
+  designation?: string;
+  directReports?: OrgTreeNode[];
+}
 import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -8,48 +17,21 @@ import {
   Plus,
   Search,
   Edit2,
-  Trash2,
   Users,
   UserCheck,
   UserX,
-  UserPlus,
-  TrendingUp,
-  TrendingDown,
-  History,
   X,
-  Download,
   Upload,
-  Loader2,
   User,
-  Heart,
-  MapPin,
-  IdCard,
-  GraduationCap,
-  Award,
-  Briefcase,
-  HeartHandshake,
-  Building2,
-  Smartphone,
-  Trophy,
-  Sparkles,
-  FileText,
-  Settings,
   CheckCircle,
-  Info,
-  FileDown,
   ArrowRightLeft,
-  Camera,
   Archive,
-  Database,
-  Clock,
   RotateCcw,
-  Banknote,
   Eye,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
 import TransfersSection from '../components/TransfersSection';
-import { format } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMasterData } from '../hooks/useMasterData';
 import { capitalizeStatus } from '../utils/statusUtils';
@@ -214,7 +196,7 @@ interface ArchivedEmployee {
 // =============================================================================
 const EmployeeManagement = () => {
   const queryClient = useQueryClient();
-  const { can, canEdit, canDelete } = usePermission();
+  const { can, canDelete } = usePermission();
 
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('active');
@@ -226,7 +208,7 @@ const EmployeeManagement = () => {
   const [archivedEndDate, setArchivedEndDate] = useState<string>('');
   const [showModal, setShowModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [expandedManagers, setExpandedManagers] = useState({});
+  const [expandedManagers, setExpandedManagers] = useState<Record<number, boolean>>({});
   const EMPTY_FORM_DATA = {
     firstName: '', lastName: '', employeeCode: '', joinDate: '', email: '', phone: '',
     companyId: '', departmentId: '', branchIds: [] as number[], designationId: '',
@@ -253,22 +235,13 @@ const EmployeeManagement = () => {
     photoUrl: '', photoFile: null,
   };
   const [formData, setFormData] = useState<OnboardingFormData>(EMPTY_FORM_DATA);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoFile] = useState<File | null>(null);
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setPhotoPreview(reader.result as string);
-    reader.readAsDataURL(file);
-    setPhotoFile(file);
-  };
   const [editingItem, setEditingItem] = useState<Employee | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
-  const [employeeFormTab, setEmployeeFormTab] = useState('basic');
+  const [, setEmployeeFormTab] = useState('basic');
   const [filterOrgId, setFilterOrgId] = useState<number | 'all'>('all');
   const [filterCompanyId, setFilterCompanyId] = useState<number | 'all'>('all');
   const [filterBranchId, setFilterBranchId] = useState<number | 'all'>('all');
@@ -276,9 +249,9 @@ const EmployeeManagement = () => {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [showBulkUpload, setShowBulkUpload] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
-  const [quickAddFormData, setQuickAddFormData] = useState<OnboardingFormData>({});
+  const [, setUploadFile] = useState<File | null>(null);
+  const [, setShowQuickAddModal] = useState(false);
+  const [, setQuickAddFormData] = useState<OnboardingFormData>({});
   const [employeeToDelete, setEmployeeToDelete] = useState<{ id: number; name: string } | null>(null);
   const [toggleConfirmTarget, setToggleConfirmTarget] = useState<Employee | null>(null);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
@@ -338,7 +311,7 @@ const EmployeeManagement = () => {
       } else {
         fromSnapshot();
       }
-    } catch (err) {
+    } catch {
       fromSnapshot();
     }
   };
@@ -361,7 +334,7 @@ const EmployeeManagement = () => {
         if (editingItem) fd.append('employeeId', String(editingItem.id));
         const res = await api.post('/employees/photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         finalFormData = { ...finalFormData, photoUrl: res.data?.photoUrl || res.data?.url || '' };
-      } catch (err) {
+      } catch {
         toast.error('Failed to upload photo');
         return;
       }
@@ -431,49 +404,47 @@ const EmployeeManagement = () => {
   const { data: stats } = useQuery({
     queryKey: ['employeeStats', filterOrgId, filterCompanyId],
     queryFn: async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filterOrgId !== 'all') params.append('organizationId', String(filterOrgId));
-        if (filterCompanyId !== 'all') params.append('companyId', String(filterCompanyId));
-        const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const params = new URLSearchParams();
+      if (filterOrgId !== 'all') params.append('organizationId', String(filterOrgId));
+      if (filterCompanyId !== 'all') params.append('companyId', String(filterCompanyId));
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-        const [total, active, inactive, newJoiners, transfers, transfersRecent, archived, archivedRecent] = await Promise.all([
-          api.get(`/employees/count?${params.toString()}`),
-          api.get(`/employees/count?status=active&${params.toString()}`),
-          api.get(`/employees/count?status=inactive&${params.toString()}`),
-          api.get(`/employees/count?joinDateAfter=${monthAgo}&${params.toString()}`),
-          api.get('/employees/transfers'),
-          api.get('/employees/transfers'),
-          api.get('/archived-employees'),
-          api.get('/archived-employees'),
-        ]);
+      const [total, active, inactive, newJoiners, transfers, , archived] = await Promise.all([
+        api.get(`/employees/count?${params.toString()}`),
+        api.get(`/employees/count?status=active&${params.toString()}`),
+        api.get(`/employees/count?status=inactive&${params.toString()}`),
+        api.get(`/employees/count?joinDateAfter=${monthAgo}&${params.toString()}`),
+        api.get('/employees/transfers'),
+        api.get('/employees/transfers'),
+        api.get('/archived-employees'),
+        api.get('/archived-employees'),
+      ]);
 
-        const transferList = Array.isArray(transfers.data) ? transfers.data : [];
-        const archivedList = Array.isArray(archived.data) ? archived.data : [];
+      const transferList = Array.isArray(transfers.data) ? transfers.data : [];
+      const archivedList = Array.isArray(archived.data) ? archived.data : [];
 
-        const transferRecent = transferList.filter((t: { created_at?: string }) => {
-          const d = new Date(t.created_at || '');
-          return !isNaN(d.getTime()) && d.getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000;
-        }).length;
-        const archivedRecentCount = archivedList.filter((a: { archiveDate?: string }) => {
-          const d = new Date(a.archiveDate || '');
-          return !isNaN(d.getTime()) && d.getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000;
-        }).length;
+      const transferRecent = transferList.filter((t: { created_at?: string }) => {
+        const d = new Date(t.created_at || '');
+        return !isNaN(d.getTime()) && d.getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000;
+      }).length;
+      const archivedRecentCount = archivedList.filter((a: { archiveDate?: string }) => {
+        const d = new Date(a.archiveDate || '');
+        return !isNaN(d.getTime()) && d.getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000;
+      }).length;
 
-        const pct = (recent: number, totalCount: number) => totalCount > 0 ? Math.round((recent / totalCount) * 100) : 0;
+      const pct = (recent: number, totalCount: number) => totalCount > 0 ? Math.round((recent / totalCount) * 100) : 0;
 
-        return {
-          total: total.data?.count || 0,
-          active: active.data?.count || 0,
-          inactive: inactive.data?.count || 0,
-          newJoiners: newJoiners.data?.count || 0,
-          transfersTotal: transferList.length,
-          transfersRecent: pct(transferRecent, transferList.length),
-          archivedTotal: archivedList.length,
-          archivedRecent: pct(archivedRecentCount, archivedList.length),
-          activeTrend: pct(newJoiners.data?.count || 0, active.data?.count || 0),
-        };
-      } catch (error) { throw error; }
+      return {
+        total: total.data?.count || 0,
+        active: active.data?.count || 0,
+        inactive: inactive.data?.count || 0,
+        newJoiners: newJoiners.data?.count || 0,
+        transfersTotal: transferList.length,
+        transfersRecent: pct(transferRecent, transferList.length),
+        archivedTotal: archivedList.length,
+        archivedRecent: pct(archivedRecentCount, archivedList.length),
+        activeTrend: pct(newJoiners.data?.count || 0, active.data?.count || 0),
+      };
     },
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -483,7 +454,7 @@ const EmployeeManagement = () => {
   const { masterData, organizationalData } = useEmployeeData(filterOrgId, filterCompanyId, formData.companyId ?? '', isSuperAdmin);
   const { genderOptions, statusOptions, bloodGroupOptions, employmentTypeOptions, maritalStatusOptions, educationLevelOptions, deviceTypeOptions, activityTypeOptions } = masterData;
   const { data: exitTypeOptions = [] } = useMasterData('EXIT_TYPE');
-  const { organizationsList, companiesList, branchesList, departmentsList, designations, loadingDesignations } = organizationalData;
+  const { organizationsList, companiesList, branchesList, departmentsList, designations } = organizationalData;
 
   // Main Data Query with pagination
   const [page, setPage] = useState(1);
@@ -493,38 +464,36 @@ const EmployeeManagement = () => {
   const { data: employeesResponse, isLoading: loadingEmployees, isFetching } = useQuery({
     queryKey: ['employees', activeTab, filterOrgId, filterCompanyId, filterBranchId, filterDepartmentId, showDeleted, page, limit, deferredSearch],
     queryFn: async () => {
-      try {
-        const params: Record<string, unknown> = {
-          page,
-          limit,
-          view: 'summary',
-        };
-        if (deferredSearch.trim()) params.search = deferredSearch.trim();
-        if (filterOrgId !== 'all') params.organizationId = filterOrgId;
-        if (filterCompanyId !== 'all') params.companyId = filterCompanyId;
-        if (filterBranchId !== 'all') params.branchId = filterBranchId;
-        if (filterDepartmentId !== 'all') params.departmentId = filterDepartmentId;
-        if (showDeleted) params.includeDeleted = true;
-        if (activeTab === 'active') params.status = 'active';
-        if (activeTab === 'inactive') params.status = 'inactive';
-        if (activeTab === 'new') {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          params.joinDateAfter = thirtyDaysAgo.toISOString().split('T')[0];
-        }
+      const params: Record<string, unknown> = {
+        page,
+        limit,
+        view: 'summary',
+      };
+      if (deferredSearch.trim()) params.search = deferredSearch.trim();
+      if (filterOrgId !== 'all') params.organizationId = filterOrgId;
+      if (filterCompanyId !== 'all') params.companyId = filterCompanyId;
+      if (filterBranchId !== 'all') params.branchId = filterBranchId;
+      if (filterDepartmentId !== 'all') params.departmentId = filterDepartmentId;
+      if (showDeleted) params.includeDeleted = true;
+      if (activeTab === 'active') params.status = 'active';
+      if (activeTab === 'inactive') params.status = 'inactive';
+      if (activeTab === 'new') {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        params.joinDateAfter = thirtyDaysAgo.toISOString().split('T')[0];
+      }
 
-        const response = await api.get('/employees', { params });
-        const respData = response.data;
-        const items = respData?.data || respData?.items || [];
-        const paginationMeta = respData?.pagination || {};
-        return {
-          items: normalizeArray(items),
-          page: paginationMeta.page || page,
-          size: paginationMeta.limit || limit,
-          total: paginationMeta.total ?? items.length,
-          pages: paginationMeta.pages || Math.ceil((paginationMeta.total ?? items.length) / (paginationMeta.limit || limit)),
-        };
-      } catch (error) { throw error; }
+      const response = await api.get('/employees', { params });
+      const respData = response.data;
+      const items = respData?.data || respData?.items || [];
+      const paginationMeta = respData?.pagination || {};
+      return {
+        items: normalizeArray(items),
+        page: paginationMeta.page || page,
+        size: paginationMeta.limit || limit,
+        total: paginationMeta.total ?? items.length,
+        pages: paginationMeta.pages || Math.ceil((paginationMeta.total ?? items.length) / (paginationMeta.limit || limit)),
+      };
     },
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -554,10 +523,10 @@ const EmployeeManagement = () => {
     setExpandedManagers((prev) => ({ ...prev, [managerId]: !prev[managerId] }));
   };
 
-  const filterOrgTree = (nodes: any[], q: string): any[] => {
+  const filterOrgTree = (nodes: OrgTreeNode[], q: string): OrgTreeNode[] => {
     if (!q.trim()) return nodes;
     const lower = q.toLowerCase();
-    return nodes.reduce((acc: any[], node: any) => {
+    return nodes.reduce((acc: OrgTreeNode[], node: OrgTreeNode) => {
       const nodeMatches = `${node.name || ''} ${node.email || ''} ${node.department || ''} ${node.designation || ''}`.toLowerCase().includes(lower);
       const filteredReports = filterOrgTree(node.directReports || [], q);
       if (nodeMatches || filteredReports.length > 0) {
@@ -569,7 +538,7 @@ const EmployeeManagement = () => {
 
   const filteredOrg = useMemo(() => filterOrgTree(orgStructure, search), [orgStructure, search]);
 
-  const renderOrgNode = (node: any, level = 0): JSX.Element => {
+  const renderOrgNode = (node: OrgTreeNode, level = 0): React.ReactElement => {
     const hasReports = node.directReports && node.directReports.length > 0;
     const isExpanded = expandedManagers[node.id];
     const initials = (node.name || '')
@@ -604,7 +573,7 @@ const EmployeeManagement = () => {
         </div>
         {isExpanded && hasReports && (
           <div>
-            {node.directReports.map((child: any) => renderOrgNode(child, level + 1))}
+            {node.directReports?.map((child) => renderOrgNode(child, level + 1))}
           </div>
         )}
       </div>
@@ -748,7 +717,7 @@ const EmployeeManagement = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   }, []);
@@ -871,17 +840,6 @@ const EmployeeManagement = () => {
       toast.error(apiErr.response?.data?.detail || 'Failed to initiate exit');
     },
   });
-
-  const handleInitiateExit = (item: Employee) => {
-    setExitForm({
-      exitType: 'resigned',
-      exitDate: new Date().toISOString().split('T')[0],
-      lastWorkingDay: new Date().toISOString().split('T')[0],
-      reason: '',
-    });
-    setSelectedEmployee(item);
-    setShowExitModal(true);
-  };
 
   const handleExitSubmit = () => {
     if (!selectedEmployee) return;
@@ -1065,7 +1023,7 @@ const EmployeeManagement = () => {
                 <div className="text-center py-12 text-[var(--text-tertiary)]">No reporting hierarchy configured yet.</div>
               ) : (
                 <div className="space-y-2">
-                  {filteredOrg.map((node: any) => renderOrgNode(node, 0))}
+                  {filteredOrg.map((node) => renderOrgNode(node, 0))}
                 </div>
               )}
             </div>
@@ -1158,7 +1116,7 @@ const EmployeeManagement = () => {
                   render: (a: ArchivedEmployee) => {
                     const t = (a.exitType || '').toLowerCase();
                     const cls = t === 'resignation' ? 'bg-[#EFF6FF] text-[#1D4ED8] border-[#BFDBFE]' : t === 'termination' ? 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]' : t === 'retirement' ? 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]' : 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]';
-                    return <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${cls}`}>{capitalizeStatus(a.exitType)}</span>;
+                    return <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${cls}`}>{capitalizeStatus(a.exitType || '')}</span>;
                   },
                   sortValue: (a: ArchivedEmployee) => a.exitType,
                 },

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Building2, Users, CalendarCheck, Clock, FileText,
   Settings, LogOut, Building, Briefcase, Palmtree,
-  FileBarChart, CreditCard, TrendingUp, Shield, Database,
+  FileBarChart, CreditCard, TrendingUp,
   Menu
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';

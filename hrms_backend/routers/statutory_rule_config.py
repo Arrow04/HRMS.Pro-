@@ -70,6 +70,122 @@ def list_categories(
     return [r[0] for r in rows]
 
 
+# ── Rule type catalog ──────────────────────────────────────────────────
+# Structure only: field keys mirror the rule engine's definition schema.
+# Every default, help text and notification reference is read from
+# statutory_rule_configs at request time, so a change in the law is a
+# config edit — never a code change. Org-specific rows override globals.
+
+RULE_TYPE_CATALOG: List[dict] = [
+    {
+        "value": "pf_contribution",
+        "label": "PF contribution",
+        "fields": [
+            {"key": "rate", "label": "Employee rate", "kind": "number", "rule_key": "pf_employee_rate"},
+            {"key": "wage_ceiling", "label": "PF wage ceiling", "kind": "number", "rule_key": "pf_wage_ceiling"},
+            {"key": "max_monthly", "label": "Max monthly (cap)", "kind": "number", "rule_key": "pf_max_monthly"},
+            {"key": "eps_rate", "label": "EPS rate", "kind": "number", "rule_key": "eps_employer_rate"},
+            {"key": "eps_wage_ceiling", "label": "EPS wage ceiling", "kind": "number", "rule_key": "eps_wage_ceiling"},
+            {"key": "edli_rate", "label": "EDLI rate", "kind": "number", "rule_key": "pf_edli_rate"},
+            {"key": "edli_max", "label": "EDLI max", "kind": "number", "rule_key": "pf_edli_max_monthly"},
+            {"key": "admin_rate", "label": "Admin charges", "kind": "number", "rule_key": "pf_admin_rate"},
+            {"key": "admin_min", "label": "Admin min", "kind": "number", "rule_key": "pf_admin_min_monthly"},
+        ],
+    },
+    {
+        "value": "esi_contribution",
+        "label": "ESI contribution",
+        "fields": [
+            {"key": "employee_rate", "label": "Employee rate", "kind": "number", "rule_key": "esi_employee_rate"},
+            {"key": "employer_rate", "label": "Employer rate", "kind": "number", "rule_key": "esi_employer_rate"},
+            {"key": "gross_ceiling", "label": "Gross ceiling", "kind": "number", "rule_key": "esi_gross_ceiling"},
+            {"key": "disabled_ceiling", "label": "Gross ceiling (disability)", "kind": "number", "rule_key": "esi_disabled_ceiling"},
+        ],
+    },
+    {
+        "value": "pf_exclusion",
+        "label": "PF exclusion (opt-out)",
+        "fields": [
+            {"key": "enabled", "label": "Exclusion enabled", "kind": "bool", "default": True},
+            {"key": "wage_threshold", "label": "Basic wage threshold", "kind": "number", "rule_key": "pf_min_basic_for_exclusion"},
+            {"key": "exclude_both", "label": "Exclude PF and EPS", "kind": "bool", "default": True},
+        ],
+    },
+    {
+        "value": "bonus",
+        "label": "Statutory bonus",
+        "fields": [
+            {"key": "applicable", "label": "Bonus applicable", "kind": "bool", "default": True},
+            {"key": "min_rate", "label": "Minimum rate", "kind": "number", "rule_key": "bonus_min_rate"},
+            {"key": "wage_ceiling", "label": "Wage calculation cap", "kind": "number", "rule_key": "bonus_wage_ceiling"},
+        ],
+    },
+    {
+        "value": "gratuity",
+        "label": "Gratuity provision",
+        "fields": [
+            {"key": "applicable", "label": "Gratuity applicable", "kind": "bool", "default": True},
+            {"key": "rate", "label": "Monthly accrual rate", "kind": "number", "rule_key": "gratuity_rate"},
+        ],
+    },
+    {"value": "professional_tax", "label": "Professional tax (slabs)", "isJson": True, "fields": []},
+    {"value": "tax_slab", "label": "Income tax slabs", "isJson": True, "fields": []},
+    {"value": "overtime", "label": "Overtime", "fields": [
+        {"key": "multiplier", "label": "OT multiplier", "kind": "number"},
+        {"key": "threshold_hours", "label": "Daily threshold hours", "kind": "number"},
+    ]},
+    {"value": "custom", "label": "Custom (JSON)", "isJson": True, "fields": []},
+]
+
+
+@router.get("/catalog")
+def rule_type_catalog(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rule types + form fields for the dated-rule builder.
+
+    Values, help text and notification references come from
+    statutory_rule_configs (org rows override global defaults).
+    """
+    q = db.query(StatutoryRuleConfig).filter(StatutoryRuleConfig.status == 'active')
+    if current_user.organization_id:
+        q = q.filter(
+            (StatutoryRuleConfig.organization_id == current_user.organization_id)
+            | (StatutoryRuleConfig.organization_id.is_(None))
+        )
+    cfg = {}
+    for row in q.all():
+        existing = cfg.get(row.rule_key)
+        if existing is None or (existing.organization_id is None and row.organization_id is not None):
+            cfg[row.rule_key] = row
+
+    out = []
+    for rt in RULE_TYPE_CATALOG:
+        fields = []
+        for f in rt.get("fields", []):
+            row = cfg.get(f.get("rule_key"))
+            fields.append({
+                "key": f["key"],
+                "label": f["label"],
+                "kind": f.get("kind", "number"),
+                "unit": (row.unit if row and row.unit else f.get("unit")),
+                "default": (row.current_value if row and row.current_value is not None else f.get("default")),
+                "help": (row.description if row and row.description else f.get("help")),
+                "standardValue": (row.standard_value if row else f.get("standardValue")),
+                "notificationRef": (row.notification_ref if row else None),
+                "legalBasis": (row.legal_basis if row else None),
+                "effectiveDate": (str(row.effective_date) if row and row.effective_date else None),
+            })
+        out.append({
+            "value": rt["value"],
+            "label": rt["label"],
+            "isJson": bool(rt.get("isJson", False)),
+            "fields": fields,
+        })
+    return {"ruleTypes": out}
+
+
 # ── PUT (bulk upsert) ──────────────────────────────────────────────────
 
 @router.put("")

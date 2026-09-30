@@ -4,13 +4,11 @@ import { fetchEmployeePickerList } from './employeeListService';
 
 // Resolve the current employee's profile (by their user id)
 export const getMyEmployee = async () => {
-  let uid: number | null = null;
   let email: string | null = null;
   try {
     const stored = localStorage.getItem('user');
     if (stored) {
       const u = JSON.parse(stored);
-      if (u.id != null) uid = Number(u.id);
       if (u.email) email = u.email;
     }
   } catch { /* ignore */ }

@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import {
   Crown, CreditCard, CalendarClock, Check, Loader2, CheckCircle2,
-  Banknote, ShieldCheck, Zap, Users, FileText
+  Banknote, ShieldCheck, Users, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
@@ -64,6 +64,10 @@ interface InvoiceRecord {
   paid_date: string | null;
 }
 
+interface ApiError {
+  response?: { data?: { detail?: string } };
+}
+
 const PAY_METHODS = [
   { id: 'card', label: 'Card', icon: CreditCard },
   { id: 'upi', label: 'UPI', icon: Banknote },
@@ -115,7 +119,7 @@ const BillingPanel = () => {
       setPayments(payRes.data || []);
       setInvoices(invRes.data || []);
       setPayMethods(pmRes.data || null);
-    } catch (e) {
+    } catch {
       toast.error('Failed to load billing information');
     } finally {
       setLoading(false);
@@ -135,8 +139,8 @@ const BillingPanel = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (e: any) {
-      toast.error(e.response?.data?.detail || 'Failed to download invoice');
+    } catch (e) {
+      toast.error((e as ApiError).response?.data?.detail || 'Failed to download invoice');
     }
   };
 
@@ -156,8 +160,8 @@ const BillingPanel = () => {
       });
       toast.success(res.data?.message || 'Payment successful');
       await load();
-    } catch (e: any) {
-      toast.error(e.response?.data?.detail || 'Payment failed');
+    } catch (e) {
+      toast.error((e as ApiError).response?.data?.detail || 'Payment failed');
     } finally {
       setPaying(false);
     }

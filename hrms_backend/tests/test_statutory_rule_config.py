@@ -82,3 +82,67 @@ class TestStatutoryRuleConfig:
         # ₹176 × 26 = ₹4,576/month → monthly_gross ≤ 4576 is exempt
         assert esi_employee_exempt(4576.0, db_session) is True
         assert esi_employee_exempt(4577.0, db_session) is False
+
+
+class TestRuleTypeCatalog:
+    """GET /api/statutory-rules/catalog — form structure with values from the DB."""
+
+    def test_catalog_prefills_come_from_config(self, client, admin_token, db_session):
+        from models import StatutoryRuleConfig
+        db_session.add(StatutoryRuleConfig(
+            organization_id=None, category='pf', rule_key='pf_wage_ceiling',
+            label='PF Wage Ceiling', standard_value='₹25,000/month',
+            current_value=25000.0, unit='money',
+            notification_ref='S.O. 5109(E)', status='active',
+        ))
+        db_session.flush()
+
+        r = client.get('/api/statutory-rules/catalog',
+                       headers={'Authorization': f'Bearer {admin_token}'})
+        assert r.status_code == 200
+        types = {t['value']: t for t in r.json()['ruleTypes']}
+        # Engine-backed rule types + JSON fallback are all present
+        for expected in ('pf_contribution', 'esi_contribution', 'pf_exclusion',
+                         'bonus', 'gratuity', 'custom'):
+            assert expected in types, f'missing rule type {expected}'
+        assert types['custom']['isJson'] is True
+        assert types['pf_contribution']['isJson'] is False
+
+        fields = {f['key']: f for f in types['pf_contribution']['fields']}
+        assert fields['wage_ceiling']['default'] == 25000.0
+        assert fields['wage_ceiling']['unit'] == 'money'
+        assert fields['wage_ceiling']['notificationRef'] == 'S.O. 5109(E)'
+        # Keys must match what the rule engine reads
+        assert {'rate', 'wage_ceiling', 'max_monthly', 'eps_rate'} <= set(fields)
+
+    def test_catalog_org_row_overrides_global(self, client, admin_token, db_session):
+        from models import StatutoryRuleConfig, User
+        admin = db_session.query(User).filter(
+            User.email == 'admin@hrms.com').first()
+        db_session.add(StatutoryRuleConfig(
+            organization_id=None, category='pf', rule_key='pf_max_monthly',
+            label='PF Max (global)', current_value=1800.0, unit='money',
+            status='active',
+        ))
+        db_session.add(StatutoryRuleConfig(
+            organization_id=admin.organization_id, category='pf',
+            rule_key='pf_max_monthly', label='PF Max (org)',
+            current_value=3000.0, unit='money', status='active',
+        ))
+        db_session.flush()
+
+        r = client.get('/api/statutory-rules/catalog',
+                       headers={'Authorization': f'Bearer {admin_token}'})
+        assert r.status_code == 200
+        types = {t['value']: t for t in r.json()['ruleTypes']}
+        fields = {f['key']: f for f in types['pf_contribution']['fields']}
+        assert fields['max_monthly']['default'] == 3000.0
+
+    def test_catalog_bool_defaults_without_config(self, client, admin_token):
+        r = client.get('/api/statutory-rules/catalog',
+                       headers={'Authorization': f'Bearer {admin_token}'})
+        assert r.status_code == 200
+        types = {t['value']: t for t in r.json()['ruleTypes']}
+        fields = {f['key']: f for f in types['pf_exclusion']['fields']}
+        assert fields['enabled']['kind'] == 'bool'
+        assert fields['enabled']['default'] is True

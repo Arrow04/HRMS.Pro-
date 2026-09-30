@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Clock, LogIn, LogOut, MapPin, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee, checkIn, checkOut, getMyAttendanceToday } from '../../services/employeeSelfService';
 import { formatAppDate } from '../../services/appSettingsService';
 
 const EmployeeAttendance = () => {
-  const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [active, setActive] = useState<Record<string, unknown> | null>(null);
   const [history, setHistory] = useState<Record<string, unknown>[]>([]);

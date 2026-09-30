@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, MoreVertical, X, Download, FileDown, Columns3, Rows3, Pencil, Trash2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, Download, FileDown, Columns3, Rows3, Pencil, Trash2 } from 'lucide-react';
 import HistoryModal from './HistoryModal';
 
 export interface DataTableColumn<T> {
@@ -31,7 +31,7 @@ export interface ServerPaginationConfig {
 export interface BulkAction<T> {
   label: string;
   icon?: React.ElementType;
-  variant?: 'primary' | 'danger' | 'success' | 'ghost' | 'amber';
+  variant?: 'primary' | 'danger' | 'success' | 'ghost' | 'amber' | 'default' | 'cyan' | 'orange' | 'slate' | 'indigo';
   onAction: (selected: T[]) => void;
   /** when provided, the button is disabled if this returns true */
   disabled?: (selected: T[]) => boolean;
@@ -77,18 +77,6 @@ interface DataTableProps<T> {
   /** Server-driven pagination — skips client slice; parent fetches each page */
   serverPagination?: ServerPaginationConfig;
 }
-
-const VARIANTS: Record<string, string> = {
-  primary: 'bg-[#1C64F2] text-white hover:bg-[#1E40AF]',
-  danger: 'bg-[#DC2626] text-white hover:bg-[#B91C1C]',
-  success: 'bg-[#10B981] text-white hover:bg-[#059669]',
-  ghost: 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]',
-  amber: 'bg-[#F59E0B] text-white hover:bg-[#D97706]',
-  orange: 'bg-[#F97316] text-white hover:bg-[#EA580C]',
-  slate: 'bg-[#64748B] text-white hover:bg-[#475569]',
-  cyan: 'bg-cyan-500 text-white hover:bg-cyan-600',
-  indigo: 'bg-indigo-500 text-white hover:bg-indigo-600',
-};
 
 const DataTable = <T,>({
   columns,
@@ -149,7 +137,7 @@ const DataTable = <T,>({
     }
     return new Set();
   });
-  const [hoverRow, setHoverRow] = useState<number | null>(null);
+  const [hoverRow, setHoverRow] = useState<string | null>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
 
@@ -451,7 +439,7 @@ const DataTable = <T,>({
       {selectedRows.length > 0 && allBulkActions.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 bg-[#EFF6FF] border-b border-[#BFDBFE]">
           <span className="text-xs font-semibold text-[#1D4ED8] mr-2">{selectedRows.length} selected</span>
-          {allBulkActions.map((action, i) => {
+          {allBulkActions.map((action) => {
             const Icon = action.icon;
             const isDisabled = action.disabled?.(selectedRows);
             const variantCls = action.variant === 'danger'
@@ -540,8 +528,8 @@ const DataTable = <T,>({
                   <tr
                     key={rk}
                     className={`${onRowClick ? 'cursor-pointer' : ''} ${rowPad} border-b border-[var(--border-color)] ${hoverRow === rk ? 'bg:#F3F4F6' : ''}`}
-                    onMouseOver={(e) => { if (!isSel) setHoverRow(rk) }}
-                    onMouseOut={(e) => { if (!isSel) setHoverRow(null) }}
+                    onMouseOver={() => { if (!isSel) setHoverRow(rk) }}
+                    onMouseOut={() => { if (!isSel) setHoverRow(null) }}
                     onClick={() => onRowClick?.(row)}
                   >
                     {selectableEnabled && (

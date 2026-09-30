@@ -1,15 +1,15 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Pencil, Trash2, Loader2, X, SlidersHorizontal, Target, Award, Star,
-  BookOpen, MessageSquare, ChevronDown, ChevronUp, CheckCircle2, Save,
+  Plus, Pencil, Trash2, Loader2, X, SlidersHorizontal, Target, Star,
+  MessageSquare, ChevronDown, ChevronUp, CheckCircle2, Save,
   CalendarDays, BarChart3, Layers, FileText,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
-import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import type { Company } from '../types';
 
 interface ApiErrorLike { response?: { data?: { detail?: string } } }
 function errMsg(err: unknown, fallback: string) {
@@ -43,9 +43,15 @@ const RATING_TEMPLATES: Record<string, { label: string; ratings: { value: number
 const COMPETENCY_TEMPLATES: { name: string; description: string; weight: number }[] = [];
 const GOAL_TEMPLATES: { name: string; description: string }[] = [];
 
-interface PerformanceConfigProps {
-  open?: boolean;
-  onClose?: () => void;
+interface SaveResponse {
+  message?: string;
+}
+
+interface ConfigListItem extends Partial<PageState> {
+  id: number;
+  status?: string;
+  company_id?: number | null;
+  data?: Partial<PageState>;
 }
 
 // ── Types ──
@@ -226,20 +232,6 @@ function WizardSectionCard({ title, icon: Icon, children }: { title: string; ico
   );
 }
 
-function StatBox({ label, value, icon: Icon }: { label: string; value: number | string; icon: LucideIcon }) {
-  return (
-    <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 flex items-center gap-3">
-      <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center">
-        <Icon className="w-4 h-4 text-[#8B5CF6]" />
-      </div>
-      <div>
-        <div className="text-xl font-bold text-[var(--text-primary)]">{value}</div>
-        <div className="text-xs text-[var(--text-tertiary)]">{label}</div>
-      </div>
-    </div>
-  );
-}
-
 // ── Wizard tabs ──
 
 const WIZARD_TABS = [
@@ -260,12 +252,11 @@ const WIZARD_HELP: Record<string, string> = {
 
 // ── Main component ──
 
-export default function PerformanceConfig({ open, onClose }: PerformanceConfigProps) {
+export default function PerformanceConfig() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
   const [step, setStep] = useState(0);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingType, setEditingType] = useState<string | null>(null);
+  const [, setEditingId] = useState<number | null>(null);
+  const [, setEditingType] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [editingConfigId, setEditingConfigId] = useState<number | null>(null);
@@ -274,7 +265,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<Company[]>('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
     enabled: true,
   });
@@ -284,7 +275,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     queryFn: async () => {
       try {
         const params = companyId ? { companyId } : {};
-        const r = await api.get('/settings/configs/performance', { params });
+        const r = await api.get<ConfigListItem | ConfigListItem[]>('/settings/configs/performance', { params });
         return Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
       } catch { return []; }
     },
@@ -293,11 +284,11 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
   const saveMutation = useMutation({
     mutationFn: async (state: PageState) => {
       if (editingConfigId) {
-        return api.put(`/settings/configs/performance/${editingConfigId}`, state, { params: companyId ? { companyId } : {} });
+        return api.put<SaveResponse>(`/settings/configs/performance/${editingConfigId}`, state, { params: companyId ? { companyId } : {} });
       }
-      return api.post('/settings/configs/performance', state, { params: companyId ? { companyId } : {} });
+      return api.post<SaveResponse>('/settings/configs/performance', state, { params: companyId ? { companyId } : {} });
     },
-    onSuccess: (res: any) => {
+    onSuccess: (res) => {
       toast.success(res?.data?.message || 'Performance configuration saved');
       queryClient.invalidateQueries({ queryKey: ['performance-config'] });
       queryClient.invalidateQueries({ queryKey: ['performance-configs'] });
@@ -311,8 +302,8 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
 
   const deleteMutation = useMutation({
     mutationFn: async ({ id, type }: { id: number; type: string }) =>
-      api.delete(`/settings/configs/performance/${id}`, { data: { type } }),
-    onSuccess: (res: any) => {
+      api.delete<SaveResponse>(`/settings/configs/performance/${id}`, { data: { type } }),
+    onSuccess: (res) => {
       toast.success(res?.data?.message || 'Deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['performance-config'] });
       queryClient.invalidateQueries({ queryKey: ['performance-configs'] });
@@ -355,7 +346,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
   const addScale = () => setS({ ratingScales: [...pageState.ratingScales, defaultRatingScale()] });
   const removeScale = (i: number) => setS({ ratingScales: pageState.ratingScales.filter((_, idx) => idx !== i) });
   const editScale = (i: number) => { setEditingId(pageState.ratingScales[i].id ?? null); setEditingType('ratingScale'); };
-  const applyTemplate = (_i: number, _templateKey: string) => {
+  const applyTemplate: (scaleIdx: number, templateKey: string) => void = () => {
     // Templates removed — users create from scratch
   };
 
@@ -371,6 +362,11 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
   const removeRatingRow = (scaleIdx: number, ratingIdx: number) => {
     const scale = pageState.ratingScales[scaleIdx];
     setScale(scaleIdx, { ratings: scale.ratings.filter((_, idx) => idx !== ratingIdx) });
+  };
+  const saveScale = (i: number) => {
+    const s = pageState.ratingScales[i];
+    if (!s.name.trim()) { toast.error('Scale name is required'); return; }
+    saveMutation.mutate(pageState);
   };
 
   // ── Competency helpers ──
@@ -395,7 +391,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     const cat = pageState.competencyCategories[catIdx];
     setCategory(catIdx, { competencies: cat.competencies.filter((_, idx) => idx !== itemIdx) });
   };
-  const applyCompetencyTemplate = (i: number, templateName: string) => {
+  const applyCompetencyTemplate: (categoryIdx: number, templateName: string) => void = () => {
     // Templates removed — users create from scratch
   };
 
@@ -426,7 +422,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
     const cat = pageState.goalCategories[catIdx];
     setGoalCategory(catIdx, { kras: cat.kras.filter((_, idx) => idx !== kraIdx) });
   };
-  const applyGoalTemplate = (_i: number, _templateName: string) => {
+  const applyGoalTemplate: (categoryIdx: number, templateName: string) => void = () => {
     // Templates removed — users create from scratch
   };
 
@@ -484,7 +480,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
             {companies.length > 1 && (
               <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
                 <option value="">All Companies</option>
-                {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             )}
             <button onClick={() => { setShowWizard(true); setEditingConfigId(null); setPageState(defaultState()); setStep(0); }}
@@ -504,8 +500,8 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {configsList.map((cfg: any) => {
-              const d = cfg.data || cfg;
+            {configsList.map((cfg) => {
+              const d: Partial<PageState> = cfg.data || cfg;
               return (
               <div key={cfg.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between mb-3">
@@ -518,11 +514,11 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                   </span>
                 </div>
                 <div className="space-y-1.5 text-xs text-[var(--text-tertiary)]">
-                  {cfg.company_id && <p>Company: {companies.find((c: any) => c.id === cfg.company_id)?.name || '—'}</p>}
-                  {(d.reviewCycles || []).length > 0 && <p>{d.reviewCycles.length} review cycle(s)</p>}
-                  {(d.ratingScales || []).length > 0 && <p>{d.ratingScales.length} rating scale(s)</p>}
-                  {(d.competencyCategories || []).length > 0 && <p>{d.competencyCategories.length} competency categories</p>}
-                  {(d.goalCategories || []).length > 0 && <p>{d.goalCategories.length} goal categories</p>}
+                  {cfg.company_id && <p>Company: {companies.find((c) => c.id === cfg.company_id)?.name || '—'}</p>}
+                  {(d.reviewCycles || []).length > 0 && <p>{(d.reviewCycles || []).length} review cycle(s)</p>}
+                  {(d.ratingScales || []).length > 0 && <p>{(d.ratingScales || []).length} rating scale(s)</p>}
+                  {(d.competencyCategories || []).length > 0 && <p>{(d.competencyCategories || []).length} competency categories</p>}
+                  {(d.goalCategories || []).length > 0 && <p>{(d.goalCategories || []).length} goal categories</p>}
                 </div>
                 <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--border-color)]">
                   <button onClick={() => { setEditingConfigId(cfg.id); setPageState({ ...defaultState(), ...(cfg.data || cfg) }); setCompanyId(cfg.company_id || null); setShowWizard(true); setStep(0); setEditingId(null); setEditingType(null); }}
@@ -608,7 +604,7 @@ export default function PerformanceConfig({ open, onClose }: PerformanceConfigPr
                       <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)}
                         className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#8B5CF6] bg-white text-[var(--text-primary)]">
                         <option value="">All Companies (Org-wide)</option>
-                        {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     ) : (
                       <input className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-gray-50 text-[var(--text-tertiary)]" value={companies[0]?.name || 'Org-wide'} disabled />

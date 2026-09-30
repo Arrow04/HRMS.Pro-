@@ -1,12 +1,12 @@
 ﻿import React, { useState, useEffect } from 'react';
-import type { Asset, Employee } from '../types';
+import type { Asset } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   Laptop, Monitor, Smartphone, Tablet, Headphones, Printer,
-  Plus, Search, User, Tag, Edit2, Edit3, Trash2, CheckCircle, XCircle, Upload, Download,
-  List, X, AlertTriangle, ClipboardList, Wrench, DollarSign, BarChart3, Loader2,
-  TrendingDown, Calendar, Gauge, PieChart, ShieldCheck, Info, UserPlus, Undo2, Wallet
+  Plus, User, Edit2, Edit3, Trash2, CheckCircle, XCircle, Upload, Download,
+  List, X, AlertTriangle, ClipboardList, Wrench, Loader2,
+  TrendingDown, Gauge, ShieldCheck, UserPlus, Wallet
 } from 'lucide-react';
 import api, { getErrorMessage } from '../services/api';
 import { formatAppDate } from '../services/appSettingsService';
@@ -22,24 +22,14 @@ import Modal from '../components/Modal';
 import EmptyState from '../components/EmptyState';
 import BulkDeleteModal from '../components/BulkDeleteModal';
 import { useUndoDelete } from '../hooks/useUndoDelete';
-import { normalizeArray } from '../utils/normalize';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, toEmployeeSelectOptions, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
 import type { EmployeePickerItem } from '../services/employeeListService';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import { calcDepreciation, formatCurrencyRs } from '../utils/depreciation';
 import Tooltip from '../components/Tooltip';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
-
-type EmployeeWithLegacy = Employee & {
-  first_name?: string;
-  last_name?: string;
-  company_id?: number;
-  branch_ids?: number[];
-  branchId?: number;
-  department_id?: number;
-};
 
 type AssetPayload = Omit<Partial<Asset>, 'employeeId'> & { employeeId?: number | null };
 
@@ -91,7 +81,6 @@ export default function AssetManagement() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [assignSelections, setAssignSelections] = useState<Record<number, string>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -126,7 +115,7 @@ export default function AssetManagement() {
 
   const { data: assetTypeOptions = [] } = useMasterData('ASSET_TYPE');
   const { data: assetStatusOptions = [] } = useMasterData('ASSET_STATUS');
-  const { data: priorityOptions = [] } = useMasterData('PRIORITY');
+  useMasterData('PRIORITY');
 
   const { data: companiesList = [] } = useQuery({
     queryKey: ['companies-asset-form'],
@@ -146,10 +135,10 @@ export default function AssetManagement() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const filteredEmployees = employees?.filter((e: EmployeeWithLegacy) => {
+  const filteredEmployees = employees?.filter((e) => {
     if (assetCompanyId && String(e.companyId || e.company_id) !== assetCompanyId) return false;
     if (assetBranchId) {
-      const eBranches = e.branchIds || e.branch_ids || (e.branchId ? [e.branchId] : []);
+      const eBranches = e.branchId ? [e.branchId] : [];
       if (!eBranches.includes(Number(assetBranchId))) return false;
     }
     if (assetDeptId && String(e.departmentId || e.department_id) !== assetDeptId) return false;
@@ -237,17 +226,17 @@ export default function AssetManagement() {
 
   const matchesScope = (a: Asset) => {
     if (filterCompanyId !== 'all') {
-      const emp = employees?.find((e: EmployeeWithLegacy) => e.id === a.employeeId);
+      const emp = employees?.find((e) => e.id === a.employeeId);
       if (!emp || String(emp.companyId || emp.company_id) !== filterCompanyId) return false;
     }
     if (filterBranchId !== 'all') {
-      const emp = employees?.find((e: EmployeeWithLegacy) => e.id === a.employeeId);
+      const emp = employees?.find((e) => e.id === a.employeeId);
       if (!emp) return false;
-      const eBranches = emp.branchIds || emp.branch_ids || (emp.branchId ? [emp.branchId] : []);
+      const eBranches = emp.branchId ? [emp.branchId] : [];
       if (!eBranches.includes(Number(filterBranchId))) return false;
     }
     if (filterDeptId !== 'all') {
-      const emp = employees?.find((e: EmployeeWithLegacy) => e.id === a.employeeId);
+      const emp = employees?.find((e) => e.id === a.employeeId);
       if (!emp || String(emp.departmentId || emp.department_id) !== filterDeptId) return false;
     }
     if (startDate || endDate) {
@@ -266,7 +255,6 @@ export default function AssetManagement() {
 
   const assignedAssets = assets.filter((a: Asset) => a.status === 'assigned' && matchesScope(a));
   const availableAssets = assets.filter((a: Asset) => a.status === 'available' && matchesScope(a));
-  const maintenanceAssets = assets.filter((a: Asset) => a.status === 'maintenance' && matchesScope(a));
 
   const resetForm = () => {
     setForm({ ...EMPTY_ASSET_FORM });
@@ -314,18 +302,7 @@ export default function AssetManagement() {
     }
   };
 
-  const totalPurchaseValue = assets.reduce((s: number, a: Asset) => s + (a.purchaseValue || a.value || 0), 0);
   const totalBookValue = assets.reduce((s: number, a: Asset) => s + calcDepreciation(a.purchaseValue || a.value || 0, a.purchaseDate, a.usefulLifeYears, a.depreciationRate, a.salvageValue).currentValue, 0);
-  const totalAccumDepreciation = totalPurchaseValue - totalBookValue;
-  const depreciatedAssets = assets.filter((a: Asset) => {
-    const d = calcDepreciation(a.purchaseValue || a.value || 0, a.purchaseDate, a.usefulLifeYears, a.depreciationRate, a.salvageValue);
-    return d.pctDepreciated >= 80;
-  });
-  const typeDistribution: Record<string, number> = assets.reduce((acc: Record<string, number>, a: Asset) => { acc[a.assetType] = (acc[a.assetType] || 0) + 1; return acc; }, {});
-  const maxTypeCount = Math.max(1, ...Object.values(typeDistribution));
-  const avgDepreciationPct = assets.length
-    ? Math.round(assets.reduce((s: number, a: Asset) => s + calcDepreciation(a.purchaseValue || a.value || 0, a.purchaseDate, a.usefulLifeYears, a.depreciationRate, a.salvageValue).pctDepreciated, 0) / assets.length)
-    : 0;
 
   const [hasLoaded, setHasLoaded] = useState(false);
 
@@ -666,7 +643,7 @@ export default function AssetManagement() {
                             <SearchableSelect
                               value={form.employeeId || 'all'}
                               onChange={(val) => setForm(f => ({ ...f, employeeId: val === 'all' ? '' : val.toString() }))}
-                              options={filteredEmployees.map((e: EmployeeWithLegacy) => ({ id: e.id, name: formatEmployeeLabel(e as unknown as EmployeePickerItem) }))}
+                              options={filteredEmployees.map((e) => ({ id: e.id, name: formatEmployeeLabel(e as unknown as EmployeePickerItem) }))}
                               placeholder="Unassigned"
                               allOption="Unassigned"
                             />
@@ -943,7 +920,7 @@ export default function AssetManagement() {
                   className="w-40"
                 />
                 <DateRangePicker startDate={startDate} endDate={endDate}
-                  onStartDateChange={setStartDate} onEndDateChange={setEndDate} />
+                  onDateChange={(start, end) => { setStartDate(start); setEndDate(end); }} />
                 {(filterCompanyId !== 'all' || filterBranchId !== 'all' || filterDeptId !== 'all' || startDate || endDate) && (
                   <button onClick={() => { setFilterCompanyId('all'); setFilterBranchId('all'); setFilterDeptId('all'); setStartDate(''); setEndDate(''); }}
                     className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[#EF4444] hover:bg-red-50 rounded-lg transition-colors">
@@ -1053,7 +1030,7 @@ export default function AssetManagement() {
               <SearchableSelect
                 value={assignModal.employeeId || 'all'}
                 onChange={(val) => setAssignModal(prev => ({ ...prev, employeeId: val === 'all' ? '' : val.toString() }))}
-                options={(filteredEmployees || []).map((e: EmployeeWithLegacy) => ({ id: e.id, name: personDisplayName(e) }))}
+                options={(filteredEmployees || []).map((e) => ({ id: e.id, name: personDisplayName(e) }))}
                 placeholder="Search employee..."
                 allOption="Search employee..."
               />

@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
-import type { Attendance as AttendanceType, Employee, Shift, Holiday, LeaveApplication, AuditLog } from '../types';
+import type { Attendance as AttendanceType, Employee } from '../types';
 
 // Normalize snake_case API responses to camelCase for consistent frontend access
 const toCamel = (str: string) => str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -13,15 +13,13 @@ const normalizeKeys = (obj: unknown): unknown => {
   return obj;
 };
 import {
-  Sparkles, Download, Plus, MapPin, Camera, X, Save, Search, Upload,
-  FileSpreadsheet, CalendarClock, Clock, TrendingUp, Users, CheckCircle, CheckCircle2, Edit2, Trash2,
-  CloudCog, Calendar, Filter, Info, CreditCard, Phone, XCircle, RotateCcw, Loader2, LogOut, ArrowRightLeft,
-  CalendarDays, ChevronLeft, ChevronRight, Edit, Settings, Zap, User
+  Sparkles, Download, Plus, MapPin, X, Save, Search, Upload,
+  FileSpreadsheet, CalendarClock, Clock, Users, CheckCircle, CheckCircle2, Edit2, Trash2,
+  Calendar, Info, XCircle, RotateCcw, Loader2, LogOut, ArrowRightLeft,
+  CalendarDays, Settings, Zap, User
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
-import * as settingsApi from '../services/settingsService';
-import ConfigPanel from '../components/ConfigPanel';
 import AttendanceTemplateManager from '../components/AttendanceTemplateManager';
 import { getCurrentUser } from '../services/authService';
 import ToggleSwitch from '../components/ToggleSwitch';
@@ -46,7 +44,6 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
 import Tooltip from '../components/Tooltip';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
-import { formatEmployeeLabel } from '../utils/employeePickerUtils';
 import { personDisplayName } from '../utils/employeeNameUtils';
 
 type TabId = 'records' | 'duty-shift' | 'duty-roster' | 'configuration';
@@ -135,6 +132,15 @@ type RosterEntry = {
   shift_end_time?: string;
 };
 
+type ManualEntryPayload = Partial<AttendanceType> & {
+  branchId?: number;
+  checkInLatitude?: number;
+  checkInLongitude?: number;
+  checkOutLatitude?: number;
+  checkOutLongitude?: number;
+  isWithinGeofence?: boolean;
+};
+
 // =============================================================================
 // TABS CONFIGURATION
 // =============================================================================
@@ -146,14 +152,6 @@ const TABS = [
   { id: 'configuration', label: 'Configuration', icon: Settings },
 ];
 
-// Form tabs for Attendance modal
-const ATTENDANCE_FORM_TABS = [
-  { id: 'basic', label: 'Basic Info', icon: Info },
-  { id: 'timing', label: 'Timing', icon: Clock },
-  { id: 'location', label: 'Location', icon: MapPin },
-  { id: 'advanced', label: 'Advanced', icon: CreditCard },
-];
-
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -161,14 +159,13 @@ const ATTENDANCE_FORM_TABS = [
 const Attendance = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabId>('records');
-  const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; id: number } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; id: number | string } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: AttendanceRow[] } | null>(null);
   const [quickActionTarget, setQuickActionTarget] = useState<{ type: 'single'; record: AttendanceRow } | { type: 'bulk'; records: AttendanceRow[] } | null>(null);
   const [quickStatus, setQuickStatus] = useState('');
   const [quickTab, setQuickTab] = useState<'attendance' | 'leave'>('attendance');
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50);
+  const [, setCurrentPage] = useState(1);
   const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [statusFilter, setStatusFilter] = useState('all');
@@ -183,7 +180,7 @@ const Attendance = () => {
   }, [searchTerm, startDate, endDate, statusFilter, companyFilter, branchFilter, departmentFilter]);
 
 
-  const [formTab, setFormTab] = useState('basic');
+  const [, setFormTab] = useState('basic');
   const [isClosing, setIsClosing] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
 
@@ -207,7 +204,7 @@ const Attendance = () => {
     grace_minutes: 15, break_duration: 60, working_days: '1,2,3,4,5',
     color: '#3B82F6', description: '', organization_id: 0, company_id: null as number | null, branch_id: null as number | null, department_id: null as number | null, status: 'active'
   });
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const blankManualEntry = () => ({
     employeeId: '', organizationId: '', companyId: '', branchId: '', departmentId: '', shiftId: '',
@@ -236,11 +233,6 @@ const Attendance = () => {
 
 
   const { data: employees = [] } = useEmployeePicker({ status: 'active' });
-
-  const employeeOptions = employees.map((emp) => ({
-    id: emp.id,
-    name: formatEmployeeLabel(emp),
-  }));
 
 
   // Master data for attendance
@@ -285,10 +277,8 @@ const Attendance = () => {
   const { data: shifts = [], isLoading: loadingShifts } = useQuery<ShiftRecord[]>({
     queryKey: ['shifts'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/shifts');
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/shifts');
+      return response.data || [];
     },
     enabled: activeTab === 'duty-shift' || activeTab === 'duty-roster',
     staleTime: 2 * 60 * 1000,
@@ -301,16 +291,18 @@ const Attendance = () => {
     const diff = date.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(date.setDate(diff));
   };
-  const [rosterWeekStart, setRosterWeekStart] = useState<string>(
+  const [rosterWeekStart] = useState<string>(
     getMonday(new Date()).toISOString().split('T')[0]
   );
-  const { data: weeklyRoster = [], isLoading: loadingRoster, refetch: refetchRoster } = useQuery<RosterEntry[]>({
+  const { data: weeklyRoster = [], isLoading: loadingRoster } = useQuery<RosterEntry[]>({
     queryKey: ['weekly-roster', rosterWeekStart],
     queryFn: async () => {
       try {
         const response = await api.get('/shifts/roster/weekly', { params: { week_start_date: rosterWeekStart } });
         return response.data || [];
-      } catch (error) { return []; }
+      } catch {
+        return [];
+      }
     },
     enabled: activeTab === 'duty-roster',
     staleTime: 1 * 60 * 1000,
@@ -321,7 +313,7 @@ const Attendance = () => {
   // =============================================================================
 
   const manualEntryMutation = useMutation({
-    mutationFn: async (payload: Partial<AttendanceType>) => {
+    mutationFn: async (payload: ManualEntryPayload) => {
       if (editingAttendanceId) {
         return api.put(`/attendance/${editingAttendanceId}`, payload);
       }
@@ -418,20 +410,6 @@ const Attendance = () => {
       <div className="flex items-center"><ToggleSwitch checked={checked} onChange={onChange} /></div>
     );
     const companiesList = Array.isArray(companies) ? companies : (companies || []);
-    const scopedEmployees = employees.filter((e) => {
-      if (manualEntry.companyId && String(e.companyId ?? e.company_id) !== String(manualEntry.companyId)) return false;
-      if (manualEntry.branchId) {
-        const branchIds = [
-          ...(e.branches || []).map((b) => String((b as { id?: number }).id)),
-          ...(e.branch ? [String((e.branch as { id?: number }).id)] : []),
-          ...(e.branchId ? [String(e.branchId)] : []),
-          ...(e.branch_id ? [String(e.branch_id)] : []),
-        ];
-        if (!branchIds.includes(String(manualEntry.branchId))) return false;
-      }
-      if (manualEntry.departmentId && String(e.departmentId ?? (e.department as { id?: number } | undefined)?.id ?? e.department_id) !== String(manualEntry.departmentId)) return false;
-      return true;
-    });
     const applyTimeCalc = (rec: typeof manualEntry) => {
       if (!rec.checkIn || !rec.checkOut) return rec;
       const toMin = (t: string) => {
@@ -640,13 +618,13 @@ const Attendance = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   };
 
   const activeEmployees = useMemo<EmployeeRecord[]>(() => {
-    let filtered = employees;
+    let filtered = employees as unknown as EmployeeRecord[];
     if (companyFilter !== 'all') filtered = filtered.filter((e: EmployeeRecord) => (e.companyId ?? e.company_id)?.toString() === companyFilter);
     if (branchFilter !== 'all') filtered = filtered.filter((e: EmployeeRecord) => (e.branchId ?? e.branch_id)?.toString() === branchFilter);
     if (departmentFilter !== 'all') filtered = filtered.filter((e: EmployeeRecord) => (e.departmentId ?? e.department_id)?.toString() === departmentFilter);
@@ -783,7 +761,7 @@ const Attendance = () => {
         toast.success(`Marked ${data.updated + data.created} records`);
       }
     },
-    onError: (error) => {
+    onError: () => {
       // Error logged
       toast.error('Failed to update attendance');
     }
@@ -799,7 +777,7 @@ const Attendance = () => {
       setConfirmTarget(null);
       toast.success(data.message || 'Attendance records deleted');
     },
-    onError: (error) => {
+    onError: () => {
       // Error logged
       setConfirmTarget(null);
       toast.error('Failed to delete attendance records');
@@ -1062,7 +1040,7 @@ const Attendance = () => {
                       render: (record: AttendanceRow) => (
                         <button
                           onClick={() => {
-                            const emp = employees.find((e: EmployeeRecord) => e.id === record.employeeId);
+                            const emp = (employees as unknown as EmployeeRecord[]).find((e: EmployeeRecord) => e.id === record.employeeId);
                             if (emp) { setCalendarEmployeeData(emp); setShowEmpCalendar(true); }
                           }}
                           className="flex items-center gap-3 text-left group"
@@ -1089,7 +1067,7 @@ const Attendance = () => {
                     { key: 'checkOut', header: 'Check Out', render: (record: AttendanceRow) => <span className="text-sm text-[#64748B]">{record.checkOut || '-'}</span> },
                     {
                       key: 'status', header: 'Status', sortable: true,
-                      render: (record: AttendanceRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(record.status || '')}`}>{capitalizeStatus(record.status)}</span>,
+                      render: (record: AttendanceRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(record.status || '')}`}>{capitalizeStatus(record.status as string)}</span>,
                       sortValue: (record: AttendanceRow) => record.status,
                     },
                     { key: 'workHours', header: 'Work Hrs', render: (record: AttendanceRow) => <span className="text-sm text-[#64748B]">{record.workHours ?? '-'}</span> },
@@ -1365,7 +1343,7 @@ const Attendance = () => {
                   const [empId, empName] = key.split('||');
                   const matchName = !rosterSearchTerm || empName?.toLowerCase().includes(rosterSearchTerm.toLowerCase());
                   // find corresponding employee for company/branch/dept filtering
-                  const emp = employees.find((e: EmployeeRecord) => e.id?.toString() === empId);
+                  const emp = (employees as unknown as EmployeeRecord[]).find((e: EmployeeRecord) => e.id?.toString() === empId);
                   const matchCompany = rosterCompanyFilter === 'all' || emp?.company_id?.toString() === rosterCompanyFilter;
                   const matchBranch = rosterBranchFilter === 'all' || emp?.branch_id?.toString() === rosterBranchFilter;
                   const matchDept = rosterDeptFilter === 'all' || emp?.department_id?.toString() === rosterDeptFilter;

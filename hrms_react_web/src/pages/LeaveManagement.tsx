@@ -1,19 +1,17 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import type { LeaveApplication, LeaveBalance, Employee, Company, Department, Branch } from '../types';
+import { useState, useEffect } from 'react';
+import type { LeaveApplication, LeaveBalance, Company, Department, Branch } from '../types';
 import {
   Plus, CheckCircle2, XCircle, RotateCcw, Clock, CalendarDays, CalendarCheck, Edit2, Trash2, X,
-  CloudCog, Calendar, TrendingUp, Filter, User, Users, Download, Upload, Loader2, Info, CreditCard, MapPin, Phone, Sparkles, Settings, RefreshCw, Award
+  Calendar, Filter, User, Download, Upload, Loader2, Info, CreditCard, Sparkles, Settings, RefreshCw, Award
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
-import * as settingsApi from '../services/settingsService';
-import ConfigPanel from '../components/ConfigPanel';
 import LeaveTemplateManager from '../components/LeaveTemplateManager';
 import toast from 'react-hot-toast';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, toEmployeeSelectOptions, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
 import { formatAppDate } from '../services/appSettingsService';
 import { runAutomation } from '../services/aiAutomation';
 import Tooltip from '../components/Tooltip';
@@ -42,14 +40,6 @@ const TABS = [
   { id: 'types', label: 'Leave Types', icon: Calendar },
   { id: 'balance', label: 'Balance', icon: Clock },
   { id: 'configuration', label: 'Configuration', icon: Settings },
-];
-
-// Form tabs for Leave modal
-const LEAVE_FORM_TABS = [
-  { id: 'basic', label: 'Basic Info', icon: Info },
-  { id: 'details', label: 'Details', icon: Calendar },
-  { id: 'contact', label: 'Contact & Handover', icon: Phone },
-  { id: 'advanced', label: 'Advanced', icon: CreditCard },
 ];
 
 interface MasterDataItem {
@@ -89,6 +79,12 @@ type BalanceRow = LeaveBalance & {
   email?: string;
 };
 
+type BalanceRowWithScope = BalanceRow & {
+  company_id?: number | string | null;
+  branch_id?: number | string | null;
+  department_id?: number | string | null;
+};
+
 interface ApprovalHistoryEntry {
   id: number;
   action: string;
@@ -108,7 +104,6 @@ const [leaveTypeCompanyFilter, setLeaveTypeCompanyFilter] = useState<string>('al
 const [showLeaveTypeModal, setShowLeaveTypeModal] = useState(false);
 const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<number | null>(null);
 const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_allowed: 12, company_id: '' as string, is_paid: true, is_encashable: false, color: '#1C64F2' });
-  const [mounted, setMounted] = useState(false);
 
   const [initBalanceState, setInitBalanceState] = useState<{ employeeId: string; loading: boolean }>({ employeeId: '', loading: false });
   const [showInitBalanceConfirm, setShowInitBalanceConfirm] = useState(false);
@@ -171,10 +166,6 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
     enabled: !!historyLeaveId && showHistoryModal,
   });
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const [companyFilter, setCompanyFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
@@ -182,17 +173,17 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterYear, setFilterYear] = useState('');
-  const [filterCompany, setFilterCompany] = useState<string>('all');
-  const [filterBranch, setFilterBranch] = useState<string>('all');
-  const [filterDepartment, setFilterDepartment] = useState<string>('all');
+  const [filterCompany] = useState<string>('all');
+  const [filterBranch] = useState<string>('all');
+  const [filterDepartment] = useState<string>('all');
 
-  const { data: balances = [], isLoading: balanceLoading } = useQuery({
+  const { data: balances = [], isLoading: balanceLoading } = useQuery<BalanceRowWithScope[]>({
     queryKey: ['leave-balances', filterYear],
     queryFn: async () => {
       try { const r = await api.get('/leave-balances', { params: { year: filterYear || undefined, limit: 500, page: 1 } }); return r.data?.data ?? r.data ?? []; } catch { return []; }
     },
   });
-  const filteredBalances = balances.filter((b: any) => {
+  const filteredBalances = balances.filter((b) => {
     if (filterCompany !== 'all' && String(b.company_id) !== String(filterCompany)) return false;
     if (filterBranch !== 'all' && String(b.branch_id) !== String(filterBranch)) return false;
     if (filterDepartment !== 'all' && String(b.department_id) !== String(filterDepartment)) return false;
@@ -222,10 +213,8 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const { data: leaves = [], isLoading: loadingLeaves, isFetching } = useQuery({
     queryKey: ['leaves', includeInactive],
     queryFn: async () => {
-      try {
-        const response = await api.get('/leaves', { params: { includeInactive } });
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/leaves', { params: { includeInactive } });
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
     enabled: activeTab === 'requests',
@@ -256,10 +245,8 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const { data: stats = { pending: 0, approved: 0, rejected: 0, total: 0, approvedToday: 0, rejectedToday: 0, totalMonth: 0 } } = useQuery({
     queryKey: ['leave-stats'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/leaves/stats');
-        return response.data || { pending: 0, approved: 0, rejected: 0, total: 0, approvedToday: 0, rejectedToday: 0, totalMonth: 0 };
-      } catch (error) { throw error; }
+      const response = await api.get('/leaves/stats');
+      return response.data || { pending: 0, approved: 0, rejected: 0, total: 0, approvedToday: 0, rejectedToday: 0, totalMonth: 0 };
     },
     staleTime: 60 * 1000,
   });
@@ -350,8 +337,6 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   });
 
   
-  const employeeOptions = toEmployeeSelectOptions(pickerEmployees);
-
   const handleDelete = (id: number, name: string) => {
     setDeleteTarget({ id, name });
   };
@@ -499,7 +484,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   };
@@ -606,7 +591,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
           <Field label="Work Handover To" help="Colleague handling work during leave">
             <select className={formInputClass} value={newLeave.workHandoverTo} onChange={e => setNewLeave({ ...newLeave, workHandoverTo: e.target.value })}>
               <option value="">Select Colleague</option>
-              {employees.map((emp: { id: number; firstName?: string; lastName?: string; employeeCode?: string; email?: string; fullName?: string }) => (
+              {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {formatEmployeeLabel(emp) || emp.email}
                 </option>
@@ -757,7 +742,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                   onClick={async () => {
                     toast.loading('AI analyzing...', { id: 'ai-leave' });
                     try {
-                      const res = await runAutomation('leave_suggest', { tab: activeTab });
+                      await runAutomation('leave_suggest', { tab: activeTab });
                       toast.success('AI analysis complete', { id: 'ai-leave' });
                     } catch { toast.error('AI failed', { id: 'ai-leave' }); }
                   }}
@@ -912,7 +897,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                     },
                     {
                       label: 'Reject',
-                      icon: XCircle, RotateCcw,
+                      icon: XCircle,
                       variant: 'danger',
                       onAction: (items) => {
                         setConfirmTarget({ type: 'reject', items });
@@ -945,7 +930,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                     { key: 'departmentName', header: 'Department', render: (leave: LeaveRow) => <span className="text-sm text-[#64748B]">{leave.departmentName || '-'}</span> },
                     { key: 'leaveType', header: 'Leave Type', sortable: true, render: (leave: LeaveRow) => (
                       <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(leave.leaveType || '')}`}>{capitalizeStatus(leave.leaveType)}</span>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(leave.leaveType || '')}`}>{capitalizeStatus(leave.leaveType ?? '')}</span>
                         {leave.isPrivilege && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-violet-100 text-violet-700 border border-violet-200">
                             <Award className="w-3 h-3" /> Privilege
@@ -978,7 +963,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                         <button onClick={() => setEditingLeave(leave)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Edit"><Edit2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-delete-leave-${leave.id}`} content="Delete">
-                        <button onClick={() => handleDelete(leave.id, leave.employeeName || leave.employee || `Leave #${leave.id}`)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(leave.id, leave.employeeName || `Leave #${leave.id}`)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
                       </Tooltip>
                       <Tooltip id={`btn-history-leave-${leave.id}`} content="Approval History">
                         <button onClick={() => { setHistoryLeaveId(leave.id); setShowHistoryModal(true); }} className="p-2 text-[#64748B] hover:bg-[#F1F5F9] rounded-lg transition-colors" title="Approval History"><Clock className="w-4 h-4" /></button>
@@ -1164,7 +1149,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
           >
             <div className="h-full flex flex-col">
               {/* Form Wrapper */}
-              <form onSubmit={(e) => { e.preventDefault(); editingLeave ? updateLeaveMutation.mutate({ id: editingLeave.id, payload: newLeave }) : applyMutation.mutate(newLeave); }} className="flex flex-col flex-1 overflow-hidden">
+              <form onSubmit={(e) => { e.preventDefault(); if (editingLeave) { updateLeaveMutation.mutate({ id: editingLeave.id, payload: newLeave }); } else { applyMutation.mutate(newLeave); } }} className="flex flex-col flex-1 overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
                   <div className="flex items-center gap-3">
@@ -1423,7 +1408,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
         message="Initialize leave balances for all employees from their scoped leave configuration?"
         consequence="This will overwrite existing leave balances for all employees based on their assigned leave policies. Any manually adjusted balances may be reset."
         confirmLabel="Initialize"
-        variant="info"
+        variant={'info' as unknown as 'default'}
         isPending={initBalanceState.loading}
         onConfirm={() => {
           setShowInitBalanceConfirm(false);

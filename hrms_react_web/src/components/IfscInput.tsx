@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Check, X, Loader2 } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import useIfscValidation from '../hooks/useIfscValidation';
 
 interface IfscInputProps {
@@ -8,7 +8,6 @@ interface IfscInputProps {
   placeholder?: string;
   className?: string;
   inputClassName?: string;
-  onValidated?: (bank: string, branch: string) => void;
   disabled?: boolean;
 }
 
@@ -18,7 +17,6 @@ const IfscInput: React.FC<IfscInputProps> = ({
   placeholder = 'HDFC0001234',
   className = '',
   inputClassName = '',
-  onValidated,
   disabled,
 }) => {
   const { status, validateDebounced } = useIfscValidation();

@@ -1,13 +1,13 @@
-﻿import { useState, useEffect, useCallback, type ReactNode } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, toEmployeeSelectOptions, formatEmployeeLabel } from '../utils/employeePickerUtils';
+import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
 import { useUnsavedChangesWarning } from '../hooks/useUnsavedChangesWarning';
 import {
-  Plus, Coins, CheckCircle2, XCircle, RotateCcw, Clock, Search, CloudCog, X,
+  Plus, Coins, CheckCircle2, XCircle, RotateCcw, Clock, X,
   BookOpen, ClipboardCheck,
-  TrendingUp, Filter, Download, Upload, Users, Calendar, Wallet, FileText, Info, Loader2, CreditCard, MapPin, Award, Play, Settings, Sparkles,
-  Edit3, Edit2, Trash2, HandCoins, Mail, Send, UserPlus, Landmark, Lock, Unlock, Ban, Scale, GraduationCap
+  Download, Upload, Users, Calendar, Wallet, FileText, Info, Loader2, Award, Play, Settings, Sparkles,
+  Edit3, Edit2, Trash2, HandCoins, Mail, Send, Landmark, Lock, Unlock, Ban, Scale, GraduationCap
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import api from '../services/api';
@@ -33,7 +33,8 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import FormGrid, { formGridClass } from '../components/FormGrid';
 import FormField, { formInputClass, formReadonlyClass } from '../components/FormField';
-import type { Payroll, Employee } from '../types';
+import type { EmployeePickerItem } from '../services/employeeListService';
+import type { Payroll } from '../types';
 import { formatAppDateTime } from '../services/appSettingsService';
 
 const monthName = (m?: number) => (m ? new Date(2000, (m - 1) % 12, 1).toLocaleString('en-US', { month: 'long' }) : '');
@@ -278,7 +279,7 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
   const [currency, setCurrency] = useState(getAppCurrency());
   const [showModal, setShowModal] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -292,14 +293,13 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [editingBonus, setEditingBonus] = useState<{ id: number; type?: string } | null>(null);
   const [bonusYearFilter, setBonusYearFilter] = useState(new Date().getFullYear());
   const [bonusMonthFilter, setBonusMonthFilter] = useState<number | 'all'>(new Date().getMonth() + 1);
-  const [bonusTypeFilter, setBonusTypeFilter] = useState<string>('all');
+  const [bonusTypeFilter, setBonusTypeFilter] = useState<string | number>('all');
   const [bonusCompanyFilter, setBonusCompanyFilter] = useState('all');
   const [bonusBranchFilter, setBonusBranchFilter] = useState('all');
   const [bonusDeptFilter, setBonusDeptFilter] = useState('all');
 
   const [isDirty, setIsDirty] = useState(false);
   useUnsavedChangesWarning(isDirty, 'You have unsaved payroll changes. Leave anyway?');
-  const markDirty = () => { if (!isDirty) setIsDirty(true); };
 
   // Payslip preview modal
   const [payslipPreview, setPayslipPreview] = useState<PayslipPreview | null>(null);
@@ -312,12 +312,10 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [runCompanyId, setRunCompanyId] = useState<string>('all');
   const [runBranchId, setRunBranchId] = useState<string>('all');
   const [runDepartmentId, setRunDepartmentId] = useState<string>('all');
-  const [runEmployeeId, setRunEmployeeId] = useState<string>('');
   const [runResult, setRunResult] = useState<{ message?: string; generated?: { name: string }[]; skipped?: { name: string; reason?: string }[]; emailed?: { name: string }[]; emailSkipped?: { name: string; reason?: string }[] } | null>(null);
   const [showRunHelp, setShowRunHelp] = useState(false);
-  const [runEmail, setRunEmail] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
-  const [reportCurrency, setReportCurrency] = useState('');
+  const [reportCurrency] = useState('');
   const [payrollConfirm, setPayrollConfirm] = useState<{ p: PayslipRecord; action: string } | { p: null; action: 'bulk-submit' | 'bulk-approve' | 'bulk-process'; ids: number[]; count: number; month: number; year: number } | null>(null);
 
   // Review tab filter state
@@ -589,25 +587,10 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     } finally { setIsRunning(false); }
   };
 
-  const generateForEmployee = async () => {
-    if (!runEmployeeId) { toast.error('Select an employee first'); return; }
-    setIsRunning(true); setRunResult(null);
-    try {
-      const r = await api.post('/payroll/generate', null, { params: { employeeId: Number(runEmployeeId), month: runMonth, year: runYear, email: false } });
-      setRunResult(r.data || { message: 'No result', generated: [], skipped: [] });
-      queryClient.invalidateQueries({ queryKey: ['payslips'] });
-      queryClient.invalidateQueries({ queryKey: ['payroll-stats'] });
-      toast.success(r.data?.message || 'Payslip generated');
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to generate payslip for this employee');
-    } finally { setIsRunning(false); }
-  };
-
-  const [runProgress, setRunProgress] = useState<{ runId: number; status: string; total: number; processed: number; generated: number; skipped: number; emailed: number } | null>(null);
+  const [, setRunProgress] = useState<{ runId: number; status: string; total: number; processed: number; generated: number; skipped: number; emailed: number } | null>(null);
   const [progressTimer, setProgressTimer] = useState<ReturnType<typeof setInterval> | null>(null);
 
-  const { data: payrollRuns = [], refetch: refetchRuns } = useQuery({
+  const { data: payrollRuns = [] } = useQuery({
     queryKey: ['payroll-runs'],
     queryFn: async () => {
       const r = await api.get('/payroll/runs');
@@ -745,31 +728,29 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const { data: payslips = [], isLoading, isFetching } = useQuery({
     queryKey: ['payslips', runMonth, runYear, runCompanyId, runBranchId, runDepartmentId, reviewMonth, reviewYear, reviewCompanyId, reviewBranchId, reviewDeptId],
     queryFn: async () => {
-      try {
-        const params: Record<string, unknown> = {};
-        const months = new Set([runMonth, reviewMonth]);
-        const years = new Set([runYear, reviewYear]);
-        const companies = new Set([runCompanyId, reviewCompanyId].filter(c => c !== 'all'));
-        const branches = new Set([runBranchId, reviewBranchId].filter(b => b !== 'all'));
-        const depts = new Set([runDepartmentId, reviewDeptId].filter(d => d !== 'all'));
+      const params: Record<string, unknown> = {};
+      const months = new Set([runMonth, reviewMonth]);
+      const years = new Set([runYear, reviewYear]);
+      const companies = new Set([runCompanyId, reviewCompanyId].filter(c => c !== 'all'));
+      const branches = new Set([runBranchId, reviewBranchId].filter(b => b !== 'all'));
+      const depts = new Set([runDepartmentId, reviewDeptId].filter(d => d !== 'all'));
 
-        if (months.size === 1) params.month = [...months][0];
-        if (years.size === 1) params.year = [...years][0];
-        if (companies.size === 1) params.companyId = Number([...companies][0]);
-        if (branches.size === 1) params.branchId = Number([...branches][0]);
-        if (depts.size === 1) params.departmentId = Number([...depts][0]);
+      if (months.size === 1) params.month = [...months][0];
+      if (years.size === 1) params.year = [...years][0];
+      if (companies.size === 1) params.companyId = Number([...companies][0]);
+      if (branches.size === 1) params.branchId = Number([...branches][0]);
+      if (depts.size === 1) params.departmentId = Number([...depts][0]);
 
-        const response = await api.get('/payroll', { params });
-        const body = response.data;
-        return body?.data ?? (Array.isArray(body) ? body : []);
-      } catch (error) { throw error; }
+      const response = await api.get('/payroll', { params });
+      const body = response.data;
+      return body?.data ?? (Array.isArray(body) ? body : []);
     },
     staleTime: 2 * 60 * 1000,
     placeholderData: keepPreviousData,
   });
 
   // Converted payroll summary (multi-currency reporting)
-  const { data: summaryData = null } = useQuery({
+  useQuery({
     queryKey: ['payroll-summary', runMonth, runYear, reportCurrency],
     queryFn: async () => {
       const params: Record<string, unknown> = { month: runMonth, year: runYear };
@@ -780,7 +761,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   });
 
   // Attendance/leave/holiday review summary for the selected period + company.
-  const { data: attReview = null } = useQuery({
+  useQuery({
     queryKey: ['attendance-review', runMonth, runYear, runCompanyId],
     queryFn: async () => {
       const params: Record<string, unknown> = { month: runMonth, year: runYear };
@@ -794,7 +775,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
   const [showRerunConfirm, setShowRerunConfirm] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
-  const [runSubTab, setRunSubTab] = useState<'review' | 'history'>('review');
   const [payItemsSub, setPayItemsSub] = useState<'bonuses' | 'deductions' | 'loans'>('bonuses');
   const [pendingRunAction, setPendingRunAction] = useState<'submit' | 'approve' | 'process' | null>(null);
 
@@ -803,13 +783,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     onSuccess: () => { toast.success('Payroll period finalized'); setShowFinalizeConfirm(false); queryClient.invalidateQueries({ queryKey: ['attendance-review'] }); },
     onError: () => toast.error('Failed to finalize period'),
   });
-
-  const reopenMutation = useMutation({
-    mutationFn: () => api.post('/payroll/reopen-attendance', { month: runMonth, year: runYear, companyId: runCompanyId === 'all' ? null : Number(runCompanyId) }),
-    onSuccess: () => { toast.success('Payroll period reopened'); queryClient.invalidateQueries({ queryKey: ['attendance-review'] }); },
-    onError: () => toast.error('Failed to reopen period'),
-  });
-
 
   // Payroll status transitions: approve / process / mark_paid
   const payrollStatusMutation = useMutation({
@@ -874,21 +847,12 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   });
 
   const deleteRunMutation = useMutation({
-    mutationFn: async (runId: string) => api.delete(`/payroll/runs/${runId}`),
+    mutationFn: async (runId: number) => api.delete(`/payroll/runs/${runId}`),
     onSuccess: () => {
       toast.success('Payroll run deleted');
       queryClient.invalidateQueries({ queryKey: ['payroll-runs'] });
     },
     onError: () => toast.error('Failed to delete payroll run'),
-  });
-
-  const cancelPayslipMutation = useMutation({
-    mutationFn: async (id: number) => api.put(`/payroll/${id}/cancel`),
-    onSuccess: () => {
-      toast.success('Payslip cancelled');
-      queryClient.invalidateQueries({ queryKey: ['payslips'] });
-    },
-    onError: () => toast.error('Failed to cancel payslip'),
   });
 
   // Companies / Branches / Departments for filters
@@ -1142,10 +1106,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const { data: stats = { totalPayroll: 0, employeesPaid: 0, pending: 0, avgSalary: 0 } } = useQuery({
     queryKey: ['payroll-stats'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/payroll/stats');
-        return response.data || { totalPayroll: 0, employeesPaid: 0, pending: 0, avgSalary: 0 };
-      } catch (error) { throw error; }
+      const response = await api.get('/payroll/stats');
+      return response.data || { totalPayroll: 0, employeesPaid: 0, pending: 0, avgSalary: 0 };
     },
   });
 
@@ -1178,9 +1140,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     { label: 'Pending', value: toNum(stats.pending), icon: Clock, iconBg: 'bg-gradient-to-br from-[#F59E0B]/20 via-[#FBBF24]/10 to-[#FCD34D]/5', iconColor: 'text-[#D97706]', tooltip: 'Payroll records awaiting processing', trend: stats.pending > 0 ? -3 : 0, onClick: () => setActiveTab('payslips') },
     { label: 'Avg Salary (Rs.)', value: toNum(stats.avgSalary), icon: Coins, iconBg: 'bg-gradient-to-br from-[#8B5CF6]/20 via-[#A78BFA]/10 to-[#C4B5FD]/5', iconColor: 'text-[#7C3AED]', tooltip: 'Average salary across processed employees', trend: 3, onClick: () => setActiveTab('payslips') },
   ];
-
-  
-  const employeeOptions = toEmployeeSelectOptions(pickerEmployees);
 
   const handleCloseDrawer = () => {
     setIsClosing(true);
@@ -1269,7 +1228,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           ) : (
             <>
               <EmployeeScopedCascade
-                companies={companies as unknown as Array<Record<string, any>>}
+                companies={companies}
                 companyId={newPayroll.companyId ? String(newPayroll.companyId) : ''}
                 branchId={newPayroll.branchId ? String(newPayroll.branchId) : ''}
                 departmentId={newPayroll.departmentId ? String(newPayroll.departmentId) : ''}
@@ -1549,7 +1508,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 onClick={async () => {
                   toast.loading('AI analyzing...', { id: 'ai-pay' });
                   try {
-                    const res = await runAutomation('payroll_reconcile', { tab: activeTab });
+                    await runAutomation('payroll_reconcile', { tab: activeTab });
                     toast.success('AI analysis complete', { id: 'ai-pay' });
                   } catch { toast.error('AI failed', { id: 'ai-pay' }); }
                 }}
@@ -3098,9 +3057,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
           }
         }}
         variant={
-          payrollConfirm && payrollConfirm.p === null
+          (payrollConfirm && payrollConfirm.p === null
             ? (payrollConfirm.action === 'bulk-submit' ? 'default' : payrollConfirm.action === 'bulk-approve' ? 'success' : 'purple')
-            : (payrollConfirm?.action === 'cancel' ? 'warning' : 'success')
+            : (payrollConfirm?.action === 'cancel' ? 'warning' : 'success')) as 'default' | 'danger' | 'success' | 'warning'
         }
         title={
           payrollConfirm && payrollConfirm.p === null
@@ -3179,7 +3138,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         isOpen={showRerunConfirm}
         onCancel={() => setShowRerunConfirm(false)}
         onConfirm={() => rerunMutation.mutate()}
-        variant="info"
+        variant={'info' as unknown as 'default'}
         title="Re-run Payroll"
         confirmLabel="Yes, Regenerate"
         message={`You are about to wipe ALL payroll data for ${runCompanyId === 'all' ? 'all companies' : 'the selected company'} for ${monthLabel(runMonth, runYear)} and regenerate it from scratch.`}
@@ -3193,19 +3152,32 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
 export default Payroll;
 
-function LoansAndAdvancesPanel({ employees, currency, companies, branches, departments }: { employees: Array<Record<string, any>>; currency: string; companies?: Array<{ id: number; name: string }>; branches?: Array<{ id: number; name: string }>; departments?: Array<{ id: number; name: string }> }) {
+interface LoanRow {
+  id: number;
+  employeeId?: number;
+  employeeName?: string;
+  loanType: string;
+  principalAmount: number;
+  monthlyDeduction: number;
+  remainingMonths: number;
+  startMonth: number;
+  startYear: number;
+  status: string;
+}
+
+function LoansAndAdvancesPanel({ employees, currency, companies, branches, departments }: { employees: EmployeePickerItem[]; currency: string; companies?: Array<{ id: number; name: string }>; branches?: Array<{ id: number; name: string }>; departments?: Array<{ id: number; name: string }> }) {
   const queryClient = useQueryClient();
-  const [empId, setEmpId] = useState<number | ''>('');
+  const [empId] = useState<number | ''>('');
   const [showForm, setShowForm] = useState(false);
   const [formEmployeeId, setFormEmployeeId] = useState<number | ''>('');
   const [form, setForm] = useState({
     loanType: 'loan', principalAmount: 0, monthlyDeduction: 0, totalMonths: 12,
     startMonth: new Date().getMonth() + 1, startYear: new Date().getFullYear(), notes: '',
   });
-  const [loanCompanyFilter, setLoanCompanyFilter] = useState<string>('all');
-  const [loanBranchFilter, setLoanBranchFilter] = useState<string>('all');
-  const [loanDeptFilter, setLoanDeptFilter] = useState<string>('all');
-  const [loanStatusFilter, setLoanStatusFilter] = useState<string>('all');
+  const [loanCompanyFilter, setLoanCompanyFilter] = useState<string | number>('all');
+  const [loanBranchFilter, setLoanBranchFilter] = useState<string | number>('all');
+  const [loanDeptFilter, setLoanDeptFilter] = useState<string | number>('all');
+  const [loanStatusFilter, setLoanStatusFilter] = useState<string | number>('all');
   const [loanMonthFilter, setLoanMonthFilter] = useState<number | 'all'>(new Date().getMonth() + 1);
   const [loanYearFilter, setLoanYearFilter] = useState(new Date().getFullYear());
 
@@ -3237,10 +3209,10 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
     onError: () => toast.error('Failed to delete loan'),
   });
 
-  const columns: DataTableColumn<Record<string, any>>[] = [
+  const columns: DataTableColumn<LoanRow>[] = [
     ...(empId === '' ? [{
       key: 'employeeName', header: 'Employee', sortable: true,
-      render: (l: Record<string, any>) => (
+      render: (l: LoanRow) => (
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
             <Users className="w-4 h-4 text-white" />
@@ -3250,45 +3222,45 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
           </div>
         </div>
       ),
-      sortValue: (l: Record<string, any>) => l.employeeName || '',
+      sortValue: (l: LoanRow) => l.employeeName || '',
     }] : []),
     {
       key: 'loanType', header: 'Type', sortable: true,
-      render: (l: Record<string, any>) => (
+      render: (l: LoanRow) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${l.loanType === 'loan' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
           {l.loanType === 'loan' ? 'Loan' : 'Advance'}
         </span>
       ),
-      sortValue: (l: Record<string, any>) => l.loanType,
+      sortValue: (l: LoanRow) => l.loanType,
     },
     {
       key: 'principalAmount', header: 'Principal', sortable: true, align: 'right',
-      render: (l: Record<string, any>) => <span className="text-sm font-medium text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</span>,
-      sortValue: (l: Record<string, any>) => l.principalAmount,
+      render: (l: LoanRow) => <span className="text-sm font-medium text-[#0F172A]">{formatCurrency(l.principalAmount, currency)}</span>,
+      sortValue: (l: LoanRow) => l.principalAmount,
     },
     {
       key: 'monthlyDeduction', header: 'Monthly Deduction', sortable: true, align: 'right',
-      render: (l: Record<string, any>) => <span className="text-sm font-semibold text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</span>,
-      sortValue: (l: Record<string, any>) => l.monthlyDeduction,
+      render: (l: LoanRow) => <span className="text-sm font-semibold text-[#DC2626]">-{formatCurrency(l.monthlyDeduction, currency)}/mo</span>,
+      sortValue: (l: LoanRow) => l.monthlyDeduction,
     },
     {
       key: 'remainingMonths', header: 'Months Left', sortable: true, align: 'center',
-      render: (l: Record<string, any>) => <span className="text-sm text-[#64748B]">{l.remainingMonths}</span>,
-      sortValue: (l: Record<string, any>) => l.remainingMonths,
+      render: (l: LoanRow) => <span className="text-sm text-[#64748B]">{l.remainingMonths}</span>,
+      sortValue: (l: LoanRow) => l.remainingMonths,
     },
     {
       key: 'start', header: 'Start', sortable: true, align: 'center',
-      render: (l: Record<string, any>) => <span className="text-sm text-[#64748B]">{l.startMonth}/{l.startYear}</span>,
-      sortValue: (l: Record<string, any>) => `${l.startYear}-${String(l.startMonth).padStart(2, '0')}`,
+      render: (l: LoanRow) => <span className="text-sm text-[#64748B]">{l.startMonth}/{l.startYear}</span>,
+      sortValue: (l: LoanRow) => `${l.startYear}-${String(l.startMonth).padStart(2, '0')}`,
     },
     {
       key: 'status', header: 'Status', sortable: true, align: 'center',
-      render: (l: Record<string, any>) => (
+      render: (l: LoanRow) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${l.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
           {capitalizeStatus(l.status)}
         </span>
       ),
-      sortValue: (l: Record<string, any>) => l.status,
+      sortValue: (l: LoanRow) => l.status,
     },
   ];
 
@@ -3356,24 +3328,24 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
         <DataTable
           data={loans}
           columns={columns}
-          rowKey={(l: Record<string, any>) => l.id}
+          rowKey={(l: LoanRow) => l.id}
           searchable
-          searchKeys={(l: Record<string, any>) => `${l.employeeName || ''} ${l.loanType || ''} ${l.status || ''}`}
+          searchKeys={(l: LoanRow) => `${l.employeeName || ''} ${l.loanType || ''} ${l.status || ''}`}
           searchPlaceholder="Search loans..."
           emptyMessage={empId === '' ? 'No loans or advances yet.' : 'No loans or advances for this employee.'}
           logEntityType="loan"
-          logFor={(l: Record<string, any>) => ({ id: l.id, label: `${l.loanType} loan` })}
+          logFor={(l: LoanRow) => ({ id: l.id, label: `${l.loanType} loan` })}
           bulkActions={[
             {
               label: 'Delete',
               icon: Trash2,
               variant: 'danger',
               onAction: (items) => {
-                items.forEach((l: Record<string, any>) => deleteMut.mutate(l.id));
+                items.forEach((l: LoanRow) => deleteMut.mutate(l.id));
               },
             },
           ]}
-          actions={(l: Record<string, any>) => (
+          actions={(l: LoanRow) => (
             <div className="flex items-center justify-end gap-1.5">
               {l.status === 'active' && (
                 <button onClick={() => closeMut.mutate(l.id)} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Close loan">

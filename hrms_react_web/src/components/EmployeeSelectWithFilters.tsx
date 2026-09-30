@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import SearchableSelect from './SearchableSelect';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { useEmployeePickerSearch } from '../hooks/useEmployeePickerSearch';
-import { formatEmployeeLabel, toEmployeeSelectOptions } from '../utils/employeePickerUtils';
+import { toEmployeeSelectOptions } from '../utils/employeePickerUtils';
 import type { EmployeePickerItem } from '../services/employeeListService';
 
 interface EmployeeSelectWithFiltersProps {

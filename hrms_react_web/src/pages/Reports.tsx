@@ -1,22 +1,21 @@
-﻿import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import {
-  LayoutDashboard, Brain, Activity, Clock, Download, FileText, Users, Calendar,
-  TrendingUp, AlertTriangle, CheckCircle, Info, X, ChevronDown, RefreshCw,
-  Settings, Filter, FileSpreadsheet, FileCode, FileArchive, Mail, Bell,
-  MapPin, Clock3, UserCheck, UserX, Coins, Building2, MoreVertical,
-  Play, Pause, Trash2, Edit2, Plus, Search, ChevronRight, Wifi, WifiOff,
-  Loader2, CheckCircle2, XCircle, AlertCircle, ArrowDownRight, Building,
-  BarChart3, FileBarChart, PieChart, Star, History
+  Brain, Activity, Clock, Download, FileText, Users, Calendar,
+  TrendingUp, AlertTriangle, CheckCircle, Info, X, RefreshCw,
+  FileSpreadsheet, FileCode,
+  MapPin, Clock3, UserCheck, UserX, Coins, Building2,
+  Play, Trash2, Edit2, Plus, Search, Wifi,
+  Loader2, CheckCircle2, XCircle, ArrowDownRight,
+  BarChart3, FileBarChart, Star, History
 } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler, BarElement } from 'chart.js';
-import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { getCurrencySymbol, formatCurrency, getAppCurrency } from '../services/currencyService';
+import { getAppCurrency } from '../services/currencyService';
 import { useMasterData } from '../hooks/useMasterData';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
@@ -24,10 +23,9 @@ import AiInsightsPanel from '../components/AiInsightsPanel';
 import PageHero from '../components/PageHero';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import EmptyState from '../components/EmptyState';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import type { Employee, Attendance, Payroll, LeaveApplication, Expense, Holiday, Department, Company } from '../types';
+import type { Company } from '../types';
 
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler, BarElement);
@@ -74,165 +72,10 @@ interface MasterDataOption {
   name?: string;
 }
 
-interface TrendDataPoint {
-  label: string;
-  attendance?: number;
-  payroll?: number;
-  approved?: number;
-  pending?: number;
-  rejected?: number;
-  expenses?: number;
-  performance?: number;
-  hired?: number;
+interface SelectableItem {
+  id: number | string;
+  name: string;
 }
-
-interface KPICardProps {
-  label: string;
-  value: string | number;
-  trend?: string;
-  icon: React.ElementType;
-  color: 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal';
-  onClick?: () => void;
-}
-
-interface AlertCardProps {
-  type: 'danger' | 'warning' | 'info' | 'success';
-  title: string;
-  message: string;
-  onDismiss?: () => void;
-  onAction?: () => void;
-  actionLabel?: string;
-}
-
-// =============================================================================
-// COLOR CONSTANTS
-// =============================================================================
-
-const COLORS = {
-  blue: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-500/20', icon: 'text-blue-600', gradient: 'bg-gradient-to-br from-blue-500/20 via-blue-400/10 to-blue-300/5' },
-  green: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-500/20', icon: 'text-emerald-600', gradient: 'bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-emerald-300/5' },
-  orange: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-500/20', icon: 'text-orange-600', gradient: 'bg-gradient-to-br from-orange-500/20 via-orange-400/10 to-orange-300/5' },
-  purple: { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-500/20', icon: 'text-violet-600', gradient: 'bg-gradient-to-br from-violet-500/20 via-violet-400/10 to-violet-300/5' },
-  red: { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-500/20', icon: 'text-rose-600', gradient: 'bg-gradient-to-br from-rose-500/20 via-rose-400/10 to-rose-300/5' },
-  teal: { bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-500/20', icon: 'text-teal-600', gradient: 'bg-gradient-to-br from-teal-500/20 via-teal-400/10 to-teal-300/5' },
-};
-
-// =============================================================================
-// COMPONENTS
-// =============================================================================
-
-const KPICard = ({ label, value, trend, icon: Icon, color, onClick }: KPICardProps) => {
-  const c = COLORS[color];
-  return (
-    <div onClick={onClick} className={`group relative overflow-hidden rounded-2xl p-5 ${c.gradient} hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border border-white/20 cursor-pointer`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-50" />
-      <div className="relative flex items-start justify-between">
-        <div className={`w-12 h-12 rounded-xl bg-white shadow-lg flex items-center justify-center ${c.icon}`}>
-          <Icon className="w-6 h-6" />
-        </div>
-        {trend && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white/60 backdrop-blur-sm text-emerald-600">{trend}</span>}
-      </div>
-      <div className="relative mt-4">
-        <p className="text-sm font-medium text-[var(--text-primary)]">{label}</p>
-        <p className="text-[28px] font-bold text-[var(--text-primary)] leading-tight tracking-tight mt-1">{value}</p>
-      </div>
-    </div>
-  );
-};
-
-const AlertCard = ({ type, title, message, onDismiss, onAction, actionLabel }: AlertCardProps) => {
-  const styles = {
-    danger: { bg: 'bg-[#FEF2F2]', border: 'border-[#C81E1E]/20', icon: AlertTriangle, iconColor: 'text-[var(--danger-red)]' },
-    warning: { bg: 'bg-[#FEFCE8]', border: 'border-[#A16207]/20', icon: AlertCircle, iconColor: 'text-[#A16207]' },
-    info: { bg: 'bg-[#EBF5FF]', border: 'border-[#1C64F2]/20', icon: Info, iconColor: 'text-[var(--primary-blue)]' },
-    success: { bg: 'bg-[#F0FDF4]', border: 'border-[#057A55]/20', icon: CheckCircle, iconColor: 'text-[var(--success-green)]' },
-  }[type];
-  const Icon = styles.icon;
-  
-  return (
-    <div className={`rounded-xl p-4 border ${styles.bg} ${styles.border} flex items-start gap-3`}>
-      <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${styles.iconColor}`} />
-      <div className="flex-1">
-        <p className="font-medium text-[var(--text-primary)] text-sm">{title}</p>
-        <p className="text-sm text-[var(--text-tertiary)] mt-1">{message}</p>
-        {actionLabel && (
-          <button onClick={onAction} className="mt-2 text-sm font-medium text-[var(--primary-blue)] hover:underline">{actionLabel}</button>
-        )}
-      </div>
-      {onDismiss && (
-        <button onClick={onDismiss} className="p-1 hover:bg-black/5 rounded transition-colors"><X className="w-4 h-4 text-[var(--text-tertiary)]" /></button>
-      )}
-    </div>
-  );
-};
-
-const StatusPill = ({ status }: { status: 'Ready' | 'Review' | 'Scheduled' | 'Generating' | 'Pending' | 'Active' | 'Paused' | 'Completed' }) => {
-  const styles = {
-    Ready: 'bg-[#F0FDF4] text-[var(--success-green)] border-[#057A55]/20',
-    Review: 'bg-[#FEFCE8] text-[#A16207] border-[#A16207]/20',
-    Scheduled: 'bg-[#EBF5FF] text-[var(--primary-blue)] border-[#1C64F2]/20',
-    Generating: 'bg-[#F3E8FF] text-[#7E22CE] border-[#7E22CE]/20',
-    Pending: 'bg-[var(--background)] text-[var(--text-tertiary)] border-[var(--border-color)]',
-    Active: 'bg-[#F0FDF4] text-[var(--success-green)] border-[#057A55]/20',
-    Paused: 'bg-[#FEF2F2] text-[var(--danger-red)] border-[#C81E1E]/20',
-    Completed: 'bg-[#F0FDF4] text-[var(--success-green)] border-[#057A55]/20',
-  }[status];
-  return (
-    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${styles} flex items-center gap-1`}>
-      {status === 'Generating' && <Loader2 className="w-3 h-3 animate-spin" />}
-      {status}
-    </span>
-  );
-};
-
-const ExportButtons = ({ onCSV, onPDF, onExcel, size = 'sm' }: { onCSV: () => void; onPDF: () => void; onExcel?: () => void; size?: 'sm' | 'md' }) => {
-  const btnClass = size === 'sm' 
-    ? 'p-1.5 hover:bg-[var(--background)] rounded-lg transition-colors' 
-    : 'px-3 py-1.5 text-sm font-medium hover:bg-[var(--background)] rounded-lg transition-colors flex items-center gap-1';
-  return (
-    <div className="flex items-center gap-1">
-      <button onClick={onCSV} className={`${btnClass} text-[var(--success-green)]`} title="Export CSV">
-        {size === 'md' ? <><FileSpreadsheet className="w-4 h-4" /> CSV</> : <FileSpreadsheet className="w-4 h-4" />}
-      </button>
-      {onExcel && (
-        <button onClick={onExcel} className={`${btnClass} text-[var(--primary-blue)]`} title="Export Excel">
-          {size === 'md' ? <><FileCode className="w-4 h-4" /> Excel</> : <FileCode className="w-4 h-4" />}
-        </button>
-      )}
-      <button onClick={onPDF} className={`${btnClass} text-[var(--danger-red)]`} title="Export PDF">
-        {size === 'md' ? <><FileText className="w-4 h-4" /> PDF</> : <FileText className="w-4 h-4" />}
-      </button>
-    </div>
-  );
-};
-
-const Toggle = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
-  <button
-    onClick={() => onChange(!checked)}
-    className={`relative w-11 h-6 rounded-full transition-colors ${checked ? 'bg-[var(--primary-blue)]' : 'bg-[#E2E8F0]'}`}
-  >
-    <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${checked ? 'translate-x-5' : ''}`} />
-  </button>
-);
-
-// =============================================================================
-// CHART CONFIGS
-// =============================================================================
-
-const lineChartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0F172A', padding: 12, cornerRadius: 8 } },
-  scales: { x: { grid: { display: false }, ticks: { color: '#64748B', font: { size: 11 } } }, y: { grid: { color: '#E2E8F0' }, ticks: { color: '#64748B', font: { size: 11 } } } },
-  elements: { line: { tension: 0.4 }, point: { radius: 4, hoverRadius: 6 } },
-};
-
-const doughnutOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0F172A', padding: 12, cornerRadius: 8 } },
-  cutout: '70%',
-};
 
 // =============================================================================
 // MAIN COMPONENT
@@ -273,16 +116,14 @@ const Reports = () => {
   const [lastSynced, setLastSynced] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [generatingAll, setGeneratingAll] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [selectedReports, setSelectedReports] = useState<string[]>([]);
   const [exportDateRange, setExportDateRange] = useState({ start: '', end: '' });
   const [exportFormat, setExportFormat] = useState('all');
   const [customReport, setCustomReport] = useState({ dataSource: '', startDate: '', endDate: '', companyId: '', departmentId: '', status: '' });
   const [customReportData, setCustomReportData] = useState<Record<string, unknown>[]>([]);
   const [customReportColumns, setCustomReportColumns] = useState<string[]>([]);
   const [customReportLoading, setCustomReportLoading] = useState(false);
-  const [currency, setCurrency] = useState(getAppCurrency());
+  const [, setCurrency] = useState(getAppCurrency());
   const [showCreateSchedule, setShowCreateSchedule] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -299,7 +140,7 @@ const Reports = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: modulesOptions = [] } = useMasterData('MODULES');
+  useMasterData('MODULES');
   const { data: auditModuleOptions = [] } = useMasterData('AUDIT_MODULE');
   const { data: frequencyOptions = [] } = useMasterData('REPORT_FREQUENCY');
   const { data: dayOptions = [] } = useMasterData('DAY_OF_WEEK');
@@ -307,8 +148,6 @@ const Reports = () => {
 
   // Pay day is governed by the PAY_DAY master category.
   const { data: payDayOptions = [] } = useMasterData('PAY_DAY');
-    
-  const [showAiInsights, setShowAiInsights] = useState(false);
     
   const [searchQuery, setSearchQuery] = useState('');
   const [reportSearchQuery, setReportSearchQuery] = useState('');
@@ -325,7 +164,6 @@ const Reports = () => {
     includeBody: false,
     status: 'Active'
   });
-  const [reportMonth, setReportMonth] = useState(new Date().getMonth() + 1);
   const generateCustomReport = async () => {
     if (!customReport.dataSource) return;
     setCustomReportLoading(true);
@@ -354,7 +192,7 @@ const Reports = () => {
         setCustomReportColumns(Object.keys(data[0]).filter(k => typeof data[0][k] !== 'object'));
       }
       toast.success(`${data.length} records loaded`);
-    } catch (err) {
+    } catch {
       toast.error('Failed to generate report');
     } finally {
       setCustomReportLoading(false);
@@ -370,15 +208,11 @@ const Reports = () => {
     toast.success('Report exported');
   };
 
-  const [reportYear, setReportYear] = useState(new Date().getFullYear());
-
   useEffect(() => {
     setMounted(true);
     // Set currency to INR
     setCurrency('INR');
   }, []);
-
-  const currencySymbol = getCurrencySymbol(currency);
 
   // Auto-refresh interval
   useEffect(() => {
@@ -395,10 +229,8 @@ const Reports = () => {
   const { data: overviewData } = useQuery({
     queryKey: ['reports-overview'],
     queryFn: async () => {
-      try {
-        const response = await api.get(`/reports/overview/timeseries?year=${new Date().getFullYear()}`);
-        return response.data;
-      } catch (error) { throw error; }
+      const response = await api.get(`/reports/overview/timeseries?year=${new Date().getFullYear()}`);
+      return response.data;
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -406,10 +238,8 @@ const Reports = () => {
   const { data: liveData } = useQuery({
     queryKey: ['reports-live'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/reports/live');
-        return response.data;
-      } catch (error) { throw error; }
+      const response = await api.get('/reports/live');
+      return response.data;
     },
     refetchInterval: 60 * 1000,
   });
@@ -417,10 +247,8 @@ const Reports = () => {
   const { data: scheduledReports } = useQuery({
     queryKey: ['scheduled-reports'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/reports/schedules');
-        return response.data;
-      } catch (error) { throw error; }
+      const response = await api.get('/reports/schedules');
+      return response.data;
     },
   });
 
@@ -494,13 +322,11 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
   const { data: executionLogs } = useQuery({
     queryKey: ['activity-logs', selectedLogModule],
     queryFn: async () => {
-      try {
-        const url = selectedLogModule === 'All' 
-          ? '/api/activity-logs' 
-          : `/api/activity-logs?module=${selectedLogModule}`;
-        const response = await api.get(url);
-        return response.data;
-      } catch (error) { throw error; }
+      const url = selectedLogModule === 'All' 
+        ? '/api/activity-logs' 
+        : `/api/activity-logs?module=${selectedLogModule}`;
+      const response = await api.get(url);
+      return response.data;
     },
   });
 
@@ -517,11 +343,9 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
   const { data: companies } = useQuery({
     queryKey: ['companies'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/companies');
-        const data = response.data || [];
-        return data.filter((item: Company & { is_active?: boolean }) => item.status !== 'inactive' && item.is_active !== false);
-      } catch (error) { throw error; }
+      const response = await api.get('/companies');
+      const data = response.data || [];
+      return data.filter((item: Company & { is_active?: boolean }) => item.status !== 'inactive' && item.is_active !== false);
     },
   });
 
@@ -540,68 +364,6 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       .then(() => { setLastSynced(new Date()); toast.success('Reports refreshed'); })
       .catch(() => toast.error('Failed to refresh reports'))
       .finally(() => setIsSyncing(false));
-  };
-
-  const handleGenerateAll = () => {
-    setGeneratingAll(true);
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['reports-overview'] }),
-      queryClient.invalidateQueries({ queryKey: ['reports-live'] }),
-      queryClient.invalidateQueries({ queryKey: ['reports-export-history'] }),
-    ])
-      .then(() => { setLastSynced(new Date()); toast.success('All reports refreshed'); })
-      .catch(() => toast.error('Failed to refresh reports'))
-      .finally(() => setGeneratingAll(false));
-  };
-
-  const handleExportLiveReport = async (format: 'csv' | 'excel' | 'pdf') => {
-    try {
-      const params: Record<string, unknown> = { format };
-      
-      const response = await api.get('/reports/live-export', { 
-        params,
-        responseType: 'blob'
-      });
-      
-      const ext = format === 'pdf' ? 'pdf' : 'csv';
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
-      const blob = new Blob([response.data], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `live_report_${new Date().toISOString().split('T')[0]}.${ext}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
-      toast.success(`${format.toUpperCase()} report exported successfully`);
-    } catch (error) {
-      toast.error(`Failed to export ${format} report`);
-    }
-  };
-
-  const handleExportReport = async (reportId: string, format: 'csv' | 'excel' | 'pdf') => {
-    try {
-      const response = await api.get(`/reports/${reportId}/export`, { 
-        params: { format },
-        responseType: 'blob'
-      });
-      
-      const ext = format === 'pdf' ? 'pdf' : 'csv';
-      const mimeType = format === 'pdf' ? 'application/pdf' : 'text/csv';
-      const blob = new Blob([response.data], { type: mimeType });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `report_${reportId}_${new Date().toISOString().split('T')[0]}.${ext}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => window.URL.revokeObjectURL(url), 100);
-      toast.success(`${format.toUpperCase()} report exported successfully`);
-    } catch (error) {
-      toast.error(`Failed to export ${format} report`);
-    }
   };
 
   const handleExportHubReport = async (reportName: string, format: 'csv' | 'excel' | 'pdf') => {
@@ -628,109 +390,8 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       link.remove();
       setTimeout(() => window.URL.revokeObjectURL(url), 100);
       toast.success(`${format.toUpperCase()} report exported successfully`);
-    } catch (error) {
+    } catch {
       toast.error(`Failed to export ${format} report`);
-    }
-  };
-
-  // Export handlers for different report types
-  const handleExportEmployeeReport = async () => {
-    try {
-      const response = await api.get('/reports/employees', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'employee_report.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Employee report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export employee report');
-    }
-  };
-
-  const handleExportAttendanceReport = async () => {
-    try {
-      const params: Record<string, unknown> = { month: reportMonth, year: reportYear };
-      const response = await api.get('/reports/attendance', { params, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `attendance_report_${reportMonth}_${reportYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Attendance report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export attendance report');
-    }
-  };
-
-  const handleExportPayrollReport = async () => {
-    try {
-      const params: Record<string, unknown> = { month: reportMonth, year: reportYear };
-      const response = await api.get('/reports/payroll', { params, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `payroll_report_${reportMonth}_${reportYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Payroll report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export payroll report');
-    }
-  };
-
-  const handleExportLeaveReport = async () => {
-    try {
-      const params: Record<string, unknown> = { month: reportMonth, year: reportYear };
-      const response = await api.get('/reports/leaves', { params, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `leave_report_${reportMonth}_${reportYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Leave report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export leave report');
-    }
-  };
-
-  const handleExportExpenseReport = async () => {
-    try {
-      const params: Record<string, unknown> = { month: reportMonth, year: reportYear };
-      const response = await api.get('/reports/expenses', { params, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `expense_report_${reportMonth}_${reportYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Expense report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export expense report');
-    }
-  };
-
-  const handleExportHolidayReport = async () => {
-    try {
-      const response = await api.get('/reports/holidays', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'holiday_report.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      toast.success('Holiday report exported successfully');
-    } catch (error) {
-      toast.error('Failed to export holiday report');
     }
   };
 
@@ -738,14 +399,13 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     e.preventDefault();
 
     try {
-      let response;
       if (editingScheduleId) {
         // Update existing schedule
-        response = await api.put(`/reports/schedules/${editingScheduleId}`, scheduleForm);
+        await api.put(`/reports/schedules/${editingScheduleId}`, scheduleForm);
         toast.success('Schedule updated successfully');
       } else {
         // Create new schedule
-        response = await api.post('/reports/schedule', scheduleForm);
+        await api.post('/reports/schedule', scheduleForm);
         toast.success('Schedule created successfully');
       }
       setShowCreateSchedule(false);
@@ -764,7 +424,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       });
       setReportSearchQuery('');
       queryClient.invalidateQueries({ queryKey: ['scheduled-reports'] });
-    } catch (error) {
+    } catch {
       // Error logged
       toast.error('Failed to save schedule');
     }
@@ -799,7 +459,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       await api.delete(`/reports/schedules/${deleteScheduleTarget}`);
       toast.success('Schedule deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['scheduled-reports'] });
-    } catch (error) {
+    } catch {
       // Error logged
       toast.error('Failed to delete schedule');
     } finally {
@@ -812,7 +472,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
       const response = await api.post(`/reports/schedules/${scheduleId}/run`);
       toast.success(`Schedule "${response.data.report}" triggered successfully`);
       queryClient.invalidateQueries({ queryKey: ['scheduled-reports'] });
-    } catch (error) {
+    } catch {
       // Error logged
       toast.error('Failed to run schedule');
     }
@@ -820,7 +480,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
 
   const handleToggleSchedule = async (scheduleId: string, currentStatus: boolean) => {
     try {
-      const response = await api.patch(`/reports/schedules/${scheduleId}/toggle`);
+      await api.patch(`/reports/schedules/${scheduleId}/toggle`);
       toast.success(`Schedule ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
       queryClient.invalidateQueries({ queryKey: ['scheduled-reports'] });
     } catch (error: unknown) {
@@ -843,83 +503,6 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     const minutes = d.getMinutes().toString().padStart(2, '0');
     const seconds = d.getSeconds().toString().padStart(2, '0');
     return `at ${hoursStr}:${minutes}:${seconds} ${ampm} on ${day}-${month}-${year}`;
-  };
-
-  // =============================================================================
-  // CHART DATA
-  // =============================================================================
-
-  const lineChartData = {
-    labels: overviewData?.attendanceTrendData?.map((d: TrendDataPoint) => d.label) || [],
-    datasets: [{
-      label: 'Attendance %',
-      data: overviewData?.attendanceTrendData?.map((d: TrendDataPoint) => d.attendance) || [],
-      borderColor: '#1C64F2',
-      backgroundColor: 'rgba(28, 100, 242, 0.1)',
-      fill: true,
-      pointBackgroundColor: '#1C64F2',
-    }],
-  };
-
-  const overtimeTrendsData = {
-    labels: overviewData?.payrollTrendData?.map((d: TrendDataPoint) => d.label) || [],
-    datasets: [{
-      label: 'Payroll / Overtime (Value)',
-      data: overviewData?.payrollTrendData?.map((d: TrendDataPoint) => d.payroll) || [],
-      borderColor: '#8B5CF6',
-      backgroundColor: 'rgba(139, 92, 246, 0.1)',
-      fill: true,
-      pointBackgroundColor: '#8B5CF6',
-    }],
-  };
-
-  const leaveBalanceData = {
-    labels: ['Approved', 'Pending', 'Rejected'],
-    datasets: [{
-      label: 'Leave Status',
-      data: overviewData?.leaveTrendData 
-        ? [
-            overviewData.leaveTrendData.reduce((acc: number, curr: TrendDataPoint) => acc + (curr.approved || 0), 0),
-            overviewData.leaveTrendData.reduce((acc: number, curr: TrendDataPoint) => acc + (curr.pending || 0), 0),
-            overviewData.leaveTrendData.reduce((acc: number, curr: TrendDataPoint) => acc + (curr.rejected || 0), 0)
-          ]
-        : [],
-      backgroundColor: ['#1C64F2', '#F59E0B', '#EF4444'],
-      borderWidth: 0,
-    }],
-  };
-
-  const expenseTrendsData = {
-    labels: overviewData?.expensesTrendData?.map((d: TrendDataPoint) => d.label) || [],
-    datasets: [{
-      label: 'Expenses',
-      data: overviewData?.expensesTrendData?.map((d: TrendDataPoint) => d.expenses) || [],
-      borderColor: '#EF4444',
-      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-      fill: true,
-      pointBackgroundColor: '#EF4444',
-    }],
-  };
-
-  const performanceRatingData = {
-    labels: overviewData?.performanceTrendData?.map((d: TrendDataPoint) => d.label) || [],
-    datasets: [{
-      data: overviewData?.performanceTrendData?.map((d: TrendDataPoint) => d.performance) || [],
-      backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#F43F5E', '#84CC16', '#06B6D4', '#6366F1', '#D946EF', '#EAB308'],
-      borderWidth: 0,
-    }],
-  };
-
-  const recruitmentTrendsData = {
-    labels: overviewData?.recruitmentTrendData?.map((d: TrendDataPoint) => d.label) || [],
-    datasets: [{
-      label: 'New Hires',
-      data: overviewData?.recruitmentTrendData?.map((d: TrendDataPoint) => d.hired) || [],
-      borderColor: '#0D9488',
-      backgroundColor: 'rgba(13, 148, 136, 0.1)',
-      fill: true,
-      pointBackgroundColor: '#0D9488',
-    }],
   };
 
   // =============================================================================
@@ -1093,14 +676,14 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                       <label className="block text-xs text-[var(--text-tertiary)] mb-1">Company</label>
                       <select value={customReport.companyId} onChange={(e) => setCustomReport({ ...customReport, companyId: e.target.value })} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm">
                         <option value="">All Companies</option>
-                        {(companies || []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {(companies || []).map((c: SelectableItem) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="block text-xs text-[var(--text-tertiary)] mb-1">Department</label>
                       <select value={customReport.departmentId} onChange={(e) => setCustomReport({ ...customReport, departmentId: e.target.value })} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm">
                         <option value="">All Departments</option>
-                        {(departments || []).map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        {(departments || []).map((d: SelectableItem) => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                     </div>
                     <div>
@@ -2288,7 +1871,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                         await handleExportHubReport(selectedReport.name, exportFormat as 'csv' | 'excel' | 'pdf');
                         toast.success(`${selectedReport.name} downloaded successfully as ${exportFormat.toUpperCase()}`);
                         setShowExportModal(false);
-                      } catch (error) {
+                      } catch {
                         toast.error(`Failed to download ${selectedReport.name}. Please try again.`);
                       } finally {
                         setIsExporting(false);

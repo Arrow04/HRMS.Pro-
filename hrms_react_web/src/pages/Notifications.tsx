@@ -202,19 +202,6 @@ const timeAgo = (value: string): string => {
   return `${Math.floor(days / 365)}y ago`;
 };
 
-const formatFullDate = (value: string): string => {
-  if (!value) return 'Unknown date';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
 const formatTime = (value: string): string => {
   if (!value) return '';
   const d = new Date(value);

@@ -19,15 +19,13 @@ export const useEmployeeData = (filterOrgId: string | number, filterCompanyId: s
   const { data: organizationsList } = useQuery({
     queryKey: ['organizations'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/organizations');
-        const data: (Organization & { status?: string; is_active?: boolean })[] = response.data || [];
-        return data.sort((a, b) => {
-          const aActive = a.status !== 'inactive' && a.is_active !== false;
-          const bActive = b.status !== 'inactive' && b.is_active !== false;
-          return aActive === bActive ? 0 : aActive ? -1 : 1;
-        });
-      } catch (error) { throw error; }
+      const response = await api.get('/organizations');
+      const data: (Organization & { status?: string; is_active?: boolean })[] = response.data || [];
+      return data.sort((a, b) => {
+        const aActive = a.status !== 'inactive' && a.is_active !== false;
+        const bActive = b.status !== 'inactive' && b.is_active !== false;
+        return aActive === bActive ? 0 : aActive ? -1 : 1;
+      });
     },
     enabled: isSuperAdmin,
     staleTime: 5 * 60 * 1000,
@@ -36,16 +34,14 @@ export const useEmployeeData = (filterOrgId: string | number, filterCompanyId: s
   const { data: companiesList } = useQuery({
     queryKey: ['companies', filterOrgId],
     queryFn: async () => {
-      try {
-        const params = filterOrgId !== 'all' ? `?organizationId=${filterOrgId}` : '';
-        const response = await api.get(`/companies${params}`);
-        const data: (Company & { is_active?: boolean })[] = response.data || [];
-        return data.sort((a, b) => {
-          const aActive = a.status !== 'inactive' && a.is_active !== false;
-          const bActive = b.status !== 'inactive' && b.is_active !== false;
-          return aActive === bActive ? 0 : aActive ? -1 : 1;
-        });
-      } catch (error) { throw error; }
+      const params = filterOrgId !== 'all' ? `?organizationId=${filterOrgId}` : '';
+      const response = await api.get(`/companies${params}`);
+      const data: (Company & { is_active?: boolean })[] = response.data || [];
+      return data.sort((a, b) => {
+        const aActive = a.status !== 'inactive' && a.is_active !== false;
+        const bActive = b.status !== 'inactive' && b.is_active !== false;
+        return aActive === bActive ? 0 : aActive ? -1 : 1;
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -53,16 +49,14 @@ export const useEmployeeData = (filterOrgId: string | number, filterCompanyId: s
   const { data: branchesList } = useQuery({
     queryKey: ['branches', formDataCompanyId],
     queryFn: async () => {
-      try {
-        const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
-        const response = await api.get(`/branches${params}`);
-        const data: (Branch & { is_active?: boolean })[] = response.data || [];
-        return data.sort((a, b) => {
-          const aActive = a.status !== 'inactive' && a.is_active !== false;
-          const bActive = b.status !== 'inactive' && b.is_active !== false;
-          return aActive === bActive ? 0 : aActive ? -1 : 1;
-        });
-      } catch (error) { throw error; }
+      const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
+      const response = await api.get(`/branches${params}`);
+      const data: (Branch & { is_active?: boolean })[] = response.data || [];
+      return data.sort((a, b) => {
+        const aActive = a.status !== 'inactive' && a.is_active !== false;
+        const bActive = b.status !== 'inactive' && b.is_active !== false;
+        return aActive === bActive ? 0 : aActive ? -1 : 1;
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -70,16 +64,14 @@ export const useEmployeeData = (filterOrgId: string | number, filterCompanyId: s
   const { data: departmentsList } = useQuery({
     queryKey: ['departments', formDataCompanyId],
     queryFn: async () => {
-      try {
-        const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
-        const response = await api.get(`/departments${params}`);
-        const data: (Department & { is_active?: boolean })[] = response.data || [];
-        return data.sort((a, b) => {
-          const aActive = a.status !== 'inactive' && a.is_active !== false;
-          const bActive = b.status !== 'inactive' && b.is_active !== false;
-          return aActive === bActive ? 0 : aActive ? -1 : 1;
-        });
-      } catch (error) { throw error; }
+      const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
+      const response = await api.get(`/departments${params}`);
+      const data: (Department & { is_active?: boolean })[] = response.data || [];
+      return data.sort((a, b) => {
+        const aActive = a.status !== 'inactive' && a.is_active !== false;
+        const bActive = b.status !== 'inactive' && b.is_active !== false;
+        return aActive === bActive ? 0 : aActive ? -1 : 1;
+      });
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -87,16 +79,14 @@ export const useEmployeeData = (filterOrgId: string | number, filterCompanyId: s
   const { data: designations = [], isLoading: loadingDesignations } = useQuery({
     queryKey: ['designations', formDataCompanyId],
     queryFn: async () => {
-      try {
-        const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
-        const response = await api.get(`/api/designations${params}`);
-        const data: (Designation & { is_active?: boolean })[] = response.data || [];
-        return data.sort((a, b) => {
-          const aActive = a.status !== 'inactive' && a.is_active !== false;
-          const bActive = b.status !== 'inactive' && b.is_active !== false;
-          return aActive === bActive ? 0 : aActive ? -1 : 1;
-        });
-      } catch (error) { throw error; }
+      const params = formDataCompanyId ? `?companyId=${formDataCompanyId}` : '';
+      const response = await api.get(`/api/designations${params}`);
+      const data: (Designation & { is_active?: boolean })[] = response.data || [];
+      return data.sort((a, b) => {
+        const aActive = a.status !== 'inactive' && a.is_active !== false;
+        const bActive = b.status !== 'inactive' && b.is_active !== false;
+        return aActive === bActive ? 0 : aActive ? -1 : 1;
+      });
     },
     staleTime: 5 * 60 * 1000,
   });

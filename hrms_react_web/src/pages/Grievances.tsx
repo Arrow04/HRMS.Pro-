@@ -19,7 +19,7 @@ import Tooltip from '../components/Tooltip';
 import SearchableSelect from '../components/SearchableSelect';
 import DateRangePicker from '../components/DateRangePicker';
 import ExportButton from '../components/ExportButton';
-import type { Company, Branch, Department } from '../types';
+import type { Company } from '../types';
 
 type GrievanceRow = {
   id: number;
@@ -137,8 +137,6 @@ const Grievances = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [filterCompanyId, setFilterCompanyId] = useState<string | number>('all');
-  const [filterBranchId, setFilterBranchId] = useState<string | number>('all');
-  const [filterDepartmentId, setFilterDepartmentId] = useState<string | number>('all');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');

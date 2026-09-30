@@ -3,13 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   ShieldAlert, AlertTriangle, ShieldX, Users, DollarSign, Clock,
-  Loader2, RefreshCw, CheckCircle2, XCircle, Eye, Search, X,
-  Fingerprint, FileWarning, Ban, ChevronDown, ChevronUp, User,
+  Loader2, RefreshCw, CheckCircle2, XCircle, Eye, X,
+  Fingerprint, FileWarning, Ban,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import * as api from '../services/anomalyApi';
-import type { AnomalyAlert } from '../services/anomalyApi';
+import type { AnomalyAlert, AnomalyStats } from '../services/anomalyApi';
 import { capitalizeStatus } from '../utils/statusUtils';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
@@ -20,7 +20,6 @@ import SearchableSelect from '../components/SearchableSelect';
 import PageHero from '../components/PageHero';
 import apiClient from '../services/api';
 import { formatAppDate } from '../services/appSettingsService';
-import Tooltip from '../components/Tooltip';
 import DateRangePicker from '../components/DateRangePicker';
 import DataTable from '../components/DataTable';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
@@ -113,11 +112,11 @@ const FILTER_TABS = [
 export default function AnomalyDetection() {
   const { data: severityOptions = [] } = useMasterData('ANOMALY_SEVERITY');
   const { data: typeOptions = [] } = useMasterData('ANOMALY_TYPE');
-  const { data: statusOptions = [] } = useMasterData('ANOMALY_STATUS');
+  useMasterData('ANOMALY_STATUS');
   const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
   const employees = pickerEmployees.map(normalizePickerEmployee);
   const [statusFilter, setStatusFilter] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [severityFilter, setSeverityFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
@@ -143,9 +142,9 @@ export default function AnomalyDetection() {
     refetchInterval: 30000,
   });
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery<AnomalyStats>({
     queryKey: ['anomaly-stats'],
-    queryFn: api.getAnomalyStats,
+    queryFn: (ctx) => api.getAnomalyStats(ctx as unknown as number),
     refetchInterval: 30000,
   });
 
@@ -572,80 +571,6 @@ if (type === 'payroll_drift') {
     <pre className="text-xs text-[var(--text-tertiary)] bg-[var(--background)] rounded-lg p-3 overflow-x-auto max-h-48">
       {JSON.stringify(data, null, 2)}
     </pre>
-  );
-}
-
-function AlertCard({ alert, empMap, onDismiss, onResolve }: { alert: AnomalyAlert; empMap: Map<number, string>; onDismiss: () => void; onResolve: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const sev = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.medium;
-  const type = TYPE_CONFIG[alert.anomaly_type] || { icon: ShieldAlert, label: alert.anomaly_type };
-  const SevIcon = sev.icon;
-  const TypeIcon = type.icon;
-
-  const employeeNames = alert.employee_ids?.map(id => empMap.get(id) || `#${id}`).filter(Boolean) || [];
-
-  return (
-    <div className={`bg-white rounded-xl border transition-all ${
-      alert.status === 'open' ? 'border-[var(--border-color)] hover:shadow-md' :
-      alert.status === 'dismissed' ? 'border-[#F1F5F9] opacity-70' :
-      'border-[#F1F5F9] opacity-50'
-    }`}>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className={`w-10 h-10 rounded-xl ${sev.bg} flex items-center justify-center flex-shrink-0`}>
-              <TypeIcon className={`w-5 h-5 ${sev.color}`} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-medium text-[var(--text-primary)] text-sm">{alert.title}</h3>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${sev.bg} ${sev.color}`}>{sev.label}</span>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                  alert.status === 'open' ? 'bg-[#FFFBEB] text-[#D97706]' :
-                  alert.status === 'dismissed' ? 'bg-[#F1F5F9] text-[var(--text-tertiary)]' : 'bg-[#D1FAE5] text-[#059669]'
-                }`}>{capitalizeStatus(alert.status)}</span>
-              </div>
-              {alert.description && (
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">{alert.description}</p>
-              )}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-[10px] text-[#94A3B8]">
-                <span>{formatAppDate(alert.created_at)}</span>
-                {employeeNames.length > 0 && (
-                  <span className="flex items-center gap-1">
-                    <User className="w-3 h-3" />
-                    {employeeNames.join(', ')}
-                  </span>
-                )}
-                {alert.dismissed_at && (
-                  <span>Dismissed {formatAppDate(alert.dismissed_at)}{alert.dismissed_reason ? `: ${alert.dismissed_reason}` : ''}</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {alert.status === 'open' && (
-              <>
-                <Tooltip id={`btn-resolve-anomaly-${alert.id}`} content="Resolve">
-                  <button onClick={onResolve} className="p-1.5 text-[#059669] hover:bg-[#D1FAE5] rounded-lg" title="Resolve"><CheckCircle2 className="w-4 h-4" /></button>
-                </Tooltip>
-                <Tooltip id={`btn-dismiss-anomaly-${alert.id}`} content="Dismiss">
-                  <button onClick={onDismiss} className="p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--background)] rounded-lg" title="Dismiss"><XCircle className="w-4 h-4" /></button>
-                </Tooltip>
-              </>
-            )}
-            <button onClick={() => setExpanded(!expanded)} className="p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--background)] rounded-lg">
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-
-        {expanded && alert.evidence_data && (
-          <div className="mt-3 pt-3 border-t border-[var(--border-color)]">
-            <EvidenceViewer data={alert.evidence_data as AnomalyEvidence} type={alert.anomaly_type} />
-          </div>
-        )}
-      </div>
-    </div>
   );
 }
 

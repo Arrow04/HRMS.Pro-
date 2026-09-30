@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, X, Trash2, Info } from 'lucide-react';
+import { AlertTriangle, Trash2, Info } from 'lucide-react';
 import Modal from './Modal';
 import { DEMO_NO_GUARDS } from '../config/demo';
 

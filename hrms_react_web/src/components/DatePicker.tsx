@@ -103,7 +103,7 @@ const DatePicker: React.FC<DatePickerProps> = ({
               const isSelectedYear = tempDate && tempDate.getFullYear() === year;
               const yearStart = new Date(year, 0, 1);
               const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999);
-              const isDisabled = (minDateNorm && yearEnd < minDateNorm) || (maxDateNorm && yearStart > maxDateNorm);
+              const isDisabled = ((minDateNorm && yearEnd < minDateNorm) || (maxDateNorm && yearStart > maxDateNorm)) ?? false;
               let cls = "py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer";
               if (isDisabled) {
                 cls += " text-gray-300 cursor-not-allowed";

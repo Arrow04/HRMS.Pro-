@@ -101,7 +101,7 @@ export const useLookupValues = (categoryCode: string) => {
         setLoading(true);
         const data = await getLookupValues(categoryCode);
         setValues(data);
-      } catch (err) {
+      } catch {
         setError(`Failed to load ${categoryCode}`);
       } finally {
         setLoading(false);

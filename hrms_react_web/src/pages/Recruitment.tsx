@@ -2,11 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Briefcase, Users, Calendar, Plus, Search, MapPin, Ban,
   Edit2, Trash2, CheckCircle2, X, XCircle,
-  TrendingUp, UserCheck, UserPlus, CloudCog,
-  Download, Upload, Loader2, Info, Award, Sparkles, LogIn, FileText, RotateCcw, ExternalLink, Eye, Settings, Star, Layers, Clock, History
+  TrendingUp, UserCheck, CloudCog,
+  Download, Upload, Loader2, Info, Award, Sparkles, LogIn, FileText, RotateCcw, ExternalLink, Eye, Settings, Star, Layers, Clock
 } from 'lucide-react';
 import { formatAppDate } from '../services/appSettingsService';
-import CvUploadButton from '../components/CvUploadButton';
 import PhoneInput from '../components/PhoneInput';
 import StateSelect from '../components/StateSelect';
 import PincodeInput from '../components/PincodeInput';
@@ -17,7 +16,6 @@ import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { useAppConfig } from '../context/AppConfigContext';
 import { formatEmployeeLabel, normalizePickerEmployee } from '../utils/employeePickerUtils';
 import { joinEmployeeName, personDisplayName, personInitials, splitEmployeeName, toFullNamePayload } from '../utils/employeeNameUtils';
-import { runAutomation } from '../services/aiAutomation';
 import toast from 'react-hot-toast';
 import ToggleSwitch from '../components/ToggleSwitch';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
@@ -116,8 +114,6 @@ const TABS = [
   { id: 'onboarding', label: 'Onboarding', icon: LogIn, color: 'teal', description: 'Onboard selected candidates' },
 ];
 
-const PIPELINE_STEPS = ['applied', 'invited', 'shortlisted'];
-
 const PORTALS: { id: string; name: string; description: string; url: string; icon: React.ElementType; bg: string; color: string }[] = [
   { id: 'linkedin', name: 'LinkedIn', description: 'Post jobs on LinkedIn', url: 'https://www.linkedin.com/post/new/', icon: CloudCog, bg: '#0A66C2', color: '#FFFFFF' },
   { id: 'naukri', name: 'Naukri.com', description: 'India\'s largest job portal', url: 'https://www.naukri.com/hr-jobs-in-india', icon: Briefcase, bg: '#E55B2D', color: '#FFFFFF' },
@@ -173,8 +169,8 @@ const Recruitment = () => {
 const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('all');
-  const [branchFilter, setBranchFilter] = useState('all');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [branchFilter] = useState('all');
+  const [departmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [offeredStatusFilter, setOfferedStatusFilter] = useState<string>('all');
   const [candidateDepartmentFilter, setCandidateDepartmentFilter] = useState<string>('all');
@@ -197,7 +193,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const [reasonActionType, setReasonActionType] = useState<'shortlist' | 'reject' | 'restore' | 'delete' | 'select' | 'notjoined' | 'restoreoffered'>('shortlist');
   const [reasonActionReason, setReasonActionReason] = useState('');
   const [postJobTarget, setPostJobTarget] = useState<RecruitmentJob | null>(null);
-  const [formTab, setFormTab] = useState('basic');
+  const [, setFormTab] = useState('basic');
   const [isClosing, setIsClosing] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [parsingResume, setParsingResume] = useState(false);
@@ -234,8 +230,6 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const [activateJobsTarget, setActivateJobsTarget] = useState<RecruitmentJob[] | null>(null);
   const [deactivateJobsTarget, setDeactivateJobsTarget] = useState<RecruitmentJob[] | null>(null);
   const [eraseRoundTarget, setEraseRoundTarget] = useState<{ active: RecruitmentInterview; label: string } | null>(null);
-  const [interviewGridSelected, setInterviewGridSelected] = useState<Set<number>>(new Set());
-  const [interviewView, setInterviewView] = useState<'grid' | 'list'>('list');
 
   // Ensure the modal is always visible when opened (not stuck in the closing animation)
   useEffect(() => {
@@ -249,10 +243,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const { data: jobs, isLoading: loadingJobs, isFetching } = useQuery<RecruitmentJob[]>({
     queryKey: ['recruitment-jobs'],
     queryFn: async () => {
-      try {
-        const response = await api.get(`/recruitment/jobs`);
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get(`/recruitment/jobs`);
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -260,10 +252,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const { data: candidates, isLoading: loadingCandidates } = useQuery<RecruitmentCandidate[]>({
     queryKey: ['recruitment-candidates'],
     queryFn: async () => {
-      try {
-        const response = await api.get(`/recruitment/candidates`);
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get(`/recruitment/candidates`);
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -301,10 +291,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   const { data: interviews, isLoading: loadingInterviews } = useQuery<RecruitmentInterview[]>({
     queryKey: ['recruitment-interviews'],
     queryFn: async () => {
-      try {
-        const response = await api.get(`/recruitment/interviews`);
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get(`/recruitment/interviews`);
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -321,7 +309,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: branches = [] } = useQuery<BranchOption[]>({
+  useQuery<BranchOption[]>({
     queryKey: ['branches-dropdown'],
     queryFn: async () => {
       const res = await api.get('/branches');
@@ -436,10 +424,6 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     setRejectTarget(candidate);
     setRejectSource(source);
     setRejectReason('');
-  };
-
-  const handleRestoreCandidate = (candidate: RecruitmentCandidate) => {
-    setRestoreCandidateTarget(candidate);
   };
 
   const submitRejection = async () => {
@@ -557,7 +541,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   };
@@ -576,7 +560,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       );
       const rawSched = (formData.scheduledAt as string | undefined) || '';
       const safeSched = (rawSched && rawSched.trim() !== '' && rawSched !== 'T') ? rawSched : (existing?.scheduledAt || existing?.date || new Date().toISOString());
-      const payload = {
+      const payload: Record<string, string | number | undefined> = {
         ...formData,
         scheduledAt: safeSched,
         interviewType: formData.type || formData.interviewType || 'in_person',
@@ -657,7 +641,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     setEditingItem(item);
     // Map publishedDate -> postDate for the job form
     const mapped = { ...item, postDate: (item as RecruitmentJob).publishedDate ? String((item as RecruitmentJob).publishedDate).split('T')[0] : undefined };
-    setFormData(mapped);
+    setFormData(mapped as RecruitmentFormData);
     setFormTab('basic');
     setShowModal(activeTab === 'jobs' ? 'job' : activeTab === 'candidates' ? 'candidate' : 'interview');
     if (activeTab === 'interviews') {
@@ -677,10 +661,6 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
       setInterviewCompanyId('');
       setIsClosing(false);
     }, 300);
-  };
-
-  const handleDelete = (id: number, name: string = 'item') => {
-    setDeleteTarget({ id, name });
   };
 
   const openPostJob = (job: RecruitmentJob) => {
@@ -830,7 +810,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
         jobId: latest.jobId,
         jobTitle: latest.jobTitle,
         companyId: latest.companyId,
-        companyName: latest.companyName,
+        companyName: latest.companyName as string | undefined,
         interviewerId: latest.interviewerId,
         interviewerName: latest.interviewerName,
         rounds,
@@ -841,8 +821,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
         scheduledAt: latest.scheduledAt || latest.date,
         rating: latest.rating,
         feedback: latest.feedback,
-        technicalScore: latest.technicalScore,
-        communicationScore: latest.communicationScore,
+        technicalScore: latest.technicalScore as number | undefined,
+        communicationScore: latest.communicationScore as number | undefined,
         overallScore: latest.overallScore,
       });
     });
@@ -1980,12 +1960,12 @@ const renderJobForm = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-            <StateSelect value={formData.state || ''} onChange={(v) => setFormData({ ...formData, state: v })} />
+            <StateSelect value={String(formData.state || '')} onChange={(v) => setFormData({ ...formData, state: v })} />
             <p className="mt-1 text-xs text-gray-400">State of residence</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Pincode</label>
-            <PincodeInput value={formData.pincode || ''} onChange={(v) => setFormData({ ...formData, pincode: v })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+            <PincodeInput value={String(formData.pincode || '')} onChange={(v) => setFormData({ ...formData, pincode: v })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
             <p className="mt-1 text-xs text-gray-400">6-digit postal pincode</p>
           </div>
           <div className="lg:col-span-3">
@@ -3347,7 +3327,7 @@ const renderJobForm = () => {
       <ConfirmActionModal
         isOpen={!!restoreCandidateTarget}
         title="Restore Candidate"
-        message={`Restore ${candidateDisplayName(restoreCandidateTarget || {})} back to the recruitment pipeline?`}
+        message={`Restore ${candidateDisplayName(restoreCandidateTarget as RecruitmentCandidate)} back to the recruitment pipeline?`}
         consequence="The candidate will be moved back to the 'Applied' stage and become visible in the pipeline again."
         confirmLabel="Restore"
         variant="success"

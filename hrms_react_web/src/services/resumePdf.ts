@@ -1,5 +1,4 @@
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import { uploadUrl } from '../utils/uploadUrl';
 
@@ -95,6 +94,7 @@ const T = (v: string): string =>
     .replace(/\u2026/g, '...')
     .replace(/\u20B9/g, 'Rs. ')
     .replace(/\u00A0/g, ' ')
+    // eslint-disable-next-line no-control-regex
     .replace(/[^\u0000-\u00FF]/g, '');
 
 // Pretty-print raw DB tokens: west_bengal -> West Bengal, full_time -> Full Time
@@ -111,7 +111,6 @@ const fmtDate = (d: unknown): string => {
   return s.split('T')[0];
 };
 
-const PAGE_H = 297;
 const MARGIN = 14;
 const FOOTER_Y = 287;
 
@@ -194,55 +193,6 @@ const addKV = (doc: jsPDF, left: { label: string; value: string }[], right: { la
       doc.text(rLines, 196, y, { align: 'right' });
     }
     y += 5 * rowLines;
-  }
-  return y + 3;
-};
-
-const addListBlock = (doc: jsPDF, items: { title: string; subtitle: string }[], y: number): number => {
-  for (const it of items) {
-    if (!it.title) continue;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const titleText = T(it.title);
-    const rawTitle: string[] = doc.splitTextToSize(titleText, 178) as string[];
-    const titleLines: string[] = rawTitle.slice(0, 3);
-    if (rawTitle.length > 3 && titleLines.length) titleLines[titleLines.length - 1] += '...';
-    const titleW = titleLines.length ? doc.getTextWidth(titleLines[0]) : 0;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const subText = T(it.subtitle || '');
-    const subLines: string[] = subText ? (doc.splitTextToSize(subText, 178) as string[]) : [];
-
-    const subX = 16 + titleW + 5;
-    const inline = subText && titleLines.length === 1 && titleW < 80 && subX < 118;
-    const rightW = inline ? Math.max(40, 194 - subX) : 178;
-    const inlineLines: string[] = inline ? (doc.splitTextToSize(subText, rightW) as string[]) : [];
-    const rows = inline
-      ? Math.max(1, inlineLines.length)
-      : titleLines.length + Math.max(0, subLines.length - 1) + 1;
-
-    y = ensureSpace(doc, y, 5 * rows + 4);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(51, 65, 85);
-    doc.text(titleLines, 16, y);
-    if (inline) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(100, 116, 139);
-      doc.text(inlineLines, subX, y);
-      y += 5 * Math.max(1, inlineLines.length);
-    } else {
-      y += 5 * titleLines.length;
-      if (subLines.length) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(100, 116, 139);
-        doc.text(subLines, 16, y);
-        y += 5 * subLines.length;
-      }
-    }
-    y += 3;
   }
   return y + 3;
 };
@@ -462,7 +412,7 @@ export const generateResumePdf = (data: ResumeData) => {
     if (itDone.length) {
       // One wrapped paragraph instead of one row per checklist item —
       // per-item rows pushed the PDF to 3 pages.
-      y = addKV(doc, [{ label: 'Checklist', value: `${itDone.length} completed: ${itDone.join(' · ')}` }], [], y);
+      addKV(doc, [{ label: 'Checklist', value: `${itDone.length} completed: ${itDone.join(' · ')}` }], [], y);
     }
   }
 

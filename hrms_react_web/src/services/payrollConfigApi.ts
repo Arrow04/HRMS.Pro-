@@ -70,40 +70,40 @@ export const deletePayrollComponent = (id: number) =>
 
 export interface StatutorySetting {
   pf_applicable?: boolean | null;
-  pf_employee_rate?: number;
-  pf_employer_rate?: number;
-  pf_wage_ceiling?: number;
-  pf_max_monthly?: number;
-  pf_min_basic_for_exclusion?: number;
-  pf_edli_rate?: number;
-  pf_edli_max_monthly?: number;
-  pf_admin_rate?: number;
-  pf_admin_min_monthly?: number;
-  eps_wage_ceiling?: number;
-  eps_employer_rate?: number;
-  nps_employee_rate?: number;
-  nps_employer_rate?: number;
+  pf_employee_rate?: number | null;
+  pf_employer_rate?: number | null;
+  pf_wage_ceiling?: number | null;
+  pf_max_monthly?: number | null;
+  pf_min_basic_for_exclusion?: number | null;
+  pf_edli_rate?: number | null;
+  pf_edli_max_monthly?: number | null;
+  pf_admin_rate?: number | null;
+  pf_admin_min_monthly?: number | null;
+  eps_wage_ceiling?: number | null;
+  eps_employer_rate?: number | null;
+  nps_employee_rate?: number | null;
+  nps_employer_rate?: number | null;
   esi_applicable?: boolean | null;
-  esi_employee_rate?: number;
-  esi_employer_rate?: number;
-  esi_gross_ceiling?: number;
-  esi_disabled_ceiling?: number;
+  esi_employee_rate?: number | null;
+  esi_employer_rate?: number | null;
+  esi_gross_ceiling?: number | null;
+  esi_disabled_ceiling?: number | null;
   pt_applicable?: boolean | null;
-  pt_monthly_amount?: number;
-  pt_min_gross?: number;
+  pt_monthly_amount?: number | null;
+  pt_min_gross?: number | null;
   lwf_applicable?: boolean | null;
-  lwf_employee_rate?: number;
-  lwf_employer_rate?: number;
+  lwf_employee_rate?: number | null;
+  lwf_employer_rate?: number | null;
   gratuity_applicable?: boolean | null;
-  gratuity_rate?: number;
-  gratuity_eligible_years?: number;
-  gratuity_days_per_year?: number;
-  gratuity_tax_exempt_ceiling?: number;
+  gratuity_rate?: number | null;
+  gratuity_eligible_years?: number | null;
+  gratuity_days_per_year?: number | null;
+  gratuity_tax_exempt_ceiling?: number | null;
   bonus_applicable?: boolean | null;
-  bonus_min_rate?: number;
-  bonus_max_rate?: number;
-  bonus_eligible_ceiling?: number;
-  bonus_wage_ceiling?: number;
+  bonus_min_rate?: number | null;
+  bonus_max_rate?: number | null;
+  bonus_eligible_ceiling?: number | null;
+  bonus_wage_ceiling?: number | null;
 }
 
 export const getStatutorySettings = (companyId?: number) =>
@@ -279,7 +279,7 @@ export interface StateLWFDetail {
   source?: 'static' | 'db' | string;
   scope?: ComplianceScope;
   notes?: string;
-  history?: any[];
+  history?: Array<Omit<StateLWFDetail, 'history'>>;
 }
 
 export interface PTReplacePayload {
@@ -337,7 +337,7 @@ export interface LeaveTemplate {
   description?: string;
   company_id?: number | null;
   status?: string;
-  body?: Record<string, any>;
+  body?: Record<string, unknown>;
   effective_from?: string;
   accrual_method?: string;
   accrual_day?: number;

@@ -209,7 +209,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState('present');
   const [multiSelect, setMultiSelect] = useState(false);
-  const [showStats, setShowStats] = useState(true);
+  const [showStats] = useState(true);
   const [showJump, setShowJump] = useState(false);
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [editStatus, setEditStatus] = useState('present');
@@ -217,7 +217,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
   const [editCheckOut, setEditCheckOut] = useState('');
   const [hoverDay, setHoverDay] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-  const [dragStart, setDragStart] = useState<string | null>(null);
+  const [, setDragStart] = useState<string | null>(null);
   const dragRef = useRef<{ start: string; end: string } | null>(null);
 
   useEffect(() => { if (isOpen) { setSelectedDates([]); setEditingDay(null); setHoverDay(null); dragRef.current = null; } }, [isOpen]);
@@ -312,7 +312,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
         }))
       );
       const merged: Record<string, CalendarDay> = {};
-      results.forEach(r => Object.assign(merged, (r.data as { days?: Record<string, CalendarDay>; calendar?: Record<string, CalendarDay> })?.days || (r.data as any)?.calendar || {}));
+      results.forEach(r => Object.assign(merged, (r.data as { days?: Record<string, CalendarDay>; calendar?: Record<string, CalendarDay> })?.days || (r.data as { calendar?: Record<string, CalendarDay> })?.calendar || {}));
       const first = results[0]?.data as { workdays?: number[] } | undefined;
       return { days: merged, workdays: first?.workdays || null };
     },
@@ -489,7 +489,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
       );
       const months: Record<number, Record<string, CalendarDay>> = {};
       results.forEach((r, m) => {
-        months[m] = (r.data as { days?: Record<string, CalendarDay>; calendar?: Record<string, CalendarDay> })?.days || (r.data as any)?.calendar || {};
+        months[m] = (r.data as { days?: Record<string, CalendarDay>; calendar?: Record<string, CalendarDay> })?.days || (r.data as { calendar?: Record<string, CalendarDay> })?.calendar || {};
       });
       return { months };
     },
@@ -592,8 +592,6 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     setSelectedDates(range);
   };
 
-  const clearDrag = () => { dragRef.current = null; setDragStart(null); };
-
   const exportPDF = () => {
     if (!employee) return;
     const doc = new jsPDF();
@@ -621,12 +619,6 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     });
     autoTable(doc, { startY: 32, head: [header], body: rows, theme: 'grid', styles: { fontSize: 8 } });
     doc.save(`attendance-${employee.firstName || employee.first_name || 'employee'}-${MONTHS[month]}-${year}.pdf`);
-  };
-
-  const handleQuickApply = (status: string) => {
-    const updates = selectedDates.map(dateStr => ({ dateStr, status }));
-    if (updates.length === 0) return;
-    saveAllMutation.mutate({ updates });
   };
 
   const handleClearSelection = () => setSelectedDates([]);

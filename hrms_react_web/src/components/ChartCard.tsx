@@ -25,21 +25,6 @@ const ACCENTS: Record<string, { icon: string; iconBg: string; bar: string; glow:
   orange:  { icon: 'text-orange-600',  iconBg: 'bg-gradient-to-br from-orange-50 to-orange-100/80 border-orange-200/60',  bar: 'from-orange-500 via-orange-400 to-orange-300',  glow: 'from-orange-500/8',  ring: 'ring-orange-500/20' },
 };
 
-export const ACCENT_COLORS: Record<string, string> = {
-  blue: '#3B82F6',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  violet: '#8B5CF6',
-  indigo: '#6366F1',
-  teal: '#14B8A6',
-  cyan: '#06B6D4',
-  pink: '#EC4899',
-  purple: '#A855F7',
-  slate: '#64748B',
-  orange: '#F97316',
-};
-
 const ChartCard: React.FC<ChartCardProps> = ({ title, subtitle, icon: Icon, accent = 'blue', children, height, delay = 0 }) => {
   const a = ACCENTS[accent] || ACCENTS.blue;
   return (

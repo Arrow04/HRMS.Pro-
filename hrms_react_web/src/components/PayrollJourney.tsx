@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Play, ClipboardCheck, Wallet, FileDown, HelpCircle, ArrowRight,
+  Play, ClipboardCheck, Wallet, FileDown, HelpCircle,
   ChevronDown, BookOpen, GraduationCap, Receipt, Landmark, Calculator,
   ShieldCheck, MessageCircle, CalendarDays, ListChecks, FolderCheck, Settings,
 } from 'lucide-react';

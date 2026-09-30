@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Loader2 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { FileText, Download } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee, getMyPayroll, downloadPayslipPdf, getPayslipData } from '../../services/employeeSelfService';
 import { getAppCurrency, getCurrencySymbol } from '../../services/currencyService';
 
 const EmployeePayslips = () => {
-  const { user } = useAuth();
-  const [employeeId, setEmployeeId] = useState<number | null>(null);
+  useAuth();
+  const [, setEmployeeId] = useState<number | null>(null);
   const [payroll, setPayroll] = useState<Record<string, unknown>[]>([]);
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);

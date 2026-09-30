@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, RefreshCcw, RotateCcw, Loader2, Landmark } from 'lucide-react';
+import { BookOpen, RefreshCcw, RotateCcw, Landmark } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAccounts, getJournals, reverseJournal } from '../services/accountingService';
 import type { GLAccount, JournalEntry } from '../services/accountingService';
-import { formatCurrency, getCurrencySymbol, getAppCurrency } from '../services/currencyService';
+import { formatCurrency, getAppCurrency } from '../services/currencyService';
 
 const ENTRY_TYPE_LABELS: Record<string, string> = {
   payroll: 'Payroll',
@@ -17,9 +17,8 @@ const ENTRY_TYPE_LABELS: Record<string, string> = {
 const AccountingPanel = () => {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState('all');
-  const symbol = getCurrencySymbol(getAppCurrency());
 
-  const { data: accounts = [], isLoading: loadingAccounts } = useQuery({
+  const { data: accounts = [] } = useQuery({
     queryKey: ['gl-accounts'],
     queryFn: getAccounts,
     staleTime: 5 * 60 * 1000,

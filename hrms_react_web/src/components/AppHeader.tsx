@@ -2,10 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, Bell, Sun, Moon, LogOut, Settings, User,
+  Search, Bell, LogOut, Settings,
   ChevronDown, Menu, Users, Clock, CalendarCheck, DollarSign,
-  Briefcase, Building2, FileText, LayoutDashboard, CheckCheck, Loader2,
-  Plus, FileDown, Download, TrendingUp, CreditCard,
+  Briefcase, Building2, FileText, LayoutDashboard, CheckCheck,
+  Plus, FileDown, TrendingUp, CreditCard,
   ShieldAlert, Monitor, Palmtree, Database, CornerDownLeft
 } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
@@ -155,7 +155,6 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
   };
 
   const commands = buildCommands();
-  const allItems = commands.flatMap(c => c.items);
 
   useEffect(() => { setActiveIndex(0); }, [searchQuery, searchOpen]);
 

@@ -121,7 +121,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           const permsRes = await api.get('/permissions/me/current');
           permissions = permsRes.data.permissions || [];
           allowed_modules = permsRes.data.allowed_modules || [];
-        } catch (permErr) {
+        } catch {
 
           // Fallback for admin
           if (userData.role === 'admin') {
@@ -206,7 +206,7 @@ const generateDeviceFingerprint = (): string => {
           const permsRes = await api.get('/permissions/me/current');
           permissions = permsRes.data.permissions || [];
           allowedModules = permsRes.data.allowed_modules || [];
-        } catch (permErr) {
+        } catch {
 
           if (userData.role === 'admin') {
             allowedModules = ['dashboard', 'company', 'employees', 'recruitment', 'holidays', 'attendance', 'leaves', 'payroll', 'expenses', 'performance', 'reports', 'settings'];
@@ -253,9 +253,6 @@ const generateDeviceFingerprint = (): string => {
         });
 
         await finishLogin(response.data.token, response.data.user, response.data.is_new_device);
-      } catch (err: unknown) {
-        // Error logged
-        throw err;
       } finally {
         setIsLoading(false);
       }
@@ -282,9 +279,6 @@ const generateDeviceFingerprint = (): string => {
         });
 
         await finishLogin(response.data.token, response.data.user, response.data.is_new_device);
-      } catch (err: unknown) {
-        // Error logged
-        throw err;
       } finally {
         setIsLoading(false);
       }
@@ -380,7 +374,7 @@ const generateDeviceFingerprint = (): string => {
       
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
-    } catch (error) {
+    } catch {
       // Error logged
     }
   }, [user]);
@@ -410,6 +404,7 @@ const generateDeviceFingerprint = (): string => {
 // HOOK
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

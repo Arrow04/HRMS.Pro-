@@ -1,8 +1,8 @@
 ﻿import { useState } from 'react';
 import {
-  History, Building2, Users, Calendar, Briefcase, Database,
-  Clock, DollarSign, Receipt, Settings, FileBarChart, Filter, ChevronDown,
-  Monitor, Smartphone, Globe, MapPin, FileText, User
+  History, Building2, Users, Calendar, Briefcase,
+  Clock, DollarSign, Receipt, Settings, FileBarChart, Filter,
+  Monitor, Smartphone, Globe, FileText, User
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
@@ -57,7 +57,7 @@ const ActivityLog = () => {
         
         const response = await api.get('/activity-logs', { params });
         return response.data;
-      } catch (error) {
+      } catch {
         // Error logged
         toast.error('Failed to fetch activity logs');
         return [];
@@ -66,23 +66,6 @@ const ActivityLog = () => {
   });
 
   const filteredLogs = activityLogs || [];
-
-  const getActionBadgeColor = (action: string) => {
-    switch (action) {
-      case 'create':
-        return 'bg-[#F0FDF4] text-[var(--success-green)] border border-[#057A55]/20';
-      case 'edit':
-        return 'bg-[#EFF6FF] text-[var(--primary-blue)] border border-[#1C64F2]/20';
-      case 'delete':
-        return 'bg-[#FEF2F2] text-[var(--danger-red)] border border-[#C81E1E]/20';
-      case 'toggle_active':
-        return 'bg-[#F0FDF4] text-[var(--success-green)] border border-[#057A55]/20';
-      case 'toggle_inactive':
-        return 'bg-[#FEF2F2] text-[var(--danger-red)] border border-[#C81E1E]/20';
-      default:
-        return 'bg-[#F3F4F6] text-[#6B7280] border border-[#6B7280]/20';
-    }
-  };
 
   const getDeviceIcon = (deviceInfo?: string) => {
     switch (deviceInfo?.toLowerCase()) {

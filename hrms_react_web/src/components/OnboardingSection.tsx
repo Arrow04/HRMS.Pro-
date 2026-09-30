@@ -3,12 +3,10 @@ import type { Employee, Branch, Department, Designation, Company } from '../type
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
-import { normalizeArray } from '../utils/normalize';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee } from '../utils/employeePickerUtils';
-import { joinEmployeeName, personDisplayName, personInitials } from '../utils/employeeNameUtils';
+import { personDisplayName, personInitials } from '../utils/employeeNameUtils';
 import { formatAppDate } from '../services/appSettingsService';
-import DatePicker from '../components/DatePicker';
 import DateRangePicker from '../components/DateRangePicker';
 import DataTable from '../components/DataTable';
 import SearchableSelect from '../components/SearchableSelect';
@@ -17,10 +15,7 @@ import EmployeeFormModal from './EmployeeFormModal';
 import type { EmployeeFormData as SharedFormData } from './EmployeeFormModal';
 import { computeProfileCompletion } from '../utils/profileCompletion';
 import {
-  Search, UserPlus, LogIn, X, Upload, User, Heart, MapPin, IdCard,
-  GraduationCap, Award, Briefcase, HeartHandshake, Building2, Smartphone,
-  Trophy, Sparkles, FileText, Settings, CheckCircle, Info, Phone, Edit2, Trash2, Banknote,
-  TrendingUp, TrendingDown
+  LogIn, X, Edit2, Trash2, CheckCircle
 } from 'lucide-react';
 
 type Option = { value: string | number; label: string; code?: string; name?: string };
@@ -148,7 +143,7 @@ interface OnboardingFormData {
   [key: string]: unknown;
 }
 
-const OnboardingSection = forwardRef<{ startOnboarding: () => void }, OnboardingSectionProps>(({ companiesList, genderOptions, bloodGroupOptions, maritalStatusOptions, educationLevelOptions, employmentTypeOptions, statusOptions, deviceTypeOptions, activityTypeOptions, onStartOnboarding }, ref) => {
+const OnboardingSection = forwardRef<{ startOnboarding: () => void }, OnboardingSectionProps>(({ companiesList, genderOptions, bloodGroupOptions, maritalStatusOptions, educationLevelOptions, employmentTypeOptions, statusOptions, deviceTypeOptions }, ref) => {
   const [search, setSearch] = useState('');
   const [filterCompanyId, setFilterCompanyId] = useState('all');
   const [filterBranchId, setFilterBranchId] = useState('all');
@@ -158,9 +153,9 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
   const [filterStatus, setFilterStatus] = useState('all');
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [, setOnboardingStep] = useState(0);
   const [onboardingFormData, setOnboardingFormData] = useState<OnboardingFormData>({});
-  const [employeeFormTab, setEmployeeFormTab] = useState('basic');
+  const [, setEmployeeFormTab] = useState('basic');
   const [isClosing, setIsClosing] = useState(false);
   const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
   const [onboardingSavingProgress, setOnboardingSavingProgress] = useState(false);
@@ -170,19 +165,6 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
   const [activating, setActivating] = useState(false);
 
   const queryClient = useQueryClient();
-
-
-  const handleCreateEmployee = async () => {
-    // Validate mandatory fields temporarily bypassed for dev
-    /*
-    const requiredFields = ['firstName', 'lastName', 'phone', 'currentAddress'];
-    const missingFields = requiredFields.filter(field => !onboardingFormData[field as keyof typeof onboardingFormData]);
-    if (missingFields.length > 0) {
-      toast.error(`Please fill in all mandatory fields: ${missingFields.join(', ')}`);
-      return;
-    }
-    */
-  };
 
   const handleCloseDrawer = () => {
     setIsClosing(true);
@@ -196,12 +178,10 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
   const { data: branchesList } = useQuery({
     queryKey: ['onboarding-branches', onboardingFormData.companyId],
     queryFn: async () => {
-      try {
-        const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
-        const response = await api.get(`/branches${params}`);
-        const data = response.data || [];
-        return data.filter((item: Branch) => item.status !== 'inactive');
-      } catch (error) { throw error; }
+      const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
+      const response = await api.get(`/branches${params}`);
+      const data = response.data || [];
+      return data.filter((item: Branch) => item.status !== 'inactive');
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -209,12 +189,10 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
   const { data: departmentsList } = useQuery({
     queryKey: ['onboarding-departments', onboardingFormData.companyId],
     queryFn: async () => {
-      try {
-        const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
-        const response = await api.get(`/departments${params}`);
-        const data = response.data || [];
-        return data.filter((item: Department) => item.status !== 'inactive');
-      } catch (error) { throw error; }
+      const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
+      const response = await api.get(`/departments${params}`);
+      const data = response.data || [];
+      return data.filter((item: Department) => item.status !== 'inactive');
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -222,12 +200,10 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
   const { data: designations = [] } = useQuery({
     queryKey: ['onboarding-designations', onboardingFormData.companyId],
     queryFn: async () => {
-      try {
-        const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
-        const response = await api.get(`/api/designations${params}`);
-        const data = response.data || [];
-        return data.filter((item: Designation) => item.status !== 'inactive');
-      } catch (error) { throw error; }
+      const params = onboardingFormData.companyId ? `?companyId=${onboardingFormData.companyId}` : '';
+      const response = await api.get(`/api/designations${params}`);
+      const data = response.data || [];
+      return data.filter((item: Designation) => item.status !== 'inactive');
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -388,26 +364,6 @@ const OnboardingSection = forwardRef<{ startOnboarding: () => void }, Onboarding
       setOnboardingSavingProgress(false);
     }
   };
-
-  const onboardingSteps = [
-    { id: 'basic', label: 'Basic Info', icon: User },
-    { id: 'personal', label: 'Personal', icon: Heart },
-    { id: 'address', label: 'Address', icon: MapPin },
-    { id: 'identity', label: 'Identity', icon: IdCard },
-    { id: 'education', label: 'Education', icon: GraduationCap },
-    { id: 'skills', label: 'Skills', icon: Award },
-    { id: 'benefits', label: 'Benefits', icon: Briefcase },
-    { id: 'family', label: 'Family', icon: HeartHandshake },
-    { id: 'bank', label: 'Bank', icon: Building2 },
-    { id: 'salary', label: 'Salary', icon: Banknote },
-    { id: 'device', label: 'Device', icon: Smartphone },
-    { id: 'experience', label: 'Experience', icon: Briefcase },
-    { id: 'achievements', label: 'Achievements', icon: Trophy },
-    { id: 'activities', label: 'Activities', icon: Sparkles },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'it_setup', label: 'IT Setup', icon: Settings },
-    { id: 'review', label: 'Review', icon: CheckCircle },
-  ];
 
   useImperativeHandle(ref, () => ({
     startOnboarding: () => {

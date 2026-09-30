@@ -3,7 +3,7 @@ import {
   FileText, Search, Download, Printer, Copy, Check, X, Pencil,
   Briefcase, ClipboardCheck, Award, TrendingUp, LogOut, FileBadge, Stamp,
   ChevronDown, ChevronRight, Sparkles, ZoomIn, ZoomOut, Users, Building2,
-  ChevronLeft as ChevronLeftIcon, Eye, HelpCircle,
+  Eye, HelpCircle,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +14,6 @@ import FormField, { formInputClass, formTextareaClass } from '../components/Form
 import DatePicker from '../components/DatePicker';
 import SearchableSelect from '../components/SearchableSelect';
 import CompactImageUpload from '../components/CompactImageUpload';
-import PageSkeleton from '../components/skeleton/PageSkeleton';
 import { personDisplayName } from '../utils/employeeNameUtils';
 import type { Employee } from '../types';
 
@@ -48,15 +47,6 @@ type Template = {
 /* ──────────────────────────────────────────────────────────────────────────────
    Template data — IDENTICAL to original (all business logic preserved)
    ────────────────────────────────────────────────────────────────────────────── */
-
-const termsContext = (f: Record<string, string>) => {
-  const rows: string[] = [];
-  if (f.reporting_to) rows.push(`Reporting to: ${f.reporting_to}`);
-  if (f.probation_months) rows.push(`Probation period: ${f.probation_months} months from the date of joining`);
-  if (f.notice_period) rows.push(`Notice period: ${f.notice_period} on either side post confirmation`);
-  if (f.salary) rows.push(`Annual CTC: Rs. ${f.salary} per annum (detailed breakup enclosed in the annexure)`);
-  return rows;
-};
 
 const COMMON_FIELDS: FieldDef[] = [
   { key: 'ref_no', label: 'Reference No.', type: 'text', placeholder: 'HR/2026/001' },
@@ -1020,13 +1010,6 @@ const Letters = () => {
     });
   };
 
-  const restoreDefaultTerm = (idx: number) => {
-    setRemovedDefaults((prev) => ({
-      ...prev,
-      [templateId]: (prev[templateId] || []).filter((i) => i !== idx),
-    }));
-  };
-
   const clearEmployee = () => {
     setSelectedEmployee(null);
     setEmployeeSearch('');
@@ -1098,9 +1081,9 @@ const Letters = () => {
   }, [template, merged, letterhead, contextRows, contactLine]);
 
   const downloadPdf = useCallback(() => {
-    const missing = template.fields.filter((f: any) => f.required && !merged[f.key]);
+    const missing = template.fields.filter((f) => f.required && !merged[f.key]);
     if (missing.length > 0) {
-      toast.error(`Please fill in: ${missing.map((f: any) => f.label).join(', ')}`);
+      toast.error(`Please fill in: ${missing.map((f) => f.label).join(', ')}`);
       return;
     }
     const doc = new jsPDF({ unit: 'mm', format: 'a4' });

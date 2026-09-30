@@ -2,7 +2,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { getCurrencySymbol, formatCurrency, getAppCurrency } from '../services/currencyService';
+import { formatCurrency, getAppCurrency } from '../services/currencyService';
 import { formatAppDate, formatAppDateLong } from '../services/appSettingsService';
 import {
   Users,
@@ -24,7 +24,6 @@ import {
   CheckCircle,
   Calendar,
   Coffee,
-  ChevronDown,
   RefreshCw,
   LayoutDashboard,
   Activity,
@@ -57,15 +56,30 @@ import {
 } from 'recharts';
 import StatsCard from '../components/StatsCard';
 import SearchableSelect from '../components/SearchableSelect';
-import ChartCard, { ACCENT_COLORS } from '../components/ChartCard';
+import ChartCard from '../components/ChartCard';
 import PageHero from '../components/PageHero';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ModuleSummaryCard from '../components/ModuleSummaryCard';
 import QuickActionButton from '../components/QuickActionButton';
 import EmptyState from '../components/EmptyState';
-import type { Employee, Attendance, Holiday, LeaveApplication, Expense, Payroll } from '../types';
+import type { Holiday } from '../types';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+
+const ACCENT_COLORS: Record<string, string> = {
+  blue: '#3B82F6',
+  emerald: '#10B981',
+  amber: '#F59E0B',
+  rose: '#F43F5E',
+  violet: '#8B5CF6',
+  indigo: '#6366F1',
+  teal: '#14B8A6',
+  cyan: '#06B6D4',
+  pink: '#EC4899',
+  purple: '#A855F7',
+  slate: '#64748B',
+  orange: '#F97316',
+};
 
 // Compute a clean, rounded Y-axis upper bound that scales to any magnitude
 // (23 -> 30, 1000 -> 1200, 100000 -> 120000) so bars are never cut off.
@@ -165,7 +179,7 @@ export default function Dashboard() {
 
   const [currency, setCurrency] = useState(getAppCurrency());
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('');
-  const [trendMonths, setTrendMonths] = useState(6);
+  const [trendMonths] = useState(6);
   const [analyticsTab, setAnalyticsTab] = useState<'overview' | 'trends'>('overview');
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
@@ -177,7 +191,6 @@ export default function Dashboard() {
 
 
 
-  const currencySymbol = getCurrencySymbol(currency);
   const queryClient = useQueryClient();
 
   const handleRefresh = async () => {
@@ -610,7 +623,7 @@ export default function Dashboard() {
                 </Pie>
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value} employees`, props.payload?.name || '']}
+                  formatter={(value, _name, props) => [`${value} employees`, props.payload?.name || '']}
                 />
                 <Legend
                   verticalAlign="bottom"
@@ -738,7 +751,7 @@ export default function Dashboard() {
                 </Pie>
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
-                  formatter={(value: number, _name: string, props: { payload?: { name?: string } }) => [`${value}`, props.payload?.name || '']}
+                  formatter={(value, _name, props) => [`${value}`, props.payload?.name || '']}
                 />
                 <Legend
                   verticalAlign="bottom"

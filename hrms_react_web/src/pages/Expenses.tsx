@@ -1,13 +1,12 @@
-﻿import { useState, useEffect, type ReactNode } from 'react';
+﻿import { useState, useEffect } from 'react';
 import {
-  Plus, Receipt, CheckCircle2, XCircle, RotateCcw, Clock, Search, CloudCog, X,
-  TrendingUp, Filter, Wallet, FileText, Download, Coins, Upload, Loader2, Info, MapPin, CreditCard, Award, Settings, Tags, ListChecks, User
+  Plus, CheckCircle2, XCircle, RotateCcw, Clock, X,
+  Wallet, Download, Upload, Loader2, Info, CreditCard, Settings, User
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, toEmployeeSelectOptions } from '../utils/employeePickerUtils';
 import toast from 'react-hot-toast';
 import { getCurrencySymbol, formatCurrency, getAppCurrency } from '../services/currencyService';
 import DateRangePicker from '../components/DateRangePicker';
@@ -27,7 +26,7 @@ import Tooltip from '../components/Tooltip';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ExpensesConfig from '../components/ExpensesConfig';
-import type { Expense, Employee, Company, Department, Branch } from '../types';
+import type { Expense, Company, Department, Branch } from '../types';
 
 type MasterDataOption = {
   value?: string;
@@ -69,9 +68,8 @@ const Expenses = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('records');
-  const [showExpensesConfig, setShowExpensesConfig] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: ExpenseRow[] } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
@@ -118,10 +116,8 @@ const Expenses = () => {
   const { data: expenses = [], isLoading, isFetching } = useQuery({
     queryKey: ['expenses', includeInactive],
     queryFn: async () => {
-      try {
-        const response = await api.get('/expenses', { params: { includeInactive } });
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/expenses', { params: { includeInactive } });
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -129,7 +125,7 @@ const Expenses = () => {
   // Companies / Branches / Departments for filters
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<Company[]>('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
   const { data: branches = [] } = useQuery({
@@ -150,17 +146,14 @@ const Expenses = () => {
   const { data: stats = { total: 0, totalAmount: 0, pending: 0, pendingAmount: 0, approved: 0, approvedAmount: 0, thisMonth: 0, thisMonthAmount: 0 } } = useQuery({
     queryKey: ['expense-stats', includeInactive],
     queryFn: async () => {
-      try {
-        const response = await api.get('/expenses/stats', { params: { includeInactive } });
-        return response.data || { total: 0, totalAmount: 0, pending: 0, pendingAmount: 0, approved: 0, approvedAmount: 0, thisMonth: 0, thisMonthAmount: 0 };
-      } catch (error) { throw error; }
+      const response = await api.get('/expenses/stats', { params: { includeInactive } });
+      return response.data || { total: 0, totalAmount: 0, pending: 0, pendingAmount: 0, approved: 0, approvedAmount: 0, thisMonth: 0, thisMonthAmount: 0 };
     },
   });
 
   // Master data for expense categories
   
-  const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
-  const employees = pickerEmployees.map(normalizePickerEmployee);
+  useEmployeePicker({ status: 'active' });
 
   const { data: expenseCategoryOptions = [] } = useMasterData('EXPENSE_CATEGORY');
   
@@ -232,13 +225,10 @@ const Expenses = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   };
-
-  
-  const employeeOptions = toEmployeeSelectOptions(pickerEmployees);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,7 +261,7 @@ const Expenses = () => {
         <section>
           <SectionTitle title="Employee & Dates" />
           <EmployeeScopedCascade
-            companies={companies as unknown as Array<Record<string, any>>}
+            companies={companies}
             companyId={newExpense.companyId ? String(newExpense.companyId) : ''}
             branchId={newExpense.branchId ? String(newExpense.branchId) : ''}
             departmentId={newExpense.departmentId ? String(newExpense.departmentId) : ''}
@@ -583,7 +573,7 @@ const Expenses = () => {
                 },
                 {
                   label: 'Reject',
-                  icon: XCircle, RotateCcw,
+                  icon: XCircle,
                   variant: 'danger',
                   onAction: (items) => {
                     setConfirmTarget({ type: 'reject', items });

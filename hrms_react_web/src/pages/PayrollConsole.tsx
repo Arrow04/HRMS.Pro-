@@ -5,18 +5,75 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AccountingPanel from '../components/AccountingPanel';
+import ConfirmActionModal from '../components/ConfirmActionModal';
+import DatePicker from '../components/DatePicker';
+import Modal from '../components/Modal';
 import SearchableSelect from '../components/SearchableSelect';
+import ToggleSwitch from '../components/ToggleSwitch';
 import api from '../services/api';
+import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
+import { getAppCountry } from '../services/appSettingsService';
+import { getRuleCatalog } from '../services/statutoryRuleConfigApi';
+import type { RuleCatalogType } from '../services/statutoryRuleConfigApi';
 import type { PayrollRule, ExplainPayload } from '../services/payrollEngineService';
 import {
   listPayrollRules, publishPayrollRule, getRuleTrace,
-  listArrears, applyArrears, simulateRetro,
+  listArrears, applyArrears, simulateRetro, createArrears,
   listPaymentBatches, createPaymentBatch, downloadBatchFile,
   listReports, downloadFiling,
   getPayrollExplain,
 } from '../services/payrollEngineService';
 
 type Tab = 'rules' | 'calendar' | 'planner' | 'arrears' | 'payments' | 'filings' | 'accounting' | 'explain';
+
+// Employee summary as returned by /employees?view=summary (snake + camel).
+interface EmployeeSummary {
+  id?: number | string;
+  employeeId?: number | string;
+  firstName?: string;
+  lastName?: string;
+  first_name?: string;
+  last_name?: string;
+  employeeCode?: string;
+}
+
+// Tax planner response (old vs new regime comparison + savings tips).
+interface PlannerDeductions {
+  section80c?: number;
+  section80d?: number;
+  nps80ccd1b?: number;
+  homeLoanInterest?: number;
+  hraExemption?: number;
+}
+interface PlannerRegime {
+  label?: string;
+  gross?: number;
+  totalDeductions?: number;
+  deductions?: PlannerDeductions;
+  taxableIncome?: number;
+  totalTax?: number;
+  incomeAfterTax?: number;
+}
+interface PlannerTip {
+  title?: string;
+  detail?: string;
+  saving?: number;
+}
+interface PlannerResult {
+  oldRegime?: PlannerRegime;
+  newRegime?: PlannerRegime;
+  recommendation?: { regime?: 'old' | 'new'; savings?: number };
+  marginalRate?: number;
+  hraExemption?: {
+    actualHra?: number;
+    pct?: number;
+    pctOfBasic?: number;
+    rentThresholdPct?: number;
+    rentMinusThreshold?: number;
+    amount?: number;
+  };
+  tips?: PlannerTip[];
+}
 
 const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
   { id: 'rules', label: 'Statutory Rules', icon: Scale },
@@ -30,40 +87,30 @@ const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
 ];
 
 const fmt = (n: number | null | undefined) =>
-  n == null ? '—' : `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  n == null ? '—' : `${getCurrencySymbol(getAppCurrency())}${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-// Effective-dated statutory rule presets. Keys match the engine's rule
-// definitions (statutory_rule_engine / seed_indian_statutory_rules).
-const RULE_PRESETS: Record<string, {
-  label: string;
-  fields: { key: string; label: string; help?: string }[];
-  prefill: Record<string, number>;
-}> = {
-  pf_contribution: {
-    label: 'PF contribution',
-    fields: [
-      { key: 'rate', label: 'Employee rate %', help: 'e.g. 12' },
-      { key: 'wage_ceiling', label: 'PF wage ceiling', help: 'e.g. 25000 - PF computed on min(Basic+DA, this)' },
-      { key: 'max_monthly', label: 'Max monthly (cap)', help: 'e.g. 3000 = 12% of 25000' },
-      { key: 'eps_rate', label: 'EPS rate %' },
-      { key: 'eps_wage_ceiling', label: 'EPS wage ceiling' },
-      { key: 'edli_rate', label: 'EDLI rate %' },
-      { key: 'edli_max', label: 'EDLI max' },
-      { key: 'admin_rate', label: 'Admin charges %' },
-      { key: 'admin_min', label: 'Admin min' },
-    ],
-    prefill: { rate: 12, wage_ceiling: 15000, max_monthly: 1800, eps_rate: 8.33, eps_wage_ceiling: 15000, edli_rate: 0.5, edli_max: 75, admin_rate: 0.5, admin_min: 75 },
-  },
-  esi_contribution: {
-    label: 'ESI contribution',
-    fields: [
-      { key: 'employee_rate', label: 'Employee rate %', help: 'e.g. 0.75' },
-      { key: 'employer_rate', label: 'Employer rate %', help: 'e.g. 3.25' },
-      { key: 'gross_ceiling', label: 'Gross ceiling', help: 'e.g. 25000 - ESI applies below this' },
-    ],
-    prefill: { employee_rate: 0.75, employer_rate: 3.25, gross_ceiling: 21000 },
-  },
+// Calendar helpers — derived from today, never literal years/months.
+const MONTH_NAMES = Array.from({ length: 12 }, (_, i) =>
+  new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(Date.UTC(2000, i, 1))));
+const yearOptions = (back = 2, forward = 1) => {
+  const y = new Date().getFullYear();
+  return Array.from({ length: back + forward + 1 }, (_, i) => y - back + i);
 };
+const todayIso = () => {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+// Catalog-driven field values: defaults come from statutory_rule_configs
+// (backend /catalog), so law changes are config edits — not code changes.
+function valuesForType(types: RuleCatalogType[], ruleType: string): Record<string, number | boolean> {
+  const rt = types.find(t => t.value === ruleType);
+  const vals: Record<string, number | boolean> = {};
+  (rt?.fields || []).forEach(f => {
+    vals[f.key] = f.default != null ? (f.default as number | boolean) : (f.kind === 'bool' ? false : 0);
+  });
+  return vals;
+}
 
 interface RuleFormState {
   ruleType: string;
@@ -72,21 +119,21 @@ interface RuleFormState {
   effectiveTo: string;
   notificationNumber: string;
   notes: string;
-  values: Record<string, number>;
+  values: Record<string, number | boolean>;
   customJson: string;
 }
 
-function blankRuleForm(): RuleFormState {
-  const today = new Date();
-  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+function blankRuleForm(types: RuleCatalogType[]): RuleFormState | null {
+  if (!types.length) return null;
+  const first = types[0];
   return {
-    ruleType: 'pf_contribution',
+    ruleType: first.value,
     stateCode: '',
-    effectiveFrom: iso,
+    effectiveFrom: todayIso(),
     effectiveTo: '',
     notificationNumber: '',
     notes: '',
-    values: { ...(RULE_PRESETS.pf_contribution.prefill) },
+    values: valuesForType(types, first.value),
     customJson: '{\n  \n}',
   };
 }
@@ -101,10 +148,36 @@ export default function PayrollConsole() {
   const [explainEmpId, setExplainEmpId] = useState('');
   const [explainMonth, setExplainMonth] = useState(new Date().getMonth() + 1);
   const [explainYear, setExplainYear] = useState(new Date().getFullYear());
-  const [explainEmployees, setExplainEmployees] = useState<Array<Record<string, unknown>>>([]);
+  const [explainEmployees, setExplainEmployees] = useState<EmployeeSummary[]>([]);
   const [explain, setExplain] = useState<ExplainPayload | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Rule-builder catalog: rule types + fields, values from statutory_rule_configs.
+  const [ruleCatalog, setRuleCatalog] = useState<RuleCatalogType[] | null>(null);
+  useEffect(() => {
+    getRuleCatalog().then(res => setRuleCatalog(res.ruleTypes)).catch(() => undefined);
+  }, []);
+
+  // Arrears employee names (instead of raw IDs).
+  const [arrearsEmployees, setArrearsEmployees] = useState<EmployeeSummary[]>([]);
+  useEffect(() => {
+    if (tab !== 'arrears' || arrearsEmployees.length) return;
+    api.get('/employees', { params: { limit: 200, view: 'summary', status: 'active' } })
+      .then((res) => {
+        const payload = res.data as { data?: EmployeeSummary[]; items?: EmployeeSummary[] } | EmployeeSummary[];
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.items || []);
+        setArrearsEmployees(Array.isArray(list) ? list : []);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  const employeeLabel = (id: unknown) => {
+    const emp = arrearsEmployees.find(e => Number(e.id ?? e.employeeId) === Number(id));
+    if (!emp) return `#${String(id)}`;
+    const name = `${emp.firstName || emp.first_name || ''} ${emp.lastName || emp.last_name || ''}`.trim();
+    return name ? `${name}${emp.employeeCode ? ` (${emp.employeeCode})` : ''}` : `#${String(id)}`;
+  };
 
   // Filing calendar: what we owe, to whom, by when, and is it done.
   interface CalendarItem {
@@ -140,18 +213,33 @@ export default function PayrollConsole() {
 
   // Take-home / tax optimizer: old vs new regime with savings tips.
   const [plannerEmpId, setPlannerEmpId] = useState('');
-  const [plannerEmployees, setPlannerEmployees] = useState<Array<Record<string, unknown>>>([]);
+  const [plannerEmployees, setPlannerEmployees] = useState<EmployeeSummary[]>([]);
   const [plannerInputs, setPlannerInputs] = useState({
     rentPaidMonthly: '', metro: true, section80c: '', section80d: '',
     nps80ccd1b: '', homeLoanInterest: '', otherIncome: '',
   });
-  const [plannerResult, setPlannerResult] = useState<Record<string, unknown> | null>(null);
+  const [plannerResult, setPlannerResult] = useState<PlannerResult | null>(null);
   const [plannerLoading, setPlannerLoading] = useState(false);
+  // HRA exemption percentages from statutory config (not hardcoded 50/40).
+  const [hraPcts, setHraPcts] = useState<{ metro: number | null; nonMetro: number | null }>({ metro: null, nonMetro: null });
+  useEffect(() => {
+    if (tab !== 'planner' || hraPcts.metro != null || hraPcts.nonMetro != null) return;
+    api.get('/statutory-rules', { params: { category: 'tax' } })
+      .then((res) => {
+        const rows = (Array.isArray(res.data) ? res.data : []) as Array<{ rule_key?: string; current_value?: number | null }>;
+        const metro = rows.find(r => r.rule_key === 'hra_metro_pct');
+        const nonMetro = rows.find(r => r.rule_key === 'hra_non_metro_pct');
+        setHraPcts({ metro: metro?.current_value ?? null, nonMetro: nonMetro?.current_value ?? null });
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   useEffect(() => {
     if (tab !== 'planner' || plannerEmployees.length) return;
     api.get('/employees', { params: { limit: 200, view: 'summary', status: 'active' } })
       .then((res) => {
-        const list = (res.data as any)?.data || (res.data as any)?.items || res.data || [];
+        const payload = res.data as { data?: EmployeeSummary[]; items?: EmployeeSummary[] } | EmployeeSummary[];
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.items || []);
         setPlannerEmployees(Array.isArray(list) ? list : []);
       })
       .catch(() => undefined);
@@ -161,7 +249,8 @@ export default function PayrollConsole() {
     if (tab !== 'explain' || explainEmployees.length) return;
     api.get('/employees', { params: { limit: 200, view: 'summary', status: 'active' } })
       .then((res) => {
-        const list = (res.data as any)?.data || (res.data as any)?.items || res.data || [];
+        const payload = res.data as { data?: EmployeeSummary[]; items?: EmployeeSummary[] } | EmployeeSummary[];
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.items || []);
         setExplainEmployees(Array.isArray(list) ? list : []);
       })
       .catch(() => undefined);
@@ -182,7 +271,7 @@ export default function PayrollConsole() {
         homeLoanInterest: num(plannerInputs.homeLoanInterest),
         otherIncome: num(plannerInputs.otherIncome),
       });
-      setPlannerResult(res.data as Record<string, unknown>);
+      setPlannerResult(res.data as PlannerResult);
     } catch (err) {
       const e = err as { response?: { data?: { detail?: unknown } } };
       toast.error(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Planning failed');
@@ -191,14 +280,32 @@ export default function PayrollConsole() {
     }
   };
 
-  // New effective-dated statutory rule (e.g. "PF ceiling 25,000 from April").
+  // New effective-dated statutory rule. Type/fields/defaults come from the
+  // backend catalog (statutory_rule_configs), never hardcoded values.
   const [ruleForm, setRuleForm] = useState<RuleFormState | null>(null);
   const [ruleSaving, setRuleSaving] = useState(false);
+  const openRuleForm = async () => {
+    let types = ruleCatalog;
+    if (!types) {
+      try {
+        const res = await getRuleCatalog();
+        types = res.ruleTypes;
+        setRuleCatalog(types);
+      } catch {
+        toast.error('Could not load the rule catalog');
+        return;
+      }
+    }
+    const form = blankRuleForm(types);
+    if (!form) { toast.error('No rule types available'); return; }
+    setRuleForm(form);
+  };
   const submitRule = async () => {
     if (!ruleForm) return;
     if (!ruleForm.effectiveFrom) { toast.error('Effective from date is required'); return; }
+    const activeType = (ruleCatalog || []).find(t => t.value === ruleForm.ruleType);
     let definition: Record<string, unknown>;
-    if (ruleForm.ruleType in RULE_PRESETS) {
+    if (activeType && !activeType.isJson) {
       definition = { ...ruleForm.values };
     } else {
       try {
@@ -212,7 +319,7 @@ export default function PayrollConsole() {
     try {
       await api.post('/statutory-rules/', {
         rule_type: ruleForm.ruleType,
-        country: 'India',
+        country: getAppCountry(),
         state_code: ruleForm.stateCode || null,
         effective_from: ruleForm.effectiveFrom,
         effective_to: ruleForm.effectiveTo || null,
@@ -236,7 +343,7 @@ export default function PayrollConsole() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      if (tab === 'rules') setRules(await listPayrollRules());
+      if (tab === 'rules') setRules(await listPayrollRules({ country: getAppCountry() }));
       if (tab === 'calendar') {
         const res = await api.get('/payroll/compliance-calendar');
         setCalendar(res.data);
@@ -258,6 +365,7 @@ export default function PayrollConsole() {
       const t = await getRuleTrace({
         ruleType: rule.ruleType,
         asOf: rule.effectiveFrom,
+        country: getAppCountry(),
         ...(rule.stateCode ? { stateCode: rule.stateCode } : {}),
       });
       setTrace(t as unknown as Record<string, unknown>);
@@ -276,26 +384,130 @@ export default function PayrollConsole() {
     }
   };
 
-  const runRetro = async () => {
-    const effectiveFrom = window.prompt('Retroactive rule effective from (YYYY-MM-DD):');
-    if (!effectiveFrom) return;
+  // ── Retro rule change (two-step modal: preview, then create) ────────
+  const [retroOpen, setRetroOpen] = useState(false);
+  const [retroDate, setRetroDate] = useState('');
+  const [retroSim, setRetroSim] = useState<{ payrollsAffected: number; netDelta: number | null } | null>(null);
+  const [retroBusy, setRetroBusy] = useState<'sim' | 'create' | null>(null);
+  const openRetro = () => {
+    setRetroDate(todayIso());
+    setRetroSim(null);
+    setRetroOpen(true);
+  };
+  const previewRetro = async () => {
+    if (!retroDate) { toast.error('Pick an effective date'); return; }
+    setRetroBusy('sim');
     try {
-      const sim = await simulateRetro({ effective_from: effectiveFrom });
+      const sim = await simulateRetro({ effective_from: retroDate });
       const totals = (sim as { totals?: { payrolls_affected?: number; net_delta?: number } }).totals ?? {};
-      const ok = window.confirm(
-        `${totals.payrolls_affected ?? 0} payroll(s) affected, net delta ${fmt(totals.net_delta)}. Create adjustments?`,
-      );
-      if (ok) {
-        await (await import('../services/payrollEngineService')).createArrears({
-          effective_from: effectiveFrom,
-          source: 'retro_rule',
-          reason: `Retro change effective ${effectiveFrom}`,
-        });
-        toast.success('Arrears adjustments created (originals preserved)');
-        load();
-      }
+      setRetroSim({ payrollsAffected: totals.payrolls_affected ?? 0, netDelta: totals.net_delta ?? null });
     } catch {
       toast.error('Retro simulation failed');
+    } finally {
+      setRetroBusy(null);
+    }
+  };
+  const createRetro = async () => {
+    setRetroBusy('create');
+    try {
+      await createArrears({
+        effective_from: retroDate,
+        source: 'retro_rule',
+        reason: `Retro change effective ${retroDate}`,
+      });
+      toast.success('Arrears adjustments created (originals preserved)');
+      setRetroOpen(false);
+      load();
+    } catch {
+      toast.error('Could not create retro adjustments');
+    } finally {
+      setRetroBusy(null);
+    }
+  };
+
+  // ── Period picker modal: batch / apply-arrears / filing ─────────────
+  type PeriodDialog = { kind: 'batch' } | { kind: 'apply'; arrear: Record<string, unknown> } | { kind: 'filing'; code: string };
+  const [periodDlg, setPeriodDlg] = useState<PeriodDialog | null>(null);
+  const [pdMonth, setPdMonth] = useState(1);
+  const [pdYear, setPdYear] = useState(new Date().getFullYear());
+  const [pdEst, setPdEst] = useState('');
+  const [pdBusy, setPdBusy] = useState(false);
+  const openPeriodDlg = (dlg: PeriodDialog) => {
+    const now = new Date();
+    setPdMonth(now.getMonth() + 1);
+    setPdYear(now.getFullYear());
+    setPdEst('');
+    setPeriodDlg(dlg);
+  };
+  const confirmPeriodDlg = async () => {
+    if (!periodDlg) return;
+    if (!pdMonth || !pdYear) { toast.error('Pick a month and year'); return; }
+    setPdBusy(true);
+    try {
+      if (periodDlg.kind === 'batch') {
+        await createPaymentBatch({ month: pdMonth, year: pdYear });
+        toast.success('Payment batch created');
+        setPeriodDlg(null);
+        load();
+      } else if (periodDlg.kind === 'apply') {
+        await applyArrears(periodDlg.arrear.id as number, pdMonth, pdYear);
+        toast.success('Adjustment booked (originals preserved)');
+        setPeriodDlg(null);
+        load();
+      } else {
+        const blob = await downloadFiling(periodDlg.code, pdMonth, pdYear, pdEst.trim());
+        download(blob as Blob, `${periodDlg.code}_${pdYear}${String(pdMonth).padStart(2, '0')}.txt`);
+        toast.success(`${periodDlg.code} filing generated`);
+        setPeriodDlg(null);
+      }
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: unknown } } };
+      const d = e.response?.data?.detail;
+      const fallback = periodDlg.kind === 'batch' ? 'No finalized payrolls for that period'
+        : periodDlg.kind === 'apply' ? 'Could not book the adjustment' : 'Filing generation failed';
+      toast.error(typeof d === 'string' ? d : fallback);
+    } finally {
+      setPdBusy(false);
+    }
+  };
+
+  // ── Rule supersede / delete (no browser dialogs) ────────────────────
+  const [supersedeRule, setSupersedeRule] = useState<PayrollRule | null>(null);
+  const [supersedeDate, setSupersedeDate] = useState('');
+  const [deleteRule, setDeleteRule] = useState<PayrollRule | null>(null);
+  const [ruleActionBusy, setRuleActionBusy] = useState(false);
+  const confirmSupersede = async () => {
+    if (!supersedeRule || !supersedeDate) return;
+    setRuleActionBusy(true);
+    try {
+      await api.post(`/statutory-rules/supersede/${supersedeRule.id}`, null, {
+        params: { new_effective_to: supersedeDate },
+      });
+      toast.success(`Rule superseded from ${supersedeDate}`);
+      setSupersedeRule(null);
+      load();
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: unknown } } };
+      const d = e.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Supersede failed');
+    } finally {
+      setRuleActionBusy(false);
+    }
+  };
+  const confirmDeleteRule = async () => {
+    if (!deleteRule) return;
+    setRuleActionBusy(true);
+    try {
+      await api.delete(`/statutory-rules/${deleteRule.id}`);
+      toast.success('Rule deleted');
+      setDeleteRule(null);
+      load();
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: unknown } } };
+      const d = e.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Delete failed');
+    } finally {
+      setRuleActionBusy(false);
     }
   };
 
@@ -319,31 +531,20 @@ export default function PayrollConsole() {
           </p>
         </div>
         {tab === 'rules' && (
-          <button onClick={() => setRuleForm(blankRuleForm())}
+          <button onClick={openRuleForm}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
             <Plus className="w-4 h-4 inline mr-1.5" /> New dated rule
           </button>
         )}
       {tab === 'arrears' && (
-          <button onClick={runRetro}
+          <button onClick={openRetro}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
             <Upload className="w-4 h-4 inline mr-1.5" /> Retro rule change
           </button>
         )}
         {tab === 'payments' && (
           <button
-            onClick={async () => {
-              const month = Number(window.prompt('Payroll month (1-12):', '8'));
-              const year = Number(window.prompt('Year:', '2026'));
-              if (!month || !year) return;
-              try {
-                await createPaymentBatch({ month, year });
-                toast.success('Payment batch created');
-                load();
-              } catch {
-                toast.error('No finalized payrolls for that period');
-              }
-            }}
+            onClick={() => openPeriodDlg({ kind: 'batch' })}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
             <Wallet className="w-4 h-4 inline mr-1.5" /> New batch
           </button>
@@ -468,6 +669,11 @@ export default function PayrollConsole() {
       )}
 
       {tab === 'rules' && (
+        <div className="space-y-4">
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4 text-xs text-[var(--text-secondary)] space-y-1.5">
+          <p><b className="text-[var(--text-primary)]">Effective-dated rules.</b> Each rule applies from its effective date until it is superseded — publishing never rewrites history. Prefills in the rule builder come from your organization's statutory configuration (Configuration → Statutory defaults), so when the law changes you update the config, not the code.</p>
+          <p><b className="text-[var(--text-primary)]">Actions.</b> <b>Trace</b> shows which rule wins for a date and why. <b>Supersede</b> sets an end date (the engine stops choosing it after that day). <b>Delete</b> is a soft delete for mistakes — past payroll runs keep their history. Government references on each field come from the latest gazette notifications recorded in the config.</p>
+        </div>
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -502,6 +708,14 @@ export default function PayrollConsole() {
                     {r.status === 'draft' && (
                       <button onClick={() => publish(r)} className="text-green-600 text-xs font-medium">Publish</button>
                     )}
+                    {r.status === 'active' && (
+                      <button
+                        onClick={() => { setSupersedeRule(r); setSupersedeDate(new Date().toISOString().slice(0, 10)); }}
+                        className="text-amber-600 text-xs font-medium">
+                        Supersede
+                      </button>
+                    )}
+                    <button onClick={() => setDeleteRule(r)} className="text-red-600 text-xs font-medium">Delete</button>
                   </td>
                 </tr>
               ))}
@@ -521,6 +735,7 @@ export default function PayrollConsole() {
             </div>
           )}
         </div>
+        </div>
       )}
 
       {tab === 'planner' && (
@@ -539,7 +754,7 @@ export default function PayrollConsole() {
                   onChange={(e) => setPlannerEmpId(e.target.value)}
                   className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]">
                   <option value="">Select employee…</option>
-                  {plannerEmployees.map((e: any) => (
+                  {plannerEmployees.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.firstName} {e.lastName}{e.employeeCode ? ` · ${e.employeeCode}` : ''}
                     </option>
@@ -558,7 +773,7 @@ export default function PayrollConsole() {
                   <label className="block text-xs font-medium text-[#64748B] mb-1">{label}</label>
                   <input
                     type="number"
-                    value={(plannerInputs as any)[key]}
+                    value={plannerInputs[key]}
                     onChange={(e) => setPlannerInputs({ ...plannerInputs, [key]: e.target.value })}
                     placeholder="0"
                     className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
@@ -571,8 +786,8 @@ export default function PayrollConsole() {
                   value={plannerInputs.metro ? 'metro' : 'non-metro'}
                   onChange={(e) => setPlannerInputs({ ...plannerInputs, metro: e.target.value === 'metro' })}
                   className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]">
-                  <option value="metro">Metro (50% HRA)</option>
-                  <option value="non-metro">Non-metro (40% HRA)</option>
+                  <option value="metro">Metro{hraPcts.metro != null ? ` (${hraPcts.metro}% HRA)` : ''}</option>
+                  <option value="non-metro">Non-metro{hraPcts.nonMetro != null ? ` (${hraPcts.nonMetro}% HRA)` : ''}</option>
                 </select>
               </div>
             </div>
@@ -590,9 +805,9 @@ export default function PayrollConsole() {
           {plannerResult && (
             <div className="space-y-4">
               {(() => {
-                const r = plannerResult as any;
-                const oldR = r.oldRegime;
-                const newR = r.newRegime;
+                const r = plannerResult;
+                const oldR = r.oldRegime ?? {};
+                const newR = r.newRegime ?? {};
                 const better = r.recommendation?.regime === 'old' ? oldR : newR;
                 return (
                   <>
@@ -603,12 +818,12 @@ export default function PayrollConsole() {
                         {fmt(r.recommendation?.savings)} / year in tax.
                       </p>
                       <p className="text-xs text-[#64748B] mt-1">
-                        Income after tax: {fmt(better?.incomeAfterTax)} · marginal slab rate {r.marginalRate}%
+                        Income after tax: {fmt(better?.incomeAfterTax)} · marginal slab rate {r.marginalRate ?? '—'}%
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[oldR, newR].map((reg: any, idx: number) => {
+                      {[oldR, newR].map((reg, idx) => {
                         const isBetter = (idx === 0) === (r.recommendation?.regime === 'old');
                         return (
                           <div key={idx} className={`rounded-2xl border p-4 ${isBetter ? 'border-[#1C64F2] bg-blue-50/40' : 'border-[var(--border-color)] bg-[var(--card-bg)]'}`}>
@@ -640,23 +855,23 @@ export default function PayrollConsole() {
                     <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
                       <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">HRA exemption (Sec 10(13A))</h4>
                       <p className="text-xs text-[#64748B] mb-2">
-                        Least of: actual HRA {fmt(r.hraExemption.actualHra)} · {r.hraExemption.pct}% of basic {fmt(r.hraExemption.pctOfBasic)} ·
-                        rent − {r.hraExemption.rentThresholdPct}% of basic {fmt(r.hraExemption.rentMinusThreshold)}
+                        Least of: actual HRA {fmt(r.hraExemption?.actualHra)} · {r.hraExemption?.pct ?? '—'}% of basic {fmt(r.hraExemption?.pctOfBasic)} ·
+                        rent − {r.hraExemption?.rentThresholdPct ?? '—'}% of basic {fmt(r.hraExemption?.rentMinusThreshold)}
                       </p>
-                      <p className="text-lg font-bold text-[#0F172A]">Exempt: {fmt(r.hraExemption.amount)}</p>
+                      <p className="text-lg font-bold text-[#0F172A]">Exempt: {fmt(r.hraExemption?.amount)}</p>
                     </div>
 
-                    {!!(r.tips || []).length && (
+                    {!!(r.tips ?? []).length && (
                       <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
                         <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-2">How to save more</h4>
                         <ul className="space-y-2">
-                          {(r.tips || []).map((t: any, i: number) => (
+                          {(r.tips ?? []).map((t, i) => (
                             <li key={i} className="flex items-start justify-between gap-4 text-sm">
                               <div>
                                 <p className="font-medium text-[var(--text-primary)]">{t.title}</p>
                                 <p className="text-xs text-[#64748B]">{t.detail}</p>
                               </div>
-                              {t.saving > 0 && <span className="text-sm font-semibold text-[#059669] whitespace-nowrap">save {fmt(t.saving)}</span>}
+                              {(t.saving ?? 0) > 0 && <span className="text-sm font-semibold text-[#059669] whitespace-nowrap">save {fmt(t.saving)}</span>}
                             </li>
                           ))}
                         </ul>
@@ -687,7 +902,7 @@ export default function PayrollConsole() {
             <tbody>
               {arrears.map(a => (
                 <tr key={String(a.id)} className="border-b border-[var(--border-color)] last:border-0">
-                  <td className="px-4 py-3">#{String(a.employeeId)}</td>
+                  <td className="px-4 py-3">{employeeLabel(a.employeeId)}</td>
                   <td className="px-4 py-3">{(a.period as { fromYear?: number })?.fromYear}-{String((a.period as { fromMonth?: number })?.fromMonth).padStart(2, '0')}</td>
                   <td className="px-4 py-3">{String(a.source)}</td>
                   <td className="px-4 py-3 font-medium">{fmt(a.amount as number)}</td>
@@ -701,14 +916,7 @@ export default function PayrollConsole() {
                   <td className="px-4 py-3">
                     {a.status !== 'applied' && (
                       <button
-                        onClick={async () => {
-                          const month = Number(window.prompt('Book into month (1-12):', '9'));
-                          const year = Number(window.prompt('Year:', '2026'));
-                          if (!month || !year) return;
-                          await applyArrears(a.id as number, month, year);
-                          toast.success('Adjustment booked (originals preserved)');
-                          load();
-                        }}
+                        onClick={() => openPeriodDlg({ kind: 'apply', arrear: a })}
                         className="text-[var(--primary-blue)] text-xs font-medium">Apply</button>
                     )}
                   </td>
@@ -777,15 +985,7 @@ export default function PayrollConsole() {
               </div>
               <p className="text-xs text-[var(--text-secondary)] mb-4">{r.authority || 'Statutory authority'}</p>
               <button
-                onClick={async () => {
-                  const month = Number(window.prompt('Month (1-12):', '8'));
-                  const year = Number(window.prompt('Year:', '2026'));
-                  const establishmentCode = window.prompt('Establishment code (optional):', '') || '';
-                  if (!month || !year) return;
-                  const blob = await downloadFiling(r.code, month, year, establishmentCode);
-                  download(blob as Blob, `${r.code}_${year}${String(month).padStart(2, '0')}.txt`);
-                  toast.success(`${r.code} filing generated`);
-                }}
+                onClick={() => openPeriodDlg({ kind: 'filing', code: r.code })}
                 className="w-full px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5]">
                 Generate filing
               </button>
@@ -805,8 +1005,8 @@ export default function PayrollConsole() {
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Employee</label>
               <SearchableSelect
                 value={explainEmpId}
-                onChange={v => setExplainEmpId(v)}
-                options={explainEmployees.map((e: any) => ({
+                onChange={v => setExplainEmpId(String(v))}
+                options={explainEmployees.map((e) => ({
                   id: String(e.id ?? e.employeeId ?? ''),
                   name: `${e.firstName || e.first_name || ''} ${e.lastName || e.last_name || ''}`.trim() + (e.employeeCode ? ` (${e.employeeCode})` : ''),
                 }))}
@@ -820,10 +1020,7 @@ export default function PayrollConsole() {
               <SearchableSelect
                 value={String(explainMonth)}
                 onChange={v => setExplainMonth(Number(v))}
-                options={Array.from({ length: 12 }, (_, i) => ({
-                  id: String(i + 1),
-                  name: new Date(2026, i).toLocaleString('en', { month: 'long' }),
-                }))}
+                options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), name: m }))}
                 placeholder="Month"
                 showAllOption={false}
                 className="w-full h-[42px]"
@@ -834,7 +1031,7 @@ export default function PayrollConsole() {
               <SearchableSelect
                 value={String(explainYear)}
                 onChange={v => setExplainYear(Number(v))}
-                options={[2024, 2025, 2026, 2027].map(y => ({ id: String(y), name: String(y) }))}
+                options={yearOptions().map(y => ({ id: String(y), name: String(y) }))}
                 placeholder="Year"
                 showAllOption={false}
                 className="w-full h-[42px]"
@@ -906,15 +1103,19 @@ export default function PayrollConsole() {
       )}
 
       {/* New effective-dated statutory rule */}
-      {ruleForm && (
+      {ruleForm && (() => {
+        const activeType = (ruleCatalog || []).find(t => t.value === ruleForm.ruleType);
+        const structured = activeType && !activeType.isJson;
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setRuleForm(null)}>
           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-[var(--border-color)] flex items-start justify-between">
               <div>
                 <h3 className="text-base font-semibold text-[#0F172A]">New dated statutory rule</h3>
                 <p className="text-xs text-[#64748B] mt-0.5 max-w-lg">
-                  e.g. “PF wage ceiling ₹25,000 from April” — payroll runs use this rule from the effective date.
+                  e.g. a changed wage ceiling or rate effective from a future date — payroll runs use this rule from the effective date.
                   For months already paid, run <b>Arrears → Retro rule change</b> to settle the difference.
+                  Field defaults and references come from your statutory configuration.
                 </p>
               </div>
               <button onClick={() => setRuleForm(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
@@ -931,16 +1132,13 @@ export default function PayrollConsole() {
                       setRuleForm({
                         ...ruleForm,
                         ruleType: t,
-                        values: { ...(RULE_PRESETS[t]?.prefill || {}) },
+                        values: valuesForType(ruleCatalog || [], t),
                       });
                     }}
                     className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]">
-                    <option value="pf_contribution">PF contribution</option>
-                    <option value="esi_contribution">ESI contribution</option>
-                    <option value="pf_exclusion">PF exclusion</option>
-                    <option value="professional_tax">Professional tax</option>
-                    <option value="bonus">Statutory bonus</option>
-                    <option value="custom">Custom (JSON)</option>
+                    {(ruleCatalog || []).map(rt => (
+                      <option key={rt.value} value={rt.value}>{rt.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -948,49 +1146,72 @@ export default function PayrollConsole() {
                   <input
                     value={ruleForm.stateCode}
                     onChange={(e) => setRuleForm({ ...ruleForm, stateCode: e.target.value.toUpperCase() })}
-                    placeholder="e.g. KA, MH — blank = all India"
+                    placeholder="e.g. KA, MH — blank = country-wide"
                     className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#64748B] mb-1">Effective from</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={ruleForm.effectiveFrom}
-                    onChange={(e) => setRuleForm({ ...ruleForm, effectiveFrom: e.target.value })}
-                    className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
+                    onChange={(v) => setRuleForm({ ...ruleForm, effectiveFrom: v })}
+                    required
+                    className="w-full"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-[#64748B] mb-1">Effective to (optional)</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={ruleForm.effectiveTo}
-                    onChange={(e) => setRuleForm({ ...ruleForm, effectiveTo: e.target.value })}
-                    className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
+                    onChange={(v) => setRuleForm({ ...ruleForm, effectiveTo: v })}
+                    className="w-full"
                   />
                 </div>
               </div>
 
-              {ruleForm.ruleType in RULE_PRESETS ? (
+              {structured ? (
                 <div>
-                  <p className="text-xs font-semibold text-[#0F172A] mb-2">{RULE_PRESETS[ruleForm.ruleType].label} parameters</p>
+                  <p className="text-xs font-semibold text-[#0F172A] mb-2">{activeType!.label} parameters</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {RULE_PRESETS[ruleForm.ruleType].fields.map(f => (
+                    {activeType!.fields.map(f => {
+                      const unitSuffix = f.unit === '%' ? ' (%)'
+                        : f.unit === 'money' ? ` (${getCurrencySymbol(getAppCurrency())})` : '';
+                      return (
                       <div key={f.key}>
-                        <label className="block text-xs font-medium text-[#64748B] mb-1">{f.label}</label>
-                        <input
-                          type="number" step="any"
-                          value={ruleForm.values[f.key] ?? ''}
-                          onChange={(e) => setRuleForm({
-                            ...ruleForm,
-                            values: { ...ruleForm.values, [f.key]: e.target.value === '' ? 0 : Number(e.target.value) },
-                          })}
-                          className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
-                        />
-                        {f.help && <p className="mt-0.5 text-[10px] text-[#94A3B8] leading-snug">{f.help}</p>}
+                        <label className="block text-xs font-medium text-[#64748B] mb-1">{f.label}{unitSuffix}</label>
+                        {f.kind === 'bool' ? (
+                          <div className="py-1">
+                            <ToggleSwitch
+                              checked={Boolean(ruleForm.values[f.key])}
+                              onChange={v => setRuleForm({ ...ruleForm, values: { ...ruleForm.values, [f.key]: v } })}
+                              align="left"
+                            />
+                          </div>
+                        ) : (() => {
+                          const rawVal = ruleForm.values[f.key];
+                          return (
+                          <input
+                            type="number" step="any"
+                            value={typeof rawVal === 'number' ? rawVal : ''}
+                            onChange={(e) => setRuleForm({
+                              ...ruleForm,
+                              values: { ...ruleForm.values, [f.key]: e.target.value === '' ? 0 : Number(e.target.value) },
+                            })}
+                            className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
+                          />
+                          );
+                        })()}
+                        {(f.help || f.notificationRef) && (
+                          <p className="mt-0.5 text-[10px] text-[#94A3B8] leading-snug">
+                            {f.help}
+                            {f.notificationRef && (
+                              <span className="block font-medium text-[#64748B]">{f.notificationRef}</span>
+                            )}
+                          </p>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
@@ -1002,6 +1223,9 @@ export default function PayrollConsole() {
                     rows={8}
                     className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-[#1C64F2]"
                   />
+                  <p className="mt-0.5 text-[10px] text-[#94A3B8]">
+                    {activeType ? `${activeType.label}: enter the definition exactly as the rule engine expects.` : 'Unknown rule type — enter the raw definition.'}
+                  </p>
                 </div>
               )}
 
@@ -1038,7 +1262,181 @@ export default function PayrollConsole() {
             </div>
           </div>
         </div>
+        );
+      })()}
+
+      {/* Retro rule change: preview impact, then create adjustments */}
+      {retroOpen && (
+        <Modal isOpen onClose={() => setRetroOpen(false)} title="Retro rule change" size="md">
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Applies the latest rule changes to payrolls already processed. Originals are preserved —
+              adjustments appear under Arrears for review before the next run.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-[#64748B] mb-1">Effective from</label>
+              <DatePicker
+                value={retroDate}
+                onChange={(v) => { setRetroDate(v); setRetroSim(null); }}
+                required
+                className="w-full"
+              />
+            </div>
+            {retroSim && (
+              <div className={`rounded-xl border p-3 text-sm ${retroSim.payrollsAffected > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
+                <p className="font-medium text-[#0F172A]">
+                  {retroSim.payrollsAffected} payroll(s) affected · net delta {fmt(retroSim.netDelta)}
+                </p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  Creating adjustments does not change past payslips — the difference books into the period you choose when applying.
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setRetroOpen(false)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">
+                Cancel
+              </button>
+              {!retroSim ? (
+                <button
+                  onClick={previewRetro}
+                  disabled={retroBusy === 'sim'}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
+                  {retroBusy === 'sim' && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Preview impact
+                </button>
+              ) : (
+                <button
+                  onClick={createRetro}
+                  disabled={retroBusy === 'create'}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
+                  {retroBusy === 'create' && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Create adjustments
+                </button>
+              )}
+            </div>
+          </div>
+        </Modal>
       )}
+
+      {/* Period picker: payment batch / apply arrears / generate filing */}
+      {periodDlg && (
+        <Modal
+          isOpen
+          onClose={() => setPeriodDlg(null)}
+          title={
+            periodDlg.kind === 'batch' ? 'New payment batch'
+              : periodDlg.kind === 'apply' ? 'Apply adjustment'
+              : 'Generate filing'
+          }
+          size="sm">
+          <div className="space-y-4">
+            {periodDlg.kind === 'apply' && (
+              <p className="text-sm text-[var(--text-secondary)]">
+                Book <b>{employeeLabel(periodDlg.arrear.employeeId)}</b> · {fmt(periodDlg.arrear.amount as number)} ·
+                {' '}{String(periodDlg.arrear.source)} into the chosen period. Originals stay untouched.
+              </p>
+            )}
+            {periodDlg.kind === 'batch' && (
+              <p className="text-sm text-[var(--text-secondary)]">
+                Creates a bank payment batch for all finalized payrolls in the period.
+              </p>
+            )}
+            {periodDlg.kind === 'filing' && (
+              <p className="text-sm text-[var(--text-secondary)]">
+                Generates the <b>{periodDlg.code}</b> government return file for the chosen period.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-[#64748B] mb-1">Month</label>
+                <select
+                  value={pdMonth}
+                  onChange={(e) => setPdMonth(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]">
+                  {MONTH_NAMES.map((m, i) => (
+                    <option key={m} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#64748B] mb-1">Year</label>
+                <select
+                  value={pdYear}
+                  onChange={(e) => setPdYear(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]">
+                  {yearOptions().map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {periodDlg.kind === 'filing' && (
+              <div>
+                <label className="block text-xs font-medium text-[#64748B] mb-1">Establishment code (optional)</label>
+                <input
+                  value={pdEst}
+                  onChange={(e) => setPdEst(e.target.value)}
+                  placeholder="From your registration with the authority"
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2]"
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPeriodDlg(null)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">
+                Cancel
+              </button>
+              <button
+                onClick={confirmPeriodDlg}
+                disabled={pdBusy}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
+                {pdBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                {periodDlg.kind === 'filing' ? 'Generate' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Supersede a rule (set its end date) */}
+      {supersedeRule && (
+        <Modal isOpen onClose={() => setSupersedeRule(null)} title="Supersede rule" size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--text-secondary)]">
+              <b>{supersedeRule.ruleType}</b> · v{supersedeRule.version} · effective from {supersedeRule.effectiveFrom}.
+              After the end date below, the engine stops choosing this rule and resolves the next applicable one.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-[#64748B] mb-1">Ends on</label>
+              <DatePicker value={supersedeDate} onChange={setSupersedeDate} required className="w-full" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSupersedeRule(null)} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">
+                Cancel
+              </button>
+              <button
+                onClick={confirmSupersede}
+                disabled={ruleActionBusy || !supersedeDate}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+                {ruleActionBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+                Supersede
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Soft-delete a rule */}
+      <ConfirmActionModal
+        isOpen={!!deleteRule}
+        title="Delete rule"
+        message={deleteRule ? `Delete rule #${deleteRule.id} (${deleteRule.ruleType}, v${deleteRule.version})?` : ''}
+        consequence="The rule is soft-deleted and stops resolving for future runs. Past payroll history keeps its rule references."
+        variant="danger"
+        isPending={ruleActionBusy}
+        confirmLabel="Delete rule"
+        onConfirm={confirmDeleteRule}
+        onCancel={() => setDeleteRule(null)}
+      />
     </div>
   );
 }

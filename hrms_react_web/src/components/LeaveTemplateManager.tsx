@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Building2, FileText, Edit2, Trash2, X, CheckCircle2, Users, MapPin,
-  CalendarDays, PiggyBank, RefreshCw, ChevronUp, ChevronDown, Info,
-  Clock, CalendarOff, Shield,
+  Plus, Building2, FileText, Edit2, Trash2, CheckCircle2, Users, MapPin,
+  CalendarDays, PiggyBank, RefreshCw, ChevronUp, ChevronDown,
+  CalendarOff, Shield,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import api from '../services/api';
@@ -40,6 +40,29 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Luc
 }
 
 /* ---------- types ---------- */
+interface CompanyRow { id: number; name: string; }
+interface LeaveTypeRow { id: number; code: string; name: string; status?: string; }
+interface SavedTypeRow {
+  leave_type_id?: number | null; code?: string; days?: number;
+  paid?: boolean; encashable?: boolean; active?: boolean;
+}
+interface TemplateBody { leaveTypes?: SavedTypeRow[]; }
+interface TemplateRow {
+  id: number; name: string; company_id: number | null; description?: string | null;
+  status?: string; version?: number; type_count?: number; employee_count?: number;
+  effective_from?: string | null; body?: TemplateBody | null;
+  accrual_method?: string | null; accrual_day?: number | null;
+  probation_accrual_rate?: number | null; max_balance_cap?: number | null;
+  lapse_unused?: boolean; carry_forward_enabled?: boolean;
+  carry_forward_max_days?: number | null; carry_forward_expiry?: string | null;
+  carry_forward_use_it_or_lose_it?: boolean; encashment_enabled?: boolean;
+  encashment_min_balance?: number | null; encashment_rate?: number | null;
+  encashment_taxable?: boolean; holiday_optional_limit?: number | null;
+  holiday_auto_apply_national?: boolean; enable_half_day?: boolean;
+  min_leave_for_half_day?: number | null; advance_notice_days?: number | null;
+  max_consecutive_days?: number | null;
+}
+interface ApiErrorLike { response?: { data?: { detail?: string } } }
 interface TypeRow { leave_type_id: number | null; code: string; name: string; days: number; paid: boolean; encashable: boolean; active: boolean; }
 interface WizardState {
   name: string; companyId: number | null; description: string; status: string; effectiveFrom: string;
@@ -87,29 +110,29 @@ export default function LeaveTemplateManager() {
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<CompanyRow[]>('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
   const { data: leaveTypes = [] } = useQuery({
     queryKey: ['leave-types-all'],
-    queryFn: async () => { try { const r = await api.get('/leave-types'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<LeaveTypeRow[]>('/leave-types'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['leave-templates', companyFilter],
     queryFn: async () => {
       const params = companyFilter === 'all' ? {} : { companyId: Number(companyFilter) };
-      const r = await api.get('/api/leave-templates', { params });
+      const r = await api.get<TemplateRow[]>('/api/leave-templates', { params });
       return r.data || [];
     },
   });
 
   const activeTypes = useMemo(
-    () => (leaveTypes as any[]).filter((t) => t.status !== 'inactive'),
+    () => leaveTypes.filter((t) => t.status !== 'inactive'),
     [leaveTypes]
   );
   const companyName = useMemo(() => {
-    const m = new Map((companies as any[]).map((c: any) => [c.id, c.name]));
+    const m = new Map(companies.map((c) => [c.id, c.name]));
     return (id: number | null) => (id == null ? 'All Companies' : m.get(id) || '—');
   }, [companies]);
 
@@ -154,17 +177,19 @@ export default function LeaveTemplateManager() {
       queryClient.invalidateQueries({ queryKey: ['leave-templates'] });
       setWizard(null); setEditingId(null); setWizTab('overview');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || 'Failed to save template'),
+    onError: (e: unknown) => toast.error((e as ApiErrorLike)?.response?.data?.detail || 'Failed to save template'),
   });
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/leave-templates/${id}`),
     onSuccess: () => { toast.success('Template deleted'); queryClient.invalidateQueries({ queryKey: ['leave-templates'] }); },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || 'Failed to delete template'),
+    onError: (e: unknown) => toast.error((e as ApiErrorLike)?.response?.data?.detail || 'Failed to delete template'),
   });
 
-  const rowsFromTypes = (body?: any): TypeRow[] => {
-    const saved = new Map(((body?.leaveTypes) || []).map((r: any) => [r.leave_type_id ?? r.code, r]));
-    return activeTypes.map((t: any) => {
+  const rowsFromTypes = (body?: TemplateBody): TypeRow[] => {
+    const saved = new Map<number | string | undefined, SavedTypeRow>(
+      ((body?.leaveTypes) || []).map((r): [number | string | undefined, SavedTypeRow] => [r.leave_type_id ?? r.code, r])
+    );
+    return activeTypes.map((t) => {
       const s = saved.get(t.id) || saved.get(t.code);
       return {
         leave_type_id: t.id, code: t.code || '', name: t.name,
@@ -180,7 +205,7 @@ export default function LeaveTemplateManager() {
     w.rows = rowsFromTypes();
     setWizard(w);
   };
-  const openEdit = (t: any) => {
+  const openEdit = (t: TemplateRow) => {
     setEditingId(t.id); setReadOnly(false); setWizTab('overview');
     const b = t.body || {};
     setWizard({
@@ -208,7 +233,7 @@ export default function LeaveTemplateManager() {
       max_consecutive_days: t.max_consecutive_days ?? null,
     });
   };
-  const openView = (t: any) => { openEdit(t); setReadOnly(true); };
+  const openView = (t: TemplateRow) => { openEdit(t); setReadOnly(true); };
   const setRow = (i: number, patch: Partial<TypeRow>) =>
     setWizard((prev) => (prev ? { ...prev, rows: prev.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) } : prev));
   const submit = () => {
@@ -218,7 +243,7 @@ export default function LeaveTemplateManager() {
     saveMutation.mutate({ id: editingId, state: wizard });
   };
 
-  const totalEmployees = (templates as any[]).reduce((s: number, t: any) => s + (t.employee_count || 0), 0);
+  const totalEmployees = templates.reduce((s: number, t) => s + (t.employee_count || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -238,10 +263,10 @@ export default function LeaveTemplateManager() {
 
       <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Templates', value: (templates as any[]).length, icon: FileText },
+          { label: 'Templates', value: templates.length, icon: FileText },
           { label: 'Employees on templates', value: totalEmployees, icon: Users },
-          { label: 'Companies covered', value: new Set((templates as any[]).map((t: any) => t.company_id)).size, icon: MapPin },
-          { label: 'Active', value: (templates as any[]).filter((t: any) => t.status === 'active').length, icon: CheckCircle2 },
+          { label: 'Companies covered', value: new Set(templates.map((t) => t.company_id)).size, icon: MapPin },
+          { label: 'Active', value: templates.filter((t) => t.status === 'active').length, icon: CheckCircle2 },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-[var(--border-color)] p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
@@ -256,14 +281,14 @@ export default function LeaveTemplateManager() {
       <div className="flex items-center gap-3">
         <div className="w-64">
           <SearchableSelect value={companyFilter} onChange={(v) => setCompanyFilter(String(v))}
-            options={[{ id: 'all', name: 'All Companies' }, ...(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))]}
+            options={[{ id: 'all', name: 'All Companies' }, ...companies.map((c) => ({ id: c.id, name: c.name }))]}
             placeholder="Filter by company" />
         </div>
       </div>
 
       {isLoading ? null : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(templates as any[]).map((t: any) => (
+          {templates.map((t) => (
             <div key={t.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow flex flex-col">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -300,7 +325,7 @@ export default function LeaveTemplateManager() {
           ))}
         </div>
       )}
-      {(templates as any[]).length === 0 && !isLoading && (
+      {templates.length === 0 && !isLoading && (
         <div className="text-center py-12 text-[var(--text-tertiary)]">No leave templates yet — create the first one for a company.</div>
       )}
 
@@ -308,16 +333,12 @@ export default function LeaveTemplateManager() {
       {wizard && (
         <LeaveWizardModal
           wizard={wizard} setWizard={setWizard} wizTab={wizTab} setWizTab={setWizTab}
-          companies={companies as any[]} editingId={editingId} readOnly={readOnly}
+          companies={companies} editingId={editingId} readOnly={readOnly}
           saving={saveMutation.isPending} onSubmit={submit} setRow={setRow}
         />
       )}
     </div>
   );
-
-  function setW<K extends keyof WizardState>(key: K, value: WizardState[K]) {
-    setWizard((prev) => (prev ? { ...prev, [key]: value } : prev));
-  }
 }
 
 function LeaveWizardModal(props: {
@@ -325,7 +346,7 @@ function LeaveWizardModal(props: {
   setWizard: React.Dispatch<React.SetStateAction<WizardState | null>>;
   wizTab: string;
   setWizTab: (t: string) => void;
-  companies: any[];
+  companies: CompanyRow[];
   editingId: number | null;
   readOnly: boolean;
   saving: boolean;
@@ -344,7 +365,6 @@ function LeaveWizardModal(props: {
     true,
   ].filter(Boolean).length;
   const progress = Math.min(100, Math.round((done / WIZ_TABS.length) * 100));
-  const activeTypes = wizard.rows.filter((r) => r.active).length;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -445,7 +465,7 @@ function LeaveWizardModal(props: {
                   </Field>
                   <Field label="Company *" help="Only employees belonging to this company can be assigned this template. Each company can have multiple templates for different employee groups (e.g. staff vs workers, permanent vs contract). This is a mandatory field.">
                     <SearchableSelect value={wizard.companyId ?? ''} onChange={(v) => setW('companyId', v === '' ? null : Number(v))}
-                      options={(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
+                      options={companies.map((c) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
                   </Field>
                   <Field label="Effective From" help="The date from which this template's leave rules (quotas, accrual, carry forward) take effect. Payroll and leave calculations for periods before this date will use the previously active template. Editing quotas later creates a new version — historical data is never rewritten.">
                     <DatePicker value={wizard.effectiveFrom} onChange={(val) => setW('effectiveFrom', val)} />

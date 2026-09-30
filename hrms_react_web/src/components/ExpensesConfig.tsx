@@ -2,17 +2,14 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Pencil, Trash2, Loader2, X, Wallet, Receipt,
-  CheckCircle2, ChevronDown, ChevronUp, FileText, Save,
-  Settings, ShieldCheck, CreditCard, Bell, Send,
+  Plus, Pencil, Trash2, Loader2, Wallet, Receipt,
+  ChevronDown, ChevronUp, FileText, Save,
+  ShieldCheck, CreditCard, Bell, Send,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
-import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
-
-interface ExpensesConfigProps {}
 
 interface ApiErrorLike { response?: { data?: { detail?: string } } }
 function errMsg(err: unknown, fallback: string) {
@@ -182,10 +179,10 @@ interface ApprovalWorkflow {
   level1_approver: string;
   level2_approver: string;
   level3_approver: string;
-  auto_approve_threshold: number;
+  auto_approve_threshold: number | null;
   self_approval_allowed: boolean;
   finance_notification: boolean;
-  escalation_days: number;
+  escalation_days: number | null;
   rejection_reason_mandatory: boolean;
 }
 
@@ -201,12 +198,12 @@ interface DepartmentOverride {
 }
 
 interface SpendingLimits {
-  global_monthly_limit: number;
-  global_quarterly_limit: number;
-  global_annual_limit: number;
+  global_monthly_limit: number | null;
+  global_quarterly_limit: number | null;
+  global_annual_limit: number | null;
   grade_limits: GradeLimit[];
   department_overrides: DepartmentOverride[];
-  alert_threshold_percentage: number;
+  alert_threshold_percentage: number | null;
   block_over_limit: boolean;
 }
 
@@ -222,13 +219,13 @@ interface ReimbursementTax {
 }
 
 interface SubmissionRules {
-  submission_deadline_days: number;
+  submission_deadline_days: number | null;
   late_submission_policy: string;
   duplicate_detection: boolean;
-  duplicate_detection_tolerance_days: number;
+  duplicate_detection_tolerance_days: number | null;
   receipt_upload_mandatory: boolean;
   receipt_formats_allowed: string[];
-  max_receipt_size_mb: number;
+  max_receipt_size_mb: number | null;
   bulk_upload_enabled: boolean;
   csv_template_columns: string;
   auto_categorize: boolean;
@@ -254,6 +251,23 @@ interface ExpensesConfigState {
   notifications: NotificationsSettings;
 }
 
+interface NamedEntity {
+  id: number;
+  name: string;
+}
+
+interface ExpenseConfigPreview extends ExpensesConfigState {
+  name?: string;
+  description?: string;
+}
+
+interface ExpenseConfigRecord extends ExpenseConfigPreview {
+  id: number;
+  status?: string;
+  company_id?: number | null;
+  data?: ExpenseConfigPreview;
+}
+
 function blankState(): ExpensesConfigState {
   return {
     expense_categories: defaultExpenseCategories(),
@@ -275,31 +289,6 @@ const WIZARD_TABS = [
   { id: 'submission', label: 'Submission Rules', icon: FileText, color: 'text-rose-600' },
   { id: 'notifications', label: 'Notifications & Reports', icon: Bell, color: 'text-indigo-600' },
 ];
-
-const WIZARD_HELP: Record<string, string> = {
-  categories: 'Define expense categories, spending limits, receipt rules, and GL codes for accounting.',
-  approval: 'Configure multi-level approval workflow, auto-approve thresholds, and escalation rules.',
-  limits: 'Set global and grade-wise spending limits, alerts, and enforcement rules.',
-  reimbursement: 'Define how approved expenses are paid out, tax rules, and currency conversion.',
-  submission: 'Control submission deadlines, duplicate detection, receipt requirements, and bulk upload.',
-  notifications: 'Email notifications, report formats, and record retention policies.',
-};
-
-// ── Stat Box ──
-
-function StatBox({ label, value, icon: Icon }: { label: string; value: number | string; icon: LucideIcon }) {
-  return (
-    <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 flex items-center gap-3">
-      <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center">
-        <Icon className="w-4 h-4 text-[#7C3AED]" />
-      </div>
-      <div>
-        <div className="text-xl font-bold text-[var(--text-primary)]">{value}</div>
-        <div className="text-xs text-[var(--text-tertiary)]">{label}</div>
-      </div>
-    </div>
-  );
-}
 
 // ── Tab content: Expense Categories ──
 
@@ -527,7 +516,7 @@ function SpendingLimitsTab({
 }: {
   limits: SpendingLimits;
   setLimits: (l: SpendingLimits) => void;
-  departments: any[];
+  departments: NamedEntity[];
 }) {
   const set = (patch: Partial<SpendingLimits>) => setLimits({ ...limits, ...patch });
   const [editingGradeIdx, setEditingGradeIdx] = useState<number | null>(null);
@@ -574,7 +563,7 @@ function SpendingLimitsTab({
   const removeDept = (i: number) => set({ department_overrides: limits.department_overrides.filter((_, idx) => idx !== i) });
 
   const deptNameMap = useMemo(() => {
-    const m = new Map(departments.map((d: any) => [d.id, d.name]));
+    const m = new Map(departments.map(d => [d.id, d.name]));
     return (id: number | null) => (id == null ? '—' : m.get(id) || '—');
   }, [departments]);
 
@@ -657,7 +646,7 @@ function SpendingLimitsTab({
           <div className="border border-blue-200 rounded-xl p-4 space-y-3 bg-blue-50/30 mb-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Department" help="Select the department to override.">
-                <SearchableSelect value={deptDraft.department_id ?? 'all'} onChange={v => setDeptDraft({ ...deptDraft, department_id: v === 'all' ? null : Number(v) })} placeholder="Select Department" options={departments.map((d: any) => ({ id: d.id, name: d.name }))} showAllOption={false} />
+                <SearchableSelect value={deptDraft.department_id ?? 'all'} onChange={v => setDeptDraft({ ...deptDraft, department_id: v === 'all' ? null : Number(v) })} placeholder="Select Department" options={departments.map(d => ({ id: d.id, name: d.name }))} showAllOption={false} />
               </Field>
               <Field label="Monthly limit" help="Maximum claim amount per month for this department.">
                 <NumInput value={deptDraft.monthly_limit} onChange={v => setDeptDraft({ ...deptDraft, monthly_limit: v ?? 0 })} />
@@ -932,9 +921,8 @@ function NotificationsTab({
 
 // ── Main Component ──
 
-export default function ExpensesConfig(_props?: ExpensesConfigProps) {
+export default function ExpensesConfig() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   const [wizardTab, setWizardTab] = useState('categories');
   const [state, setState] = useState<ExpensesConfigState>(blankState());
@@ -944,13 +932,13 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<NamedEntity[]>('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: async () => { try { const r = await api.get('/departments'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<NamedEntity[]>('/departments'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -959,7 +947,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
     queryFn: async () => {
       try {
         const params = companyId ? { companyId } : {};
-        const r = await api.get('/settings/configs/expenses', { params });
+        const r = await api.get<ExpenseConfigRecord | ExpenseConfigRecord[]>('/settings/configs/expenses', { params });
         return Array.isArray(r.data) ? r.data : (r.data ? [r.data] : []);
       } catch { return []; }
     },
@@ -970,7 +958,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
       payload.id
         ? api.put(`/settings/configs/expenses/${payload.id}`, payload.data, { params: companyId ? { companyId } : {} })
         : api.post('/settings/configs/expenses', payload.data, { params: companyId ? { companyId } : {} }),
-    onSuccess: (res: any) => {
+    onSuccess: (res) => {
       toast.success(res.data?.message || 'Expenses configuration saved');
       queryClient.invalidateQueries({ queryKey: ['expenses-configs'] });
     },
@@ -979,7 +967,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/settings/configs/expenses/${id}`),
-    onSuccess: (res: any) => {
+    onSuccess: (res) => {
       toast.success(res.data?.message || 'Configuration deleted');
       queryClient.invalidateQueries({ queryKey: ['expenses-config'] });
       setEditingId(null);
@@ -987,35 +975,17 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
     onError: (err) => toast.error(errMsg(err, 'Failed to delete configuration')),
   });
 
-  const setNested = (key: keyof ExpensesConfigState, patch: any) => {
-    setState(prev => ({ ...prev, [key]: { ...(prev[key] as any), ...patch } }));
+  const setNested = <K extends keyof ExpensesConfigState>(key: K, patch: Partial<ExpensesConfigState[K]>) => {
+    setState(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   };
 
-  const setArray = (key: keyof ExpensesConfigState, arr: any) => {
+  const setArray = <K extends keyof ExpensesConfigState>(key: K, arr: ExpensesConfigState[K]) => {
     setState(prev => ({ ...prev, [key]: arr }));
   };
 
   const handleSave = () => {
     saveMutation.mutate({ id: editingId, data: state });
   };
-
-  const handleDelete = () => {
-    if (editingId && confirm('Delete this expenses configuration?')) {
-      deleteMutation.mutate(editingId);
-    }
-  };
-
-  const progress = Math.min(100, Math.round(
-    (WIZARD_TABS.filter(t => {
-      if (t.id === 'categories') return state.expense_categories.length > 0;
-      if (t.id === 'approval') return state.approval_workflow.approval_levels > 0;
-      if (t.id === 'limits') return true;
-      if (t.id === 'reimbursement') return true;
-      if (t.id === 'submission') return state.submission_rules.submission_deadline_days > 0;
-      if (t.id === 'notifications') return true;
-      return false;
-    }).length / WIZARD_TABS.length) * 100
-  ));
 
   if (!showWizard) {
     return (
@@ -1032,7 +1002,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
           {companies.length > 1 && (
             <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
               <option value="">All Companies</option>
-              {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
           <button onClick={() => { setShowWizard(true); setEditingId(null); setState(blankState()); setWizardTab('categories'); }}
@@ -1052,7 +1022,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {configsList.map((cfg: any) => {
+          {configsList.map((cfg) => {
             const d = cfg.data || cfg;
             return (
             <div key={cfg.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow">
@@ -1066,10 +1036,10 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
                 </span>
               </div>
               <div className="space-y-1.5 text-xs text-[var(--text-tertiary)]">
-                {cfg.company_id && <p>Company: {companies.find((c: any) => c.id === cfg.company_id)?.name || '—'}</p>}
+                {cfg.company_id && <p>Company: {companies.find(c => c.id === cfg.company_id)?.name || '—'}</p>}
                 {(d.expense_categories || []).length > 0 && <p>{d.expense_categories.length} expense categories</p>}
                 {d.approval_workflow && <p>{d.approval_workflow.approval_levels || 1}-level approval workflow</p>}
-                {d.spending_limits?.global_monthly_limit > 0 && <p>Monthly limit: {d.spending_limits.global_monthly_limit}</p>}
+                {(d.spending_limits?.global_monthly_limit ?? 0) > 0 && <p>Monthly limit: {d.spending_limits.global_monthly_limit}</p>}
               </div>
               <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--border-color)]">
                 <button onClick={() => { setEditingId(cfg.id); setState({ ...blankState(), ...(cfg.data || cfg) }); setCompanyId(cfg.company_id || null); setShowWizard(true); setWizardTab('categories'); }}
@@ -1108,7 +1078,7 @@ export default function ExpensesConfig(_props?: ExpensesConfigProps) {
           {companies.length > 1 && (
             <select value={companyId ?? ''} onChange={e => setCompanyId(e.target.value ? Number(e.target.value) : null)} className="px-3 py-1.5 text-sm border border-[var(--border-color)] rounded-lg bg-white">
               <option value="">All Companies</option>
-              {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
           <button onClick={() => { setShowWizard(false); setEditingId(null); }} className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-color)] hover:bg-[var(--hover-bg)]">Back to List</button>

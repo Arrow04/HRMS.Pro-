@@ -2,7 +2,7 @@
 import {
   X, User, FileText, MapPin, CreditCard, Users,
   Building2, Clock, Calendar, Coins, TrendingUp, Umbrella, Receipt, Package,
-  Save, BarChart3, Download, Trash2
+  Save, BarChart3
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -112,7 +112,7 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
     enabled: isOpen && activeTab === 'payroll'
   });
 
-  const { data: performanceReviews = [] } = useQuery({
+  useQuery({
     queryKey: ['performanceReviews', employeeId],
     queryFn: () => getEmployeePerformanceReviews(employeeId),
     enabled: isOpen && activeTab === 'performance'
@@ -172,7 +172,7 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
 
     if (!formData) return <div className="flex items-center justify-center h-64"><p className="text-sm text-gray-400">No data available</p></div>;
 
-    const renderField = (label: string, value: string | undefined, disabled = false) => (
+    const renderField = (label: string, value: string | undefined) => (
       <div className="space-y-1">
         <label className={labelClass}>{label}</label>
         <input type="text" value={value || ''} disabled className={disabledInputClass} />
@@ -500,7 +500,7 @@ const EmployeeProfileModal: React.FC<ProfileModalProps> = ({ employeeId, isOpen,
                       <td className="px-4 py-3 text-xs capitalize">{a.assetType || '-'}</td>
                       <td className="px-4 py-3 text-xs">{a.serialNumber || '-'}</td>
                       <td className="px-4 py-3 text-xs">{a.issueDate ? String(a.issueDate).split('T')[0] : '-'}</td>
-                      <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${a.status === 'assigned' ? 'bg-green-50 text-green-700' : a.status === 'maintenance' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{capitalizeStatus(a.status) || 'N/A'}</span></td>
+                      <td className="px-4 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${a.status === 'assigned' ? 'bg-green-50 text-green-700' : a.status === 'maintenance' ? 'bg-yellow-50 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{capitalizeStatus(a.status ?? '') || 'N/A'}</span></td>
                     </tr>
                   )) : <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No assets assigned</td></tr>}
                 </tbody>

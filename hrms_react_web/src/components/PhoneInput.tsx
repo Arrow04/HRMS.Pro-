@@ -129,8 +129,6 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
     }
   }, [defaultDial, value, stripDial]);
 
-  const selected = COUNTRIES.find((c) => c.dial === dial) || { name: 'Select', code: '', dial };
-
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const t = e.target as Node;
@@ -143,6 +141,7 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
 
   useEffect(() => {
     if (open && searchRef.current) searchRef.current.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Keep the panel anchored while the page/modal scrolls or the window resizes.
@@ -156,7 +155,6 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
       window.removeEventListener('scroll', onMove, true);
       window.removeEventListener('resize', onMove);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // When the list opens, bring the currently selected (settings-default) country

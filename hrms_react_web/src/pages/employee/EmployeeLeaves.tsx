@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { CalendarDays, Plus, ChevronRight } from 'lucide-react';
+import { CalendarDays, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee, getLeaveTypes, getMyLeaveBalances, getMyLeaves, applyLeave } from '../../services/employeeSelfService';
 import { formatAppDate } from '../../services/appSettingsService';
 
 const EmployeeLeaves = () => {
-  const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [types, setTypes] = useState<Record<string, unknown>[]>([]);
   const [balances, setBalances] = useState<Record<string, unknown>[]>([]);

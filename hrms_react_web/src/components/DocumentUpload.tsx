@@ -175,7 +175,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           {statusText}
         </span>
         {uploading && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: accent }} />}
-        {parsedNumber && !uploading && <CheckCircle2 className="w-3.5 h-3.5 text-[#059669] shrink-0" title={`Detected: ${parsedNumber}`} />}
+        {parsedNumber && !uploading && <CheckCircle2 className="w-3.5 h-3.5 text-[#059669] shrink-0" aria-label={`Detected: ${parsedNumber}`} />}
         {showUrl && !uploading && (
           <>
             <a

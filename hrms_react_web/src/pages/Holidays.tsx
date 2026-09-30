@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  Palmtree, Plus, Search, Upload, Download, Calendar, Building2,
-  Filter, Edit2, Trash2, X, RotateCcw, TrendingUp, CloudCog, CheckCircle2, Sun, Loader2, Info, Clock, MapPin, Award
+  Palmtree, Plus, Upload, Download, Calendar, Building2,
+  Edit2, Trash2, X, RotateCcw, TrendingUp, Sun, Loader2, Info, Clock
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
@@ -41,13 +41,6 @@ type HolidayRow = HolidayType & {
   isWorkingDay?: boolean;
 };
 
-// Form tabs for Holiday modal
-const HOLIDAY_FORM_TABS = [
-  { id: 'basic', label: 'Basic Info', icon: Info },
-  { id: 'details', label: 'Holiday Details', icon: Calendar },
-  { id: 'advanced', label: 'Advanced', icon: Award },
-];
-
 const Holidays = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -59,13 +52,12 @@ const Holidays = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<HolidayRow | null>(null);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [formTab, setFormTab] = useState('basic');
+  const [, setFormTab] = useState('basic');
   const [isClosing, setIsClosing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HolidayRow | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: HolidayRow[] } | null>(null);
@@ -100,10 +92,8 @@ const Holidays = () => {
   const { data: holidays = [], isLoading: loadingHolidays, isFetching } = useQuery({
     queryKey: ['holidays'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/holidays');
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/holidays');
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });

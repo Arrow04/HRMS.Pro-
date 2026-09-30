@@ -7,8 +7,8 @@ export default function InfoTooltip({ text, className = '' }: { text: string; cl
   const [show, setShow] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; align: 'center' | 'left' }>({ top: 0, left: 0, align: 'center' });
   const triggerRef = useRef<HTMLSpanElement>(null);
-  const showTimeout = useRef<ReturnType<typeof setTimeout>>();
-  const hideTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const showTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hideTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;

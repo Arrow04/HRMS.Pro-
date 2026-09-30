@@ -62,7 +62,7 @@ const getStatusColor = (status: AssistantStatus) => {
 };
 
 const Chatbot = () => {
-  const { user } = useAuth();
+  useAuth();
   const { selectedCompanyId } = useCompany();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -78,7 +78,7 @@ const Chatbot = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [conversationId, setConversationId] = useState<string>();
   const [assistantStatus, setAssistantStatus] = useState<AssistantStatus>('connecting');
-  const [quickSuggestions, setQuickSuggestions] = useState<Suggestion[]>(STATIC_SUGGESTIONS);
+  const [, setQuickSuggestions] = useState<Suggestion[]>(STATIC_SUGGESTIONS);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 

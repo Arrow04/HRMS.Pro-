@@ -2,9 +2,9 @@ import { useMemo, useState, useEffect, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Pencil, Trash2, Loader2, X, Building2, SlidersHorizontal, RotateCcw, Layers,
+  Plus, Pencil, Trash2, Loader2, Building2, SlidersHorizontal, RotateCcw, Layers,
   ShieldCheck, Landmark, Clock, MapPin, CheckCircle2, ChevronDown, ChevronUp, Info,
-  FileText, Save, CalendarDays, TrendingUp, MinusCircle, Wallet, UserPlus, Search, BookOpen,
+  FileText, Save, TrendingUp, MinusCircle, Wallet, BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
@@ -13,7 +13,7 @@ import { useAppConfig } from '../context/AppConfigContext';
 import api from '../services/api';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import * as ptApi from '../services/payrollTemplateApi';
-import { getStatePT, getStateLWF, replaceStatePT, replaceStateLWF } from '../services/payrollConfigApi';
+import { getStatePT, getStateLWF, replaceStatePT, replaceStateLWF, type StatePTDetail, type StateLWFDetail } from '../services/payrollConfigApi';
 import OrgStatutoryDefaults from './OrgStatutoryDefaults';
 import DatePicker from './DatePicker';
 import type {
@@ -25,6 +25,46 @@ interface ApiErrorLike { response?: { data?: { detail?: string } } }
 function errMsg(err: unknown, fallback: string) {
   return (err as ApiErrorLike | null)?.response?.data?.detail || fallback;
 }
+
+type CompanyRow = { id: number; name: string };
+type StatutoryRuleConfig = { rule_key: string; standard_value?: string | null; notification_ref?: string | null; description?: string | null };
+type AttendancePolicyRow = {
+  id: number;
+  name: string;
+  status: string;
+  is_shared_template?: boolean;
+  working_days_per_week: number;
+  working_days: string;
+  half_day_as_full_paid: boolean;
+  paid_leave_as_present: boolean;
+  holiday_as_present: boolean;
+  overtime_threshold_hours: number;
+  overtime_rate: number;
+  late_mark_threshold_minutes: number;
+  half_day_threshold_hours: number;
+  late_to_absent_count: number | null;
+  early_to_absent_count: number | null;
+  missing_checkout_rule: string;
+};
+type LeaveTypeRow = { code?: string; name?: string; days?: number; paid?: boolean; active?: boolean };
+type LeaveTemplateRow = { id: number; name: string; body?: { leaveTypes?: LeaveTypeRow[] } };
+type SimRow = {
+  employeeId: number | string;
+  employeeName?: string;
+  employeeCode?: string | number;
+  onTemplate?: boolean;
+  proposed?: { net?: number };
+  delta?: Record<string, number | null | undefined> & { net?: number };
+  changed?: string[];
+};
+type SimImpact = {
+  totalEmployees?: number;
+  affected?: number;
+  totals?: { currentNet?: number; proposedNet?: number };
+  deltaNet?: number;
+  rows?: SimRow[];
+};
+type WindowWithReorder = Window & { __componentReorder?: (i: number, keys: (string | number)[]) => void };
 
 const STATES = [
   'andhra_pradesh', 'arunachal_pradesh', 'assam', 'bihar', 'chhattisgarh', 'delhi',
@@ -212,7 +252,40 @@ function defaultTaxCategory(type: string): string {
 
 // -- Defaults --
 
-function defaultPolicy() {
+type PayrollPolicyState = {
+  name: string;
+  pro_ration_method: string;
+  rounding_method: string;
+  decimal_places: number;
+  round_net_salary: boolean;
+  include_gratuity: boolean;
+  gratuity_rate: number | null;
+  default_currency: string;
+  allow_negative_net: boolean;
+  daily_rate_divisor: number;
+  monthly_divisor_for_weekly: number;
+  fy_start_month: number;
+  reporting_currency: string;
+  allow_multi_currency: boolean;
+};
+
+type AttendancePolicyState = {
+  name: string;
+  working_days_per_week: number;
+  working_days: string;
+  half_day_as_full_paid: boolean;
+  paid_leave_as_present: boolean;
+  holiday_as_present: boolean;
+  overtime_threshold_hours: number;
+  overtime_rate: number;
+  late_mark_threshold_minutes: number;
+  half_day_threshold_hours: number;
+  late_to_absent_count: number | null;
+  early_to_absent_count: number | null;
+  missing_checkout_rule: string;
+};
+
+function defaultPolicy(): PayrollPolicyState {
   return {
     name: '', pro_ration_method: 'paid_days', rounding_method: 'nearest',
     decimal_places: 2, round_net_salary: true, include_gratuity: false,
@@ -289,7 +362,7 @@ function defaultTax(): PayrollTemplateTaxRegime {
   };
 }
 
-function defaultAttendance() {
+function defaultAttendance(): AttendancePolicyState {
   return {
     name: 'Standard Attendance', working_days_per_week: 5, working_days: '1,2,3,4,5',
     half_day_as_full_paid: true, paid_leave_as_present: true, holiday_as_present: true,
@@ -306,11 +379,11 @@ interface WizardState {
   country: string;
   registeredState: string;
   effectiveFrom: string;
-  payrollPolicy: Record<string, any>;
+  payrollPolicy: PayrollPolicyState;
   components: PayrollTemplateComponent[];
   statutory: PayrollTemplateStatutory;
   taxRegime: PayrollTemplateTaxRegime;
-  attendancePolicy: Record<string, any>;
+  attendancePolicy: AttendancePolicyState;
   attendancePolicyId: number | null;
   attendanceLinked: boolean;
   leaveTemplateId: number | null;
@@ -320,6 +393,12 @@ interface WizardState {
   emailPayslip: boolean;
   status: string;
 }
+
+type CardSnapshot = {
+  statutory?: PayrollTemplateStatutory;
+  taxRegime?: PayrollTemplateTaxRegime;
+  payroll?: Partial<WizardState>;
+} | null;
 
 function blankWizard(): WizardState {
   return {
@@ -337,6 +416,7 @@ function blankWizard(): WizardState {
 }
 
 function fromTemplate(t: PayrollTemplate): WizardState {
+  const srcSlabs = t.tax_regime?.slabs ?? [];
   return {
     name: t.name || '',
     description: t.description || '',
@@ -349,18 +429,18 @@ function fromTemplate(t: PayrollTemplate): WizardState {
     taxRegime: {
       ...defaultTax(),
       ...(t.tax_regime || {}),
-      slabs: (t.tax_regime?.slabs?.length ? t.tax_regime.slabs : defaultTax().slabs).map(s => ({ ...s })),
+      slabs: (srcSlabs.length ? srcSlabs : (defaultTax().slabs || [])).map(s => ({ ...s })),
     },
     attendancePolicy: { ...defaultAttendance(), ...(t.attendance_policy || {}) },
     attendancePolicyId: t.attendance_policy_id ?? null,
     attendanceLinked: !!(t.attendance_policy_id ?? t.attendance_policy),
-    leaveTemplateId: (t as any).leave_template_id ?? null,
+    leaveTemplateId: t.leave_template_id ?? null,
     payCycle: t.pay_cycle || 'monthly',
     payDay: t.pay_day ?? null,
     autoPayslip: !!t.auto_payslip,
     emailPayslip: !!t.email_payslip,
     status: t.status || 'active',
-    effectiveFrom: (t as any).effective_from || '',
+    effectiveFrom: t.effective_from || '',
   };
 }
 
@@ -369,11 +449,11 @@ function toPayload(w: WizardState): PayrollTemplatePayload {
     name: w.name, description: w.description || undefined,
     companyId: w.companyId, country: w.country || 'India',
     registeredState: w.registeredState || undefined,
-    payrollPolicy: w.payrollPolicy as any,
+    payrollPolicy: w.payrollPolicy,
     components: w.components,
     statutory: w.statutory,
     taxRegime: w.taxRegime,
-    attendancePolicy: w.attendancePolicy as any,
+    attendancePolicy: w.attendancePolicy,
     attendancePolicyId: w.attendancePolicyId,
     leaveTemplateId: w.leaveTemplateId,
     payCycle: w.payCycle,
@@ -403,7 +483,7 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
   return <input className={inputCls} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />;
 }
 
-function NumInput({ value, onChange, placeholder }: { value: number | null; onChange: (v: number | null) => void; placeholder?: string }) {
+function NumInput({ value, onChange, placeholder }: { value: number | null | undefined; onChange: (v: number | null) => void; placeholder?: string }) {
   return <input type="number" step="any" min={0} className={inputCls} value={value ?? ''} placeholder={placeholder} onChange={e => { const v = e.target.value; onChange(v === '' ? null : Number.isFinite(+v) ? +v : null); }} />;
 }
 
@@ -613,14 +693,14 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
           <TextInput value={c.display_name || ''} onChange={v => setComp(i, { display_name: v })} placeholder="e.g. Basic Salary" />
         </Field>
         <Field label="Type" help="Earning = added to gross pay (salary, allowances, bonus). Deduction = subtracted from gross (PF, ESI, PT, loan). Employer contribution = cost to company paid on top of gross (employer PF, ESI, gratuity). The type determines which side of the payslip the component appears on.">
-          <SearchableSelect value={c.component_type} onChange={v => setComp(i, { component_type: String(v) as any })} placeholder="Select Type" options={[
+          <SearchableSelect value={c.component_type} onChange={v =>               setComp(i, { component_type: String(v) })} placeholder="Select Type" options={[
             { id: 'earning', name: 'Earning' },
             { id: 'deduction', name: 'Deduction' },
             { id: 'employer_contribution', name: 'Employer contribution' },
           ]} showAllOption={false} />
         </Field>
         <Field label="Calc type" help="How the component value is computed: Percentage (% of a base), Fixed (flat amount), Formula (custom expression), Hourly (rate * hours), Piece rate (rate * units), Tiered (progressive brackets like overtime), Shift differential (shift-specific multipliers). The calc type determines which fields appear below.">
-          <SearchableSelect value={c.calculation_type} onChange={v => setComp(i, { calculation_type: String(v) as any })} placeholder="Select Calc type" options={[
+          <SearchableSelect value={c.calculation_type} onChange={v =>               setComp(i, { calculation_type: String(v) })} placeholder="Select Calc type" options={[
             { id: 'percentage', name: 'Percentage' },
             { id: 'fixed', name: 'Fixed' },
             { id: 'formula', name: 'Formula' },
@@ -636,7 +716,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-start">
         {c.calculation_type === 'percentage' ? (
           <Field label="Base" help="What the percentage applies to: Basic (component value of 'basic'), Gross (total earnings before deductions), or Net (after deductions). For HRA, base is typically 'basic'. For conveyance, base is typically 'gross'.">
-            <SearchableSelect value={c.calculation_base || 'basic'} onChange={v => setComp(i, { calculation_base: String(v) as any })} placeholder="Select Base" options={[
+            <SearchableSelect value={c.calculation_base || 'basic'} onChange={v => setComp(i, { calculation_base: String(v) })} placeholder="Select Base" options={[
               { id: 'basic', name: 'Basic' },
               { id: 'gross', name: 'Gross' },
               { id: 'net', name: 'Net' },
@@ -763,7 +843,7 @@ function ComponentCard({ c, i, setComp, removeComp, onAdd, heading, rank, groupC
           <Field label="Depends on" help="List components that must be calculated BEFORE this one. The engine computes dependencies first, then uses their values in this component's formula. Setting dependencies auto-reorders priorities. Use this when a component references another component's value (e.g. HRA depends on Basic).">
             <DependsOnEditor value={(c.depends_on as (string | number)[] | null | undefined) || []} options={peers.filter(p => p.key !== String(c.name || '').toLowerCase())} onChange={keys => {
               setComp(i, { depends_on: keys });
-              if ((window as any).__componentReorder) (window as any).__componentReorder(i, keys);
+              (window as WindowWithReorder).__componentReorder?.(i, keys);
             }} />
           </Field>
         </div>
@@ -900,19 +980,19 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
 
   const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<CompanyRow[]>('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: statutoryRules = [] } = useQuery({
     queryKey: ['statutory-rules'],
-    queryFn: async () => { try { const r = await api.get('/statutory-rules'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { try { const r = await api.get<StatutoryRuleConfig[]>('/statutory-rules'); return r.data || []; } catch { return []; } },
     staleTime: 10 * 60 * 1000,
   });
 
   // Build lookup map: rule_key to { standard_value, notification_ref, description }
   const ruleConfigMap = useMemo(() => {
-    const map: Record<string, any> = {};
+    const map: Record<string, StatutoryRuleConfig> = {};
     for (const r of statutoryRules) {
       map[r.rule_key] = r;
     }
@@ -959,16 +1039,16 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
   };
 
   const setW = (patch: Partial<WizardState>) => setWizard(prev => (prev ? { ...prev, ...patch } : prev));
-  const setNested = (key: 'payrollPolicy' | 'attendancePolicy' | 'statutory', field: string, value: any) =>
-    setWizard(prev => (prev ? { ...prev, [key]: { ...(prev[key] as any), [field]: value } } : prev));
+  const setNested = (key: 'payrollPolicy' | 'attendancePolicy' | 'statutory', field: string, value: unknown) =>
+    setWizard(prev => (prev ? { ...prev, [key]: { ...(prev[key] as Record<string, unknown>), [field]: value } } : prev));
 
   const companyName = useMemo(() => {
-    const m = new Map(companies.map((c: any) => [c.id, c.name]));
-    return (id: number | null) => (id == null ? 'All Companies' : m.get(id) || '-');
+    const m = new Map<number, string>(companies.map((c): [number, string] => [c.id, c.name]));
+    return (id: number | null): string => (id == null ? 'All Companies' : m.get(id) || '-');
   }, [companies]);
 
   const filtered = templates;
-  const totalEmployees = filtered.reduce((s: number, t: any) => s + (t.employee_count || 0), 0);
+  const totalEmployees = filtered.reduce((s, t) => s + (t.employee_count || 0), 0);
 
   return (
     <div className={standalone ? 'p-6 space-y-6' : 'space-y-6'}>
@@ -994,14 +1074,14 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
       <div className="grid gap-4 md:grid-cols-4">
         <StatBox label="Templates" value={filtered.length} icon={FileText} />
         <StatBox label="Employees on templates" value={totalEmployees} icon={Building2} />
-        <StatBox label="Companies covered" value={new Set(filtered.map((t: any) => t.company_id)).size} icon={MapPin} />
-        <StatBox label="Active" value={filtered.filter((t: any) => t.status === 'active').length} icon={CheckCircle2} />
+        <StatBox label="Companies covered" value={new Set(filtered.map(t => t.company_id)).size} icon={MapPin} />
+        <StatBox label="Active" value={filtered.filter(t => t.status === 'active').length} icon={CheckCircle2} />
       </div>
 
       <div className="flex items-center gap-3">
         <div className="w-64">
-          <SearchableSelect value={companyFilter} onChange={setCompanyFilter}
-            options={[{ id: 'all', name: 'All Companies' }, ...companies.map((c: any) => ({ id: c.id, name: c.name }))]}
+          <SearchableSelect value={companyFilter} onChange={v => setCompanyFilter(v as number | 'all')}
+            options={[{ id: 'all', name: 'All Companies' }, ...companies.map(c => ({ id: c.id, name: c.name }))]}
             placeholder="Filter by company" />
         </div>
       </div>
@@ -1010,7 +1090,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
         null
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((t: any) => (
+          {filtered.map(t => (
             <div key={t.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow flex flex-col">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -1078,7 +1158,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
             saveMutation.mutate({ id: editingId, state: wizard });
           }}
           onClose={() => { setWizard(null); setEditingId(null); }}
-          userOrgName={(user as any)?.organizationName || 'Your Organization'}
+          userOrgName={user?.organizationName || 'Your Organization'}
           ruleConfigMap={ruleConfigMap}
         />
       )}
@@ -1140,21 +1220,21 @@ function WizardModal(props: {
   tab: string;
   setTab: (t: string) => void;
   setState: (patch: Partial<WizardState>) => void;
-  setNested: (key: 'payrollPolicy' | 'attendancePolicy' | 'statutory', field: string, value: any) => void;
-  companies: any[];
+  setNested: (key: 'payrollPolicy' | 'attendancePolicy' | 'statutory', field: string, value: unknown) => void;
+  companies: CompanyRow[];
   editingId: number | null;
   saving: boolean;
   onSave: () => void;
   onClose: () => void;
   userOrgName: string;
-  ruleConfigMap: Record<string, any>;
+  ruleConfigMap: Record<string, StatutoryRuleConfig>;
 }) {
   const { state: w, tab, setTab, setState, setNested, companies, editingId, saving, onSave, onClose, ruleConfigMap } = props;
   const accent = '#1C64F2';
   const { country: orgCountry } = useAppConfig();
 
-  const [ptDetail, setPtDetail] = useState<any>(null);
-  const [lwfDetail, setLwfDetail] = useState<any>(null);
+  const [ptDetail, setPtDetail] = useState<StatePTDetail | null>(null);
+  const [lwfDetail, setLwfDetail] = useState<StateLWFDetail | null>(null);
   const [scopeChoice, setScopeChoice] = useState<'company' | 'org'>('org');
   const [ptEditing, setPtEditing] = useState(false);
   const [ptSlabs, setPtSlabs] = useState<{ from_gross: number | null; to_gross: number | null; amount: number | null; description: string }[]>([]);
@@ -1181,8 +1261,8 @@ function WizardModal(props: {
     return <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-slate-50 text-slate-600 border border-slate-200">State default (statutory)</span>;
   };
   const lwfUnit = (frequency: string | null | undefined) => (frequency === 'half_yearly' ? 'half-yearly' : frequency === 'yearly' ? 'year' : 'month');
-  const ptHistoryGroups = (rows: any[]) => {
-    const groups: Record<string, any[]> = {};
+  const ptHistoryGroups = (rows: StatePTDetail['history']) => {
+    const groups: Record<string, StatePTDetail['history']> = {};
     (rows || []).forEach(r => {
       const key = r.effective_from || 'undated';
       if (!groups[key]) groups[key] = [];
@@ -1194,8 +1274,8 @@ function WizardModal(props: {
   const [componentTab, setComponentTab] = useState<'earning' | 'deduction' | 'employer'>('earning');
   const [taxTab, setTaxTab] = useState<'regime' | 'slabs' | 'exemptions'>('regime');
   const [editingCard, setEditingCard] = useState<string | null>(null);
-  const [cardSnapshot, setCardSnapshot] = useState<any>(null);
-  const startCardEdit = (key: string, snapshot: any) => { setCardSnapshot(snapshot); setEditingCard(key); };
+  const [cardSnapshot, setCardSnapshot] = useState<CardSnapshot>(null);
+  const startCardEdit = (key: string, snapshot: CardSnapshot) => { setCardSnapshot(snapshot); setEditingCard(key); };
   const saveCardEdit = () => { setEditingCard(null); setCardSnapshot(null); };
   const cancelCardEdit = () => {
     if (cardSnapshot?.statutory) setState({ statutory: cardSnapshot.statutory });
@@ -1203,8 +1283,7 @@ function WizardModal(props: {
     if (cardSnapshot?.payroll) setState(cardSnapshot.payroll);
     setEditingCard(null); setCardSnapshot(null);
   };
-  const policySnap = { payroll: { payCycle: w.payCycle, payDay: w.payDay, autoPayslip: w.autoPayslip, emailPayslip: w.emailPayslip, payrollPolicy: { ...w.payrollPolicy } } };
-  const cardEditBtn = (key: string, snapshot: any) => (
+  const cardEditBtn = (key: string, snapshot: CardSnapshot) => (
     <button onClick={() => startCardEdit(key, snapshot)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--primary-blue)] text-white hover:opacity-90 shrink-0">
       <Pencil className="w-3.5 h-3.5" /> Edit
     </button>
@@ -1247,7 +1326,7 @@ function WizardModal(props: {
   }, [w.registeredState, complianceCompanyId]);
   const startPtEdit = () => {
     if (!w.registeredState) { toast.error('Select a registered state first'); return; }
-    setPtSlabs((ptDetail?.slabs || []).map((s: any) => ({ from_gross: s.from_gross ?? null, to_gross: s.to_gross ?? null, amount: s.amount ?? null, description: s.description || '' })));
+    setPtSlabs((ptDetail?.slabs || []).map(s => ({ from_gross: s.from_gross ?? null, to_gross: s.to_gross ?? null, amount: s.amount ?? null, description: s.description || '' })));
     setPtEffectiveFrom(new Date().toISOString().slice(0, 10));
     setPtEditing(true);
   };
@@ -1263,7 +1342,7 @@ function WizardModal(props: {
     if (ptSlabs.length === 0) { toast.error('Add at least one PT slab.'); return; }
     const cleaned = ptSlabs.map(s => ({
       from_gross: s.from_gross == null || Number.isNaN(Number(s.from_gross)) ? null : Number(s.from_gross),
-      to_gross: s.to_gross == null || s.to_gross === ('' as any) || Number.isNaN(Number(s.to_gross)) ? null : Number(s.to_gross),
+      to_gross: s.to_gross == null || String(s.to_gross) === '' || Number.isNaN(Number(s.to_gross)) ? null : Number(s.to_gross),
       amount: s.amount == null || Number.isNaN(Number(s.amount)) ? null : Number(s.amount),
       description: s.description || '',
     }));
@@ -1272,14 +1351,14 @@ function WizardModal(props: {
     if (cleaned.some(s => s.to_gross != null && (s.to_gross as number) < (s.from_gross as number))) { toast.error('A slab has To below From.'); return; }
     const ordered = [...cleaned].sort((a, b) => (a.from_gross as number) - (b.from_gross as number));
     for (let i = 1; i < ordered.length; i++) {
-      const prev: any = ordered[i - 1];
-      const curr: any = ordered[i];
+      const prev = ordered[i - 1];
+      const curr = ordered[i];
       if (prev.to_gross == null) { toast.error('Only the last slab may have an open-ended upper range.'); return; }
-      if (curr.from_gross < prev.to_gross) { toast.error(`Slab ${curr.from_gross} overlaps the previous slab (up to ${prev.to_gross}). Adjacent slabs may touch, not overlap.`); return; }
+      if ((curr.from_gross as number) < prev.to_gross) { toast.error(`Slab ${curr.from_gross} overlaps the previous slab (up to ${prev.to_gross}). Adjacent slabs may touch, not overlap.`); return; }
     }
     setComplianceSaving(true);
     try {
-      const res: any = await replaceStatePT(w.registeredState, {
+      const res = await replaceStatePT(w.registeredState, {
         effective_from: ptEffectiveFrom,
         slabs: ordered.map(s => ({ from_gross: s.from_gross as number, to_gross: s.to_gross as number | null, amount: s.amount as number, description: s.description })),
         companyId: complianceCompanyId,
@@ -1313,7 +1392,7 @@ function WizardModal(props: {
     if (lwfWageCeiling != null && (Number.isNaN(Number(lwfWageCeiling)) || Number(lwfWageCeiling) < 0)) { toast.error('Wage ceiling must be empty or zero and above.'); return; }
     setComplianceSaving(true);
     try {
-      const res: any = await replaceStateLWF(w.registeredState, {
+      const res = await replaceStateLWF(w.registeredState, {
         effective_from: lwfEffectiveFrom,
         companyId: complianceCompanyId,
         applicable: lwfApplicable,
@@ -1348,7 +1427,7 @@ function WizardModal(props: {
   ].filter(Boolean).length;
   const progress = Math.min(100, Math.round((done / WIZARD_TABS.length) * 100));
 
-  const [simData, setSimData] = useState<any | null>(null);
+  const [simData, setSimData] = useState<SimImpact | null>(null);
   const [simLoading, setSimLoading] = useState(false);
   const [simAffectedOnly, setSimAffectedOnly] = useState(true);
   const runSimulate = async () => {
@@ -1386,14 +1465,6 @@ function WizardModal(props: {
     next.splice(i + 1, 0, { name: '', display_name: '', component_type: type, calculation_type: 'fixed', calculation_value: null, max_cap: null, min_cap: null, priority: w.components.length + 1, is_taxable: true, is_tax_exempt: false, tax_exempt_limit: null, apply_pro_ration: true, tax_category: defaultTaxCategory(type) });
     setComponents(next);
   };
-  const moveComp = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= w.components.length) return;
-    if (w.components[j].component_type !== w.components[i].component_type) return;
-    const next = [...w.components];
-    [next[i], next[j]] = [next[j], next[i]];
-    setComponents(next);
-  };
   const setPriority = (i: number, p: number) => {
     const arr = w.components;
     const type = arr[i].component_type;
@@ -1412,7 +1483,7 @@ function WizardModal(props: {
     // Depends-on is documentation + ordering assist: the engine computes in
     // priority order, so selecting a dependency here moves this component to
     // run right after the latest selected peer (same mechanics as setPriority).
-    (window as any).__componentReorder = (i: number, keys: (string | number)[]) => {
+    (window as WindowWithReorder).__componentReorder = (i: number, keys: (string | number)[]) => {
       const arr = w.components;
       const type = arr[i]?.component_type;
       if (type == null) return;
@@ -1433,7 +1504,7 @@ function WizardModal(props: {
       group.forEach((g, gi) => { out[groupIdxs[gi]] = g; });
       setComponents(out);
     };
-    return () => { delete (window as any).__componentReorder; };
+    return () => { delete (window as WindowWithReorder).__componentReorder; };
   });
 
   const setSlab = (i: number, patch: Partial<TaxSlabInput>) => {
@@ -1458,8 +1529,8 @@ function WizardModal(props: {
     queryKey: ['payroll-wizard-attendance', w.companyId],
     queryFn: async () => {
       const params = w.companyId ? { companyId: w.companyId } : {};
-      const r = await api.get('/payroll-config/attendance-policies', { params });
-      return (r.data || []).filter((p: any) => p.status !== 'inactive');
+      const r = await api.get<AttendancePolicyRow[]>('/payroll-config/attendance-policies', { params });
+      return (r.data || []).filter(p => p.status !== 'inactive');
     },
     staleTime: 60 * 1000,
   });
@@ -1467,14 +1538,14 @@ function WizardModal(props: {
     queryKey: ['payroll-wizard-leave', w.companyId],
     queryFn: async () => {
       const params = w.companyId ? { companyId: w.companyId } : {};
-      const r = await api.get('/api/leave-templates', { params });
+      const r = await api.get<LeaveTemplateRow[]>('/api/leave-templates', { params });
       return r.data || [];
     },
     staleTime: 60 * 1000,
   });
   const linkAttendance = (id: number | null) => {
     if (!id) { setState({ attendanceLinked: false, attendancePolicyId: null }); return; }
-    const t = (attTemplates as any[]).find((p: any) => Number(p.id) === Number(id));
+    const t = attTemplates.find(p => Number(p.id) === Number(id));
     if (!t) return;
     setState({
       attendanceLinked: true,
@@ -1492,7 +1563,7 @@ function WizardModal(props: {
       },
     });
   };
-  const linkedLeave = (leaveTemplates as any[]).find((t: any) => Number(t.id) === Number(w.leaveTemplateId));
+  const linkedLeave = leaveTemplates.find(t => Number(t.id) === Number(w.leaveTemplateId));
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -1598,7 +1669,7 @@ function WizardModal(props: {
                   <SearchableSelect value={w.registeredState || ''} onChange={v => setState({ registeredState: String(v) })} placeholder="Select State" options={STATES.map(s => ({ id: s, name: s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }))} showAllOption={false} clearable />
                 </Field>
                 <Field label="Company" help="Select the legal entity this template pays.">
-                  <SearchableSelect value={w.companyId ?? 'all'} onChange={v => setState({ companyId: v === 'all' ? null : Number(v) })} placeholder="Select Company" options={companies.map((c: any) => ({ id: c.id, name: c.name }))} allOption="All Companies (Org-wide)" />
+                  <SearchableSelect value={w.companyId ?? 'all'} onChange={v => setState({ companyId: v === 'all' ? null : Number(v) })} placeholder="Select Company" options={companies.map(c => ({ id: c.id, name: c.name }))} allOption="All Companies (Org-wide)" />
                 </Field>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1807,7 +1878,7 @@ function WizardModal(props: {
                       ))}
                     </div>
                     <div className="space-y-3">
-                      {(simData.rows || []).filter((r: any) => !simAffectedOnly || (r.changed || []).length > 0).map((row: any) => (
+                      {(simData.rows || []).filter(r => !simAffectedOnly || (r.changed || []).length > 0).map(row => (
                         <div key={row.employeeId} className="border border-[var(--border-color)] rounded-lg p-3">
                           <div className="flex items-center justify-between">
                             <div>
@@ -1823,17 +1894,17 @@ function WizardModal(props: {
                           </div>
                           {(row.changed || []).length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {row.changed.slice(0, 8).map((k: string) => (
+                              {(row.changed || []).slice(0, 8).map((k: string) => (
                                 <span key={k} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${k === 'net' ? 'bg-slate-100 text-slate-700' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
                                   {k} {(row.delta?.[k] ?? 0) > 0 ? '+' : ''}{(row.delta?.[k] ?? 0).toLocaleString('en-IN')}
                                 </span>
                               ))}
-                              {row.changed.length > 8 && <span className="text-[10px] text-[var(--text-disabled)]">+{row.changed.length - 8} more</span>}
+                              {(row.changed || []).length > 8 && <span className="text-[10px] text-[var(--text-disabled)]">+{(row.changed || []).length - 8} more</span>}
                             </div>
                           )}
                         </div>
                       ))}
-                      {(simData.rows || []).filter((r: any) => !simAffectedOnly || (r.changed || []).length > 0).length === 0 && (
+                      {(simData.rows || []).filter(r => !simAffectedOnly || (r.changed || []).length > 0).length === 0 && (
                         <p className="text-sm text-[var(--text-disabled)] text-center py-6">
                           {simAffectedOnly ? 'No employee is affected by these values - every payslip stays the same.' : 'No employees in scope.'}
                         </p>
@@ -2119,7 +2190,7 @@ function WizardModal(props: {
                           attendancePolicy: defaultAttendance(),
                         });
                       }}
-                      options={(companies || []).map((c: any) => ({ id: c.id, name: c.name }))}
+                      options={(companies || []).map(c => ({ id: c.id, name: c.name }))}
                       placeholder="Select company (required)"
                       showAllOption={false} clearable />
                   </Field>
@@ -2127,7 +2198,7 @@ function WizardModal(props: {
                     <SearchableSelect
                       value={w.attendancePolicyId ?? ''}
                       onChange={(v) => linkAttendance(v === '' ? null : Number(v))}
-                      options={(attTemplates as any[]).map((p: any) => ({ id: p.id, name: `${p.name}${p.is_shared_template ? '' : ' (custom)'}` }))}
+                      options={attTemplates.map(p => ({ id: p.id, name: `${p.name}${p.is_shared_template ? '' : ' (custom)'}` }))}
                       placeholder={w.companyId ? 'Select attendance template (required)' : 'Select a company first'}
                       showAllOption={false} clearable />
                   </Field>
@@ -2135,7 +2206,7 @@ function WizardModal(props: {
                     <SearchableSelect
                       value={w.leaveTemplateId ?? ''}
                       onChange={(v) => setState({ leaveTemplateId: v === '' ? null : Number(v) })}
-                      options={(leaveTemplates as any[]).map((t: any) => ({ id: t.id, name: t.name }))}
+                      options={leaveTemplates.map(t => ({ id: t.id, name: t.name }))}
                       placeholder={w.companyId ? 'Select leave template (required)' : 'Select a company first'}
                       showAllOption={false} clearable />
                   </Field>
@@ -2148,7 +2219,7 @@ function WizardModal(props: {
                 )}
                 {linkedLeave && (
                   <div className="flex flex-wrap gap-2 text-[11px]">
-                    {((linkedLeave as any).body?.leaveTypes || []).filter((r: any) => r.active !== false).map((r: any) => (
+                    {((linkedLeave.body?.leaveTypes) || []).filter(r => r.active !== false).map(r => (
                       <span key={r.code || r.name} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                         {r.name}: {r.days}d{r.paid === false ? ' (unpaid)' : ''}
                       </span>
@@ -2276,7 +2347,7 @@ function WizardModal(props: {
                             </tr>
                           </thead>
                           <tbody>
-                            {(ptDetail.slabs || []).map((slab: any, i: number) => (
+                            {(ptDetail.slabs || []).map((slab, i) => (
                               <tr key={i} className="border-b border-[#F1F5F9]">
                                 <td className="py-2 pr-4 text-[var(--text-secondary)]">{getCurrencySymbol(getAppCurrency())}{slab.from_gross?.toLocaleString()}</td>
                                 <td className="py-2 pr-4 text-[var(--text-secondary)]">{slab.to_gross != null ? `${getCurrencySymbol(getAppCurrency())}${slab.to_gross?.toLocaleString()}` : 'No limit'}</td>
@@ -2363,7 +2434,7 @@ function WizardModal(props: {
                       {(lwfDetail.history || []).length > 0 && (
                         <div className="mt-4 space-y-2">
                           <p className="text-xs font-medium text-[var(--text-secondary)]">Version history (earlier versions stay on file)</p>
-                          {[...lwfDetail.history].sort((a: any, b: any) => ((a.effective_from || '') < (b.effective_from || '') ? 1 : -1)).map((h: any) => (
+                          {[...(lwfDetail.history || [])].sort((a, b) => ((a.effective_from || '') < (b.effective_from || '') ? 1 : -1)).map(h => (
                             <div key={h.id ?? `${h.effective_from}-${h.employee_contribution}`} className="flex items-center gap-3 text-xs text-[var(--text-tertiary)] bg-gray-50 border border-[#F1F5F9] rounded-lg px-3 py-1.5">
                               <span>Effective {h.effective_from || 'undated'}   {getCurrencySymbol(getAppCurrency())}{h.employee_contribution} emp / {getCurrencySymbol(getAppCurrency())}{h.employer_contribution} er per {lwfUnit(h.frequency)}</span>
                             </div>

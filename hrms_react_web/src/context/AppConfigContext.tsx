@@ -3,6 +3,7 @@ import { fetchGeneralSettings } from '../services/settingsService';
 import { syncAppSettings } from '../services/appSettingsService';
 
 // Country → default dial code + max local-digit length for phone validation.
+// eslint-disable-next-line react-refresh/only-export-components
 export const COUNTRY_PHONE_CONFIG: Record<string, { dial: string; localMax: number }> = {
   'India': { dial: '+91', localMax: 10 },
   'United States': { dial: '+1', localMax: 10 },
@@ -32,6 +33,7 @@ export const COUNTRY_PHONE_CONFIG: Record<string, { dial: string; localMax: numb
   'South Africa': { dial: '+27', localMax: 9 },
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const COUNTRY_CURRENCY: Record<string, string> = {
   'India': 'INR',
   'United States': 'USD',
@@ -123,4 +125,5 @@ export const AppConfigProvider = ({ children }: { children: ReactNode }) => {
   return <AppConfigContext.Provider value={cfg}>{children}</AppConfigContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAppConfig = () => useContext(AppConfigContext);

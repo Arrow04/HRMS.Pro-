@@ -74,6 +74,7 @@ export const CompanyProvider: React.FC<{ children: ReactNode }> = ({ children })
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useCompany = (): CompanyContextType => {
   const ctx = useContext(CompanyContext);
   if (!ctx) throw new Error('useCompany must be used within a CompanyProvider');

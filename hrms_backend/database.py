@@ -497,6 +497,26 @@ def init_db():
             except Exception as e:
                 print(f"State statutory slab seed warning: {e}")
 
+            # Statutory rule configs (rule-form prefills, statutory defaults).
+            # Idempotent — seeded once, then managed via Configuration UI.
+            try:
+                from models import StatutoryRuleConfig
+                with SessionLocal() as seed_db:
+                    if seed_db.query(StatutoryRuleConfig).count() == 0:
+                        from seed_statutory_rules import RULES as STATUTORY_RULES
+                        from datetime import datetime as _dt
+                        for rule in STATUTORY_RULES:
+                            seed_db.add(StatutoryRuleConfig(
+                                organization_id=None,
+                                created_at=_dt.utcnow(),
+                                updated_at=_dt.utcnow(),
+                                **rule,
+                            ))
+                        seed_db.commit()
+                        print(f"Seeded {len(STATUTORY_RULES)} statutory rule configs")
+            except Exception as e:
+                print(f"Statutory rule config seed warning: {e}")
+
             if 'deleted_at' not in users_columns:
                 with engine.connect() as conn:
                     conn.execute(text('ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP'))

@@ -47,8 +47,10 @@ export function personInitials(person?: NameLike | null, fallback = '?'): string
 /** Build API payload with a single fullName field (backend source of truth). */
 export function toFullNamePayload<T extends Record<string, unknown>>(data: T): T & { fullName: string } {
   const fullName = personDisplayName(data as NameLike);
-  const { firstName, lastName, ...rest } = data;
-  return { ...rest, fullName };
+  const rest: Record<string, unknown> = { ...data };
+  delete rest.firstName;
+  delete rest.lastName;
+  return { ...rest, fullName } as T & { fullName: string };
 }
 
 /** Safe filename slug from a person's name. */

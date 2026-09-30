@@ -65,10 +65,6 @@ const Login = () => {
     return emailRegex.test(value);
   };
 
-  const validatePassword = (value: string): boolean => {
-    return value.length >= 6;
-  };
-
   const getEmailError = (): string | null => {
     if (touched.email && !email.trim()) return 'Email is required';
     if (touched.email && !validateEmail(email)) return 'Please enter a valid email address';

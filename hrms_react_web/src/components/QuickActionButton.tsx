@@ -8,7 +8,7 @@ interface QuickActionButtonProps {
   onClick: () => void;
 }
 
-const QuickActionButton: React.FC<QuickActionButtonProps> = ({ icon: Icon, label, description, accent, onClick }) => {
+const QuickActionButton: React.FC<QuickActionButtonProps> = ({ icon: Icon, label, description, onClick }) => {
   return (
     <button
       onClick={onClick}

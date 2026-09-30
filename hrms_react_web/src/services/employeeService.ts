@@ -125,7 +125,7 @@ export const getEmployees = async (organizationId?: number, companyId?: number, 
     companyId,
     status,
   });
-  return result.data;
+  return result.data as Employee[];
 };
 
 export const createEmployee = async (employeeData: Partial<Employee>): Promise<Employee> => {

@@ -8,9 +8,9 @@ import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import * as payrollApi from '../services/payrollConfigApi';
 import * as payrollTemplateApi from '../services/payrollTemplateApi';
 import {
-  User, Heart, MapPin, IdCard, GraduationCap, Award, Briefcase, HeartHandshake,
+  User, Heart, MapPin, IdCard, GraduationCap, Award, Briefcase,
   Building2, Smartphone, Trophy, Sparkles, FileText, Settings, CheckCircle,
-  X, Info, Banknote, TrendingUp, TrendingDown, Lock, Search, ChevronLeft, ChevronRight, ChevronDown, Building, Save, UserCircle, FileDown, Trash2, AlertCircle, Landmark, Eye, EyeOff, Camera, Mail, Phone
+  X, Info, Banknote, TrendingUp, TrendingDown, Lock, Search, ChevronDown, Building, Save, UserCircle, FileDown, Trash2, AlertCircle, Landmark, Eye, EyeOff, Camera, Mail, Phone
 } from 'lucide-react';
 import DatePicker from './DatePicker';
 import DocumentUpload from './DocumentUpload';
@@ -27,7 +27,7 @@ import type { Employee, Branch, Department, Designation, Company } from '../type
 import { useMasterData } from '../hooks/useMasterData';
 import { useAppConfig } from '../context/AppConfigContext';
 import { joinEmployeeName, personDisplayName, splitEmployeeName } from '../utils/employeeNameUtils';
-import { computeProfileCompletion, computeTabStats } from '../utils/profileCompletion';
+import { computeProfileCompletion } from '../utils/profileCompletion';
 
 export type SalaryMode = 'daily' | 'weekly' | 'monthly' | 'annual' | 'manual';
 
@@ -99,6 +99,12 @@ export type EmployeeFormData = Record<string, unknown> & {
   accountHolderName?: string;
   bankAccounts?: { bankName?: string; bankAccountNumber?: string; ifscCode?: string; accountHolderName?: string; isPrimary?: boolean }[];
   baseSalary?: string | number;
+  deduction80c?: number;
+  deduction80d?: number;
+  hraExemption?: number;
+  ltaExemption?: number;
+  npsDeduction?: number;
+  homeLoanInterest?: number;
   salaryComponents?: Record<string, unknown>;
   hobbies?: string;
   userId?: string | number;
@@ -235,18 +241,6 @@ const EARNING_PCT: Record<string, string> = {
   performanceBonus: 'Manual (not auto-calculated)',
 };
 
-const DEDUCTION_PCT: Record<string, string> = {
-  pf: '12% of Basic (capped \u20B91,800/month on \u20B915,000 wage ceiling)',
-  esi: '0.75% of gross (only if monthly \u2264 \u20B921,000)',
-  professionalTax: 'Fixed \u20B9200 / month',
-  incomeTax: 'Manual (not auto-calculated)',
-  gratuity: 'Manual (not auto-calculated)',
-  loanRecovery: 'Manual (not auto-calculated)',
-  otherDeductions: 'Manual (not auto-calculated)',
-};
-
-const INPUT_CLS = '{formInputClass}';
-
 function getMonday(d: Date) {
   const date = new Date(d);
   const day = date.getDay();
@@ -332,7 +326,7 @@ const PreviewItem: React.FC<{ label: string; value: unknown }> = ({ label, value
 
 const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   open, title, isClosing = false, accent = '#1C64F2', employeeId,
-  formData, setFormData,
+  formData, setFormData: setFormDataProp,
   companiesList, branchesList, departmentsList, designations,
   genderOptions, bloodGroupOptions, maritalStatusOptions, employmentTypeOptions,
   statusOptions, educationLevelOptions, deviceTypeOptions,
@@ -341,6 +335,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   onClose, onSubmit, submitting = false, submitLabel = 'Save', showStatus = true,
   onSaveProgress, savingProgress = false,
 }) => {
+  const setFormData = setFormDataProp as unknown as React.Dispatch<React.SetStateAction<EmployeeFormData>>;
   const { isIndia, dialCode, currency } = useAppConfig();
   const currencySymbol = getCurrencySymbol(currency);
   const [tab, setTab] = useState('personal');
@@ -448,18 +443,16 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const { data: salaryTemplates = [] } = useQuery({
     queryKey: ['salary-templates', salaryOrgId ?? ''],
     queryFn: async () => {
-      try {
-        const params = salaryOrgId ? `?organizationId=${salaryOrgId}` : '';
-        const response = await api.get(`/salary-templates${params}`);
-        return response.data || [];
-      } catch (error) { throw error; }
+      const params = salaryOrgId ? `?organizationId=${salaryOrgId}` : '';
+      const response = await api.get(`/salary-templates${params}`);
+      return response.data || [];
     },
     staleTime: 5 * 60 * 1000,
   });
-  const { data: payrollPolicies = [] } = useQuery({ queryKey: ['payroll-policies'], queryFn: payrollApi.getPayrollPolicies, staleTime: 5 * 60 * 1000 });
-  const { data: attendancePolicies = [] } = useQuery({ queryKey: ['attendance-policies'], queryFn: payrollApi.getAttendancePolicies, staleTime: 5 * 60 * 1000 });
-  const { data: taxRegimes = [] } = useQuery({ queryKey: ['tax-regimes'], queryFn: payrollApi.getTaxRegimes, staleTime: 5 * 60 * 1000 });
-  const { data: shifts = [] } = useQuery({ queryKey: ['shifts'], queryFn: async () => { const res = await api.get('/shifts'); return res.data?.data || []; } });
+  const { data: payrollPolicies = [] } = useQuery({ queryKey: ['payroll-policies'], queryFn: (ctx) => payrollApi.getPayrollPolicies(ctx as unknown as number), staleTime: 5 * 60 * 1000 });
+  const { data: attendancePolicies = [] } = useQuery({ queryKey: ['attendance-policies'], queryFn: (ctx) => payrollApi.getAttendancePolicies(ctx as unknown as number), staleTime: 5 * 60 * 1000 });
+  const { data: taxRegimes = [] } = useQuery({ queryKey: ['tax-regimes'], queryFn: (ctx) => payrollApi.getTaxRegimes(ctx as unknown as number), staleTime: 5 * 60 * 1000 });
+  useQuery({ queryKey: ['shifts'], queryFn: async () => { const res = await api.get('/shifts'); return res.data?.data || []; } });
   const { data: employeesList = [] } = useQuery({
     queryKey: ['employees-picker'],
     queryFn: async () => {
@@ -469,7 +462,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     staleTime: 5 * 60 * 1000,
   });
   const docEmployeeId = employeeId || (typeof formData.employeeId === 'number' ? formData.employeeId as number : undefined);
-  const { data: currentRoster } = useQuery({
+  useQuery({
     queryKey: ['employee-roster', docEmployeeId],
     queryFn: async () => {
       if (!docEmployeeId) return [];
@@ -493,7 +486,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     },
     staleTime: 30 * 1000,
   });
-  const companyAttendancePolicies = (attendancePolicies as Record<string, unknown>[]).filter(
+  const companyAttendancePolicies = attendancePolicies.filter(
     (p) => !salaryCompanyIdNum || p.company_id == null || Number(p.company_id) === salaryCompanyIdNum
   );
 
@@ -553,7 +546,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     resplitKeyRef.current = key;
     const h = setTimeout(() => splitRef.current(String(formData.baseSalary), salaryMode), 0);
     return () => clearTimeout(h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, salaryMode, employeeId, formData.employeeId, formData.baseSalary, formData.payrollTemplateId, formData.payFrequency, formData.salaryComponents, payrollTplsFetched]);
 
   // Engine preview: in auto modes the split shown below is computed by the
@@ -585,7 +577,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       }
     }, 400);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, salaryMode, docEmployeeId, formData.baseSalary, formData.payrollTemplateId]);
 
   if (!open) return null;
@@ -935,7 +926,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
   const setPrimaryBank = (idx: number) => {
     const updated = (formData.bankAccounts || []).slice();
-    updated.forEach((acc: any, i: number) => {
+    updated.forEach((acc, i) => {
       acc.isPrimary = i === idx;
     });
     // Keep the standalone top-level fields in sync with the chosen primary account
@@ -1031,7 +1022,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       ifscCode: input(formData.ifscCode),
       salaryTemplateName: (payrollTemplates || []).find((t: { id: number | string }) => String(t.id) === String(formData.salaryTemplateId))?.name,
       payFrequency: input(formData.payFrequency),
-      payRate: formData.payRate,
+      payRate: typeof formData.payRate === 'string' || typeof formData.payRate === 'number' ? formData.payRate : undefined,
       deviceName: input(formData.deviceName),
       deviceType: input(formData.deviceType),
       deviceSerialNumber: input(formData.deviceSerialNumber),
@@ -1039,8 +1030,8 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       deviceMacAddress: input(formData.deviceMacAddress),
       deviceAssignedDate: formData.deviceAssignedDate,
       itAssignedBy: input(formData.itAssignedBy),
-      itAssignedDate: formData.itAssignedDate,
-      itCompletionDate: formData.itCompletionDate,
+      itAssignedDate: typeof formData.itAssignedDate === 'string' ? formData.itAssignedDate : undefined,
+      itCompletionDate: typeof formData.itCompletionDate === 'string' ? formData.itCompletionDate : undefined,
       itNotes: input(formData.itNotes),
       itChecklist: IT_CHECKLIST_KEYS.filter(({ key }) => formData[key] === true).map(({ label }) => label),
       achievementsDetails: (formData.achievementsDetails || []) as Array<Record<string, unknown>>,
@@ -1054,12 +1045,8 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   // Live progress — percentage of key form fields that have been filled in.
   // Shared with the onboarding table so both always show the same number.
   const formDataRecord = formData as unknown as Record<string, unknown>;
-  const tabStats = (tid: string) => computeTabStats(formDataRecord, tid);
 
   const progress = useMemo(() => computeProfileCompletion(formDataRecord), [formData]);
-
-  const tabFilledCount = (tid: string) => tabStats(tid).filled;
-  const tabTotalCount = (tid: string) => tabStats(tid).total;
 
   // NOTE: all frontend guards are disabled — values pass straight through on
   // every keystroke and on save. The server is the single source of validation.
@@ -1121,7 +1108,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     set({ [key]: value });
   };
 
-  const inputCls = (_key: string) => {
+  const inputCls = () => {
     return formInputClass;
   };
 
@@ -1329,7 +1316,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             : 'Select Branches'}
                         </span>
                         <div className="flex items-center gap-2 shrink-0">
-                          {formData.branchIds?.length > 0 && (
+                          {!!formData.branchIds?.length && (
                             <X className="w-4 h-4 text-[#64748B] hover:text-[#C81E1E]"
                               onClick={(e) => { e.stopPropagation(); set({ branchIds: [] }); }} />
                           )}
@@ -1402,7 +1389,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                        onChange={(v) => set({ reportingManagerId: v ? Number(v) : undefined })}
                        options={(employeesList || [])
                           .filter((emp: Employee) => !employeeId || emp.id !== employeeId)
-                         .map((emp: Employee) => ({ id: emp.id, name: emp.fullName || emp.name || `Employee #${emp.id}` }))}
+                          .map((emp: Employee) => ({ id: emp.id, name: emp.fullName || (emp as unknown as { name?: string }).name || `Employee #${emp.id}` }))}
                        placeholder="Select reporting manager"
                        showAllOption={false}
                        clearable
@@ -1450,7 +1437,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Email <span className="text-[#059669] font-normal">(Primary Login ID)</span></label>
                       <input type="email" value={input(formData.email)} onChange={(e) => handleAutoDuplicate('email', 'email', e.target.value, emailDupTimer)}
-                        className={inputCls('email')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="name@company.com" />
+                        className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="name@company.com" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Primary login ID — used to sign in.</p>
                       <FieldError name="email" />
                     </div>
@@ -1565,7 +1552,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         const { firstName, lastName } = splitEmployeeName(e.target.value);
                         set({ firstName, lastName });
                       }}
-                      className={inputCls('firstName')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter full legal name" />
+                      className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter full legal name" />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Full legal name as per ID documents</p>
                     <FieldError name="firstName" />
                   </div>
@@ -1573,7 +1560,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Employee Code</label>
                     <div className="flex items-center gap-2">
                       <input type="text" value={input(formData.employeeCode)} onChange={(e) => handleAutoDuplicate('employee_code', 'employeeCode', e.target.value, codeDupTimer)}
-                        className={`${inputCls('employeeCode')} flex-1`} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter or generate code" />
+                        className={`${inputCls()} flex-1`} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter or generate code" />
                       <button type="button" onClick={generateEmployeeCode}
                         title="Auto-generate a unique 7-character code"
                         className="shrink-0 h-[42px] w-[42px] px-0 inline-flex items-center justify-center bg-[#1C64F2] text-white text-xs font-semibold rounded-lg hover:bg-[#1E40AF] transition-colors">
@@ -1840,7 +1827,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         <div>
                           <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Aadhar Number</label>
                           <input type="text" value={input(formData.aadharNumber)} onChange={(e) => updateField('aadharNumber', formatAadhaar(e.target.value))}
-                            className={inputCls('aadharNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Aadhar number" maxLength={14} />
+                            className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Aadhar number" maxLength={14} />
                           <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">12-digit Aadhaar number, e.g. 1234 5678 9012</p>
                           <FieldError name="aadharNumber" />
                         </div>
@@ -1870,7 +1857,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         <div>
                           <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">PAN Number</label>
                           <input type="text" value={input(formData.panNumber)} onChange={(e) => updateField('panNumber', e.target.value.toUpperCase())}
-                            className={inputCls('panNumber')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter PAN number" maxLength={10} />
+                            className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter PAN number" maxLength={10} />
                           <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">10-character PAN, e.g. ABCDE1234F</p>
                           <FieldError name="panNumber" />
                         </div>
@@ -1899,7 +1886,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       <div>
                         <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Voter ID</label>
                           <input type="text" value={input(formData.voterId)} onChange={(e) => updateField('voterId', e.target.value.toUpperCase())}
-                            className={inputCls('voterId')} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
+                            className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter Voter ID" maxLength={10} />
                         <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Voter ID card number, e.g. ABC1234567</p>
                         <FieldError name="voterId" />
                       </div>
@@ -2268,7 +2255,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             <SearchableSelect
                               value={String(lang.proficiency ?? '')}
                               onChange={(v) => updateList('languages', idx, { proficiency: String(v) })}
-                              options={(proficiencyOptions || []).map((opt: any) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
+                              options={(proficiencyOptions || []).map((opt: Option) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
                               placeholder="Select level"
                               showAllOption={false}
                               clearable
@@ -2330,7 +2317,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                           <SearchableSelect
                             value={String(sk.proficiency ?? '')}
                             onChange={(v) => updateList('skillsList', idx, { proficiency: String(v) })}
-                            options={(proficiencyOptions || []).map((opt: any) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
+                            options={(proficiencyOptions || []).map((opt: Option) => ({ id: String(opt.code ?? opt.value ?? ''), name: opt.name || opt.label || '' }))}
                             placeholder="Select level"
                             showAllOption={false}
                             clearable
@@ -2442,32 +2429,32 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   <div className={empGridClass}>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80C Deduction</label>
-                      <input type="number" className={formInputClass} value={(formData as any).deduction80c || ''} onChange={e => setFormData({ ...formData, deduction80c: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.deduction80c || ''} onChange={e => setFormData({ ...formData, deduction80c: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Annual deduction claimed under Section 80C</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Section 80D (Medical)</label>
-                      <input type="number" className={formInputClass} value={(formData as any).deduction80d || ''} onChange={e => setFormData({ ...formData, deduction80d: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.deduction80d || ''} onChange={e => setFormData({ ...formData, deduction80d: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Medical insurance premium claimed under Section 80D</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">HRA Exemption</label>
-                      <input type="number" className={formInputClass} value={(formData as any).hraExemption || ''} onChange={e => setFormData({ ...formData, hraExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.hraExemption || ''} onChange={e => setFormData({ ...formData, hraExemption: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">House Rent Allowance exemption amount</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">LTA Exemption</label>
-                      <input type="number" className={formInputClass} value={(formData as any).ltaExemption || ''} onChange={e => setFormData({ ...formData, ltaExemption: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.ltaExemption || ''} onChange={e => setFormData({ ...formData, ltaExemption: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Leave Travel Allowance exemption amount</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">NPS Deduction</label>
-                      <input type="number" className={formInputClass} value={(formData as any).npsDeduction || ''} onChange={e => setFormData({ ...formData, npsDeduction: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.npsDeduction || ''} onChange={e => setFormData({ ...formData, npsDeduction: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">NPS contribution claimed under Section 80CCD(1B)</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Home Loan Interest</label>
-                      <input type="number" className={formInputClass} value={(formData as any).homeLoanInterest || ''} onChange={e => setFormData({ ...formData, homeLoanInterest: parseFloat(e.target.value) || 0 } as any)} placeholder="0" />
+                      <input type="number" className={formInputClass} value={formData.homeLoanInterest || ''} onChange={e => setFormData({ ...formData, homeLoanInterest: parseFloat(e.target.value) || 0 })} placeholder="0" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Interest paid on home loan under Section 24(b)</p>
                     </div>
                   </div>
@@ -2482,7 +2469,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   const acc = (formData.bankAccounts || [])[idx] || {};
                   const banks = formData.bankAccounts || [];
                   // Account 0 is only the default primary when no account is explicitly marked primary.
-                  const hasExplicitPrimary = banks.some((b: any) => b.isPrimary);
+                  const hasExplicitPrimary = banks.some((b) => b.isPrimary);
                   const isPrimary = hasExplicitPrimary ? !!acc.isPrimary : idx === 0;
                   return (
                     <div key={idx} className={`bg-[#F8FAFC] border rounded-xl p-4 space-y-3 ${isPrimary ? 'border-[#1C64F2]/40 ring-1 ring-[#1C64F2]/20' : 'border-[#E2E8F0]'}`}>

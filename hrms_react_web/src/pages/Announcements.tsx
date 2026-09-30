@@ -243,14 +243,6 @@ const Announcements = () => {
     }
   };
 
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    announcements.forEach((a) => {
-      if (a.category) set.add(a.category);
-    });
-    return Array.from(set).sort();
-  }, [announcements]);
-
   const pinnedItems = useMemo(() => announcements.filter((a) => a.pinned), [announcements]);
 
   const stats = useMemo(() => {

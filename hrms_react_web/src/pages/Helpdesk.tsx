@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Headset, Plus, FileText, Edit2, Trash2,
-  CheckCircle2, XCircle, RotateCcw, Calendar, MessageSquare, AlertTriangle, Clock, PauseCircle,
+  CheckCircle2, XCircle, RotateCcw, MessageSquare, AlertTriangle, Clock, PauseCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';

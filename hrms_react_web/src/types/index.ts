@@ -309,6 +309,10 @@ export interface Asset {
   companyName?: string;
   branchName?: string;
   departmentName?: string;
+  companyId?: number;
+  company_id?: number;
+  departmentId?: number;
+  department_id?: number;
   createdAt?: string;
 }
 

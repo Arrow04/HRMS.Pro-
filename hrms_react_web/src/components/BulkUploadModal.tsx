@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Download, Upload, Loader2 } from 'lucide-react';
+import { Download, Upload } from 'lucide-react';
 import Modal from './Modal';
 
 interface BulkUploadModalProps {
@@ -67,7 +67,7 @@ const BulkUploadModal = ({
         await onUpload(uploadFile);
         setUploadFile(null);
         onClose();
-      } catch (err) {
+      } catch {
         // Error toast is handled by the caller; keep modal open on failure
       } finally {
         setUploading(false);

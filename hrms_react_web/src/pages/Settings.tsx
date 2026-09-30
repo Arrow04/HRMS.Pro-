@@ -718,7 +718,7 @@ const UserManagementPanel = () => {
     try {
       const res = await api.get('/api/users/provision-all/preview');
       setProvisionPreview(res.data);
-    } catch {
+    } catch (error) {
       toast.error((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to check orphan employees');
     } finally {
       setProvisionChecking(false);
@@ -733,7 +733,7 @@ const UserManagementPanel = () => {
       setProvisionPreview(null);
       toast.success(`${data.created} user account${data.created === 1 ? '' : 's'} created. Default password: ${data.defaultPassword}`);
       loadUsers();
-    } catch {
+    } catch (error) {
       toast.error((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to provision users');
     } finally {
       setProvisioning(false);

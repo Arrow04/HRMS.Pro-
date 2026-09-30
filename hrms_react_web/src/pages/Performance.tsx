@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   Sparkles, Plus, TrendingUp, Target, Star, X, Pencil,
-  CheckCircle2, Users, BarChart3, Info, XCircle, RotateCcw, Loader2, Download, Upload, Settings, Trash2
+  CheckCircle2, Users, BarChart3, Info, RotateCcw, Loader2, Download, Upload, Settings, Trash2
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie } from 'recharts';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,6 @@ import api from '../services/api';
 import PerformanceConfig from '../components/PerformanceConfig';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
-import { normalizePickerEmployee, toEmployeeSelectOptions } from '../utils/employeePickerUtils';
 import toast from 'react-hot-toast';
 import DateRangePicker from '../components/DateRangePicker';
 import DatePicker from '../components/DatePicker';
@@ -25,7 +24,7 @@ import BulkDeleteModal from '../components/BulkDeleteModal';
 import { runAutomation } from '../services/aiAutomation';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import { formTextareaClass } from '../components/FormField';
-import type { PerformanceReview, Employee, Company, Department, Branch } from '../types';
+import type { PerformanceReview, Company, Department } from '../types';
 
 interface MasterDataOption {
   value?: string;
@@ -503,12 +502,13 @@ const FeedbackRatingField = ({
   </FormField>
 );
 
-const GoalFeedbackForm = ({ type, data, setData, companies }: {
+const GoalFeedbackForm = ({ type, data: _formData, setData, companies }: {
   type: 'goal' | 'feedback';
   data: Record<string, FormDataValue>;
   setData: Dispatch<SetStateAction<Record<string, FormDataValue>>>;
   companies: Company[];
 }) => {
+  const data = _formData as Record<string, string | number | string[] | null | undefined>;
   const patchData = (patch: Record<string, FormDataValue>) => {
     setData((prev) => ({ ...prev, ...patch }));
   };
@@ -560,10 +560,10 @@ const GoalFeedbackForm = ({ type, data, setData, companies }: {
           <FormSectionTitle title="Timeline & Progress" />
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mt-3">
             <FormField label="Start Date" help="When the goal begins">
-              <DatePicker value={data.startDate || ''} onChange={(val) => patchData({ startDate: val })} />
+              <DatePicker value={(data.startDate ?? '') as string} onChange={(val) => patchData({ startDate: val })} />
             </FormField>
             <FormField label="End Date" help="Target completion date">
-              <DatePicker value={data.endDate || ''} onChange={(val) => patchData({ endDate: val })} />
+              <DatePicker value={(data.endDate ?? '') as string} onChange={(val) => patchData({ endDate: val })} />
             </FormField>
             <FormField label="Progress (%)" help="Current completion percentage">
               <input type="number" min="0" max="100" className={INPUT_CLS} value={data.progress || 0} onChange={e => patchData({ progress: parseInt(e.target.value, 10) || 0 })} />
@@ -718,7 +718,7 @@ const GoalFeedbackForm = ({ type, data, setData, companies }: {
       <section>
         <FormSectionTitle title="Submission" />
         <div className="flex items-center gap-2 mt-3">
-          <input type="checkbox" checked={data.isAnonymous || false} onChange={e => patchData({ isAnonymous: e.target.checked })} className="w-4 h-4 text-[#1C64F2] rounded" />
+          <input type="checkbox" checked={!!data.isAnonymous} onChange={e => patchData({ isAnonymous: e.target.checked })} className="w-4 h-4 text-[#1C64F2] rounded" />
           <label className="text-sm text-[var(--text-primary)]">Submit anonymously</label>
         </div>
       </section>
@@ -777,21 +777,21 @@ const [includeInactive, setIncludeInactive] = useState(false);
     nextReviewDate: '',
     reviewerComments: '',
     employeeComments: '',
-    notes: ''
+    notes: '',
+    rating: '',
+    status: '',
+    overallScore: 0,
   });
 
 
   
-  const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
-  const employees = pickerEmployees.map(normalizePickerEmployee);
+  useEmployeePicker({ status: 'active' });
 
   const { data: reviews = [], isLoading, isFetching } = useQuery({
     queryKey: ['performance-reviews', includeInactive],
     queryFn: async () => {
-      try {
-        const response = await api.get('/performance/reviews', { params: { includeInactive } });
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/performance/reviews', { params: { includeInactive } });
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -799,10 +799,8 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: goals = [], isLoading: goalsLoading } = useQuery({
     queryKey: ['goals'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/goals');
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/goals');
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -810,10 +808,8 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: feedback = [], isLoading: feedbackLoading } = useQuery({
     queryKey: ['feedback'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/feedback');
-        return response.data || [];
-      } catch (error) { throw error; }
+      const response = await api.get('/feedback');
+      return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
   });
@@ -863,7 +859,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const [isReviewDetailClosing, setIsReviewDetailClosing] = useState(false);
   const [selectedReview, setSelectedReview] = useState<ReviewRow | null>(null);
   const [isEditingReview, setIsEditingReview] = useState(false);
-  const [editReviewData, setEditReviewData] = useState<Record<string, any>>({});
+  const [editReviewData, setEditReviewData] = useState<Record<string, string | number>>({});
   const [editingReview, setEditingReview] = useState<ReviewRow | null>(null);
 
   // Delete confirmation state
@@ -1037,10 +1033,8 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: stats = { totalReviews: 0, completed: 0, pending: 0, avgRating: 0 } } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/performance/stats');
-        return response.data || { totalReviews: 0, completed: 0, pending: 0, avgRating: 0 };
-      } catch (error) { throw error; }
+      const response = await api.get('/performance/stats');
+      return response.data || { totalReviews: 0, completed: 0, pending: 0, avgRating: 0 };
     },
   });
 
@@ -1096,9 +1090,6 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const getBranchName = (id?: number) => branches.find((b: { id: number; name: string }) => b.id === id)?.name || '-';
   const getDeptName = (id?: number) => departments.find((d: Department) => d.id === id)?.name || '-';
 
-  
-  const employeeOptions = toEmployeeSelectOptions(pickerEmployees);
-
   const handleCloseDrawer = () => {
     setIsClosing(true);
     setTimeout(() => {
@@ -1143,7 +1134,10 @@ const [includeInactive, setIncludeInactive] = useState(false);
         nextReviewDate: '',
         reviewerComments: '',
         employeeComments: '',
-        notes: ''
+        notes: '',
+        rating: '',
+        status: '',
+        overallScore: 0,
       });
     }, 300);
   };
@@ -1204,9 +1198,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
         reviewPeriod: review.reviewPeriod || '',
         reviewYear: review.reviewYear?.toString() || new Date().getFullYear().toString(),
         organizationId: '',
-        companyId: review.companyId?.toString() || '',
-        branchId: review.branchId?.toString() || '',
-        departmentId: review.departmentId?.toString() || '',
+        companyId: review.company_id?.toString() || '',
+        branchId: review.branch_id?.toString() || '',
+        departmentId: review.department_id?.toString() || '',
         productivityScore: review.productivityScore || 0,
         qualityScore: review.qualityScore || 0,
         communicationScore: review.communicationScore || 0,
@@ -1282,6 +1276,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
         reviewerComments: '',
         employeeComments: '',
         notes: '',
+        rating: '',
+        status: '',
+        overallScore: 0,
       });
     }
     setShowModal(true);
@@ -1382,40 +1379,13 @@ const [includeInactive, setIncludeInactive] = useState(false);
     }
   };
 
-  const handleViewReview = (review: ReviewRow) => {
-    setSelectedReview(review);
-    setEditReviewData({
-      employeeId: review.employeeId, reviewerId: review.reviewerId,
-      reviewPeriod: review.reviewPeriod, reviewYear: review.reviewYear,
-      reviewCycle: review.reviewCycle, rating: review.rating,
-      overallScore: review.overallScore, status: review.status,
-      reviewerComments: review.reviewerComments, goalsAchieved: review.goalsAchieved,
-      reviewerName: review.reviewerName, reviewerPosition: review.reviewerPosition,
-      productivityScore: review.productivityScore, qualityScore: review.qualityScore,
-      communicationScore: review.communicationScore, teamworkScore: review.teamworkScore,
-      leadershipScore: review.leadershipScore, initiativeScore: review.initiativeScore,
-      punctualityScore: review.punctualityScore, problemSolvingScore: review.problemSolvingScore,
-      collaborationScore: review.collaborationScore, adaptabilityScore: review.adaptabilityScore,
-      creativityScore: review.creativityScore, attendanceScore: review.attendanceScore,
-      goalsSet: review.goalsSet, strengths: review.strengths,
-      areasForImprovement: review.areasForImprovement, developmentPlan: review.developmentPlan,
-      achievements: review.achievements, keyProjects: review.keyProjects,
-      trainingNeeds: review.trainingNeeds, promotionEligible: review.promotionEligible,
-      salaryRecommendation: review.salaryRecommendation, salaryPercentage: review.salaryPercentage,
-      nextReviewDate: review.nextReviewDate, employeeComments: review.employeeComments,
-      notes: review.notes,
-    });
-    setIsEditingReview(false);
-    setShowReviewDetail(true);
-  };
-
   const handleSaveReviewEdit = () => {
     if (!selectedReview) return;
     updateReviewMutation.mutate({ id: selectedReview.id, data: editReviewData });
   };
 
   const updateReviewMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: ReviewFormState | Record<string, any> }) => {
+    mutationFn: async ({ id, data }: { id: number; data: ReviewFormState | Record<string, unknown> }) => {
       const payload = 'employeeId' in data && typeof data.reviewPeriod === 'string'
         ? buildReviewPayload(data as ReviewFormState)
         : data;
@@ -1923,7 +1893,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                     },
                     {
                       key: 'status', header: 'Status', align: 'center', sortable: true,
-                      render: (g: GoalRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(g.status || '')}`}>{capitalizeStatus(g.status)}</span>,
+                      render: (g: GoalRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(g.status || '')}`}>{capitalizeStatus(g.status ?? '')}</span>,
                       sortValue: (g: GoalRow) => g.status,
                     },
                   ]}
@@ -2051,7 +2021,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                     },
                     {
                       key: 'status', header: 'Status', align: 'center', sortable: true,
-                      render: (f: FeedbackRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(f.status || '')}`}>{capitalizeStatus(f.status)}</span>,
+                      render: (f: FeedbackRow) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getAttendanceStatusBadge(f.status || '')}`}>{capitalizeStatus(f.status ?? '')}</span>,
                       sortValue: (f: FeedbackRow) => f.status,
                     },
                   ]}
@@ -2109,7 +2079,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                         goals.forEach((g: GoalRow) => { const s = g.status || 'active'; statusMap[s] = (statusMap[s] || 0) + 1; });
                         const COLORS = ['#1C64F2', '#10B981', '#F97316', '#64748B'];
                         return Object.entries(statusMap).map(([name, value], i) => ({ name, value, fill: COLORS[i % COLORS.length] }));
-                      })()} cx="50%" cy="50%" innerRadius={50} outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      })()} cx="50%" cy="50%" innerRadius={50} outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                       </Pie>
                       <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 12 }} />
                     </PieChart>
@@ -2331,7 +2301,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
               </div>
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
-                  <GoalFeedbackForm type="goal" data={newGoal} setData={setNewGoal} companies={companies} />
+                  <GoalFeedbackForm type="goal" data={newGoal} setData={setNewGoal as Dispatch<SetStateAction<Record<string, FormDataValue>>>} companies={companies} />
                 </div>
               </div>
             </div>
@@ -2375,7 +2345,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
               </div>
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
-                  <GoalFeedbackForm type="feedback" data={newFeedback} setData={setNewFeedback} companies={companies} />
+                  <GoalFeedbackForm type="feedback" data={newFeedback} setData={setNewFeedback as Dispatch<SetStateAction<Record<string, FormDataValue>>>} companies={companies} />
                 </div>
               </div>
             </div>
@@ -2408,9 +2378,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
             </div>
             <div className="p-6 space-y-6">
               <ReviewDetailSection title="Overview">
-                <DetailField label="Employee" value={selectedReview.employeeName} />
-                <DetailField label="Reviewer" value={selectedReview.reviewerName} />
-                <DetailField label="Period" value={selectedReview.reviewPeriod} />
+                <DetailField label="Employee" value={selectedReview.employeeName ?? ''} />
+                <DetailField label="Reviewer" value={selectedReview.reviewerName ?? ''} />
+                <DetailField label="Period" value={selectedReview.reviewPeriod ?? ''} />
                 <DetailField label="Year" value={String(selectedReview.reviewYear)} />
                 <DetailField label="Status" value={selectedReview.status} badge />
                 <DetailField label="Overall Score" value={selectedReview.overallScore ? `${selectedReview.overallScore}/5` : '-'} />
@@ -2429,7 +2399,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                       {isEditingReview ? (
                         <input type="number" min="1" max="5" value={editReviewData[key] || 0} onChange={(e) => setEditReviewData({ ...editReviewData, [key]: parseInt(e.target.value) })} className="w-16 px-2 py-1 border border-[var(--border-color)] rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-[#1C64F2]" />
                       ) : (
-                        <span className="text-sm font-semibold text-[#0F172A]">{(selectedReview as any)[key] || 0}/5</span>
+                        <span className="text-sm font-semibold text-[#0F172A]">{((selectedReview as unknown as Record<string, string | number>)[key] || 0)}/5</span>
                       )}
                     </div>
                   ))}

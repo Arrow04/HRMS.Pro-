@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
-  Plus, Building2, FileText, Edit2, Trash2, X, CheckCircle2, Users, MapPin,
+  Plus, Building2, FileText, Edit2, Trash2, CheckCircle2, Users, MapPin,
   CalendarDays, Clock, CalendarClock, CalendarCheck, Zap, Navigation, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -12,6 +12,7 @@ import DatePicker from './DatePicker';
 import ToggleSwitch from './ToggleSwitch';
 import { useAuth } from '../context/AuthContext';
 import { useMasterData } from '../hooks/useMasterData';
+import type { LookupValue } from '../services/masterDataService';
 
 function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
   return (
@@ -107,6 +108,81 @@ const WIZARD_HELP: Record<string, string> = {
 };
 const BASE = '/api/payroll-config/attendance-policies';
 
+interface CompanyOption {
+  id: number;
+  name: string;
+  organization_id?: number | null;
+  organizationId?: number | null;
+}
+
+interface AttendanceTemplateRecord {
+  id: number;
+  name: string;
+  description?: string | null;
+  company_id?: number | null;
+  status?: string;
+  version?: number;
+  effective_from?: string | null;
+  working_days?: string | number[];
+  shift_ids?: number[];
+  shift_id?: number;
+  wfh_allowed?: boolean;
+  geofence_enabled?: boolean;
+  geofence_radius?: number | null;
+  half_day_as_full_paid?: boolean;
+  paid_leave_as_present?: boolean;
+  holiday_as_present?: boolean;
+  late_mark_threshold_minutes?: number | null;
+  early_departure_minutes?: number | null;
+  half_day_threshold_hours?: number | null;
+  overtime_threshold_hours?: number | null;
+  overtime_rate?: number | null;
+  late_to_absent_count?: number | null;
+  early_to_absent_count?: number | null;
+  no_checkout_to_absent_count?: number | null;
+  missing_checkout_rule?: string | null;
+  check_in_time?: string | null;
+  check_out_time?: string | null;
+  break_hours?: number | null;
+  comp_off_enabled?: boolean;
+  max_comp_off_balance?: number | null;
+  max_overtime_hours_per_month?: number | null;
+  selfie_checkin_enabled?: boolean;
+  ip_restriction_enabled?: boolean;
+  allowed_ip_ranges?: string[] | null;
+  wifi_checkin_enabled?: boolean;
+  allowed_ssids?: string[] | null;
+  auto_approve_if_no_mark?: boolean;
+  min_hours_for_full_day?: number | null;
+  shift_based_payroll?: boolean;
+  status_rules?: WizardState['statusRules'];
+}
+
+interface ShiftOption {
+  id: number;
+  name?: string;
+  code?: string;
+  color?: string;
+  shift_type?: string;
+  shiftType?: string;
+  start_time?: string;
+  startTime?: string;
+  end_time?: string;
+  endTime?: string;
+  grace_minutes?: number;
+  graceMinutes?: number;
+  break_duration?: number;
+  breakDuration?: number;
+  working_days?: string;
+  workingDays?: string;
+  description?: string;
+}
+
+interface ApiError {
+  message?: string;
+  response?: { data?: { detail?: string } };
+}
+
 export default function AttendanceTemplateManager() {
   const queryClient = useQueryClient();
   const [companyFilter, setCompanyFilter] = useState<string>('all');
@@ -115,12 +191,12 @@ export default function AttendanceTemplateManager() {
   const [readOnly, setReadOnly] = useState(false);
   const [wizTab, setWizTab] = useState('overview');
 
-  const { data: companies = [] } = useQuery({
+  const { data: companies = [] } = useQuery<CompanyOption[]>({
     queryKey: ['companies'],
     queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
     staleTime: 5 * 60 * 1000,
   });
-  const { data: templates = [], isLoading } = useQuery({
+  const { data: templates = [], isLoading } = useQuery<AttendanceTemplateRecord[]>({
     queryKey: ['attendance-templates', companyFilter],
     queryFn: async () => {
       const params = companyFilter === 'all' ? {} : { companyId: Number(companyFilter) };
@@ -129,10 +205,10 @@ export default function AttendanceTemplateManager() {
     },
   });
   const companyName = useMemo(() => {
-    const m = new Map((companies as any[]).map((c: any) => [c.id, c.name]));
-    return (id: number | null) => (id == null ? 'All Companies' : m.get(id) || '—');
+    const m = new Map(companies.map((c) => [c.id, c.name] as const));
+    return (id: number | null | undefined) => (id == null ? 'All Companies' : m.get(id) || '—');
   }, [companies]);
-  const { data: shifts = [] } = useQuery({
+  const { data: shifts = [] } = useQuery<ShiftOption[]>({
     queryKey: ['shifts-for-template', companyFilter],
     queryFn: async () => {
       const params = companyFilter === 'all' ? { status: 'active' } : { status: 'active', company_id: Number(companyFilter) };
@@ -190,22 +266,22 @@ export default function AttendanceTemplateManager() {
       queryClient.invalidateQueries({ queryKey: ['attendance-templates'] });
       setWizard(null); setEditingId(null); setWizTab('overview');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || 'Failed to save template'),
+    onError: (e: unknown) => toast.error((e as ApiError)?.response?.data?.detail || 'Failed to save template'),
   });
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`${BASE}/${id}`),
     onSuccess: () => { toast.success('Template deactivated'); queryClient.invalidateQueries({ queryKey: ['attendance-templates'] }); },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || 'Failed to delete template'),
+    onError: (e: unknown) => toast.error((e as ApiError)?.response?.data?.detail || 'Failed to delete template'),
   });
 
-  const parseDays = (s: any): number[] => String(s || '1,2,3,4,5,6').split(',').map((x) => Number(x.trim())).filter((x) => !Number.isNaN(x));
+  const parseDays = (s: unknown): number[] => String(s || '1,2,3,4,5,6').split(',').map((x) => Number(x.trim())).filter((x) => !Number.isNaN(x));
   const openCreate = () => {
     setEditingId(null); setReadOnly(false); setWizTab('overview');
     const w = blankWizard();
     w.companyId = companyFilter === 'all' ? null : Number(companyFilter);
     setWizard(w);
   };
-  const fromTemplate = (t: any): WizardState => ({
+  const fromTemplate = (t: AttendanceTemplateRecord): WizardState => ({
     name: t.name, companyId: t.company_id ?? null, description: t.description || '',
     status: t.status || 'active', effectiveFrom: (t.effective_from || '').slice(0, 10),
     workingDays: parseDays(t.working_days),
@@ -240,10 +316,8 @@ export default function AttendanceTemplateManager() {
     shiftBasedPayroll: !!t.shift_based_payroll,
     statusRules: Array.isArray(t.status_rules) && t.status_rules.length ? t.status_rules : blankWizard().statusRules,
   });
-  const openEdit = (t: any) => { setEditingId(t.id); setReadOnly(false); setWizTab('overview'); setWizard(fromTemplate(t)); };
-  const openView = (t: any) => { openEdit(t); setReadOnly(true); };
-  const toggleDay = (d: number) =>
-    setWizard((prev) => (prev ? { ...prev, workingDays: prev.workingDays.includes(d) ? prev.workingDays.filter((x) => x !== d) : [...prev.workingDays, d] } : prev));
+  const openEdit = (t: AttendanceTemplateRecord) => { setEditingId(t.id); setReadOnly(false); setWizTab('overview'); setWizard(fromTemplate(t)); };
+  const openView = (t: AttendanceTemplateRecord) => { openEdit(t); setReadOnly(true); };
   const submit = () => {
     if (!wizard) return;
     if (!wizard.name.trim()) { toast.error('Template name is required'); return; }
@@ -270,10 +344,10 @@ export default function AttendanceTemplateManager() {
 
       <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Templates', value: (templates as any[]).length, icon: FileText },
-          { label: 'Companies covered', value: new Set((templates as any[]).map((t: any) => t.company_id)).size, icon: MapPin },
-          { label: 'Active', value: (templates as any[]).filter((t: any) => t.status === 'active').length, icon: CheckCircle2 },
-          { label: 'With geo-fence', value: (templates as any[]).filter((t: any) => t.geofence_enabled).length, icon: Navigation },
+          { label: 'Templates', value: templates.length, icon: FileText },
+          { label: 'Companies covered', value: new Set(templates.map((t) => t.company_id)).size, icon: MapPin },
+          { label: 'Active', value: templates.filter((t) => t.status === 'active').length, icon: CheckCircle2 },
+          { label: 'With geo-fence', value: templates.filter((t) => t.geofence_enabled).length, icon: Navigation },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-2xl border border-[var(--border-color)] p-4 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
@@ -288,14 +362,14 @@ export default function AttendanceTemplateManager() {
       <div className="flex items-center gap-3">
         <div className="w-64">
           <SearchableSelect value={companyFilter} onChange={(v) => setCompanyFilter(String(v))}
-            options={[{ id: 'all', name: 'All Companies' }, ...(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))]}
+            options={[{ id: 'all', name: 'All Companies' }, ...companies.map((c) => ({ id: c.id, name: c.name }))]}
             placeholder="Filter by company" />
         </div>
       </div>
 
       {isLoading ? null : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(templates as any[]).map((t: any) => (
+          {templates.map((t) => (
             <div key={t.id} className="bg-white rounded-2xl border border-[var(--border-color)] p-5 hover:shadow-md transition-shadow flex flex-col">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -333,7 +407,7 @@ export default function AttendanceTemplateManager() {
           ))}
         </div>
       )}
-      {(templates as any[]).length === 0 && !isLoading && (
+      {templates.length === 0 && !isLoading && (
         <div className="text-center py-12 text-[var(--text-tertiary)]">No attendance templates yet — create the first one for a company.</div>
       )}
 
@@ -341,7 +415,7 @@ export default function AttendanceTemplateManager() {
       {wizard && (
         <AttendanceWizardModal
           wizard={wizard} setWizard={setWizard} wizTab={wizTab} setWizTab={setWizTab}
-          companies={companies as any[]} shifts={shifts as any[]} editingId={editingId} readOnly={readOnly}
+          companies={companies} shifts={shifts} editingId={editingId} readOnly={readOnly}
           saving={saveMutation.isPending} onSubmit={submit}
         />
       )}
@@ -354,8 +428,8 @@ function AttendanceWizardModal(props: {
   setWizard: React.Dispatch<React.SetStateAction<WizardState | null>>;
   wizTab: string;
   setWizTab: (t: string) => void;
-  companies: any[];
-  shifts: any[];
+  companies: CompanyOption[];
+  shifts: ShiftOption[];
   editingId: number | null;
   readOnly: boolean;
   saving: boolean;
@@ -367,8 +441,8 @@ function AttendanceWizardModal(props: {
   const { user } = useAuth();
   const { data: statusMaster = [] } = useMasterData('ATTENDANCE_STATUS');
   const missingCheckoutOptions = [
-    ...((statusMaster as any[]).length > 0
-      ? (statusMaster as any[]).filter((o: any) => o.is_active !== false).map((o: any) => ({ id: o.code, name: o.name }))
+    ...(statusMaster.length > 0
+      ? statusMaster.filter((o: LookupValue) => o.is_active !== false).map((o: LookupValue) => ({ id: o.code, name: o.name }))
       : [{ id: 'half_day', name: 'Half Day' }, { id: 'absent', name: 'Absent' }]),
     { id: 'no_checkout', name: 'No checkout' },
   ];
@@ -385,7 +459,7 @@ function AttendanceWizardModal(props: {
     true,
   ].filter(Boolean).length;
   const progress = Math.min(100, Math.round((done / WIZ_TABS.length) * 100));
-  const selectedShifts = (shifts as any[]).filter((s: any) => wizard.shiftIds.includes(s.id));
+  const selectedShifts = shifts.filter((s) => wizard.shiftIds.includes(s.id));
 
   /* ---- inline shift configure (create / edit / deactivate) ---- */
   interface ShiftFormState { id: number | null; name: string; code: string; shift_type: string; start_time: string; end_time: string; grace_minutes: number | null; break_duration: number | null; workingDays: number[]; description: string; }
@@ -397,7 +471,7 @@ function AttendanceWizardModal(props: {
   const [savingShift, setSavingShift] = useState(false);
   const toggleShiftDay = (d: number) =>
     setShiftForm((prev) => (prev ? { ...prev, workingDays: prev.workingDays.includes(d) ? prev.workingDays.filter((x) => x !== d) : [...prev.workingDays, d] } : prev));
-  const openEditShift = (s: any) => setShiftForm({
+  const openEditShift = (s: ShiftOption) => setShiftForm({
     id: s.id, name: s.name || '', code: s.code || '', shift_type: s.shift_type || s.shiftType || 'morning',
     start_time: (s.start_time || s.startTime || '09:00').slice(0, 5), end_time: (s.end_time || s.endTime || '18:00').slice(0, 5),
     grace_minutes: s.grace_minutes ?? s.graceMinutes ?? 15, break_duration: s.break_duration ?? s.breakDuration ?? 60,
@@ -408,9 +482,9 @@ function AttendanceWizardModal(props: {
     mutationFn: async (f: ShiftFormState) => {
       if (!f.name.trim()) throw new Error('Shift name is required');
       if (!f.code.trim()) throw new Error('Shift code is required');
-      const orgId = (user as any)?.organizationId
-        ?? (companies as any[]).find((c: any) => c.id === wizard.companyId)?.organization_id
-        ?? (companies as any[]).find((c: any) => c.id === wizard.companyId)?.organizationId;
+      const orgId = user?.organizationId
+        ?? companies.find((c) => c.id === wizard.companyId)?.organization_id
+        ?? companies.find((c) => c.id === wizard.companyId)?.organizationId;
       if (!orgId) throw new Error('Organization not resolved — re-login and retry');
       const payload = {
         name: f.name.trim(), code: f.code.trim().toUpperCase(), shift_type: f.shift_type,
@@ -423,14 +497,14 @@ function AttendanceWizardModal(props: {
       const res = f.id ? await api.put(`/shifts/${f.id}`, payload) : await api.post('/shifts/', payload);
       return res.data;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { id?: number }) => {
       toast.success(shiftForm?.id ? 'Shift updated' : 'Shift created');
       const id = data?.id || shiftForm?.id;
       if (id) setWizard((prev) => (prev && !prev.shiftIds.includes(Number(id)) ? { ...prev, shiftIds: [...prev.shiftIds, Number(id)] } : prev));
       setShiftForm(null);
       queryClient.invalidateQueries({ queryKey: ['shifts-for-template'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || e?.message || 'Failed to save shift'),
+    onError: (e: unknown) => toast.error((e as ApiError)?.response?.data?.detail || (e as ApiError)?.message || 'Failed to save shift'),
   });
 
   return (
@@ -532,7 +606,7 @@ function AttendanceWizardModal(props: {
                   </Field>
                   <Field label="Company *" help="Only employees of this company can pick this template.">
                     <SearchableSelect value={wizard.companyId ?? ''} onChange={(v) => setWizard({ ...wizard, companyId: v === '' ? null : Number(v) })}
-                      options={(companies as any[]).map((c: any) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
+                      options={companies.map((c) => ({ id: c.id, name: c.name }))} placeholder="Select company" disabled={readOnly} />
                   </Field>
                   <Field label="Effective From" help="Rules apply from this date. Payroll for earlier months keeps the old rules.">
                     <DatePicker value={wizard.effectiveFrom} onChange={(val) => setWizard({ ...wizard, effectiveFrom: val })} />
@@ -563,7 +637,7 @@ function AttendanceWizardModal(props: {
                   <p className="text-[11px] text-[var(--text-tertiary)]">Links one shift master (managed in Attendance → Duty Shift) as this template's company default — its start/end, grace and break flow into attendance evaluation. Roster assignments can still override per employee.</p>
                   <Field label="Shifts" help="Select one or more shifts for this template. Employees can be assigned any of the selected shifts.">
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                      {(shifts as any[]).map((s: any) => (
+                      {shifts.map((s) => (
                         <label key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors cursor-pointer ${wizard.shiftIds.includes(s.id) ? 'border-[#1C64F2] bg-blue-50' : 'border-[var(--border-color)] hover:border-[#1C64F2]/50 hover:bg-[var(--background)]'}`}>
                           <input type="checkbox" disabled={readOnly}
                             checked={wizard.shiftIds.includes(s.id)}
@@ -581,14 +655,14 @@ function AttendanceWizardModal(props: {
                           </div>
                         </label>
                       ))}
-                      {(shifts as any[]).length === 0 && (
+                      {shifts.length === 0 && (
                         <p className="text-xs text-[var(--text-tertiary)] col-span-full">No shifts for this company yet — add one in the shift list below.</p>
                       )}
                     </div>
                   </Field>
                   {selectedShifts.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 text-xs">
-                      {selectedShifts.map((s: any) => (
+                      {selectedShifts.map((s) => (
                         <div key={s.id} className="bg-[var(--background)] rounded-lg px-3 py-2">
                           <div className="font-medium text-[var(--text-primary)]">{s.name}</div>
                           <div className="text-[10px] text-[var(--text-tertiary)]">{(s.start_time || s.startTime || '—')?.slice(0, 5)} – {(s.end_time || s.endTime || '—')?.slice(0, 5)} · {s.shift_type || s.shiftType || '—'}</div>
@@ -601,7 +675,7 @@ function AttendanceWizardModal(props: {
                 <SectionCard title="Configure shifts" icon={CalendarClock}>
                   <p className="text-[11px] text-[var(--text-tertiary)]">Create and edit this company's shifts right here — new shifts appear in the picker above instantly.</p>
                   <div className="space-y-2">
-                    {(shifts as any[]).map((s: any) => (
+                    {shifts.map((s) => (
                       <div key={s.id} className="flex items-center gap-3 border border-[var(--border-color)] rounded-lg px-3 py-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color || '#3B82F6' }} />
                         <div className="flex-1 min-w-0">
@@ -616,14 +690,14 @@ function AttendanceWizardModal(props: {
                           onClick={async () => {
                             if (!confirm(`Deactivate shift "${s.name}"?`)) return;
                             try { await api.delete(`/shifts/${s.id}`); toast.success('Shift deactivated'); queryClient.invalidateQueries({ queryKey: ['shifts-for-template'] }); }
-                            catch (e: any) { toast.error(e?.response?.data?.detail || 'Failed'); }
+                            catch (e) { toast.error((e as ApiError)?.response?.data?.detail || 'Failed'); }
                           }}
                           className="p-1.5 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors disabled:opacity-40" title="Deactivate shift">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     ))}
-                    {(shifts as any[]).length === 0 && (
+                    {shifts.length === 0 && (
                       <p className="text-xs text-[var(--text-tertiary)]">No shifts for this company yet — add the first one below.</p>
                     )}
                   </div>

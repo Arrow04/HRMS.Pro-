@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, CheckCircle2, Loader2, ArrowRightLeft } from 'lucide-react';
+import { X, CheckCircle2, Loader2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
@@ -23,6 +23,13 @@ interface RosterShift {
 }
 
 type AssignBy = 'employee' | 'department' | 'branch' | 'company';
+
+interface AssignLevelOption {
+  code?: string;
+  value?: string;
+  name?: string;
+  label?: string;
+}
 
 interface RosterConfigModalProps {
   isOpen: boolean;
@@ -167,7 +174,7 @@ const RosterConfigModal: React.FC<RosterConfigModalProps> = ({
                   className="w-full px-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1C64F2]"
                 >
                   <option value="">Select level</option>
-                  {(assignLevelOptions || []).map((opt: any) => (
+                  {(assignLevelOptions || []).map((opt: AssignLevelOption) => (
                     <option key={opt.code || opt.value} value={opt.code || opt.value}>{(opt.name || opt.label)}</option>
                   ))}
                 </select>

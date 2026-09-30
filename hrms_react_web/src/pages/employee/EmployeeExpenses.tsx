@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Receipt, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee, getExpenseCategories, getMyExpenses, submitExpense } from '../../services/employeeSelfService';
 import { formatAppDate } from '../../services/appSettingsService';
 import { getAppCurrency, getCurrencySymbol } from '../../services/currencyService';
 
 const EmployeeExpenses = () => {
-  const { user } = useAuth();
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [categories, setCategories] = useState<Record<string, unknown>[]>([]);
   const [expenses, setExpenses] = useState<Record<string, unknown>[]>([]);

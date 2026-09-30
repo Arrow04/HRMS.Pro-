@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Save, Pencil, Trash2, Loader2, ShieldCheck, Landmark, Info, CheckCircle2 } from 'lucide-react';
+import { Save, Pencil, Loader2, ShieldCheck, Landmark, Info, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import api from '../services/api';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
 import { getStatutorySettings, upsertStatutorySettings, applyStatutoryPreset, type StatutorySetting } from '../services/payrollConfigApi';
 
@@ -136,31 +135,7 @@ function ViewVal({ label, help, children }: { label: string; help?: string; chil
   );
 }
 
-function EditField({ fieldKey, label, help, value, onChange }: { fieldKey: string; label: string; help: string; value: number | null | undefined; onChange: (v: number | null) => void }) {
-  const unit = FIELD_UNITS[fieldKey];
-  const suffix = unit === '%' ? '%' : unit === 'money' ? getCurrencySymbol(getAppCurrency()) : undefined;
-  return (
-    <FieldRow label={label} help={`${help} ${suffix ? `(${suffix})` : ''}`}><NumInput value={value} onChange={onChange} suffix={suffix} /></FieldRow>
-  );
-}
-
-const UNIT_LABELS: Record<Unit, string> = { '%': 'Percentage', 'money': 'Fixed amount', 'num': 'Count' };
-
-function ViewField({ fieldKey, label, help, value }: { fieldKey: string; label: string; help: string; value: number | null | undefined }) {
-  const unit = FIELD_UNITS[fieldKey];
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-[var(--text-tertiary)]">{label}</span>
-        <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-[var(--hover-bg)] text-[var(--text-secondary)]">{unit === '%' ? '%' : unit === 'money' ? getCurrencySymbol(getAppCurrency()) : 'count'}</span>
-      </div>
-      <p className="text-[11px] text-[var(--text-disabled)]">{help}</p>
-      <span className="block text-sm font-medium text-[var(--text-primary)]">{fmtVal(fieldKey, value)}</span>
-    </div>
-  );
-}
-
-function ApplicableToggle({ label, checked, onChange, disabled }: { label: string; checked: boolean | null; onChange: (v: boolean | null) => void; disabled?: boolean }) {
+function ApplicableToggle({ label, checked, onChange, disabled }: { label: string; checked: boolean | null | undefined; onChange: (v: boolean | null) => void; disabled?: boolean }) {
   const val = checked === null ? 'inherit' : checked ? 'on' : 'off';
   return (
     <div className="flex items-center gap-3">
@@ -222,17 +197,6 @@ export default function OrgStatutoryDefaults() {
       load();
     } catch { toast.error('Failed to save'); }
     setSaving(false);
-  };
-
-  const handleDelete = async () => {
-    if (!confirm('Delete all org statutory defaults? Templates will fall back to platform defaults.')) return;
-    try {
-      await api.delete('/payroll-config/statutory-settings');
-      toast.success('Org defaults deleted');
-      setS(EMPTY);
-      setHasExisting(false);
-      setEditing(false);
-    } catch { toast.error('Failed to delete'); }
   };
 
   const handleApplyIndia = async () => {

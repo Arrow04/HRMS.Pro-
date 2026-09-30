@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Phone, Briefcase, Building2, CalendarDays, Users } from 'lucide-react';
+import { Mail, Phone, Briefcase, CalendarDays } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee } from '../../services/employeeSelfService';
 import { formatAppDate } from '../../services/appSettingsService';
@@ -9,7 +9,7 @@ const EmployeeProfile = () => {
   const [emp, setEmp] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    getMyEmployee().then((e) => setEmp(e || null));
+    getMyEmployee().then((e) => setEmp((e as unknown as Record<string, unknown>) || null));
   }, []);
 
   const row = (label: string, value: unknown) => (

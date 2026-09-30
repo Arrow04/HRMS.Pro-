@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { AlertTriangle, CheckCircle2, Ban, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Ban, Trash2 } from 'lucide-react';
 import { DEMO_NO_GUARDS } from '../config/demo';
 
 interface ConfirmActionModalProps {

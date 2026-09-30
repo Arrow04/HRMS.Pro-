@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
    LayoutDashboard, Clock, CalendarDays, Receipt, FileText, LogOut,
-  Sparkles, TrendingUp, Globe, Bell, CheckCheck, Loader2, CheckCircle2, XCircle, CreditCard, CalendarCheck, FileDown, Calculator, Landmark,
+  Sparkles, TrendingUp, Globe, Bell, CheckCheck, CreditCard, CalendarCheck, FileDown, Landmark,
 } from 'lucide-react';
 import { formatAppDateLong, formatAppDateTime } from '../services/appSettingsService';
 import api from '../services/api';

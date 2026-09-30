@@ -1,11 +1,8 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react';
-import { useDebounce } from '../hooks/useDebounce';
-import { usePagination } from '../hooks/usePagination';
 import {
-  Building, MapPin, Building2, Briefcase, Plus, Search, Edit2, Trash2, X, TrendingUp, Clock, Calendar, Loader2, Sun, CloudRain, CloudLightning, CloudFog, CloudSun, Cloud, Users, Award, CheckCircle, XCircle, RotateCcw, Download, Upload, Info, Filter, Eye, Paperclip, FileText
+  Building, MapPin, Building2, Briefcase, Plus, Search, Edit2, Trash2, X, Loader2, Users, CheckCircle, XCircle, RotateCcw, Download, Upload, Info
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
-import { format } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -31,7 +28,7 @@ import DataTable from '../components/DataTable';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import type { DataTableColumn } from '../components/DataTable';
 import type { LucideIcon } from 'lucide-react';
-import type { Company as CompanyType, Department, Designation, Branch } from '../types';
+import type { Company as CompanyType, Department, Branch } from '../types';
 import Modal from '../components/Modal';
 
 type TabId = 'companies' | 'branches' | 'departments' | 'designations';
@@ -100,6 +97,7 @@ type EntityForm = {
   geofenceRadius?: string | number;
   companyId?: string | number;
   managerId?: string | number;
+  country?: string;
 };
 
 interface StatusOption {
@@ -181,7 +179,7 @@ const Company = () => {
   // Use React Query to fetch the list data based on active tab
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  const { data: items = [], isLoading: loadingItems, isFetching, refetch } = useQuery({
+  const { data: items = [], isFetching } = useQuery({
     queryKey: [activeTab],
     queryFn: async (): Promise<EntityItem[]> => {
       const response = await api.get(`/${activeTab}`);
@@ -201,7 +199,7 @@ const Company = () => {
     }
   });
 
-  const { data: branches = [] } = useQuery({
+  useQuery({
     queryKey: ['branches-dropdown'],
     queryFn: async (): Promise<Branch[]> => {
       const res = await api.get('/branches', { params: { active_only: true } });
@@ -209,14 +207,13 @@ const Company = () => {
     }
   });
 
-  const { data: departments = [] } = useQuery({
+  useQuery({
     queryKey: ['departments-dropdown'],
     queryFn: async (): Promise<Department[]> => {
       const res = await api.get('/departments', { params: { active_only: true } });
       return (res.data?.items || res.data || []) as Department[];
     }
   });
-
   const { data: employeesData } = useQuery({
     queryKey: ['department-head-candidates'],
     queryFn: async (): Promise<EmployeeListItem[]> => {
@@ -271,7 +268,7 @@ const Company = () => {
           trendDepartments: computeTrend(depts),
           trendDesignations: computeTrend(desigs),
         };
-      } catch (error) {
+      } catch {
         return { totalCompanies: 0, totalBranches: 0, totalDepartments: 0, totalDesignations: 0, trendCompanies: 0, trendBranches: 0, trendDepartments: 0, trendDesignations: 0 };
       }
     },
@@ -289,9 +286,6 @@ const Company = () => {
       return matchSearch && matchCompany && matchBranch && matchDepartment && matchStatus;
     });
   }, [items, searchTerm, companyFilter, branchFilter, departmentFilter, statusFilter]);
-
-  const pagination = usePagination({ totalItems: filteredItems.length, itemsPerPage: 10 });
-  const paginatedItems = useMemo(() => filteredItems.slice(pagination.startIndex, pagination.endIndex), [filteredItems, pagination.startIndex, pagination.endIndex]);
 
   const handleEdit = (item: EntityItem) => {
     setEditingItem(item);
@@ -503,7 +497,7 @@ const Company = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
-    } catch (error) {
+    } catch {
       toast.error('Failed to download template');
     }
   };
@@ -549,7 +543,7 @@ const Company = () => {
       const newStatus = item.status === 'active' ? 'inactive' : 'active';
       await updateMutation.mutateAsync({ id: item.id, data: { ...item, status: newStatus } });
       toast.success(`${newStatus === 'active' ? 'Operational' : 'Non-Operational'} successfully`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update status');
     }
   };
@@ -703,7 +697,7 @@ const Company = () => {
                 <SearchableSelect
                   options={[
                     { id: 'all', name: 'All Status' },
-                    ...statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))
+                    ...statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))
                   ]}
                   value={statusFilter}
                   onChange={(val) => setStatusFilter(val.toString())}
@@ -770,7 +764,7 @@ const Company = () => {
                   },
                   {
                     label: 'Deactivate',
-                    icon: XCircle, RotateCcw,
+                    icon: XCircle,
                     variant: 'amber',
                     onAction: (items) => {
                       if (!items.length) return;
@@ -963,7 +957,7 @@ const Company = () => {
                         <SearchableSelect
                           value={formData.status || ''}
                           onChange={(val) => setFormData({ ...formData, status: val.toString() })}
-                          options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                          options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                           placeholder="Select status"
                           showAllOption={false}
                           className="w-full"
@@ -983,7 +977,7 @@ const Company = () => {
                         <SearchableSelect
                           value={formData.industry || ''}
                           onChange={(val) => setFormData({ ...formData, industry: val.toString() })}
-                          options={industryArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                          options={industryArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                           placeholder="Select industry"
                           showAllOption={false}
                           className="w-full"
@@ -995,7 +989,7 @@ const Company = () => {
                         <SearchableSelect
                           value={formData.companySize || ''}
                           onChange={(val) => setFormData({ ...formData, companySize: val.toString() })}
-                          options={companySizeArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                          options={companySizeArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                           placeholder="Select company size"
                           showAllOption={false}
                           className="w-full"
@@ -1226,7 +1220,7 @@ const Company = () => {
                         <SearchableSelect
                           value={formData.status || ''}
                           onChange={(val) => setFormData({ ...formData, status: val.toString() })}
-                          options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                          options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                           placeholder="Select status"
                           showAllOption={false}
                           className="w-full"
@@ -1351,7 +1345,7 @@ const Company = () => {
                             <SearchableSelect
                               value={formData.status || ''}
                               onChange={(val) => setFormData({ ...formData, status: val.toString() })}
-                              options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                              options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                               placeholder="Select status"
                               showAllOption={false}
                               className="w-full"
@@ -1425,7 +1419,7 @@ const Company = () => {
                             <SearchableSelect
                               value={formData.status || ''}
                               onChange={(val) => setFormData({ ...formData, status: val.toString() })}
-                              options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) }))}
+                              options={statusArray.map((opt: StatusOption) => ({ id: (opt.value || opt.code) as string, name: (opt.label || opt.name) || '' }))}
                               placeholder="Select status"
                               showAllOption={false}
                               className="w-full"

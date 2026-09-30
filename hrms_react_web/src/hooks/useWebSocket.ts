@@ -34,7 +34,7 @@ export function useWebSocket(userId: number | undefined) {
               description: data.body || '',
               icon: '🔔',
               duration: 5000,
-            });
+            } as Parameters<typeof toast>[1] & { description?: string });
           }
         } catch { /* ignore */ }
       };

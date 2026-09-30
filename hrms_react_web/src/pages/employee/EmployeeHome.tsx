@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, CalendarDays, Receipt, FileText, TrendingUp, Sun, ChevronRight, Wallet, CheckCircle, AlertCircle, User } from 'lucide-react';
+import { Clock, CalendarDays, Receipt, FileText, TrendingUp, Sun, ChevronRight, Wallet, AlertCircle, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getMyEmployee, getMyAttendanceToday, getMyLeaveBalances, getMyLeaves, getMyExpenses, getMyPayroll, getUpcomingHolidays } from '../../services/employeeSelfService';
 import { formatTime } from '../../utils/formatUtils';
+import { formatAppDate } from '../../services/appSettingsService';
 
 const EmployeeHome = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [employeeId, setEmployeeId] = useState<number | null>(null);
+  const [, setEmployeeId] = useState<number | null>(null);
   const [today, setToday] = useState<Record<string, unknown> | null>(null);
   const [balances, setBalances] = useState<Record<string, unknown>[]>([]);
   const [holidays, setHolidays] = useState<Record<string, unknown>[]>([]);
@@ -61,11 +62,11 @@ const EmployeeHome = () => {
         {today ? (
           <div className="mt-3 flex items-center gap-2">
             <span className="px-2 py-1 rounded-lg bg-white/20 text-xs font-medium">
-              Checked in at {formatTime(today.check_in || today.checkIn as string)}
+              Checked in at {formatTime((today.check_in || today.checkIn) as string)}
             </span>
             {(today.check_out || today.checkOut) ? (
               <span className="px-2 py-1 rounded-lg bg-emerald-500/30 text-xs font-medium">
-                Checked out at {formatTime(today.check_out || today.checkOut as string)}
+                Checked out at {formatTime((today.check_out || today.checkOut) as string)}
               </span>
             ) : (
               <span className="px-2 py-1 rounded-lg bg-white/20 text-xs font-medium animate-pulse">Working</span>

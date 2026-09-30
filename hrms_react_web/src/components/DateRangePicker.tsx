@@ -14,8 +14,7 @@ import {
   subDays,
   startOfToday,
   isWithinInterval,
-  isBefore,
-  isAfter
+  isBefore
 } from 'date-fns';
 import { formatAppDate, useAppSettingsRevision } from '../services/appSettingsService';
 
@@ -23,6 +22,8 @@ interface DateRangePickerProps {
   startDate: string;
   endDate: string;
   onDateChange: (start: string, end: string) => void;
+  onStartDateChange?: (start: string) => void;
+  onEndDateChange?: (end: string) => void;
   placeholder?: string;
   className?: string;
 }
@@ -69,12 +70,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         setTempEnd(today);
         setCurrentMonth(today);
         break;
-      case 'Yesterday':
+      case 'Yesterday': {
         const yesterday = subDays(today, 1);
         setTempStart(yesterday);
         setTempEnd(yesterday);
         setCurrentMonth(yesterday);
         break;
+      }
       case 'Last 7 days':
         setTempStart(subDays(today, 6));
         setTempEnd(today);
@@ -90,12 +92,13 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
         setTempEnd(endOfMonth(today));
         setCurrentMonth(today);
         break;
-      case 'Last Month':
+      case 'Last Month': {
         const lastMonth = subMonths(today, 1);
         setTempStart(startOfMonth(lastMonth));
         setTempEnd(endOfMonth(lastMonth));
         setCurrentMonth(lastMonth);
         break;
+      }
       case 'Custom':
         break;
     }

@@ -22,7 +22,7 @@ export default function AiInsightsPanel({ overviewData }: AiInsightsPanelProps) 
         parameters: { prompt: aiPrompt, data: overviewData }
       });
       setAiResponse(response.data.ai_summary);
-    } catch (error) {
+    } catch {
       toast.error('Failed to generate AI insights');
     } finally {
       setIsAiGenerating(false);

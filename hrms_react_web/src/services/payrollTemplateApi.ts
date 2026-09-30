@@ -9,7 +9,7 @@ export interface PayrollTemplatePolicy {
   decimal_places?: number;
   round_net_salary?: boolean;
   include_gratuity?: boolean;
-  gratuity_rate?: number;
+  gratuity_rate?: number | null;
   default_currency?: string;
   allow_negative_net?: boolean;
 }
@@ -20,7 +20,7 @@ export interface PayrollTemplateComponent {
   component_type: string;
   calculation_type: string;
   calculation_base?: string;
-  calculation_value: number;
+  calculation_value: number | null;
   formula?: string | null;
   max_cap?: number | null;
   min_cap?: number | null;
@@ -59,23 +59,23 @@ export interface PayrollTemplateTaxRegime {
   is_active?: boolean;
   is_default?: boolean;
   financial_year?: string;
-  standard_deduction?: number;
-  rebate_threshold?: number;
-  rebate_amount?: number;
-  cess_rate?: number;
+  standard_deduction?: number | null;
+  rebate_threshold?: number | null;
+  rebate_amount?: number | null;
+  cess_rate?: number | null;
   surcharge_config?: unknown[];
   slabs?: TaxSlabInput[];
   // Exemption caps (old regime) & HRA exemption rules
-  section_80c_cap?: number;
-  section_80d_cap?: number;
-  section_80d_senior_cap?: number;
-  section_80ccd_1b_cap?: number;
-  section_24_home_loan_cap?: number;
-  section_80c_old_cap?: number;
-  hra_metro_pct?: number;
-  hra_non_metro_pct?: number;
-  hra_rent_threshold_pct?: number;
-  basic_pct_of_gross?: number;
+  section_80c_cap?: number | null;
+  section_80d_cap?: number | null;
+  section_80d_senior_cap?: number | null;
+  section_80ccd_1b_cap?: number | null;
+  section_24_home_loan_cap?: number | null;
+  section_80c_old_cap?: number | null;
+  hra_metro_pct?: number | null;
+  hra_non_metro_pct?: number | null;
+  hra_rent_threshold_pct?: number | null;
+  basic_pct_of_gross?: number | null;
 }
 
 export interface PayrollTemplateAttendance {
@@ -87,8 +87,8 @@ export interface PayrollTemplateAttendance {
   holiday_as_present?: boolean;
   overtime_threshold_hours?: number;
   overtime_rate?: number;
-  late_to_absent_count?: number;
-  early_to_absent_count?: number;
+  late_to_absent_count?: number | null;
+  early_to_absent_count?: number | null;
   missing_checkout_rule?: string;
   late_mark_threshold_minutes?: number;
   half_day_threshold_hours?: number;
@@ -96,40 +96,40 @@ export interface PayrollTemplateAttendance {
 
 export interface PayrollTemplateStatutory {
   pf_applicable?: boolean | null;
-  pf_employee_rate?: number;
-  pf_employer_rate?: number;
-  pf_wage_ceiling?: number;
-  pf_max_monthly?: number;
-  pf_min_basic_for_exclusion?: number;
-  pf_edli_rate?: number;
-  pf_edli_max_monthly?: number;
-  pf_admin_rate?: number;
-  pf_admin_min_monthly?: number;
-  eps_wage_ceiling?: number;
-  eps_employer_rate?: number;
+  pf_employee_rate?: number | null;
+  pf_employer_rate?: number | null;
+  pf_wage_ceiling?: number | null;
+  pf_max_monthly?: number | null;
+  pf_min_basic_for_exclusion?: number | null;
+  pf_edli_rate?: number | null;
+  pf_edli_max_monthly?: number | null;
+  pf_admin_rate?: number | null;
+  pf_admin_min_monthly?: number | null;
+  eps_wage_ceiling?: number | null;
+  eps_employer_rate?: number | null;
   esi_applicable?: boolean | null;
-  esi_employee_rate?: number;
-  esi_employer_rate?: number;
-  esi_gross_ceiling?: number;
-  esi_disabled_ceiling?: number;
+  esi_employee_rate?: number | null;
+  esi_employer_rate?: number | null;
+  esi_gross_ceiling?: number | null;
+  esi_disabled_ceiling?: number | null;
   pt_applicable?: boolean | null;
-  pt_monthly_amount?: number;
-  pt_min_gross?: number;
+  pt_monthly_amount?: number | null;
+  pt_min_gross?: number | null;
   lwf_applicable?: boolean | null;
-  lwf_employee_rate?: number;
-  lwf_employer_rate?: number;
+  lwf_employee_rate?: number | null;
+  lwf_employer_rate?: number | null;
   gratuity_applicable?: boolean | null;
-  gratuity_rate?: number;
-  gratuity_eligible_years?: number;
-  gratuity_days_per_year?: number;
-  gratuity_tax_exempt_ceiling?: number;
+  gratuity_rate?: number | null;
+  gratuity_eligible_years?: number | null;
+  gratuity_days_per_year?: number | null;
+  gratuity_tax_exempt_ceiling?: number | null;
   bonus_applicable?: boolean | null;
-  bonus_min_rate?: number;
-  bonus_max_rate?: number;
-  bonus_eligible_ceiling?: number;
-  bonus_wage_ceiling?: number;
-  nps_employee_rate?: number;
-  nps_employer_rate?: number;
+  bonus_min_rate?: number | null;
+  bonus_max_rate?: number | null;
+  bonus_eligible_ceiling?: number | null;
+  bonus_wage_ceiling?: number | null;
+  nps_employee_rate?: number | null;
+  nps_employer_rate?: number | null;
 }
 
 export interface PayrollTemplate {

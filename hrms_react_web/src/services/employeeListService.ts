@@ -40,9 +40,9 @@ export async function fetchEmployeePickerList(params: EmployeePickerParams = {})
       offset: params.offset ?? 0,
       search: params.search || undefined,
       status: params.status || undefined,
-      companyId: params.companyId != null && params.companyId !== '' ? Number(params.companyId) : undefined,
-      branchId: params.branchId != null && params.branchId !== '' ? Number(params.branchId) : undefined,
-      departmentId: params.departmentId != null && params.departmentId !== '' ? Number(params.departmentId) : undefined,
+      companyId: params.companyId != null ? params.companyId : undefined,
+      branchId: params.branchId != null ? params.branchId : undefined,
+      departmentId: params.departmentId != null ? params.departmentId : undefined,
     },
   });
   const body = response.data || {};

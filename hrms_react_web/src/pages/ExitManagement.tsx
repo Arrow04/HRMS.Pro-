@@ -1,11 +1,11 @@
 ﻿import { useState, useMemo, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
   DoorOpen, Calculator, ClipboardCheck, User,
-  CheckCircle, CheckCircle2, XCircle, RotateCcw, AlertTriangle, Download, FileText, Loader2, Search, Archive,
-  Plus, Edit2, Trash2, X, Users, TrendingUp, Upload, Sparkles, LogOut, Info, Save
+  CheckCircle, CheckCircle2, XCircle, RotateCcw, AlertTriangle, Download, FileText, Loader2, Archive,
+  Plus, Edit2, Trash2, X, TrendingUp, Upload, Sparkles, LogOut, Info, Save
 } from 'lucide-react';
 
 import api from '../services/api';
@@ -25,7 +25,7 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import { runAutomation } from '../services/aiAutomation';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import Modal from '../components/Modal';
-import type { Employee, Company, Department, Branch, OnboardingTask } from '../types';
+import type { Employee, Company, Department, Branch } from '../types';
 
 interface ExitRecord {
   id: number;
@@ -117,7 +117,7 @@ export default function ExitManagement() {
   const [selectedExit, setSelectedExit] = useState<ExitRecord | null>(null);
 const [fnfResult, setFnfResult] = useState<FnfResult | null>(null);
 const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0]);
-const [showFnfModal, setShowFnfModal] = useState(false);
+const [, setShowFnfModal] = useState(false);
 const [showFnfForm, setShowFnfForm] = useState(false);
 const [fnfForm, setFnfForm] = useState<Record<string, string>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -132,7 +132,6 @@ const [fnfForm, setFnfForm] = useState<Record<string, string>>({});
 
   // Support deep-link: ?employeeId=<id> opens the Initiate Exit modal pre-filled
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   useEffect(() => {
     const empId = searchParams.get('employeeId');
     if (empId) {
@@ -157,7 +156,7 @@ const { data: departmentsList = [] } = useQuery<Department[]>({
     queryFn: () => api.get('/departments').then(r => r.data?.items || r.data?.data || r.data || []),
   });
 
-  const { data: branchesList = [] } = useQuery<Branch[]>({
+  useQuery<Branch[]>({
     queryKey: ['branches-dropdown'],
     queryFn: () => api.get('/branches').then(r => r.data?.items || r.data?.data || r.data || []),
   });
@@ -167,7 +166,7 @@ const { data: departmentsList = [] } = useQuery<Department[]>({
     return departmentsList.filter((d: Department) => d.companyId === Number(filterCompanyId) || (d as Department & { company_id?: number }).company_id === Number(filterCompanyId));
   }, [departmentsList, filterCompanyId]);
 
-  const { data: exitRecords = [], isLoading, isFetching } = useQuery<ExitRecord[]>({
+  const { data: exitRecords = [], isFetching } = useQuery<ExitRecord[]>({
     queryKey: ['exit-records'],
     queryFn: () => api.get('/exit-records').then(r => r.data),
   });
@@ -421,11 +420,6 @@ employeeId: String(rec.employeeId),
     setShowDeleteConfirm(true);
   };
 
-  const handleFnfAction = (rec: ExitRecord) => {
-    setSelectedExit(rec);
-    calculateFnf.mutate({ exitId: rec.id as number, values: {} });
-  };
-
   const stats = useMemo(() => {
     const total = exitRecords.length;
     const completed = exitRecords.filter((r: ExitRecord) => r.fnfStatus === 'completed').length;
@@ -636,7 +630,6 @@ const statCards = [
               searchPlaceholder="Search exit records..."
               emptyMessage="No exit records found"
               onEdit={(rec) => handleEdit(rec)}
-              onDelete={(items) => { items.forEach((r) => handleDelete(r.id)); }}
               bulkActions={[
                 {
                   label: 'Approve',
@@ -907,7 +900,8 @@ const statCards = [
               title="FnF Settlement"
               size="lg"
             >
-              <p className="text-xs text-[#64748B] mb-4">{fnfResult?.employeeName || selectedExit?.employeeName}{selectedExit?.departmentName ? ` — ${selectedExit.departmentName}` : ''}</p>
+              {fnfResult && (<>
+              <p className="text-xs text-[#64748B] mb-4">{fnfResult.employeeName || selectedExit?.employeeName}{selectedExit?.departmentName ? ` — ${selectedExit.departmentName}` : ''}</p>
               <div className="flex items-center gap-2 mb-4">
                         <button
                           onClick={() => selectedExit && completeFnf.mutate(selectedExit.id)}
@@ -1021,6 +1015,7 @@ const statCards = [
                           </div>
                         </div>
                       </div>
+              </>)}
             </Modal>
           </div>
         )}

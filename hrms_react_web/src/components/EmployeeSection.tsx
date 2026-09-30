@@ -1,4 +1,4 @@
-import { Ban, CheckCircle2, Edit2, Trash2, Users, X, LogOut, RotateCcw } from 'lucide-react';import React, { memo, useState } from 'react';
+import { Ban, CheckCircle2, Edit2, Trash2, Users, LogOut, RotateCcw } from 'lucide-react';import React, { memo, useState } from 'react';
 import { joinEmployeeName, personDisplayName } from '../utils/employeeNameUtils';
 import { uploadUrl } from '../utils/uploadUrl';
 import SearchableSelect from './SearchableSelect';
@@ -6,9 +6,7 @@ import ToggleSwitch from './ToggleSwitch';
 import DateRangePicker from './DateRangePicker';
 import DataTable, { type ServerPaginationConfig } from './DataTable';
 import ConfirmActionModal from './ConfirmActionModal';
-import { useMasterData } from '../hooks/useMasterData';
 import type { Company, Branch, Department, Employee } from '../types';
-import type { LookupValue } from '../services/masterDataService';
 
 interface EmployeeRow extends Employee {
   designationName?: string;
@@ -62,10 +60,6 @@ const EmployeeSection = ({
   filterBranchesList,
   loadingEmployees,
   filteredData,
-  showDeleted,
-  setShowDeleted,
-  search,
-  setSearch,
   filterCompanyId,
   setFilterCompanyId,
   filterBranchId,
@@ -78,20 +72,11 @@ const EmployeeSection = ({
   setEndDate,
   clearFilters,
   hasActiveFilters,
-  handleView,
   handleEdit,
   handleDelete,
-  handleRestore,
-  handleAddEmployee,
   handleToggleStatus,
   handleBulkStatusChange,
   onProcessExit,
-  isSuperAdmin,
-  downloadTemplate,
-  setShowBulkUpload,
-  setIsClosing,
-  setShowQuickAddModal,
-  setQuickAddFormData,
   serverPagination,
 }: EmployeeSectionProps) => {
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'activate' | 'deactivate' | 'delete'; items: EmployeeRow[] } | null>(null);

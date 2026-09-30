@@ -1,4 +1,14 @@
 import axios, { AxiosError } from 'axios';
+import type { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+
+interface RefreshRequestConfig extends AxiosRequestConfig {
+  _skipRefresh?: boolean;
+}
+
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _retried?: boolean;
+  _skipRefresh?: boolean;
+}
 
 const apiOrigin = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 
@@ -72,10 +82,11 @@ async function refreshAccessToken(): Promise<string> {
     try {
       const currentToken = localStorage.getItem('token');
       if (!currentToken) throw new Error('No token');
-      const res = await api.post('/auth/refresh', null, {
+      const refreshConfig: RefreshRequestConfig = {
         headers: { Authorization: `Bearer ${currentToken}` },
         _skipRefresh: true,
-      } as any);
+      };
+      const res = await api.post<{ token?: string }>('/auth/refresh', null, refreshConfig);
       const newToken = res.data?.token;
       if (!newToken) throw new Error('No token in refresh response');
       localStorage.setItem('token', newToken);
@@ -98,7 +109,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
     const axiosError = error as AxiosError;
-    const originalRequest = axiosError.config as any;
+    const originalRequest: RetryableRequestConfig | undefined = axiosError.config;
     if (
       axiosError.response?.status === 401 &&
       originalRequest &&
