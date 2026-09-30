@@ -62,6 +62,7 @@ import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ModuleSummaryCard from '../components/ModuleSummaryCard';
 import QuickActionButton from '../components/QuickActionButton';
 import EmptyState from '../components/EmptyState';
+import QueryErrorState from '../components/QueryErrorState';
 import type { Holiday } from '../types';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -215,52 +216,52 @@ export default function Dashboard() {
     refetchInterval: 60000,
   });
 
-  const { data: recentReports = [] } = useQuery<{ report_name?: string; execution_time?: string; format?: string }[]>({
+  const { data: recentReports = [], isError: recentReportsError, refetch: refetchRecentReports } = useQuery<{ report_name?: string; execution_time?: string; format?: string }[]>({
     queryKey: ['recent-reports'],
     queryFn: async () => {
-      try { const res = await api.get('/reports/export-history'); return Array.isArray(res.data) ? res.data : []; } catch { return []; }
+      const res = await api.get('/reports/export-history'); return Array.isArray(res.data) ? res.data : [];
     },
   });
 
-  const { data: recentTickets = [] } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
+  const { data: recentTickets = [], isError: recentTicketsError, refetch: refetchRecentTickets } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
     queryKey: ['dashboard-helpdesk', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/helpdesk/tickets', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/helpdesk/tickets', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
-  const { data: recentGrievances = [] } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
+  const { data: recentGrievances = [], isError: recentGrievancesError, refetch: refetchRecentGrievances } = useQuery<{ id: number; subject?: string; status?: string; created_at?: string }[]>({
     queryKey: ['dashboard-grievances', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/grievances', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/grievances', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
-  const { data: recentAnomalies = [] } = useQuery<{ id: number; title?: string; anomaly_type?: string; severity?: string; created_at?: string }[]>({
+  const { data: recentAnomalies = [], isError: recentAnomaliesError, refetch: refetchRecentAnomalies } = useQuery<{ id: number; title?: string; anomaly_type?: string; severity?: string; created_at?: string }[]>({
     queryKey: ['dashboard-anomalies', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/anomaly/alerts', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/anomaly/alerts', { params: { companyId: selectedCompanyId || undefined, limit: 5 } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
   const { data: exits = [] } = useQuery<{ id: number; status?: string; fnf_status?: string }[]>({
     queryKey: ['dashboard-exits', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/exit-records', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/exit-records', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
   const { data: assets = [] } = useQuery<{ id: number; status?: string }[]>({
     queryKey: ['dashboard-assets', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/assets', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/assets', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
   const { data: notifications = [] } = useQuery<{ id: number; is_read?: boolean }[]>({
     queryKey: ['dashboard-notifications', selectedCompanyId],
     queryFn: async () => {
-      try { const res = await api.get('/notifications', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } catch { return []; }
+      const res = await api.get('/notifications', { params: { companyId: selectedCompanyId || undefined } }); return Array.isArray(res.data) ? res.data : (res.data?.items || []);
     },
   });
 
@@ -1042,7 +1043,9 @@ export default function Dashboard() {
             Recent Reports
           </h2>
           <div className="space-y-3">
-            {recentReports.slice(0, 5).map((report, idx) => (
+            {recentReportsError ? (
+              <QueryErrorState message="Failed to load recent reports" onRetry={refetchRecentReports} />
+            ) : recentReports.slice(0, 5).map((report, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
@@ -1058,7 +1061,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {recentReports.length === 0 && (
+            {!recentReportsError && recentReports.length === 0 && (
               <EmptyState icon={FileBarChart} title="No recent reports" description="No reports have been generated yet" />
             )}
           </div>
@@ -1071,7 +1074,9 @@ export default function Dashboard() {
             Recent Helpdesk Tickets
           </h2>
           <div className="space-y-3">
-            {recentTickets.slice(0, 5).map((ticket, idx) => (
+            {recentTicketsError ? (
+              <QueryErrorState message="Failed to load helpdesk tickets" onRetry={refetchRecentTickets} />
+            ) : recentTickets.slice(0, 5).map((ticket, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/helpdesk')}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
@@ -1084,7 +1089,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {recentTickets.length === 0 && (
+            {!recentTicketsError && recentTickets.length === 0 && (
               <EmptyState icon={Headset} title="No recent tickets" description="No helpdesk tickets yet" />
             )}
           </div>
@@ -1097,7 +1102,9 @@ export default function Dashboard() {
             Recent Grievances
           </h2>
           <div className="space-y-3">
-            {recentGrievances.slice(0, 5).map((g, idx) => (
+            {recentGrievancesError ? (
+              <QueryErrorState message="Failed to load grievances" onRetry={refetchRecentGrievances} />
+            ) : recentGrievances.slice(0, 5).map((g, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/grievances')}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
@@ -1110,7 +1117,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {recentGrievances.length === 0 && (
+            {!recentGrievancesError && recentGrievances.length === 0 && (
               <EmptyState icon={MessageSquare} title="No recent grievances" description="No grievances filed yet" />
             )}
           </div>
@@ -1123,7 +1130,9 @@ export default function Dashboard() {
             Recent Anomalies
           </h2>
           <div className="space-y-3">
-            {recentAnomalies.slice(0, 5).map((a, idx) => (
+            {recentAnomaliesError ? (
+              <QueryErrorState message="Failed to load anomalies" onRetry={refetchRecentAnomalies} />
+            ) : recentAnomalies.slice(0, 5).map((a, idx) => (
               <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all duration-200 ease-smooth cursor-pointer" style={{ backgroundColor: 'transparent', borderColor: '#CBD5E1', color: 'var(--sidebar-text)' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; e.currentTarget.style.borderColor = '#94A3B8'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.boxShadow = 'none'; }} onClick={() => navigate('/anomalies')}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200" style={{ backgroundColor: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--hover-bg)'; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
@@ -1136,7 +1145,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {recentAnomalies.length === 0 && (
+            {!recentAnomaliesError && recentAnomalies.length === 0 && (
               <EmptyState icon={ShieldAlert} title="No recent anomalies" description="No anomalies detected" />
             )}
           </div>

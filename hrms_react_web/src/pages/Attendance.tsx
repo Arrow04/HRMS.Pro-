@@ -44,6 +44,7 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import BulkDeleteModal from '../components/BulkDeleteModal';
 import Tooltip from '../components/Tooltip';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import QueryErrorState from '../components/QueryErrorState';
 import { personDisplayName } from '../utils/employeeNameUtils';
 
 type TabId = 'records' | 'duty-shift' | 'duty-roster' | 'configuration';
@@ -238,7 +239,7 @@ const Attendance = () => {
   }, [typeOpts, statusOpts, leaveTypeOpts]);
     const { data: companies = [] } = useQuery<OptionItem[]>({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/companies'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
   const { data: deviceTypeOptions = [] } = useMasterData('ATTENDANCE_DEVICE_TYPE');
@@ -248,7 +249,7 @@ const Attendance = () => {
   const { data: branches = [] } = useQuery<OptionItem[]>({ queryKey: ['branches', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/branches', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
   const { data: departments = [] } = useQuery<OptionItem[]>({ queryKey: ['departments', shiftForm.company_id], queryFn: async () => { const params: Record<string, unknown> = {}; if (shiftForm.company_id) params.companyId = shiftForm.company_id; const res = await api.get('/departments', { params }); return Array.isArray(res.data) ? res.data : (res.data?.items || []); } });
 
-  const { data: attendanceData, isLoading: isAttendanceLoading, isFetching } = useQuery<AttendanceType[]>({
+  const { data: attendanceData, isLoading: isAttendanceLoading, isFetching, isError: attendanceError, refetch: refetchAttendance } = useQuery<AttendanceType[]>({
     queryKey: ['attendance', startDate, endDate, includeInactive],
     queryFn: async () => {
       const res = await api.get('/attendance', {
@@ -283,15 +284,11 @@ const Attendance = () => {
   const [rosterWeekStart] = useState<string>(
     getMonday(new Date()).toISOString().split('T')[0]
   );
-  const { data: weeklyRoster = [], isLoading: loadingRoster } = useQuery<RosterEntry[]>({
+  const { data: weeklyRoster = [], isLoading: loadingRoster, isError: rosterError, refetch: refetchRoster } = useQuery<RosterEntry[]>({
     queryKey: ['weekly-roster', rosterWeekStart],
     queryFn: async () => {
-      try {
-        const response = await api.get('/shifts/roster/weekly', { params: { week_start_date: rosterWeekStart } });
-        return response.data || [];
-      } catch {
-        return [];
-      }
+      const response = await api.get('/shifts/roster/weekly', { params: { week_start_date: rosterWeekStart } });
+      return response.data || [];
     },
     enabled: activeTab === 'duty-roster',
     staleTime: 1 * 60 * 1000,
@@ -960,7 +957,9 @@ const Attendance = () => {
                 </div>
 
             {/* Table */}
-            {isAttendanceLoading ? (
+            {attendanceError ? (
+              <QueryErrorState message="Failed to load attendance records" onRetry={refetchAttendance} />
+            ) : isAttendanceLoading ? (
               <div className="animate-page-enter"><PageSkeleton /></div>
             ) : (
                 <div className="overflow-x-auto">
@@ -1310,7 +1309,9 @@ const Attendance = () => {
                 )}
               </div>
             </div>
-            {loadingRoster ? (
+            {rosterError ? (
+                <QueryErrorState message="Failed to load duty roster" onRetry={refetchRoster} />
+              ) : loadingRoster ? (
                 <div className="py-8 px-4">
                 </div>
               ) : (() => {

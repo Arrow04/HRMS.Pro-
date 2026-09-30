@@ -34,6 +34,7 @@ import { getLeaveStatusBadge, getAttendanceStatusBadge, capitalizeStatus } from 
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import QueryErrorState from '../components/QueryErrorState';
 
 const TABS = [
   { id: 'requests', label: 'Leave Requests', icon: CalendarDays },
@@ -192,7 +193,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
 
     const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/companies'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
   const { data: branches = [] } = useQuery({
@@ -210,7 +211,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const { data: pickerEmployees = [] } = useEmployeePicker({ status: 'active' });
   const employees = pickerEmployees.map(normalizePickerEmployee);
 
-  const { data: leaves = [], isLoading: loadingLeaves, isFetching } = useQuery({
+  const { data: leaves = [], isLoading: loadingLeaves, isFetching, isError: leavesError, refetch: refetchLeaves } = useQuery({
     queryKey: ['leaves', includeInactive],
     queryFn: async () => {
       const response = await api.get('/leaves', { params: { includeInactive } });
@@ -220,14 +221,12 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
     enabled: activeTab === 'requests',
   });
 
-  const { data: leaveTypes = [] } = useQuery<LeaveTypeRow[]>({
+  const { data: leaveTypes = [], isError: leaveTypesError, refetch: refetchLeaveTypes } = useQuery<LeaveTypeRow[]>({
     queryKey: ['leave-types', leaveTypeCompanyFilter],
     queryFn: async () => {
-      try {
-        const params = leaveTypeCompanyFilter !== 'all' ? { companyId: Number(leaveTypeCompanyFilter) } : {};
-        const r = await api.get('/leave-types', { params });
-        return r.data || [];
-      } catch { return []; }
+      const params = leaveTypeCompanyFilter !== 'all' ? { companyId: Number(leaveTypeCompanyFilter) } : {};
+      const r = await api.get('/leave-types', { params });
+      return r.data || [];
     },
   });
   const { data: leavePurposes = [] } = useMasterData('LEAVE_PURPOSE');
@@ -868,7 +867,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
             </div>
             
             <div className="bg-white overflow-hidden">
-            {loadingLeaves ? (
+            {leavesError ? (
+              <QueryErrorState message="Failed to load leave requests" onRetry={refetchLeaves} />
+            ) : loadingLeaves ? (
               <div className="animate-page-enter"><PageSkeleton /></div>
             ) : (
               <div className="overflow-x-auto">
@@ -998,6 +999,9 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
               </div>
             </div>
             <div className="bg-white overflow-hidden">
+              {leaveTypesError ? (
+                <QueryErrorState message="Failed to load leave types" onRetry={refetchLeaveTypes} />
+              ) : (
               <div className="overflow-x-auto">
               <DataTable
                 data={filteredLeaveTypes}
@@ -1055,6 +1059,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                 )}
               />
               </div>
+              )}
             </div>
           </div>
         )}

@@ -25,6 +25,7 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import QueryErrorState from '../components/QueryErrorState';
 import type { Company } from '../types';
 
 
@@ -136,7 +137,7 @@ const Reports = () => {
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: async () => { try { const r = await api.get('/departments'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/departments'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -244,7 +245,7 @@ const Reports = () => {
     refetchInterval: 60 * 1000,
   });
 
-  const { data: scheduledReports } = useQuery({
+  const { data: scheduledReports, isError: scheduledReportsError, refetch: refetchScheduledReports } = useQuery({
     queryKey: ['scheduled-reports'],
     queryFn: async () => {
       const response = await api.get('/reports/schedules');
@@ -319,7 +320,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
     }
   };
 
-  const { data: executionLogs } = useQuery({
+  const { data: executionLogs, isError: executionLogsError, refetch: refetchExecutionLogs } = useQuery({
     queryKey: ['activity-logs', selectedLogModule],
     queryFn: async () => {
       const url = selectedLogModule === 'All' 
@@ -333,10 +334,8 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
   const { data: exportHistory = [] } = useQuery({
     queryKey: ['reports-export-history'],
     queryFn: async () => {
-      try {
-        const response = await api.get('/reports/export-history');
-        return response.data || [];
-      } catch { return []; }
+      const response = await api.get('/reports/export-history');
+      return response.data || [];
     },
   });
 
@@ -789,6 +788,9 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                   </div>
                 </div>
                 <div className="overflow-x-auto">
+                {scheduledReportsError ? (
+                  <QueryErrorState message="Failed to load scheduled reports" onRetry={refetchScheduledReports} />
+                ) : (
                 <DataTable
                   data={scheduledReports || []}
                   rowKey={(report: ScheduleEntry) => report.id}
@@ -830,6 +832,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                     </div>
                   )}
                 />
+                )}
                 </div>
               </div>
 
@@ -1201,6 +1204,9 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                   </div>
                 </div>
                 <div className="overflow-x-auto">
+                  {executionLogsError ? (
+                    <QueryErrorState message="Failed to load activity logs" onRetry={refetchExecutionLogs} />
+                  ) : (
                   <DataTable
                     data={executionLogs || []}
                     rowKey={(log: ActivityLogEntry) => log.id}
@@ -1254,6 +1260,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
                       },
                     ]}
                   />
+                  )}
                 </div>
               </div>
             </div>

@@ -31,6 +31,7 @@ import PayrollConsole from './PayrollConsole';
 import PayrollJourney from '../components/PayrollJourney';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import QueryErrorState from '../components/QueryErrorState';
 import FormGrid, { formGridClass } from '../components/FormGrid';
 import FormField, { formInputClass, formReadonlyClass } from '../components/FormField';
 import type { EmployeePickerItem } from '../services/employeeListService';
@@ -725,7 +726,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     setPayrollConfirm({ p: null, action: 'bulk-process', ids: rows.map((p: PayslipRecord) => p.id), count: rows.length, month, year });
   };
 
-  const { data: payslips = [], isLoading, isFetching } = useQuery({
+  const { data: payslips = [], isLoading, isFetching, isError: payslipsError, refetch: refetchPayslips } = useQuery({
     queryKey: ['payslips', runMonth, runYear, runCompanyId, runBranchId, runDepartmentId, reviewMonth, reviewYear, reviewCompanyId, reviewBranchId, reviewDeptId],
     queryFn: async () => {
       const params: Record<string, unknown> = {};
@@ -858,12 +859,12 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   // Companies / Branches / Departments for filters
     const { data: companies = [] } = useQuery({
     queryKey: ['companies'],
-    queryFn: async () => { try { const r = await api.get('/companies'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/companies'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
   const { data: branches = [] } = useQuery({
     queryKey: ['branches'],
-    queryFn: async () => { try { const r = await api.get('/branches'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/branches'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
   
@@ -872,14 +873,14 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
-    queryFn: async () => { try { const r = await api.get('/departments'); return r.data || []; } catch { return []; } },
+    queryFn: async () => { const r = await api.get('/departments'); return r.data || []; },
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: bonuses = [], refetch: refetchBonuses } = useQuery({
     queryKey: ['bonuses', bonusYearFilter],
     queryFn: async () => {
-      try { const r = await api.get('/bonuses', { params: { year: bonusYearFilter } }); return r.data || []; } catch { return []; }
+      const r = await api.get('/bonuses', { params: { year: bonusYearFilter } }); return r.data || [];
     },
   });
 
@@ -905,12 +906,10 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const { data: preDeductionData, refetch: refetchPreDeductions } = useQuery({
     queryKey: ['pre-deductions', runMonth, runYear, runCompanyId],
     queryFn: async () => {
-      try {
-        const r = await api.get('/payroll/pre-deductions', {
-          params: { month: runMonth, year: runYear, ...(runCompanyId !== 'all' ? { companyId: Number(runCompanyId) } : {}) },
-        });
-        return r.data || { items: [], total: 0 };
-      } catch { return { items: [], total: 0 }; }
+      const r = await api.get('/payroll/pre-deductions', {
+        params: { month: runMonth, year: runYear, ...(runCompanyId !== 'all' ? { companyId: Number(runCompanyId) } : {}) },
+      });
+      return r.data || { items: [], total: 0 };
     },
   });
   interface PreDeductionRow { id: number; employeeId: number; employeeName?: string; employeeCode?: string; amount: number; reason?: string }
@@ -2351,7 +2350,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
               </div>
             </div>
             <div className="bg-white overflow-hidden">
-            {isLoading ? (
+            {payslipsError ? (
+              <QueryErrorState message="Failed to load payslips" onRetry={refetchPayslips} />
+            ) : isLoading ? (
               <PayrollLoading />
             ) : (
               <div className="overflow-x-auto">

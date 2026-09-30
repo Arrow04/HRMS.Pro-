@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, Download, FileDown, Columns3, Rows3, Pencil, Trash2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, Download, FileDown, Columns3, Rows3, Pencil, Trash2, Loader2 } from 'lucide-react';
 import HistoryModal from './HistoryModal';
 
 export interface DataTableColumn<T> {
@@ -76,6 +76,8 @@ interface DataTableProps<T> {
   defaultDensity?: 'compact' | 'comfortable';
   /** Server-driven pagination — skips client slice; parent fetches each page */
   serverPagination?: ServerPaginationConfig;
+  /** when true, show a loading spinner in the table body instead of rows */
+  isLoading?: boolean;
 }
 
 const DataTable = <T,>({
@@ -101,6 +103,7 @@ const DataTable = <T,>({
   persistKey,
   defaultDensity,
   serverPagination,
+  isLoading = false,
 }: DataTableProps<T>) => {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -514,7 +517,16 @@ const DataTable = <T,>({
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {isLoading ? (
+              <tr>
+                <td colSpan={visibleColumns.length + extraCols} className="px-4 py-12 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-[var(--primary-blue)]" />
+                    <p className="text-sm text-[var(--text-tertiary)]">Loading...</p>
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={visibleColumns.length + extraCols} className="py-16">
                   <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
@@ -576,7 +588,7 @@ const DataTable = <T,>({
       </div>
 
       {/* Pagination Footer */}
-      {pageRows.length > 0 && (
+      {pageRows.length > 0 && !isLoading && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-[#D1D5DB] bg-[#F9FAFB]">
           <div className="flex items-center gap-3">
             <span className="text-sm text-[#64748B]">
