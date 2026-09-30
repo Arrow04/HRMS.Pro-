@@ -683,12 +683,28 @@ export default function Dashboard() {
           {(() => {
             const deptCount = stats.departmentDistribution.length;
             const chartHeight = Math.max(280, Math.min(600, deptCount * 36));
-            const rotateLabels = deptCount > 10;
+            const DeptTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value?: string } }) => {
+              const raw = String(payload?.value ?? '');
+              const words = raw.split(' ');
+              let l1 = raw;
+              let l2 = '';
+              if (words.length >= 2 && raw.length > 10) {
+                const mid = Math.ceil(words.length / 2);
+                l1 = words.slice(0, mid).join(' ');
+                l2 = words.slice(mid).join(' ');
+              }
+              return (
+                <g transform={`translate(${x ?? 0},${y ?? 0})`}>
+                  <text x={0} y={-1} textAnchor="middle" fontSize={10} fill="#94A3B8">{l1}</text>
+                  {l2 && <text x={0} y={11} textAnchor="middle" fontSize={10} fill="#94A3B8">{l2}</text>}
+                </g>
+              );
+            };
             return (
               <ChartCard title="Department Distribution" subtitle={`${deptCount} departments`} icon={Building} accent="violet" delay={400}>
                 <div className="h-full overflow-y-auto custom-scrollbar" style={{ maxHeight: 480 }}>
                   <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: rotateLabels ? 60 : 5 }}>
+                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 50 }}>
                       <defs>
                         <linearGradient id="deptDistBar" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
@@ -702,10 +718,8 @@ export default function Dashboard() {
                         tickLine={false}
                         axisLine={false}
                         interval={0}
-                        angle={rotateLabels ? -45 : 0}
-                        textAnchor={rotateLabels ? 'end' : 'middle'}
-                        height={rotateLabels ? 70 : 30}
-                        tick={rotateLabels ? { fontSize: 10, fill: '#94A3B8' } : undefined}
+                        height={55}
+                        tick={<DeptTick />}
                       />
                       <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
