@@ -15,7 +15,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler, BarElement } from 'chart.js';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { getAppCurrency } from '../services/currencyService';
 import { useMasterData } from '../hooks/useMasterData';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
@@ -124,7 +123,6 @@ const Reports = () => {
   const [customReportData, setCustomReportData] = useState<Record<string, unknown>[]>([]);
   const [customReportColumns, setCustomReportColumns] = useState<string[]>([]);
   const [customReportLoading, setCustomReportLoading] = useState(false);
-  const [, setCurrency] = useState(getAppCurrency());
   const [showCreateSchedule, setShowCreateSchedule] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -211,8 +209,6 @@ const Reports = () => {
 
   useEffect(() => {
     setMounted(true);
-    // Set currency to INR
-    setCurrency('INR');
   }, []);
 
   // Auto-refresh interval

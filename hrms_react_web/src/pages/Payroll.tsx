@@ -281,7 +281,7 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [, setMounted] = useState(false);
-  const [currency, setCurrency] = useState(getAppCurrency());
+  const [currency] = useState(getAppCurrency());
   const [showModal, setShowModal] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [editingPayrollId, setEditingPayrollId] = useState<number | null>(null);
@@ -466,8 +466,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
   useEffect(() => {
     setMounted(true);
-    // Set currency to INR
-    setCurrency('INR');
   }, []);
 
   const currencySymbol = getCurrencySymbol(currency);
@@ -776,6 +774,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
   const [showRerunConfirm, setShowRerunConfirm] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
+  const [deleteRunId, setDeleteRunId] = useState<number | null>(null);
   const [payItemsSub, setPayItemsSub] = useState<'bonuses' | 'deductions' | 'loans'>('bonuses');
   const [pendingRunAction, setPendingRunAction] = useState<'submit' | 'approve' | 'process' | null>(null);
 
@@ -852,6 +851,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     onSuccess: () => {
       toast.success('Payroll run deleted');
       queryClient.invalidateQueries({ queryKey: ['payroll-runs'] });
+      setDeleteRunId(null);
     },
     onError: () => toast.error('Failed to delete payroll run'),
   });
@@ -2022,7 +2022,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 logFor={(r) => ({ id: r.runId, label: `Payroll Run — ${monthLabel(r.month, r.year)}` })}
                 actions={(r) => (
                   <div className="flex items-center justify-end gap-1.5">
-                    <button onClick={() => deleteRunMutation.mutate(r.runId)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete run"><Trash2 className="w-4 h-4" /></button>
+                    <button onClick={() => setDeleteRunId(r.runId)} className="p-2 text-[#DC2626] hover:bg-[#DC2626]/10 rounded-lg transition-colors" title="Delete run"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
                 columns={[
@@ -2225,6 +2225,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                             </div>
                           </div>
                         ),
+                        csvValue: (p: PayslipRecord) => p.employeeName || '',
                         sortValue: (p: PayslipRecord) => p.employeeName,
                       },
                       { key: 'companyName', header: 'Company', render: (p: PayslipRecord) => <span className="text-sm text-[#64748B]">{p.companyName || '—'}</span> },
@@ -2244,7 +2245,11 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                       })),
                       { key: 'totalDeductions', header: 'Deduction Total', align: 'right', render: (p: PayslipRecord) => <span className="text-sm font-semibold text-[#DC2626]">{formatCurrency(p.totalDeductions || 0, currency)}</span> },
                       { key: 'netPay', header: 'Net Pay', align: 'right', sortable: true, render: (p: PayslipRecord) => <span className="text-sm font-semibold text-[#059669]">{formatCurrency(p.netPay || 0, currency)}</span>, sortValue: (p: PayslipRecord) => p.netPay || 0 },
-                      { key: 'status', header: 'Status', align: 'center', render: (p: PayslipRecord) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadgeClass(p.status || '')}`}>{capitalizeStatus(p.status)}</span> },
+                      {
+                        key: 'status', header: 'Status', align: 'center',
+                        render: (p: PayslipRecord) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadgeClass(p.status || '')}`}>{capitalizeStatus(p.status)}</span>,
+                        csvValue: (p: PayslipRecord) => capitalizeStatus(p.status),
+                      },
                     ]}
                     actions={(p: PayslipRecord) => (
                       <div className="flex items-center justify-end gap-1.5">
@@ -2383,6 +2388,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                           </div>
                         </div>
                       ),
+                      csvValue: (p: PayslipRecord) => p.employeeName || '',
                       sortValue: (p: PayslipRecord) => p.employeeName,
                     },
                     { key: 'period', header: 'Period', render: (p: PayslipRecord) => <span className="text-sm text-[#64748B]">{monthLabel(p.month, p.year)}</span> },
@@ -2392,6 +2398,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                     {
                       key: 'status', header: 'Payroll Status', align: 'center', sortable: true,
                       render: (p: PayslipRecord) => <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${getStatusBadgeClass(p.status || '')}`}>{capitalizeStatus(p.status)}</span>,
+                      csvValue: (p: PayslipRecord) => capitalizeStatus(p.status),
                       sortValue: (p: PayslipRecord) => p.status,
                     },
                   ]}
@@ -2560,7 +2567,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                         <div className="text-xs text-[#64748B] truncate max-w-[220px]">{b.email || ''}</div>
                       </div>
                     </div>
-                  ), sortValue: (b: BonusRecord) => b.employeeName },
+                  ), csvValue: (b: BonusRecord) => b.employeeName || '', sortValue: (b: BonusRecord) => b.employeeName },
                   { key: 'period', header: 'Period', align: 'center', render: (b: BonusRecord) => <span className="text-sm text-[#64748B]">{monthLabel(b.month, b.year)}</span> },
                   { key: 'type', header: 'Type', align: 'center', render: (b: BonusRecord) => (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 capitalize">{b.type || 'bonus'}</span>
@@ -3145,6 +3152,18 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         message={`You are about to wipe ALL payroll data for ${runCompanyId === 'all' ? 'all companies' : 'the selected company'} for ${monthLabel(runMonth, runYear)} and regenerate it from scratch.`}
         consequence="Every payslip for this period (draft, approved, processed or paid) will be permanently deleted and recreated. Use this only after you have corrected the mismatch in salary, attendance or components."
         isPending={rerunMutation.isPending}
+      />
+
+      <ConfirmActionModal
+        isOpen={deleteRunId !== null}
+        title="Delete payroll run"
+        message="This payroll run will be permanently deleted."
+        consequence="All payslips and calculations from this run will be lost. This cannot be undone."
+        variant="danger"
+        isPending={deleteRunMutation.isPending}
+        confirmLabel="Delete run"
+        onConfirm={() => { if (deleteRunId !== null) { deleteRunMutation.mutate(deleteRunId); setDeleteRunId(null); } }}
+        onCancel={() => setDeleteRunId(null)}
       />
     </div>
   );

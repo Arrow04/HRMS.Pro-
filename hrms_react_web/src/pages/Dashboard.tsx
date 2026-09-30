@@ -178,19 +178,12 @@ interface DashboardSummary {
 export default function Dashboard() {
 
 
-  const [currency, setCurrency] = useState(getAppCurrency());
+  const [currency] = useState(getAppCurrency());
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | ''>('');
   const [trendMonths] = useState(6);
   const [analyticsTab, setAnalyticsTab] = useState<'overview' | 'trends'>('overview');
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    setCurrency('INR');
-  }, []);
-
-
-
 
   const queryClient = useQueryClient();
 

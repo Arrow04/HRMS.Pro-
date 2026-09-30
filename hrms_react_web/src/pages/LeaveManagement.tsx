@@ -153,6 +153,8 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
   const [editingLeave, setEditingLeave] = useState<LeaveRow | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: LeaveRow[] } | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: LeaveRow[] } | null>(null);
+  const [approveLeaveId, setApproveLeaveId] = useState<number | null>(null);
+  const [rejectLeaveId, setRejectLeaveId] = useState<number | null>(null);
   const [deleteLeaveTypeTarget, setDeleteLeaveTypeTarget] = useState<LeaveTypeRow | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -310,6 +312,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
       toast.success('Leave updated successfully');
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
       setShowApplyModal(false);
+      setApproveLeaveId(null);
     },
     onError: () => toast.error('Failed to update leave')
   });
@@ -383,6 +386,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
     onSuccess: () => {
       toast.success('Leave rejected');
       queryClient.invalidateQueries({ queryKey: ['leaves'] });
+      setRejectLeaveId(null);
     },
     onError: () => toast.error('Failed to reject leave')
   });
@@ -486,6 +490,16 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
     } catch {
       toast.error('Failed to download template');
     }
+  };
+
+  const validateLeaveForm = () => {
+    const errors: string[] = [];
+    if (!newLeave.employeeId) errors.push('Employee is required');
+    if (!newLeave.leaveTypeId) errors.push('Leave type is required');
+    if (!newLeave.startDate) errors.push('Start date is required');
+    if (!newLeave.endDate) errors.push('End date is required');
+    if (!newLeave.reason?.trim()) errors.push('Reason is required');
+    return errors;
   };
 
   const handleCloseDrawer = () => {
@@ -948,10 +962,10 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
                       {leave.status?.toLowerCase() === 'pending' && (
                         <>
                           <Tooltip id={`btn-approve-leave-${leave.id}`} content="Approve">
-                            <button onClick={() => approveMutation.mutate(leave.id)} className="p-2 text-[#10B981] hover:bg-[#10B981]/10 rounded-lg transition-colors" title="Approve"><CheckCircle2 className="w-4 h-4" /></button>
+                            <button onClick={() => setApproveLeaveId(leave.id)} className="p-2 text-[#10B981] hover:bg-[#10B981]/10 rounded-lg transition-colors" title="Approve"><CheckCircle2 className="w-4 h-4" /></button>
                           </Tooltip>
                           <Tooltip id={`btn-reject-leave-${leave.id}`} content="Reject">
-                            <button onClick={() => rejectMutation.mutate(leave.id)} className="p-2 text-[#F59E0B] hover:bg-[#F59E0B]/10 rounded-lg transition-colors" title="Reject"><XCircle className="w-4 h-4" /></button>
+                            <button onClick={() => setRejectLeaveId(leave.id)} className="p-2 text-[#F59E0B] hover:bg-[#F59E0B]/10 rounded-lg transition-colors" title="Reject"><XCircle className="w-4 h-4" /></button>
                           </Tooltip>
                         </>
                       )}
@@ -1149,7 +1163,7 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
           >
             <div className="h-full flex flex-col">
               {/* Form Wrapper */}
-              <form onSubmit={(e) => { e.preventDefault(); if (editingLeave) { updateLeaveMutation.mutate({ id: editingLeave.id, payload: newLeave }); } else { applyMutation.mutate(newLeave); } }} className="flex flex-col flex-1 overflow-hidden">
+              <form onSubmit={(e) => { e.preventDefault(); const errs = validateLeaveForm(); if (errs.length) { toast.error(errs[0]); return; } if (editingLeave) { updateLeaveMutation.mutate({ id: editingLeave.id, payload: newLeave }); } else { applyMutation.mutate(newLeave); } }} className="flex flex-col flex-1 overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
                   <div className="flex items-center gap-3">
@@ -1349,6 +1363,30 @@ const [leaveTypeForm, setLeaveTypeForm] = useState({ name: '', code: '', days_al
             ? "The leave will be marked as approved and the employee's leave balance will be reduced."
             : 'The leave request will be marked as rejected and will not affect the employee\'s leave balance.'
         }
+      />
+
+      <ConfirmActionModal
+        isOpen={approveLeaveId !== null}
+        title="Approve leave"
+        message="This leave application will be approved."
+        consequence="The leave will be marked as approved and the employee's leave balance will be reduced."
+        variant="success"
+        isPending={approveMutation.isPending}
+        confirmLabel="Approve"
+        onConfirm={() => { if (approveLeaveId !== null) { approveMutation.mutate(approveLeaveId); setApproveLeaveId(null); } }}
+        onCancel={() => setApproveLeaveId(null)}
+      />
+
+      <ConfirmActionModal
+        isOpen={rejectLeaveId !== null}
+        title="Reject leave"
+        message="This leave application will be rejected."
+        consequence="The leave request will be marked as rejected and will not affect the employee's leave balance."
+        variant="warning"
+        isPending={rejectMutation.isPending}
+        confirmLabel="Reject"
+        onConfirm={() => { if (rejectLeaveId !== null) { rejectMutation.mutate(rejectLeaveId); setRejectLeaveId(null); } }}
+        onCancel={() => setRejectLeaveId(null)}
       />
 
       {/* Approval History Modal */}

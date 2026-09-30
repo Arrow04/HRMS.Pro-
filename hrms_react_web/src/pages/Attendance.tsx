@@ -551,6 +551,8 @@ const Attendance = () => {
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!manualEntry.employeeId) { toast.error('Select an employee'); return; }
+    if (!manualEntry.date) { toast.error('Date is required'); return; }
     manualEntryMutation.mutate({
       employeeId: Number(manualEntry.employeeId),
       date: manualEntry.date,

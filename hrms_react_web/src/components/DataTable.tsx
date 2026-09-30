@@ -9,6 +9,7 @@ export interface DataTableColumn<T> {
   width?: string;
   align?: 'left' | 'center' | 'right';
   render?: (row: T) => React.ReactNode;
+  csvValue?: (row: T) => string;
   sortValue?: (row: T) => string | number | undefined;
 }
 
@@ -243,8 +244,8 @@ const DataTable = <T,>({
   const handleExport = (rows: T[], suffix = '') => {
     const csvRows = rows.map((row) => {
       return visibleColumns.map((col) => {
-        const val: unknown = col.render
-          ? (row as Record<string, unknown>)[col.key]
+        const val: unknown = col.csvValue
+          ? col.csvValue(row)
           : (row as Record<string, unknown>)[col.key];
         if (val === null || val === undefined) return '';
         if (typeof val === 'object') {

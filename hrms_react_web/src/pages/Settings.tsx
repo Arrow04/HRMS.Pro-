@@ -741,6 +741,10 @@ const UserManagementPanel = () => {
   };
 
   const handleAddUser = async () => {
+    if (!newUser.fullName?.trim()) { toast.error('Full name is required'); return; }
+    if (!newUser.email?.trim()) { toast.error('Email is required'); return; }
+    if (!newUser.role) { toast.error('Role is required'); return; }
+    if (newUser.password && newUser.password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
     try {
       const submittedAt = new Date();
       await api.post('/api/users', {
