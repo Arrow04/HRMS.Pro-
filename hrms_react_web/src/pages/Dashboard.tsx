@@ -683,39 +683,12 @@ export default function Dashboard() {
           {(() => {
             const deptCount = stats.departmentDistribution.length;
             const chartHeight = Math.max(280, Math.min(600, deptCount * 36));
-            const rotateLabels = deptCount > 3;
-            const DeptTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value?: string } }) => {
-              const raw = String(payload?.value ?? '');
-              const words = raw.split(' ');
-              const lines: string[] = [];
-              if (raw.length <= 12 || words.length === 1) {
-                lines.push(raw);
-              } else if (words.length === 2) {
-                lines.push(words[0], words[1]);
-              } else {
-                let cur = '';
-                for (const w of words) {
-                  if ((cur + ' ' + w).trim().length > 14 && cur) { lines.push(cur); cur = w; }
-                  else cur = (cur + ' ' + w).trim();
-                }
-                if (cur) lines.push(cur);
-                if (lines.length > 2) { lines[1] = lines[1] + '…'; lines.length = 2; }
-              }
-              return (
-                <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-                  {lines.map((line, i) => (
-                    <text key={i} x={0} y={i * 11} dy={lines.length > 1 ? 0 : 4} textAnchor="end" fontSize={10} fill="#94A3B8" transform={rotateLabels ? 'rotate(-45)' : undefined}>
-                      {line}
-                    </text>
-                  ))}
-                </g>
-              );
-            };
+            const rotateLabels = deptCount > 10;
             return (
               <ChartCard title="Department Distribution" subtitle={`${deptCount} departments`} icon={Building} accent="violet" delay={400}>
                 <div className="h-full overflow-y-auto custom-scrollbar" style={{ maxHeight: 480 }}>
                   <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: rotateLabels ? 70 : 5 }}>
+                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: rotateLabels ? 60 : 5 }}>
                       <defs>
                         <linearGradient id="deptDistBar" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
@@ -729,8 +702,10 @@ export default function Dashboard() {
                         tickLine={false}
                         axisLine={false}
                         interval={0}
-                        height={rotateLabels ? 80 : 30}
-                        tick={<DeptTick />}
+                        angle={rotateLabels ? -45 : 0}
+                        textAnchor={rotateLabels ? 'end' : 'middle'}
+                        height={rotateLabels ? 70 : 30}
+                        tick={rotateLabels ? { fontSize: 10, fill: '#94A3B8' } : undefined}
                       />
                       <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
