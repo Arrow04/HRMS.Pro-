@@ -683,28 +683,15 @@ export default function Dashboard() {
           {(() => {
             const deptCount = stats.departmentDistribution.length;
             const chartHeight = Math.max(280, Math.min(600, deptCount * 36));
-            const DeptTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value?: string } }) => {
-              const raw = String(payload?.value ?? '');
-              const words = raw.split(' ');
-              let l1 = raw;
-              let l2 = '';
-              if (words.length >= 2 && raw.length > 10) {
-                const mid = Math.ceil(words.length / 2);
-                l1 = words.slice(0, mid).join(' ');
-                l2 = words.slice(mid).join(' ');
-              }
-              return (
-                <g transform={`translate(${x ?? 0},${y ?? 0})`}>
-                  <text x={0} y={-1} textAnchor="middle" fontSize={10} fill="#94A3B8">{l1}</text>
-                  {l2 && <text x={0} y={11} textAnchor="middle" fontSize={10} fill="#94A3B8">{l2}</text>}
-                </g>
-              );
-            };
+            const deptData = stats.departmentDistribution.map((d: { name: string; value: number }) => ({
+              ...d,
+              shortName: d.name.length > 14 ? d.name.slice(0, 12) + '…' : d.name,
+            }));
             return (
               <ChartCard title="Department Distribution" subtitle={`${deptCount} departments`} icon={Building} accent="violet" delay={400}>
                 <div className="h-full overflow-y-auto custom-scrollbar" style={{ maxHeight: 480 }}>
                   <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart data={stats.departmentDistribution} margin={{ top: 5, right: 10, left: -10, bottom: 50 }}>
+                    <BarChart data={deptData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                       <defs>
                         <linearGradient id="deptDistBar" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.9} />
@@ -712,19 +699,11 @@ export default function Dashboard() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                      <XAxis
-                        dataKey="name"
-                        {...AXIS_STYLE}
-                        tickLine={false}
-                        axisLine={false}
-                        interval={0}
-                        height={55}
-                        tick={<DeptTick />}
-                      />
+                      <XAxis dataKey="shortName" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                       <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                       <Bar dataKey="value" name="Employees" fill="url(#deptDistBar)" radius={[8, 8, 0, 0]} maxBarSize={40}>
-                        {stats.departmentDistribution.map((_entry: { name: string; employees: number; value: number }, index: number) => (
+                        {deptData.map((_entry: { name: string; shortName: string; value: number }, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
                         ))}
                       </Bar>
