@@ -145,9 +145,11 @@ export default function PayrollConsole() {
   const [arrears, setArrears] = useState<Array<Record<string, unknown>>>([]);
   const [batches, setBatches] = useState<Array<Record<string, unknown>>>([]);
   const [reports, setReports] = useState<Array<{ code: string; name: string; authority?: string }>>([]);
+  const [explainCompanyId, setExplainCompanyId] = useState('');
   const [explainEmpId, setExplainEmpId] = useState('');
   const [explainMonth, setExplainMonth] = useState(new Date().getMonth() + 1);
   const [explainYear, setExplainYear] = useState(new Date().getFullYear());
+  const [explainCompanies, setExplainCompanies] = useState<Array<{ id: number | string; name: string }>>([]);
   const [explainEmployees, setExplainEmployees] = useState<EmployeeSummary[]>([]);
   const [explain, setExplain] = useState<ExplainPayload | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
@@ -186,15 +188,19 @@ export default function PayrollConsole() {
     amount: number; filedByName?: string | null; notes?: string | null;
   }
   const [calendar, setCalendar] = useState<{ items: CalendarItem[]; counts: Record<string, number> } | null>(null);
-  const [calendarFilter, setCalendarFilter] = useState<'open' | 'all' | 'filed'>('open');
+  const [calendarFilter, setCalendarFilter] = useState<'all' | 'overdue' | 'due_soon' | 'filed' | 'upcoming'>('all');
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const fetchCalendar = async (year?: number) => {
+    const res = await api.get('/payroll/compliance-calendar', { params: { year: year ?? calendarYear } });
+    setCalendar(res.data);
+  };
   const markFiled = async (item: CalendarItem) => {
     try {
       await api.post('/payroll/compliance-calendar/file', {
         code: item.code, periodKey: item.periodKey, notes: item.notes || '',
       });
       toast.success(`${item.name} (${item.periodLabel}) marked as filed`);
-      const res = await api.get('/payroll/compliance-calendar');
-      setCalendar(res.data);
+      await fetchCalendar();
     } catch (err) {
       const e = err as { response?: { data?: { detail?: unknown } } };
       toast.error(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Failed to mark as filed');
@@ -204,10 +210,44 @@ export default function PayrollConsole() {
     try {
       await api.delete('/payroll/compliance-calendar/file', { params: { periodKey: item.periodKey } });
       toast.success('Filed mark removed');
-      const res = await api.get('/payroll/compliance-calendar');
-      setCalendar(res.data);
+      await fetchCalendar();
     } catch {
       toast.error('Failed to remove filed mark');
+    }
+  };
+
+  // Filing due-date config
+  interface FilingDueDate {
+    code: string; name: string; authority: string; periodType: string;
+    day: number; monthOffset: number; isOverride: boolean;
+    defaultDay: number; defaultMonthOffset: number;
+  }
+  const [filingDueDates, setFilingDueDates] = useState<FilingDueDate[]>([]);
+  const [showFilingConfig, setShowFilingConfig] = useState(false);
+  const [filingConfigDraft, setFilingConfigDraft] = useState<Record<string, { day: number; monthOffset: number }>>({});
+
+  const openFilingConfig = async () => {
+    try {
+      const res = await api.get('/payroll/filing-due-dates');
+      const data = (Array.isArray(res.data) ? res.data : []) as FilingDueDate[];
+      setFilingDueDates(data);
+      const draft: Record<string, { day: number; monthOffset: number }> = {};
+      data.forEach((d) => { draft[d.code] = { day: d.day, monthOffset: d.monthOffset }; });
+      setFilingConfigDraft(draft);
+      setShowFilingConfig(true);
+    } catch {
+      toast.error('Failed to load filing config');
+    }
+  };
+
+  const saveFilingConfig = async () => {
+    try {
+      await api.put('/payroll/filing-due-dates', { overrides: filingConfigDraft });
+      toast.success('Filing due dates updated');
+      setShowFilingConfig(false);
+      await fetchCalendar();
+    } catch {
+      toast.error('Failed to save filing config');
     }
   };
 
@@ -246,8 +286,21 @@ export default function PayrollConsole() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
   useEffect(() => {
-    if (tab !== 'explain' || explainEmployees.length) return;
-    api.get('/employees', { params: { limit: 200, view: 'summary', status: 'active' } })
+    if (tab !== 'explain' || explainCompanies.length) return;
+    api.get('/companies', { params: { active_only: true } })
+      .then((res) => {
+        const payload = res.data as { data?: Array<{ id: number | string; name: string }>; items?: Array<{ id: number | string; name: string }> } | Array<{ id: number | string; name: string }>;
+        const list = Array.isArray(payload) ? payload : (payload.data || payload.items || []);
+        setExplainCompanies(Array.isArray(list) ? list : []);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  useEffect(() => {
+    if (tab !== 'explain') return;
+    const params: Record<string, string | number> = { limit: 200, view: 'summary', status: 'active' };
+    if (explainCompanyId) params.companyId = Number(explainCompanyId);
+    api.get('/employees', { params })
       .then((res) => {
         const payload = res.data as { data?: EmployeeSummary[]; items?: EmployeeSummary[] } | EmployeeSummary[];
         const list = Array.isArray(payload) ? payload : (payload.data || payload.items || []);
@@ -255,7 +308,7 @@ export default function PayrollConsole() {
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, explainCompanyId]);
   const runPlanner = async () => {
     if (!plannerEmpId) { toast.error('Pick an employee first'); return; }
     setPlannerLoading(true);
@@ -345,7 +398,7 @@ export default function PayrollConsole() {
     try {
       if (tab === 'rules') setRules(await listPayrollRules({ country: getAppCountry() }));
       if (tab === 'calendar') {
-        const res = await api.get('/payroll/compliance-calendar');
+        const res = await api.get('/payroll/compliance-calendar', { params: { year: calendarYear } });
         setCalendar(res.data);
       }
       if (tab === 'arrears') setArrears(await listArrears());
@@ -356,7 +409,7 @@ export default function PayrollConsole() {
     } finally {
       setBusy(false);
     }
-  }, [tab]);
+  }, [tab, calendarYear]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -569,24 +622,37 @@ export default function PayrollConsole() {
       {tab === 'calendar' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
-            {([
-              ['overdue', 'Overdue', 'bg-red-50 text-red-700 border-red-200'],
-              ['due_soon', 'Due in 7 days', 'bg-amber-50 text-amber-700 border-amber-200'],
-              ['filed', 'Filed', 'bg-green-50 text-green-700 border-green-200'],
-              ['upcoming', 'Upcoming', 'bg-slate-50 text-slate-600 border-slate-200'],
-            ] as const).map(([key, label, cls]) => (
-              <div key={key} className={`px-3 py-2 rounded-xl border ${cls}`}>
-                <p className="text-xs font-medium">{label}</p>
-                <p className="text-lg font-bold leading-tight">{calendar?.counts?.[key] ?? 0}</p>
-              </div>
-            ))}
-            <div className="flex gap-2 ml-auto">
-              {([['open', 'Open'], ['all', 'All'], ['filed', 'Filed']] as const).map(([id, label]) => (
-                <button key={id} onClick={() => setCalendarFilter(id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${calendarFilter === id ? 'bg-[#1C64F2] text-white border-[#1C64F2]' : 'border-[var(--border-color)] text-[#64748B] hover:bg-[var(--hover-bg)]'}`}>
-                  {label}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
+              {([
+                ['overdue', 'Overdue', 'bg-red-50 text-red-700 border-red-200', 'hover:border-red-400', 'bg-red-100 border-red-500 text-red-800'],
+                ['due_soon', 'Due in 7 days', 'bg-amber-50 text-amber-700 border-amber-200', 'hover:border-amber-400', 'bg-amber-100 border-amber-500 text-amber-800'],
+                ['filed', 'Filed', 'bg-green-50 text-green-700 border-green-200', 'hover:border-green-400', 'bg-green-100 border-green-500 text-green-800'],
+                ['upcoming', 'Upcoming', 'bg-slate-50 text-slate-600 border-slate-200', 'hover:border-slate-400', 'bg-slate-100 border-slate-500 text-slate-800'],
+              ] as const).map(([key, label, baseCls, hoverCls, activeCls]) => {
+                const active = calendarFilter === key;
+                return (
+                  <button key={key}
+                    onClick={() => setCalendarFilter(active ? 'all' : key)}
+                    className={`px-4 py-3 rounded-xl border min-w-0 text-left transition-all ${active ? activeCls : `${baseCls} ${hoverCls}`}`}>
+                    <p className="text-xs font-medium truncate">{label}</p>
+                    <p className="text-lg font-bold leading-tight">{calendar?.counts?.[key] ?? 0}</p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <SearchableSelect
+                value={String(calendarYear)}
+                onChange={v => setCalendarYear(Number(v))}
+                options={yearOptions(2, 1).map(y => ({ id: String(y), name: String(y) }))}
+                placeholder="Year"
+                showAllOption={false}
+                className="w-24 h-[34px]"
+              />
+              <button onClick={openFilingConfig}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-color)] text-[#64748B] hover:bg-[var(--hover-bg)] transition-colors">
+                Configure due dates
+              </button>
             </div>
           </div>
 
@@ -604,8 +670,7 @@ export default function PayrollConsole() {
               </thead>
               <tbody>
                 {(calendar?.items || [])
-                  .filter(i => calendarFilter === 'all'
-                    || (calendarFilter === 'filed' ? i.status === 'filed' : i.status !== 'filed'))
+                  .filter(i => calendarFilter === 'all' || i.status === calendarFilter)
                   .map(i => {
                     const pill =
                       i.status === 'overdue' ? 'bg-red-100 text-red-700'
@@ -1001,6 +1066,17 @@ export default function PayrollConsole() {
       {tab === 'explain' && (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-6">
           <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div className="flex-1 min-w-[200px] max-w-xs">
+              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Company</label>
+              <SearchableSelect
+                value={explainCompanyId}
+                onChange={v => { setExplainCompanyId(String(v)); setExplainEmpId(''); }}
+                options={explainCompanies.map((c) => ({ id: String(c.id), name: c.name }))}
+                placeholder="All companies"
+                showAllOption={true}
+                className="w-full h-[42px]"
+              />
+            </div>
             <div className="flex-1 min-w-[200px] max-w-xs">
               <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Employee</label>
               <SearchableSelect
@@ -1421,6 +1497,56 @@ export default function PayrollConsole() {
                 Supersede
               </button>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Filing due-date config */}
+      {showFilingConfig && (
+        <Modal isOpen onClose={() => setShowFilingConfig(false)} title="Filing due dates" size="md">
+          <div className="space-y-3">
+            <p className="text-xs text-[var(--text-secondary)]">
+              Override the default due dates for each statutory filing. Day = day of the month after period end; month offset = months after period end.
+            </p>
+            {filingDueDates.map((f) => {
+              const draft = filingConfigDraft[f.code] || { day: f.day, monthOffset: f.monthOffset };
+              return (
+                <div key={f.code} className="flex items-center gap-3 py-2 border-b border-[var(--border-color)] last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">{f.name}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">{f.authority} · {f.periodType}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-16">
+                      <label className="text-[10px] text-[var(--text-tertiary)]">Day</label>
+                      <input type="number" min={1} max={31} value={draft.day}
+                        onChange={(e) => setFilingConfigDraft({ ...filingConfigDraft, [f.code]: { ...draft, day: Number(e.target.value) } })}
+                        className="w-full px-2 py-1 text-sm border border-[var(--border-color)] rounded-lg outline-none focus:ring-2 focus:ring-[#1C64F2]" />
+                    </div>
+                    <div className="w-20">
+                      <label className="text-[10px] text-[var(--text-tertiary)]">Month+{draft.monthOffset === 1 ? '' : draft.monthOffset}</label>
+                      <input type="number" min={0} max={12} value={draft.monthOffset}
+                        onChange={(e) => setFilingConfigDraft({ ...filingConfigDraft, [f.code]: { ...draft, monthOffset: Number(e.target.value) } })}
+                        className="w-full px-2 py-1 text-sm border border-[var(--border-color)] rounded-lg outline-none focus:ring-2 focus:ring-[#1C64F2]" />
+                    </div>
+                    {(draft.day !== f.defaultDay || draft.monthOffset !== f.defaultMonthOffset) && (
+                      <button onClick={() => setFilingConfigDraft({ ...filingConfigDraft, [f.code]: { day: f.defaultDay, monthOffset: f.defaultMonthOffset } })}
+                        className="text-[10px] text-[var(--primary-blue)] hover:underline">Reset</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-[var(--border-color)]">
+            <button onClick={() => setShowFilingConfig(false)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]">
+              Cancel
+            </button>
+            <button onClick={saveFilingConfig}
+              className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5]">
+              Save
+            </button>
           </div>
         </Modal>
       )}

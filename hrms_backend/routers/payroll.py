@@ -3455,6 +3455,75 @@ def unmark_filing_filed(
     return {"message": "Filed mark removed"}
 
 
+@router.get("/api/payroll/filing-due-dates", tags=["Payroll"])
+def get_filing_due_dates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Current filing due-date overrides for the org (defaults + overrides)."""
+    from services.compliance_calendar import FILING_DEFINITIONS, _due_overrides
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    overrides = _due_overrides(org) if org else {}
+    result = []
+    for f in FILING_DEFINITIONS:
+        merged = {**(f.get("due") or {}), **(overrides.get(f["code"]) or {})}
+        result.append({
+            "code": f["code"],
+            "name": f["name"],
+            "authority": f["authority"],
+            "periodType": f["period_type"],
+            "day": merged.get("day", f["due"]["day"]),
+            "monthOffset": merged.get("month_offset", f["due"]["month_offset"]),
+            "isOverride": f["code"] in overrides,
+            "defaultDay": f["due"]["day"],
+            "defaultMonthOffset": f["due"]["month_offset"],
+        })
+    return result
+
+
+@router.put("/api/payroll/filing-due-dates", tags=["Payroll"])
+def update_filing_due_dates(
+    data: dict = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save filing due-date overrides (body: {overrides: {CODE: {day, month_offset}}}).
+
+    Pass null/empty values to reset a filing to its default.
+    """
+    from services.compliance_calendar import FILING_DEFINITIONS
+    body = data or {}
+    overrides = body.get("overrides") or {}
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    settings = org.settings or {}
+    payroll_settings = settings.get("payroll") or {}
+    # Merge: only keep overrides that differ from defaults
+    existing = payroll_settings.get("filing_due_dates") or {}
+    merged = dict(existing)
+    for f in FILING_DEFINITIONS:
+        code = f["code"]
+        default_day = f["due"]["day"]
+        default_offset = f["due"]["month_offset"]
+        if code in overrides:
+            new_day = overrides[code].get("day")
+            new_offset = overrides[code].get("month_offset")
+            if new_day is not None and new_offset is not None:
+                if int(new_day) != default_day or int(new_offset) != default_offset:
+                    merged[code] = {"day": int(new_day), "month_offset": int(new_offset)}
+                elif code in merged:
+                    del merged[code]  # Reset to default
+        elif code in merged:
+            # Check if user explicitly cleared it
+            pass
+    payroll_settings["filing_due_dates"] = merged
+    settings["payroll"] = payroll_settings
+    org.settings = settings
+    db.commit()
+    return {"message": "Filing due dates updated", "overrides": merged}
+
+
 @router.post("/api/payroll/tax-planner", tags=["Payroll"])
 def payroll_tax_planner(
     data: dict = None,
