@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Loader2, Save, X, Check, Undo2, Clock, CalendarDays, CalendarRange, CalendarClock, CheckSquare, Pencil, TrendingUp, CalendarPlus, LayoutGrid, Download } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -222,7 +222,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
 
   useEffect(() => { if (isOpen) { setSelectedDates([]); setEditingDay(null); setHoverDay(null); dragRef.current = null; } }, [isOpen]);
 
-  const navigate = (dir: number) => {
+  const navigate = useCallback((dir: number) => {
     setFocusDate(d => {
       const nd = new Date(d);
       if (view === 'month') nd.setMonth(nd.getMonth() + dir);
@@ -230,7 +230,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
       else nd.setDate(nd.getDate() + dir);
       return nd;
     });
-  };
+  }, [view]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -319,8 +319,8 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     enabled: isOpen && !!employeeId,
   });
 
-  const days: Record<string, CalendarDay> = calendar?.days || {};
-  const employeeWorkdays: number[] = calendar?.workdays || [0, 1, 2, 3, 4, 5, 6];
+  const days = useMemo(() => calendar?.days || {}, [calendar]);
+  const employeeWorkdays = useMemo(() => calendar?.workdays || [0, 1, 2, 3, 4, 5, 6], [calendar]);
   const workdaySet = useMemo(() => new Set(employeeWorkdays.map(Number)), [employeeWorkdays]);
   const isConfiguredWorkday = (d: Date) => workdaySet.has(d.getDay());
   const statusOptions = attendanceStatusOptions?.length ? attendanceStatusOptions : DEFAULT_STATUS_OPTIONS;
@@ -496,7 +496,7 @@ const EmployeeCalendarEditor = ({ isOpen, onClose, employee, attendanceStatusOpt
     enabled: isOpen && !!employeeId && showStats,
   });
 
-  const yearMonths = yearData?.months || {};
+  const yearMonths = useMemo(() => yearData?.months || {}, [yearData]);
 
   const yearPresentByMonth = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {

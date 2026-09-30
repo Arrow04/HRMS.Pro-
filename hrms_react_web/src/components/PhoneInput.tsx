@@ -65,6 +65,16 @@ const COUNTRIES: CountryCode[] = [
   { name: 'New Zealand', code: 'NZ', dial: '+64' },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
+// Max length of the LOCAL (dial-free) number per country code.
+// E.164 subscriber numbers: India + most countries = 10 digits.
+const LOCAL_MAX: Record<string, number> = {
+  '+91': 10, '+880': 10, '+92': 10, '+977': 10, '+94': 10, '+975': 10, '+960': 10,
+  '+65': 8, '+971': 9, '+966': 9, '+974': 8, '+965': 8, '+973': 8, '+968': 8,
+  '+1': 10, '+44': 10, '+61': 9, '+49': 11, '+33': 9, '+86': 11, '+81': 10,
+};
+
+const stripDial = (raw: string) => (raw || '').replace(/^\+\d{1,4}\s?/, '');
+
 interface PhoneInputProps {
   value: string;
   onChange: (value: string) => void;              // receives full number incl. dial code
@@ -115,8 +125,6 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
       ? { left, bottom: window.innerHeight - anchor.top + 8, listMaxH }
       : { left, top: anchor.bottom + 8, listMaxH });
   };
-
-  const stripDial = (raw: string) => (raw || '').replace(/^\+\d{1,4}\s?/, '');
 
   // If a default dial is provided/changes after mount (e.g. app country loads
   // async), adopt it — but only when the user hasn't picked one yet.
@@ -184,13 +192,7 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
       c.code.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Max length of the LOCAL (dial-free) number per country code.
-  // E.164 subscriber numbers: India + most countries = 10 digits.
-  const LOCAL_MAX: Record<string, number> = {
-    '+91': 10, '+880': 10, '+92': 10, '+977': 10, '+94': 10, '+975': 10, '+960': 10,
-    '+65': 8, '+971': 9, '+966': 9, '+974': 8, '+965': 8, '+973': 8, '+968': 8,
-    '+1': 10, '+44': 10, '+61': 9, '+49': 11, '+33': 9, '+86': 11, '+81': 10,
-  };
+  // Max length of the LOCAL (dial-free) number per country code is LOCAL_MAX.
   const localMax = LOCAL_MAX[dial] ?? 15;
 
   const localDisplay = stripDial(value).replace(/[^\d]/g, '');

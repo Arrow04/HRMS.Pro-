@@ -500,7 +500,10 @@ const EmployeeManagement = () => {
     placeholderData: (prev) => prev,
   });
 
-  const employeesData = (employeesResponse?.items as Employee[]) || [];
+  const employeesData = useMemo(
+    () => (employeesResponse?.items as Employee[]) || [],
+    [employeesResponse]
+  );
   const pagination = { 
     page: employeesResponse?.page || 1, 
     limit: employeesResponse?.size || 10, 
@@ -523,7 +526,7 @@ const EmployeeManagement = () => {
     setExpandedManagers((prev) => ({ ...prev, [managerId]: !prev[managerId] }));
   };
 
-  const filterOrgTree = (nodes: OrgTreeNode[], q: string): OrgTreeNode[] => {
+  const filterOrgTree = useCallback((nodes: OrgTreeNode[], q: string): OrgTreeNode[] => {
     if (!q.trim()) return nodes;
     const lower = q.toLowerCase();
     return nodes.reduce((acc: OrgTreeNode[], node: OrgTreeNode) => {
@@ -534,9 +537,9 @@ const EmployeeManagement = () => {
       }
       return acc;
     }, []);
-  };
+  }, []);
 
-  const filteredOrg = useMemo(() => filterOrgTree(orgStructure, search), [orgStructure, search]);
+  const filteredOrg = useMemo(() => filterOrgTree(orgStructure, search), [orgStructure, search, filterOrgTree]);
 
   const renderOrgNode = (node: OrgTreeNode, level = 0): React.ReactElement => {
     const hasReports = node.directReports && node.directReports.length > 0;
@@ -776,7 +779,7 @@ const EmployeeManagement = () => {
       const apiErr = error as { response?: { data?: { detail?: string } }; message?: string };
       toast.error(`Failed to update employees: ${apiErr.response?.data?.detail || apiErr.message}`);
     }
-  }, [activeTab, filterOrgId, filterCompanyId, filterBranchId, filterDepartmentId, showDeleted, queryClient]);
+  }, [activeTab, filterOrgId, filterCompanyId, filterBranchId, filterDepartmentId, showDeleted, queryClient, can]);
 
   const [exitConfirmTarget, setExitConfirmTarget] = useState<Employee | null>(null);
 

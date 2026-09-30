@@ -261,7 +261,7 @@ const Attendance = () => {
     }
   });
 
-  const attendanceRecords = attendanceData || [];
+  const attendanceRecords = useMemo(() => attendanceData || [], [attendanceData]);
 
   const { data: shifts = [], isLoading: loadingShifts } = useQuery<ShiftRecord[]>({
     queryKey: ['shifts'],

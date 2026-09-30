@@ -278,7 +278,6 @@ const Company = () => {
     staleTime: 5 * 60 * 1000
   });
 
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredItems = useMemo(() => {
     return items.filter((item: EntityItem) => {
       const searchTarget = activeTab === 'designations' ? item.title : item.name;
@@ -289,7 +288,7 @@ const Company = () => {
       const matchStatus = statusFilter === 'all' || item.status === statusFilter;
       return matchSearch && matchCompany && matchBranch && matchDepartment && matchStatus;
     });
-  }, [items, searchTerm, companyFilter, branchFilter, departmentFilter, statusFilter]);
+  }, [items, searchTerm, activeTab, companyFilter, branchFilter, departmentFilter, statusFilter]);
 
   const handleEdit = (item: EntityItem) => {
     setEditingItem(item);

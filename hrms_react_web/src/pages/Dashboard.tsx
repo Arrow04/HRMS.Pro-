@@ -349,7 +349,7 @@ export default function Dashboard() {
   }, [summary]);
 
   // Dynamic chart data based on monthly trend from summary
-  const trend = summary?.monthlyTrend || [];
+  const trend = useMemo(() => summary?.monthlyTrend || [], [summary]);
 
   // Calendar year (Jan–Dec) label
   const yearLabel = `Jan–Dec ${new Date().getFullYear()}`;

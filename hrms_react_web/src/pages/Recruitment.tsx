@@ -125,6 +125,8 @@ const PORTALS: { id: string; name: string; description: string; url: string; ico
   { id: 'foundit', name: 'Foundit (Monster India)', description: 'Post jobs on Foundit', url: 'https://www.foundit.in/recruiter/', icon: UserCheck, bg: '#E4002B', color: '#FFFFFF' },
 ];
 
+const CANDIDATE_TAB_STATUSES = ['applied', 'invited', 'shortlisted', 'not_arrived', 'rejected'];
+
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   applied: { label: 'Applied', color: 'bg-sky-100 text-sky-700' },
   invited: { label: 'Invited', color: 'bg-cyan-100 text-cyan-700' },
@@ -743,7 +745,6 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     });
   }, [candidates, searchTerm, statusFilter, companyFilter, candidateDepartmentFilter, startDate, endDate]);
 
-  const CANDIDATE_TAB_STATUSES = ['applied', 'invited', 'shortlisted', 'not_arrived', 'rejected'];
   const candidatesTabList = useMemo(
     () => filteredCandidates.filter((c: RecruitmentCandidate) => CANDIDATE_TAB_STATUSES.includes(c.status)),
     [filteredCandidates]

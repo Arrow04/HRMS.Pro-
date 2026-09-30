@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -174,12 +174,12 @@ export default function AppHeader({ onToggleSidebar }: AppHeaderProps) {
 
   const flatFiltered = filteredCommands.flatMap(g => g.items);
 
-  const scrollActiveIntoView = () => {
+  const scrollActiveIntoView = useCallback(() => {
     const el = listRef.current?.querySelector(`[data-index="${activeIndex}"]`);
     el?.scrollIntoView({ block: 'nearest' });
-  };
+  }, [activeIndex]);
 
-  useEffect(() => { scrollActiveIntoView(); }, [activeIndex]);
+  useEffect(() => { scrollActiveIntoView(); }, [activeIndex, scrollActiveIntoView]);
 
   const queryClient = useQueryClient();
 

@@ -42,7 +42,7 @@ const ROUTE_TO_MODULE: Record<string, string> = {
 const DashboardLayoutSimple = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const { user, isLoading, isAuthenticated, canAccessModule, hasRole, logout } = useAuth();
+  const { user, isLoading, isAuthenticated, canAccessModule, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -60,7 +60,7 @@ const DashboardLayoutSimple = () => {
       const module = ROUTE_TO_MODULE[link.path];
       return module ? canAccessModule(module) : false;
     });
-  }, [user, canAccessModule, hasRole]);
+  }, [user, canAccessModule]);
 
   // Redirect unauthenticated users to login
   useEffect(() => {

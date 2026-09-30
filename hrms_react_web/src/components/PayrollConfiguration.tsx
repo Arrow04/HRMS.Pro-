@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, Suspense } from 'react';
+import { useMemo, useState, useEffect, useCallback, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -1410,27 +1410,10 @@ function WizardModal(props: {
       setComplianceSaving(false);
     }
   };
-  useEffect(() => {
-    if (tab === 'simulate' && editingId && !simData && !simLoading) runSimulate();
-  }, [tab, editingId]);
-
-  const done = [
-    !!(w.name.trim() && w.companyId != null),
-    true,
-    true,
-    (w.taxRegime.slabs || []).length > 0,
-    true,
-    !!w.registeredState,
-    w.components.some(c => c.component_type === 'earning'),
-    w.components.some(c => c.component_type === 'deduction'),
-    w.components.some(c => c.component_type === 'employer_contribution'),
-  ].filter(Boolean).length;
-  const progress = Math.min(100, Math.round((done / WIZARD_TABS.length) * 100));
-
   const [simData, setSimData] = useState<SimImpact | null>(null);
   const [simLoading, setSimLoading] = useState(false);
   const [simAffectedOnly, setSimAffectedOnly] = useState(true);
-  const runSimulate = async () => {
+  const runSimulate = useCallback(async () => {
     if (!editingId) return;
     setSimLoading(true);
     try {
@@ -1449,7 +1432,24 @@ function WizardModal(props: {
     } finally {
       setSimLoading(false);
     }
-  };
+  }, [editingId, w]);
+
+  useEffect(() => {
+    if (tab === 'simulate' && editingId && !simData && !simLoading) runSimulate();
+  }, [tab, editingId, simData, simLoading, runSimulate]);
+
+  const done = [
+    !!(w.name.trim() && w.companyId != null),
+    true,
+    true,
+    (w.taxRegime.slabs || []).length > 0,
+    true,
+    !!w.registeredState,
+    w.components.some(c => c.component_type === 'earning'),
+    w.components.some(c => c.component_type === 'deduction'),
+    w.components.some(c => c.component_type === 'employer_contribution'),
+  ].filter(Boolean).length;
+  const progress = Math.min(100, Math.round((done / WIZARD_TABS.length) * 100));
 
   const setComp = (i: number, patch: Partial<PayrollTemplateComponent>) => {
     const next = w.components.map((c, idx) => (idx === i ? { ...c, ...patch } : c));
