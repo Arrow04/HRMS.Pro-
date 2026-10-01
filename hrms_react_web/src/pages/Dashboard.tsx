@@ -756,19 +756,15 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Attendance Trend */}
           <ChartCard title="Attendance Trend" subtitle={`${attendanceTrendData.length} months · ${yearLabel}`} icon={Clock} accent="cyan" delay={0}>
-            <div className="overflow-x-auto custom-scrollbar">
-              <div style={{ minWidth: Math.max(400, attendanceTrendData.length * 60) }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                    <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                    <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                    <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </LineChart>
+            </ResponsiveContainer>
           </ChartCard>
 
           {/* Leave Trend */}
@@ -811,27 +807,21 @@ export default function Dashboard() {
 
           {/* Expenses Trend */}
           <ChartCard title="Expenses Trend" subtitle={`${expensesTrendData.length} months · ${yearLabel}`} icon={CreditCard} accent="rose" delay={200}>
-            <div className="overflow-x-auto custom-scrollbar">
-              <div style={{ minWidth: Math.max(400, expensesTrendData.length * 60) }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                    <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                    <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                    <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </LineChart>
+            </ResponsiveContainer>
           </ChartCard>
 
           {/* Payroll Trend */}
           <ChartCard title="Payroll Trend" subtitle={`${payrollTrendData.length} months · ${yearLabel}`} icon={Coins} accent="amber" delay={300}>
-            <div className="overflow-x-auto custom-scrollbar">
-              <div style={{ minWidth: Math.max(400, payrollTrendData.length * 60) }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
                     <defs>
                       <linearGradient id="amberArea" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.25} />
@@ -845,16 +835,12 @@ export default function Dashboard() {
                     <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberArea)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
           </ChartCard>
 
           {/* Performance Trend */}
           <ChartCard title="Performance Trend" subtitle={`${performanceTrendData.length} months · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={400}>
-            <div className="overflow-x-auto custom-scrollbar">
-              <div style={{ minWidth: Math.max(400, performanceTrendData.length * 60) }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
                     <defs>
                       <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
@@ -868,8 +854,6 @@ export default function Dashboard() {
                     <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
           </ChartCard>
 
           {/* Recruitment Pipeline */}
