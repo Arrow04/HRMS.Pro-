@@ -104,6 +104,9 @@ def get_performance_reviews(
             "nextReviewDate": r.next_review_date.isoformat() if r.next_review_date else None,
             "reviewerComments": r.reviewer_comments,
             "goalsAchieved": r.goals_achieved,
+            "company_id": r.company_id,
+            "branch_id": getattr(r, "branch_id", None),
+            "department_id": r.department_id,
             "createdAt": r.created_at.isoformat() if r.created_at else None,
             "updatedAt": r.updated_at.isoformat() if r.updated_at else None,
         }
@@ -210,9 +213,9 @@ def _resolve_scoped_perf_config(db: Session, emp: Employee) -> Optional[dict]:
     branch_ids = _employee_branch_ids(db, emp.id)
 
     def score(c: dict) -> tuple:
-        cid = c.get("companyId")
-        bid = c.get("branchId")
-        did = c.get("departmentId")
+        cid = c.get("company_id") or c.get("companyId")
+        bid = c.get("branch_id") or c.get("branchId")
+        did = c.get("department_id") or c.get("departmentId")
         rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
         cm = (cid is None) or (emp.company_id is not None and cid == emp.company_id)
         bm = (bid is None) or (bid in branch_ids)
@@ -380,6 +383,8 @@ def get_goals(
             "metricType": g.metric_type,
             "targetValue": g.target_value,
             "currentValue": g.current_value,
+            "company_id": g.company_id,
+            "department_id": g.department_id,
             "createdAt": g.created_at.isoformat() if g.created_at else None,
             "updatedAt": g.updated_at.isoformat() if g.updated_at else None,
         })
@@ -530,6 +535,8 @@ def get_feedback(
             "status": f.status,
             "submittedAt": f.submitted_at.isoformat() if f.submitted_at else None,
             "notes": f.notes,
+            "company_id": f.company_id,
+            "department_id": f.department_id,
             "createdAt": f.created_at.isoformat() if f.created_at else None,
         })
     return result

@@ -26,6 +26,7 @@ from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_cri
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
+from core.company_scope import resolve_company_scope
 from core.config import settings
 from core.schemas import (CompanyCreate, UserBase, PermissionBase, ThemeSettings, EmployeeBase, OrganizationBase, AuditLogBase, CompanyBase, PayrollStatusUpdate, GeneralSettingsUpdate, AttendanceSettingsUpdate, LeavePolicyUpdate, PayrollSettingsUpdate, PerformanceSettingsUpdate, NotificationSettingsUpdate, SecuritySettingsUpdate, IntegrationSettingsUpdate, OnboardingStepUpdate, InitiateExitRequest, ExitRecordCreate, ExitRecordUpdate, FnfCalculationRequest, DepartmentBase, LeaveBase, LeaveApprovalAction, AttendanceBase, ClockInRequest, ClockOutRequest, ManualAttendanceCreate, AttendanceSyncRequest, ConflictResolutionRequest, BulkMarkRequest, BranchTransferCreate, BranchBase, DesignationBase, LeaveTypeBase, PayrollCalculateRequest, PayrollCalculateResponse, PayrollBase, SalaryTemplateBase, ShiftBase, DutyRosterBase, JobOpeningBase, CandidateBase, PerformanceReviewBase, GoalBase, FeedbackBase, ExpenseBase, InterviewBase, HolidayBase, AssetBase, AssetUpdate, LeaveBalanceResponse, LeaveBalanceUpdate, NotificationCreate, NotificationResponse, BonusCreate, BonusResponse)
 from core.shared import (RateLimiter, rate_limiter, check_rate_limit, _log, logger, calculate_distance, save_selfie, record_audit_log, seed_initial_data, _create_audit_log, _get_employee_id_for_user)
@@ -516,6 +517,7 @@ def list_configs(
     companyId: int = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return []
@@ -524,8 +526,11 @@ def list_configs(
         return []
     data = org.settings or {}
     configs = data.get(_configs_key(domain), [])
+    scope = resolve_company_scope(db, current_user, companyId, request)
     if companyId is not None:
         configs = [c for c in configs if c.get("company_id") == companyId]
+    elif scope is not None:
+        configs = [c for c in configs if c.get("company_id") in (None, scope)]
     return configs
 
 
@@ -536,12 +541,16 @@ def create_config(
     companyId: int = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
     org = _get_org(db, current_user)
     if not org:
         return {"message": "Could not save configuration"}
+    target_company = companyId if companyId is not None else (payload.get("company_id") or payload.get("companyId"))
+    if target_company is not None:
+        resolve_company_scope(db, current_user, target_company, request)
     data = json.loads(json.dumps(org.settings or {}))
     configs = list(data.get(_configs_key(domain), []))
     new_id = max([c.get("id", 0) for c in configs], default=0) + 1
@@ -561,8 +570,10 @@ def update_config(
     domain: str,
     config_id: int,
     payload: dict,
+    companyId: int = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
@@ -574,8 +585,17 @@ def update_config(
     found = False
     for i, c in enumerate(configs):
         if c.get("id") == config_id:
+            existing_cid = c.get("company_id") or c.get("companyId")
+            if existing_cid is not None:
+                resolve_company_scope(db, current_user, existing_cid, request)
+            payload_cid = payload.get("company_id") or payload.get("companyId")
+            new_cid = companyId if companyId is not None else payload_cid
+            if new_cid is not None:
+                resolve_company_scope(db, current_user, new_cid, request)
             merged = {**c, **{k: v for k, v in payload.items() if v is not None}}
             merged["id"] = config_id
+            if companyId is not None:
+                merged["company_id"] = companyId
             configs[i] = merged
             found = True
             data[_configs_key(domain)] = configs
@@ -586,12 +606,23 @@ def update_config(
         return {"message": "Configuration not found"}
 
 
+_DELETE_ITEM_KEY_MAP = {
+    "reviewCycle": "reviewCycles",
+    "ratingScale": "ratingScales",
+    "competencyCategory": "competencyCategories",
+    "goalCategory": "goalCategories",
+    "feedbackTemplate": "feedbackTemplates",
+}
+
+
 @router.delete("/api/settings/configs/{domain}/{config_id}", tags=["Settings"])
 def delete_config(
     domain: str,
     config_id: int,
+    payload: Optional[dict] = Body(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
@@ -600,6 +631,26 @@ def delete_config(
         return {"message": "Could not delete configuration"}
     data = json.loads(json.dumps(org.settings or {}))
     configs = list(data.get(_configs_key(domain), []))
+    target = next((c for c in configs if c.get("id") == config_id), None)
+    if target is not None:
+        existing_cid = target.get("company_id") or target.get("companyId")
+        if existing_cid is not None:
+            resolve_company_scope(db, current_user, existing_cid, request)
+    payload = payload or {}
+    item_type = payload.get("type")
+    item_id = payload.get("itemId")
+    config_key = _DELETE_ITEM_KEY_MAP.get(item_type) if item_type else None
+    if config_key is not None and item_id is not None:
+        if target is None:
+            return {"message": "Configuration not found"}
+        items = target.get(config_key) or []
+        target[config_key] = [
+            it for it in items if not (isinstance(it, dict) and it.get("id") == item_id)
+        ]
+        data[_configs_key(domain)] = configs
+        org.settings = data
+        db.commit()
+        return {"message": "Item deleted"}
     data[_configs_key(domain)] = [c for c in configs if c.get("id") != config_id]
     org.settings = data
     db.commit()
@@ -652,9 +703,9 @@ def resolve_scoped_config(
             branch_ids = branch_ids if branch_ids is not None else _employee_branch_ids(db, employee_id)
 
     def score(c: dict) -> tuple:
-        cid = c.get("companyId")
-        bid = c.get("branchId")
-        did = c.get("departmentId")
+        cid = c.get("company_id") or c.get("companyId")
+        bid = c.get("branch_id") or c.get("branchId")
+        did = c.get("department_id") or c.get("departmentId")
         rank = 3 if did is not None else 2 if bid is not None else 1 if cid is not None else 0
         company_match = (cid is None) or (company_id is not None and cid == company_id)
         branch_match = (bid is None) or (bid in (branch_ids or []))

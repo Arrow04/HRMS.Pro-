@@ -790,7 +790,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: reviews = [], isLoading, isFetching } = useQuery({
     queryKey: ['performance-reviews', includeInactive],
     queryFn: async () => {
-      const response = await api.get('/performance/reviews', { params: { includeInactive } });
+      const response = await api.get('/performance/reviews', { params: { includeInactive, companyId: companyFilter !== 'all' ? companyFilter : undefined } });
       return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
@@ -799,7 +799,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: goals = [], isLoading: goalsLoading } = useQuery({
     queryKey: ['goals'],
     queryFn: async () => {
-      const response = await api.get('/goals');
+      const response = await api.get('/goals', { params: { companyId: companyFilter !== 'all' ? companyFilter : undefined } });
       return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
@@ -808,7 +808,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: feedback = [], isLoading: feedbackLoading } = useQuery({
     queryKey: ['feedback'],
     queryFn: async () => {
-      const response = await api.get('/feedback');
+      const response = await api.get('/feedback', { params: { companyId: companyFilter !== 'all' ? companyFilter : undefined } });
       return response.data || [];
     },
     staleTime: 2 * 60 * 1000,
@@ -1033,7 +1033,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
   const { data: stats = { totalReviews: 0, completed: 0, pending: 0, avgRating: 0 } } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      const response = await api.get('/performance/stats');
+      const response = await api.get('/performance/stats', { params: { companyId: companyFilter !== 'all' ? companyFilter : undefined } });
       return response.data || { totalReviews: 0, completed: 0, pending: 0, avgRating: 0 };
     },
   });
@@ -2035,6 +2035,12 @@ const [includeInactive, setIncludeInactive] = useState(false);
 
         {activeTab === 'analytics' && (
           <div className="animate-in fade-in duration-300 space-y-6">
+            {(() => {
+              const filteredReviews = companyFilter === 'all' ? reviews : reviews.filter((r: ReviewRow) => String(r.company_id) === companyFilter);
+              const filteredGoals = companyFilter === 'all' ? goals : goals.filter((g: GoalRow) => String(g.company_id) === companyFilter);
+              const filteredFeedback = companyFilter === 'all' ? feedback : feedback.filter((f: FeedbackRow) => String(f.company_id) === companyFilter);
+              return (
+            <>
             {/* Score Distribution Chart */}
             <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
               <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2 mb-4">
@@ -2044,7 +2050,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={(() => {
                     const buckets = [{ name: '1', count: 0 }, { name: '2', count: 0 }, { name: '3', count: 0 }, { name: '4', count: 0 }, { name: '5', count: 0 }];
-                    reviews.forEach((r: ReviewRow) => {
+                    filteredReviews.forEach((r: ReviewRow) => {
                       const s = Math.round(r.overallScore || 0);
                       if (s >= 1 && s <= 5) buckets[s - 1].count++;
                     });
@@ -2071,7 +2077,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                     <PieChart>
                       <Pie data={(() => {
                         const statusMap: Record<string, number> = {};
-                        goals.forEach((g: GoalRow) => { const s = g.status || 'active'; statusMap[s] = (statusMap[s] || 0) + 1; });
+                        filteredGoals.forEach((g: GoalRow) => { const s = g.status || 'active'; statusMap[s] = (statusMap[s] || 0) + 1; });
                         const COLORS = ['#1C64F2', '#10B981', '#F97316', '#64748B'];
                         return Object.entries(statusMap).map(([name, value], i) => ({ name, value, fill: COLORS[i % COLORS.length] }));
                       })()} cx="50%" cy="50%" innerRadius={50} outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
@@ -2091,7 +2097,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={(() => {
                       const typeMap: Record<string, number> = {};
-                      feedback.forEach((f: FeedbackRow) => { const t = f.feedbackType || 'other'; typeMap[t] = (typeMap[t] || 0) + 1; });
+                      filteredFeedback.forEach((f: FeedbackRow) => { const t = f.feedbackType || 'other'; typeMap[t] = (typeMap[t] || 0) + 1; });
                       return Object.entries(typeMap).map(([name, count]) => ({ name, count }));
                     })()}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
@@ -2112,7 +2118,7 @@ const [includeInactive, setIncludeInactive] = useState(false);
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {(['draft', 'submitted', 'acknowledged', 'completed'] as const).map((s) => {
-                  const count = reviews.filter((r: ReviewRow) => r.status === s).length;
+                  const count = filteredReviews.filter((r: ReviewRow) => r.status === s).length;
                   const colorMap: Record<string, string> = {};
                   colorMap['draft'] = "bg-[#F1F5F9] text-[#64748B]";
                   colorMap['submitted'] = "bg-[#FFF7ED] text-[#D97706]";
@@ -2127,6 +2133,9 @@ const [includeInactive, setIncludeInactive] = useState(false);
                 })}
               </div>
             </div>
+            </>
+              );
+            })()}
           </div>
         )}
 
