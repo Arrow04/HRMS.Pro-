@@ -67,6 +67,11 @@ class LocalNLPEngine:
             'employee_search': [
                 (['find employee', 'search employee', 'lookup employee', 'who is', 'employee details', 'employee info'], 0.9),
                 (['locate employee', 'get employee', 'employee profile'], 0.85),
+                (['find', 'search', 'lookup', 'locate', 'show me', 'tell me about', 'details of', 'who works', 'where is'], 0.7),
+            ],
+            'department_roster': [
+                (['department', 'who is in', 'team in', 'members of', 'people in', 'staff in', 'employees in'], 0.85),
+                (['list department', 'show department', 'department members', 'department team', 'department staff'], 0.8),
             ],
             'team_view': [
                 (['my team', 'team members', 'reportees', 'direct reports', 'team overview'], 0.9),
@@ -131,8 +136,11 @@ class LocalNLPEngine:
                 r'\b(next week|next month|this month|last month)\b',
             ],
             'employee_name': [
-                r'(?:find|search|lookup|who is|tell me about|employee)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
+                r'(?:find|search|lookup|who is|tell me about|show me|locate|details of)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
                 r'employee\s+([A-Za-z]+)',
+            ],
+            'department_name': [
+                r'(?:department|team|who is in|members of|people in|staff in|employees in)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)',
             ],
             'leave_type': [
                 r'\b(annual|sick|casual|maternity|paternity|bereavement|compensatory|comp off)\b',
@@ -188,6 +196,10 @@ class LocalNLPEngine:
             'employee_search': [
                 "I can help you search for employees. Please provide a name, email, or employee code.",
                 "Employee search is available. Who are you looking for? I can search by name, email, department, or designation.",
+            ],
+            'department_roster': [
+                "I can show you employees in a department. Which department are you interested in?",
+                "I can list department members. Please specify the department name.",
             ],
             'team_view': [
                 "I can show you your team members and their details.",
@@ -270,6 +282,19 @@ class LocalNLPEngine:
         msg_lower = message.lower().strip()
         words = self._tokenize(msg_lower)
         
+        # Entity-driven override: if a name is mentioned with a search verb, force employee_search
+        entities = self.extract_entities(message)
+        search_verbs = ['find', 'search', 'lookup', 'locate', 'who is', 'show me', 'tell me about', 'details of', 'where is']
+        has_name = bool(entities.get('employee_name'))
+        has_dept = bool(entities.get('department_name'))
+        has_search_verb = any(v in msg_lower for v in search_verbs)
+        
+        if has_dept and ('department' in msg_lower or 'team in' in msg_lower or 'who is in' in msg_lower or 'members of' in msg_lower or 'people in' in msg_lower or 'staff in' in msg_lower or 'employees in' in msg_lower):
+            return 'department_roster', 0.9
+        
+        if has_name and has_search_verb:
+            return 'employee_search', 0.85
+        
         best_intent = 'general'
         best_score = 0.0
         
@@ -298,6 +323,19 @@ class LocalNLPEngine:
     def extract_entities(self, message: str) -> Dict[str, Any]:
         """Extract entities from message"""
         entities = {}
+        stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                      'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
+                      'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+                      'before', 'after', 'above', 'below', 'between', 'out', 'off', 'over',
+                      'under', 'again', 'further', 'then', 'once', 'all', 'any', 'both',
+                      'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor',
+                      'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just',
+                      'because', 'but', 'and', 'or', 'if', 'while', 'about', 'against',
+                      'my', 'your', 'his', 'her', 'its', 'our', 'their', 'what', 'which',
+                      'who', 'whom', 'this', 'that', 'these', 'those', 'i', 'me', 'we',
+                      'you', 'he', 'she', 'it', 'they', 'leave', 'attendance', 'salary',
+                      'payroll', 'policy', 'balance', 'history', 'today', 'tomorrow'}
         
         for entity_type, patterns in self.entity_patterns.items():
             for pattern in patterns:
@@ -305,7 +343,13 @@ class LocalNLPEngine:
                 if matches:
                     if entity_type not in entities:
                         entities[entity_type] = []
-                    entities[entity_type].extend(matches)
+                    if entity_type in ('employee_name', 'department_name'):
+                        for m in matches:
+                            name = m.strip()
+                            if name.lower() not in stop_words and len(name) > 1:
+                                entities[entity_type].append(name)
+                    else:
+                        entities[entity_type].extend(matches)
         
         # Normalize dates
         if 'date' in entities:
@@ -401,14 +445,31 @@ class LocalNLPEngine:
         # Employee search
         if intent == 'employee_search':
             query = message
-            for prefix in ['find employee', 'search employee', 'lookup employee', 'who is', 'tell me about', 'employee details']:
+            for prefix in ['find employee', 'search employee', 'lookup employee', 'who is', 'tell me about', 'employee details', 'find', 'search', 'lookup', 'locate', 'show me', 'details of', 'where is']:
                 if prefix in msg_lower:
                     query = message[len(prefix):].strip()
                     break
+            # If entity extraction found a name, prefer that
+            name_entities = entities.get('employee_name', [])
+            if name_entities:
+                query = name_entities[0]
             
             if query and len(query) > 1:
                 return 'search_employees', {'query': query}
             return 'search_employees', {'query': ''}
+        
+        # Department roster
+        if intent == 'department_roster':
+            dept_entities = entities.get('department_name', [])
+            dept_name = dept_entities[0] if dept_entities else ''
+            # Try to extract department name from message after keywords
+            if not dept_name:
+                for keyword in ['department of ', 'team of ', 'who is in ', 'members of ', 'people in ', 'staff in ', 'employees in ', 'in the ', 'in ']:
+                    if keyword in msg_lower:
+                        idx = msg_lower.index(keyword) + len(keyword)
+                        dept_name = message[idx:].strip()
+                        break
+            return 'search_employees_by_department', {'department_name': dept_name}
         
         # Team view
         if intent == 'team_view':
@@ -551,9 +612,9 @@ class LocalNLPEngine:
         
         elif intent == 'general':
             if confidence < 0.4:
-                base_response = "I'm not sure I understand. Could you please rephrase? I can help with leave, attendance, payroll, and employee-related queries."
+                base_response = "I'm not sure I understand. Could you please rephrase? I can help with employee search, leave, attendance, payroll, department queries, and more. Try: 'Find Tirna' or 'Who is in HR department?'"
             else:
-                base_response = "I can help you with HR-related queries. Please ask about leave, attendance, payroll, or employee information."
+                base_response = "I can help you with:\n• Employee search — try 'Find [name]' or 'Who is [name]?'\n• Department queries — try 'Who is in HR department?'\n• Leave balance and applications\n• Attendance records\n• Payroll and payslips\n• Expense claims\n• Company policies\n\nWhat would you like to know?"
         
         return base_response
     
@@ -562,7 +623,7 @@ class LocalNLPEngine:
         role = context.role or 'employee'
         
         base_suggestions = {
-            'greeting': ["Check my leave balance", "View my attendance", "Download payslip", "Find employee", "Submit expense claim", "Request asset"],
+            'greeting': ["Find employee", "Who is in HR department?", "Check my leave balance", "View my attendance", "Download payslip", "Submit expense claim"],
             'leave_balance_query': ["Apply for leave", "Leave history", "Leave policy", "Cancel leave"],
             'leave_application': ["Check balance first", "Leave policy", "Cancel leave"],
             'leave_history_query': ["Apply for leave", "Leave balance", "Leave policy"],
@@ -570,6 +631,7 @@ class LocalNLPEngine:
             'attendance_correction': ["View attendance", "Attendance policy", "Mark attendance"],
             'payroll_query': ["Download payslip", "Tax forms", "Salary breakdown"],
             'employee_search': ["View profile", "Contact info", "Department"],
+            'department_roster': ["Find employee", "Department details", "Team members"],
             'team_view': ["Attendance summary", "Leave approvals", "Performance"],
             'policy_query': ["Leave policy", "Attendance policy", "Expense policy", "Code of conduct"],
             'onboarding_query': ["View tasks", "IT setup", "Orientation schedule"],

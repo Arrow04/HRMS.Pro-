@@ -29,6 +29,7 @@ class ActionPermission(str, Enum):
 
 ACTION_PERMISSIONS: Dict[str, Dict[str, ActionPermission]] = {
     "search_employees": {"employee": ActionPermission.READ_ALL, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
+    "search_employees_by_department": {"employee": ActionPermission.READ_ALL, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
     "view_employee_profile": {"employee": ActionPermission.READ_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
     "update_contact_info": {"employee": ActionPermission.WRITE_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.WRITE_ALL, "admin": ActionPermission.WRITE_ALL},
     
@@ -84,6 +85,7 @@ class AIActionExecutor:
         self.db_session_factory = db_session_factory
         self._action_registry: Dict[str, Callable] = {
             "search_employees": self._action_search_employees,
+            "search_employees_by_department": self._action_search_employees_by_department,
             "view_employee_profile": self._action_view_employee_profile,
             "update_contact_info": self._action_update_contact_info,
             "check_leave_balance": self._action_check_leave_balance,
@@ -283,6 +285,52 @@ class AIActionExecutor:
             return {"success": True, "data": results, "count": len(results), "message": f"Found {len(results)} employee(s) matching '{query}'."}
         except Exception as e:
             return {"success": False, "error": str(e), "message": f"Search failed: {str(e)}"}
+    
+    def _action_search_employees_by_department(self, params: Dict, context: AIContext, db: Session) -> Dict[str, Any]:
+        dept_name = params.get("department_name", "")
+        if not dept_name:
+            return {"success": False, "error": "department_name required", "message": "Please specify a department name."}
+        try:
+            from models import Employee, Department
+            from sqlalchemy import or_
+            
+            # Find the department by name (fuzzy match)
+            dept = db.query(Department).filter(
+                Department.organization_id == context.organization_id,
+                Department.deleted_at == None,
+                or_(
+                    Department.name.ilike(f"%{dept_name}%"),
+                    Department.code.ilike(f"%{dept_name}%"),
+                )
+            ).first()
+            
+            if not dept:
+                return {"success": False, "error": "department_not_found", "message": f"No department found matching '{dept_name}'."}
+            
+            # Get employees in that department
+            employees = db.query(Employee).filter(
+                Employee.department_id == dept.id,
+                Employee.organization_id == context.organization_id,
+                Employee.deleted_at == None,
+            ).limit(50).all()
+            
+            results = []
+            for emp in employees:
+                results.append({
+                    "id": emp.id,
+                    "name": f"{emp.first_name or ''} {emp.last_name or ''}".strip(),
+                    "email": emp.email,
+                    "designation": emp.designation,
+                    "employee_code": emp.employee_code,
+                    "status": emp.status,
+                })
+            
+            if not results:
+                return {"success": True, "data": [], "count": 0, "message": f"No active employees found in {dept.name}."}
+            
+            return {"success": True, "data": results, "count": len(results), "message": f"Found {len(results)} employee(s) in {dept.name}."}
+        except Exception as e:
+            return {"success": False, "error": str(e), "message": f"Department search failed: {str(e)}"}
     
     def _action_view_employee_profile(self, params: Dict, context: AIContext, db: Session) -> Dict[str, Any]:
         emp_id = params.get("employee_id") or context.employee_id
