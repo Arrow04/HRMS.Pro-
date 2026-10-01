@@ -1106,6 +1106,10 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const handleSubmit = async () => {
     // Sync unsaved name before submit (in case user didn't blur the field)
     const { firstName, lastName } = splitEmployeeName(fullNameText);
+    if (!fullNameText.trim()) {
+      toast.error('Full name is required');
+      return;
+    }
     set({ firstName, lastName });
     onSubmit();
   };
