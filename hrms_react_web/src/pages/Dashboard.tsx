@@ -759,7 +759,7 @@ export default function Dashboard() {
             <div className="overflow-x-auto custom-scrollbar">
               <div style={{ minWidth: Math.max(400, attendanceTrendData.length * 60) }}>
                 <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                  <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                     <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                     <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
@@ -814,7 +814,7 @@ export default function Dashboard() {
             <div className="overflow-x-auto custom-scrollbar">
               <div style={{ minWidth: Math.max(400, expensesTrendData.length * 60) }}>
                 <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                  <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                     <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
                     <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
@@ -831,7 +831,7 @@ export default function Dashboard() {
             <div className="overflow-x-auto custom-scrollbar">
               <div style={{ minWidth: Math.max(400, payrollTrendData.length * 60) }}>
                 <ResponsiveContainer width="100%" height={280}>
-                  <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
+                  <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
                     <defs>
                       <linearGradient id="amberArea" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.25} />
