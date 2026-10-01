@@ -72,15 +72,30 @@ def resolve_company_scope(
     """
     allowed = get_user_company_ids(db, user)
     if allowed is None:
-        if requested_id in (None, "", "all"):
-            if request is not None:
-                from core.tenant import get_header_company_id
+        # Admin/superadmin: may see all companies in their org. When a specific
+        # company is requested (param or header), it must belong to the caller's
+        # organization — otherwise another tenant's company id would leak data.
+        asked = requested_id
+        if asked in (None, "", "all") and request is not None:
+            from core.tenant import get_header_company_id
 
-                hdr = get_header_company_id(request)
-                if hdr not in (None, "", "all"):
-                    return int(hdr)
+            asked = get_header_company_id(request)
+        if asked in (None, "", "all"):
             return None
-        return int(requested_id)
+        try:
+            asked_int = int(asked)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid company id")
+        from models import Company
+
+        company = db.query(Company).filter(
+            Company.id == asked_int,
+            Company.organization_id == user.organization_id,
+            Company.deleted_at.is_(None),
+        ).first()
+        if not company:
+            raise HTTPException(status_code=403, detail="Company not found in your organization")
+        return asked_int
     # Restricted caller: determine what was asked (explicit param wins, then header).
     asked = requested_id
     if asked in (None, "", "all") and request is not None:
@@ -104,6 +119,25 @@ def assert_company_allowed(db: Session, user, company_id) -> None:
     """Raise 403 unless the caller may access records of this company."""
     allowed = get_user_company_ids(db, user)
     if allowed is None:
+        # Admin/superadmin: still enforce org isolation on the company scope.
+        # A specific company id must belong to the caller's organization.
+        # When company_id is None (org-wide record) there is nothing further
+        # to verify from the company id — the record is visible to all in org.
+        if company_id in (None, "", 0):
+            return
+        try:
+            cid = int(company_id)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        from models import Company
+
+        company = db.query(Company).filter(
+            Company.id == cid,
+            Company.organization_id == user.organization_id,
+            Company.deleted_at.is_(None),
+        ).first()
+        if not company:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
         return
     if company_id is None:
         return  # org-wide record (global default) — visible to all in org

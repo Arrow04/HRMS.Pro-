@@ -25,7 +25,7 @@ from sqlalchemy.orm import ORMExecuteState, Session, joinedload, with_loader_cri
 
 from core.auth import check_role, get_current_user, get_password_hash, oauth2_scheme
 from core.tenant import get_employee_in_org, org_owned, get_header_company_id
-from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company
+from core.company_scope import resolve_company_scope, assert_company_allowed, require_write_company, get_user_company_ids
 from core.cache import CACHING_AVAILABLE, cached, get_cache_stats, invalidate_cache
 from core.config import settings
 from core.datetime_utils import ist_now_naive
@@ -41,7 +41,6 @@ router = APIRouter(tags=["Performance"])
 
 
 
-@cached(ttl=60)
 @router.get("/api/performance/reviews", tags=["Performance"])
 def get_performance_reviews(
     employeeId: Optional[int] = None,
@@ -441,7 +440,13 @@ def update_goal(
         raise HTTPException(status_code=404, detail="Goal not found")
     if current_user.role != "superadmin":
         org_owned(goal, current_user.organization_id)
+    assert_company_allowed(db, current_user, goal.company_id)
     data = convert_camel_to_snake(goal_data.model_dump())
+    if data.get("employee_id") is not None and current_user.role != "superadmin":
+        get_employee_in_org(db, Employee, data["employee_id"], current_user.organization_id)
+        _g_emp = db.query(Employee).filter(Employee.id == data["employee_id"]).first()
+        if _g_emp is not None:
+            assert_company_allowed(db, current_user, _g_emp.company_id)
     if "end_date" in data and data["end_date"]:
         try:
             data["target_date"] = dateparser.parse(str(data.pop("end_date")))
@@ -573,7 +578,13 @@ def update_feedback(
         raise HTTPException(status_code=404, detail="Feedback not found")
     if current_user.role != "superadmin":
         org_owned(fb, current_user.organization_id)
+    assert_company_allowed(db, current_user, fb.company_id)
     data = convert_camel_to_snake(feedback_data.model_dump())
+    if data.get("employee_id") is not None and current_user.role != "superadmin":
+        get_employee_in_org(db, Employee, data["employee_id"], current_user.organization_id)
+        _fb_emp = db.query(Employee).filter(Employee.id == data["employee_id"]).first()
+        if _fb_emp is not None:
+            assert_company_allowed(db, current_user, _fb_emp.company_id)
     for k, v in data.items():
         if hasattr(Feedback, k) and v is not None:
             setattr(fb, k, v)
@@ -582,7 +593,6 @@ def update_feedback(
     return {"message": "Feedback updated", "feedbackId": fb.id}
 
 
-@cached(ttl=60)
 @router.get("/api/performance/stats", tags=["Performance"])
 def get_performance_stats(
     organizationId: Optional[int] = None,
@@ -743,8 +753,13 @@ def bulk_upload_performance(
         emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
         if not emp:
             continue
-        if current_user.role != "superadmin" and emp.organization_id != current_user.organization_id:
-            continue
+        if current_user.role != "superadmin":
+            if emp.organization_id != current_user.organization_id:
+                continue
+            try:
+                assert_company_allowed(db, current_user, emp.company_id)
+            except HTTPException:
+                continue
         review_period = (row.get("reviewPeriod") or row.get("review_period") or "").strip() or "Annual"
         review_year = None
         try:
@@ -815,6 +830,7 @@ def delete_goal(
         raise HTTPException(status_code=404, detail="Goal not found")
     if current_user.role != "superadmin":
         org_owned(goal, current_user.organization_id)
+    assert_company_allowed(db, current_user, goal.company_id)
     goal.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Goal deleted"}
@@ -831,6 +847,7 @@ def delete_feedback(
         raise HTTPException(status_code=404, detail="Feedback not found")
     if current_user.role != "superadmin":
         org_owned(fb, current_user.organization_id)
+    assert_company_allowed(db, current_user, fb.company_id)
     fb.deleted_at = ist_now_naive()
     db.commit()
     return {"message": "Feedback deleted"}

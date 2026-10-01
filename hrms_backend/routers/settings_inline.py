@@ -336,7 +336,7 @@ def update_payroll_settings(
 @router.get("/api/settings/performance", tags=["Settings"])
 def get_performance_settings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(check_role(["admin", "hr_admin", "superadmin"])),
 ):
     defaults = {
         "reviewCycle": "half-yearly",
@@ -356,7 +356,7 @@ def get_performance_settings(
 def update_performance_settings(
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(check_role(["admin", "hr_admin", "superadmin"])),
 ):
     org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == current_user.organization_id).first() if current_user.organization_id else None
     if not org:
@@ -511,6 +511,18 @@ def _configs_key(domain):
     return f"{domain}_configs"
 
 
+_PERFORMANCE_CONFIG_ROLES = ("admin", "hr_admin", "superadmin")
+
+
+def _require_performance_config_role(current_user: User, domain: str) -> None:
+    """Admin-only guard for performance config endpoints (other domains keep existing rules)."""
+    if domain == "performance" and (current_user.role or "") not in _PERFORMANCE_CONFIG_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role '{current_user.role}' does not have permission to access this resource",
+        )
+
+
 @router.get("/api/settings/configs/{domain}", tags=["Settings"])
 def list_configs(
     domain: str,
@@ -521,6 +533,7 @@ def list_configs(
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return []
+    _require_performance_config_role(current_user, domain)
     org = _get_org(db, current_user)
     if not org:
         return []
@@ -545,6 +558,7 @@ def create_config(
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
+    _require_performance_config_role(current_user, domain)
     org = _get_org(db, current_user)
     if not org:
         return {"message": "Could not save configuration"}
@@ -577,6 +591,7 @@ def update_config(
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
+    _require_performance_config_role(current_user, domain)
     org = _get_org(db, current_user)
     if not org:
         return {"message": "Could not update configuration"}
@@ -626,6 +641,7 @@ def delete_config(
 ):
     if domain not in VALID_CONFIG_DOMAINS:
         return {"message": "Invalid domain"}
+    _require_performance_config_role(current_user, domain)
     org = _get_org(db, current_user)
     if not org:
         return {"message": "Could not delete configuration"}
