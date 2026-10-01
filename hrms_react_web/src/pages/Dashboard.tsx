@@ -757,9 +757,9 @@ export default function Dashboard() {
           {/* Attendance Trend */}
           <ChartCard title="Attendance Trend" subtitle={`${attendanceTrendData.length} months · ${yearLabel}`} icon={Clock} accent="cyan" delay={0}>
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                 <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
@@ -768,49 +768,30 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Leave Trend */}
-          {(() => {
-            const count = leaveTrendData.length;
-            const chartHeight = Math.max(280, Math.min(480, count * 36));
-            const rotateLabels = count > 12;
-            return (
-              <ChartCard title="Leave Trend" subtitle={`${count} months · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={100}>
-                <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 400 }}>
-                  <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart data={leaveTrendData} margin={{ top: 10, right: 20, left: -10, bottom: rotateLabels ? 60 : 5 }}>
-                      <defs>
-                        <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.9} />
-                          <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.5} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                      <XAxis
-                        dataKey="month"
-                        {...AXIS_STYLE}
-                        interval={0}
-                        tickLine={false}
-                        axisLine={false}
-                        angle={rotateLabels ? -45 : 0}
-                        textAnchor={rotateLabels ? 'end' : 'middle'}
-                        height={rotateLabels ? 70 : 30}
-                        tick={rotateLabels ? { fontSize: 10, fill: '#94A3B8' } : undefined}
-                      />
-                      <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                      <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            );
-          })()}
+          <ChartCard title="Leave Trend" subtitle={`${leaveTrendData.length} months · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={100}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={leaveTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="emeraldBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
 
           {/* Expenses Trend */}
           <ChartCard title="Expenses Trend" subtitle={`${expensesTrendData.length} months · ${yearLabel}`} icon={CreditCard} accent="rose" delay={200}>
             <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={expensesTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
+              <LineChart data={expensesTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                 <Line type="monotone" dataKey="expenses" stroke={ACCENT_COLORS.rose} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.rose, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
@@ -821,78 +802,59 @@ export default function Dashboard() {
           {/* Payroll Trend */}
           <ChartCard title="Payroll Trend" subtitle={`${payrollTrendData.length} months · ${yearLabel}`} icon={Coins} accent="amber" delay={300}>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={payrollTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
-                    <defs>
-                      <linearGradient id="amberArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.25} />
-                        <stop offset="100%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.01} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                    <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                    <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                    <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberArea)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <AreaChart data={payrollTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="amberArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.amber} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Area type="monotone" dataKey="payroll" stroke={ACCENT_COLORS.amber} strokeWidth={2.5} fill="url(#amberArea)" dot={{ fill: ACCENT_COLORS.amber, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </ChartCard>
 
           {/* Performance Trend */}
           <ChartCard title="Performance Trend" subtitle={`${performanceTrendData.length} months · ${yearLabel}`} icon={TrendingUp} accent="emerald" delay={400}>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 20, left: -10, bottom: 15 }}>
-                    <defs>
-                      <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
-                        <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.01} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                    <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} />
-                    <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                    <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <AreaChart data={performanceTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="emeraldArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.emerald} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                <YAxis {...AXIS_STYLE} domain={[0, 5]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Area type="monotone" dataKey="rating" name="Rating" stroke={ACCENT_COLORS.emerald} strokeWidth={2.5} fill="url(#emeraldArea)" dot={{ fill: ACCENT_COLORS.emerald, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </ChartCard>
 
           {/* Recruitment Pipeline */}
-          {(() => {
-            const count = recruitmentTrendData.length;
-            const chartHeight = Math.max(280, Math.min(480, count * 36));
-            const rotateLabels = count > 12;
-            return (
-              <ChartCard title="Recruitment Pipeline" subtitle={`${count} months · ${yearLabel}`} icon={Briefcase} accent="violet" delay={500}>
-                <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 400 }}>
-                  <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 20, left: -10, bottom: rotateLabels ? 60 : 5 }}>
-                      <defs>
-                        <linearGradient id="violetBar" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.9} />
-                          <stop offset="100%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.5} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                      <XAxis
-                        dataKey="month"
-                        {...AXIS_STYLE}
-                        interval={0}
-                        tickLine={false}
-                        axisLine={false}
-                        angle={rotateLabels ? -45 : 0}
-                        textAnchor={rotateLabels ? 'end' : 'middle'}
-                        height={rotateLabels ? 70 : 30}
-                        tick={rotateLabels ? { fontSize: 10, fill: '#94A3B8' } : undefined}
-                      />
-                      <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                      <Bar dataKey="candidates" name="Candidates" fill="url(#violetBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            );
-          })()}
+          <ChartCard title="Recruitment Pipeline" subtitle={`${recruitmentTrendData.length} months · ${yearLabel}`} icon={Briefcase} accent="violet" delay={500}>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={recruitmentTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="violetBar" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.9} />
+                    <stop offset="100%" stopColor={ACCENT_COLORS.violet} stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Bar dataKey="recruitment" name="Recruitment" fill="url(#violetBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
         </div>
         )}
       </div>
