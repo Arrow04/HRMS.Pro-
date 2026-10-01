@@ -703,7 +703,7 @@ export default function Dashboard() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
                       <XAxis dataKey="shortName" {...AXIS_STYLE} tickLine={false} axisLine={false} interval={0} />
                       <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} labelFormatter={(label) => deptData.find(d => d.shortName === label)?.name || label} />
                       <Bar dataKey="value" name="Employees" fill="url(#deptDistBar)" radius={[8, 8, 0, 0]} maxBarSize={40}>
                         {deptData.map((_entry: { name: string; shortName: string; value: number }, index: number) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
