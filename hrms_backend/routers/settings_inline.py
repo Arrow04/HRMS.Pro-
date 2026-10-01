@@ -336,7 +336,7 @@ def update_payroll_settings(
 @router.get("/api/settings/performance", tags=["Settings"])
 def get_performance_settings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_role(["admin", "hr_admin", "superadmin"])),
+    current_user: User = Depends(check_role(["admin", "hr_admin"])),
 ):
     defaults = {
         "reviewCycle": "half-yearly",
@@ -356,7 +356,7 @@ def get_performance_settings(
 def update_performance_settings(
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(check_role(["admin", "hr_admin", "superadmin"])),
+    current_user: User = Depends(check_role(["admin", "hr_admin"])),
 ):
     org = db.query(Organization).filter(Organization.deleted_at.is_(None), Organization.id == current_user.organization_id).first() if current_user.organization_id else None
     if not org:
@@ -511,7 +511,7 @@ def _configs_key(domain):
     return f"{domain}_configs"
 
 
-_PERFORMANCE_CONFIG_ROLES = ("admin", "hr_admin", "superadmin")
+_PERFORMANCE_CONFIG_ROLES = ("admin", "hr_admin")
 
 
 def _require_performance_config_role(current_user: User, domain: str) -> None:
