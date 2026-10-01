@@ -339,6 +339,11 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const { isIndia, dialCode, currency } = useAppConfig();
   const currencySymbol = getCurrencySymbol(currency);
   const [tab, setTab] = useState('personal');
+  const [fullNameText, setFullNameText] = useState(() => joinEmployeeName(formData.firstName, formData.lastName));
+  // Sync fullNameText when formData changes externally (e.g., editing existing employee)
+  useEffect(() => {
+    setFullNameText(joinEmployeeName(formData.firstName, formData.lastName));
+  }, [formData.firstName, formData.lastName]);
   const [showPassword, setShowPassword] = useState(false);
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
   const [branchSearch, setBranchSearch] = useState('');
@@ -1547,10 +1552,12 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 <div className={empGridClass}>
                   <div>
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Full Name *</label>
-                    <input type="text" value={joinEmployeeName(formData.firstName, formData.lastName)}
-                      onChange={(e) => {
-                        const { firstName, lastName } = splitEmployeeName(e.target.value);
+                    <input type="text" value={fullNameText}
+                      onChange={(e) => setFullNameText(e.target.value)}
+                      onBlur={() => {
+                        const { firstName, lastName } = splitEmployeeName(fullNameText);
                         set({ firstName, lastName });
+                        setFullNameText(joinEmployeeName(firstName, lastName));
                       }}
                       className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="Enter full legal name" />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Full legal name as per ID documents</p>
