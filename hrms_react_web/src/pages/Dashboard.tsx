@@ -676,7 +676,7 @@ export default function Dashboard() {
                 <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" fill="url(#ageBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
+                <Bar dataKey="value" name="Employees" fill="url(#ageBar)" radius={[8, 8, 0, 0]} maxBarSize={44} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
