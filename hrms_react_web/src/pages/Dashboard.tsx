@@ -18,7 +18,6 @@ import {
   FileText,
   Palmtree,
   FileBarChart,
-  Database,
   Settings,
   FileSpreadsheet,
   CheckCircle,
@@ -575,7 +574,7 @@ export default function Dashboard() {
                 <XAxis dataKey="name" {...AXIS_STYLE} tickLine={false} axisLine={false} />
                 <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Bar dataKey="value" radius={[8, 8, 0, 0]} maxBarSize={44}>
+                  <Bar dataKey="value" name="Count" radius={[8, 8, 0, 0]} maxBarSize={44}>
                   {[
                     { name: 'Companies', value: stats.totalCompanies, color: '#8B5CF6' },
                     { name: 'Branches', value: stats.totalBranches, color: '#A855F7' },
@@ -754,21 +753,8 @@ export default function Dashboard() {
         )}
         {analyticsTab === 'trends' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Attendance Trend */}
-          <ChartCard title="Attendance Trend" subtitle={`${attendanceTrendData.length} months · ${yearLabel}`} icon={Clock} accent="cyan" delay={0}>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
-                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
-                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
           {/* Leave Trend */}
-          <ChartCard title="Leave Trend" subtitle={`${leaveTrendData.length} months · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={100}>
+          <ChartCard title="Leave Trend" subtitle={`${leaveTrendData.length} months · ${yearLabel}`} icon={CalendarCheck} accent="emerald" delay={0}>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={leaveTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                 <defs>
@@ -783,6 +769,19 @@ export default function Dashboard() {
                 <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                 <Bar dataKey="leaves" name="Leaves" fill="url(#emeraldBar)" radius={[8, 8, 0, 0]} maxBarSize={32} />
               </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          {/* Attendance Trend */}
+          <ChartCard title="Attendance Trend" subtitle={`${attendanceTrendData.length} months · ${yearLabel}`} icon={Clock} accent="cyan" delay={100}>
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
+                <XAxis dataKey="month" {...AXIS_STYLE} interval={0} tickLine={false} axisLine={false} angle={-40} textAnchor="end" height={50} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
+                <Line type="monotone" dataKey="attendance" stroke={ACCENT_COLORS.cyan} strokeWidth={2.5} dot={{ fill: ACCENT_COLORS.cyan, r: 3, strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff', className: 'drop-shadow-md' }} />
+              </LineChart>
             </ResponsiveContainer>
           </ChartCard>
 
@@ -864,25 +863,24 @@ export default function Dashboard() {
         <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-heading)' }}>Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <QuickActionButton icon={Building} label="Company" description="Manage organization" accent="indigo" onClick={() => navigate('/company')} />
+          <QuickActionButton icon={Briefcase} label="Recruitment" description="Hiring pipeline" accent="violet" onClick={() => navigate('/recruitment')} />
           <QuickActionButton icon={Users} label="Employees" description={`Manage staff (${stats.totalEmployees})`} accent="emerald" onClick={() => navigate('/employees')} />
           <QuickActionButton icon={FileText} label="Letters" description="Offer & relieving letters" accent="indigo" onClick={() => navigate('/letters')} />
           <QuickActionButton icon={Clock} label="Attendance" description="Track attendance" accent="cyan" onClick={() => navigate('/attendance')} />
           <QuickActionButton icon={CalendarCheck} label="Leaves" description="Manage leave requests" accent="rose" onClick={() => navigate('/leaves')} />
-          <QuickActionButton icon={Coins} label="Payroll" description="Salary management" accent="orange" onClick={() => navigate('/payroll')} />
-          <QuickActionButton icon={Briefcase} label="Recruitment" description="Hiring pipeline" accent="violet" onClick={() => navigate('/recruitment')} />
-          <QuickActionButton icon={TrendingUp} label="Performance" description="Employee reviews" accent="teal" onClick={() => navigate('/performance')} />
-          <QuickActionButton icon={CreditCard} label="Expenses" description="Expense claims" accent="pink" onClick={() => navigate('/expenses')} />
           <QuickActionButton icon={Palmtree} label="Holidays" description="Holiday calendar" accent="amber" onClick={() => navigate('/holidays')} />
-          <QuickActionButton icon={FileBarChart} label="Reports" description="Analytics & reports" accent="lime" onClick={() => navigate('/reports')} />
-          <QuickActionButton icon={Database} label="Master Data" description="Master settings" accent="slate" onClick={() => navigate('/master-data')} />
-          <QuickActionButton icon={Settings} label="Settings" description="System config" accent="gray" onClick={() => navigate('/settings')} />
+          <QuickActionButton icon={CreditCard} label="Expenses" description="Expense claims" accent="pink" onClick={() => navigate('/expenses')} />
           <QuickActionButton icon={Monitor} label="Assets" description="Asset management" accent="blue" onClick={() => navigate('/assets')} />
+          <QuickActionButton icon={TrendingUp} label="Performance" description="Employee reviews" accent="teal" onClick={() => navigate('/performance')} />
+          <QuickActionButton icon={Coins} label="Payroll" description="Salary management" accent="orange" onClick={() => navigate('/payroll')} />
           <QuickActionButton icon={LogOut} label="Exit Management" description="Employee exits" accent="rose" onClick={() => navigate('/exit-management')} />
           <QuickActionButton icon={ShieldAlert} label="Anomalies" description="Detect anomalies" accent="amber" onClick={() => navigate('/anomalies')} />
-          <QuickActionButton icon={MessageSquare} label="Grievances" description="Resolve complaints" accent="orange" onClick={() => navigate('/grievances')} />
+          <QuickActionButton icon={FileBarChart} label="Reports" description="Analytics & reports" accent="lime" onClick={() => navigate('/reports')} />
           <QuickActionButton icon={Megaphone} label="Announcements" description="Company updates" accent="violet" onClick={() => navigate('/announcements')} />
+          <QuickActionButton icon={MessageSquare} label="Grievances" description="Resolve complaints" accent="orange" onClick={() => navigate('/grievances')} />
           <QuickActionButton icon={Bell} label="Notifications" description="Alerts & messages" accent="blue" onClick={() => navigate('/notifications')} />
           <QuickActionButton icon={Headset} label="Helpdesk" description="IT & facility tickets" accent="cyan" onClick={() => navigate('/helpdesk')} />
+          <QuickActionButton icon={Settings} label="Settings" description="System config" accent="gray" onClick={() => navigate('/settings')} />
         </div>
       </div>
 
