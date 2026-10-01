@@ -162,6 +162,7 @@ interface DashboardSummary {
     jobOffered?: number;
   };
   departmentDistribution?: Record<string, number>;
+  departmentCodes?: Record<string, string>;
   ageDistribution?: Record<string, number>;
   averagePerformanceRating?: number;
   reviewsThisMonth?: number;
@@ -332,6 +333,7 @@ export default function Dashboard() {
       reviewsThisMonth: summary.reviewsThisMonth || 0,
       onLeaveToday: a.onLeaveToday || 0,
       departmentDistribution: deptDist,
+      departmentCodes: summary.departmentCodes || {},
       ageDistribution: ageDist,
       genderRatio,
       joinAttritionRatio,
@@ -685,7 +687,7 @@ export default function Dashboard() {
             const chartHeight = Math.max(280, Math.min(600, deptCount * 36));
             const deptData = stats.departmentDistribution.map((d: { name: string; value: number }) => ({
               ...d,
-              shortName: d.name.length > 14 ? d.name.slice(0, 12) + '…' : d.name,
+              shortName: stats.departmentCodes?.[d.name] || d.name,
             }));
             return (
               <ChartCard title="Department Distribution" subtitle={`${deptCount} departments`} icon={Building} accent="violet" delay={400}>

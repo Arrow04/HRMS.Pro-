@@ -89,6 +89,7 @@ def get_dashboard_summary(
 
     # --- Department distribution (single query with all filters applied) ---
     dept_dist = {}
+    dept_codes = {}
     dept_q = db.query(Employee.department_id, func.count(Employee.id)).filter(Employee.deleted_at.is_(None))
     if org_id:
         dept_q = dept_q.filter(Employee.organization_id == org_id)
@@ -98,10 +99,12 @@ def get_dashboard_summary(
     dept_names_map = {}
     if dept_counts:
         dept_ids = list(dept_counts.keys())
-        for dname, did in db.query(Department.name, Department.id).filter(
+        for dname, did, dcode in db.query(Department.name, Department.id, Department.code).filter(
             Department.id.in_(dept_ids), Department.deleted_at.is_(None)
         ).all():
             dept_names_map[did] = dname
+            if dcode:
+                dept_codes[dname] = dcode
     for did, cnt in dept_counts.items():
         name = dept_names_map.get(did, f"Department {did}")
         if cnt > 0:
@@ -522,6 +525,7 @@ def get_dashboard_summary(
             "jobOffered": job_offered,
         },
         "departmentDistribution": dept_dist,
+        "departmentCodes": dept_codes,
         "ageDistribution": age_brackets,
         "upcomingHolidays": holidays_list,
         "averagePerformanceRating": round(avg_rating, 2),
