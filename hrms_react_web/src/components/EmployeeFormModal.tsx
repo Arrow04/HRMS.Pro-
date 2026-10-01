@@ -1251,7 +1251,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               <div className="space-y-4">
                 <div className={empGridClass}>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Company <span className="text-xs text-gray-500 font-normal ml-1">(Select the legal entity)</span></label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Company <span className="text-red-500">*</span> <span className="text-xs text-gray-500 font-normal ml-1">(Select the legal entity)</span></label>
                     <SearchableSelect
                       value={input(formData.companyId)}
                       onChange={(v) => { const cid = String(v); set({ companyId: cid, branchIds: [], departmentId: '', designationId: '' }); }}
@@ -1264,7 +1264,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select the legal entity</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Department <span className="text-xs text-gray-500 font-normal ml-1">(Primary department)</span></label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Department <span className="text-red-500">*</span> <span className="text-xs text-gray-500 font-normal ml-1">(Primary department)</span></label>
                     <SearchableSelect
                       value={input(formData.departmentId)}
                       onChange={(v) => set({ departmentId: String(v) })}
@@ -1277,7 +1277,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select primary department</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Designation</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Designation <span className="text-red-500">*</span></label>
                     <SearchableSelect
                       value={input(formData.designationId)}
                       onChange={(v) => set({ designationId: String(v) })}
@@ -1290,7 +1290,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select job title/role</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Employment Type</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Employment Type <span className="text-red-500">*</span></label>
                     <SearchableSelect
                       value={input(formData.employmentType) as string}
                       onChange={(v) => set({ employmentType: String(v) })}
@@ -1388,7 +1388,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Join Date</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Join Date <span className="text-red-500">*</span></label>
                     <DatePicker value={input(formData.joinDate)} maxDate={new Date()} onChange={(val) => set({ joinDate: val })} />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Date of joining, dd-mm-yyyy</p>
                   </div>
@@ -1409,7 +1409,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                    </div>
                   {showStatus && (
                     <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Status</label>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Status <span className="text-red-500">*</span></label>
                       <SearchableSelect
                         value={input(formData.status)}
                         onChange={(v) => set({ status: String(v) })}
@@ -1445,14 +1445,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
                   <div className={empGridClass}>
                     <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Email <span className="text-[#059669] font-normal">(Primary Login ID)</span></label>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Email <span className="text-red-500">*</span> <span className="text-[#059669] font-normal">(Primary Login ID)</span></label>
                       <input type="email" value={input(formData.email)} onChange={(e) => handleAutoDuplicate('email', 'email', e.target.value, emailDupTimer)}
                         className={inputCls()} style={{ ['--tw-ring-color' as string]: accent }} placeholder="name@company.com" />
                       <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Primary login ID — used to sign in.</p>
                       <FieldError name="email" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Phone Number <span className="text-[#059669] font-normal">(Secondary Login ID)</span></label>
+                      <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Phone Number <span className="text-red-500">*</span> <span className="text-[#059669] font-normal">(Secondary Login ID)</span></label>
                       <PhoneInput value={input(formData.phone)} onChange={(v) => handleAutoDuplicate('phone', 'phone', v, phoneDupTimer)}
                         defaultDial={dialCode}
                         placeholder="+91 98765 43210" inputClassName={formInputClass} />
@@ -1556,7 +1556,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               <div className="space-y-4">
                 <div className={empGridClass}>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Full Name *</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Full Name <span className="text-red-500">*</span></label>
                     <input type="text" value={fullNameText}
                       onChange={(e) => setFullNameText(e.target.value)}
                       onBlur={() => {
@@ -1622,7 +1622,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Select marital status</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Date of Birth</label>
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Date of Birth <span className="text-red-500">*</span></label>
                     <DatePicker value={input(formData.dateOfBirth)} maxDate={new Date()} onChange={(val) => set({ dateOfBirth: val })} />
                     <p className="mt-1 text-xs text-gray-400 min-h-[16px] leading-4">Date of birth, dd-mm-yyyy</p>
                   </div>
