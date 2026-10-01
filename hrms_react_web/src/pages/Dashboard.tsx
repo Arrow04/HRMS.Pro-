@@ -699,7 +699,7 @@ export default function Dashboard() {
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F8FAFC" />
-                      <XAxis dataKey="shortName" {...AXIS_STYLE} tickLine={false} axisLine={false} />
+                      <XAxis dataKey="shortName" {...AXIS_STYLE} tickLine={false} axisLine={false} interval={0} />
                       <YAxis {...AXIS_STYLE} allowDecimals={false} domain={[0, chartMax]} tickFormatter={formatCompact} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value) => formatCompact(value as number)} />
                       <Bar dataKey="value" name="Employees" fill="url(#deptDistBar)" radius={[8, 8, 0, 0]} maxBarSize={40}>
