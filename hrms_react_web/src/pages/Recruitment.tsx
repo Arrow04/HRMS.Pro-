@@ -149,8 +149,8 @@ const statusBadge = (status?: string) => {
   );
 };
 
-const candidateDisplayName = (c: RecruitmentCandidate) =>
-  personDisplayName(c, `Candidate #${c.id}`);
+const candidateDisplayName = (c: RecruitmentCandidate | null | undefined) =>
+  c ? personDisplayName(c, `Candidate #${c.id}`) : 'Candidate';
 
 const calcRatingFromScores = (comm?: number, tech?: number, overall?: number): number | undefined => {
   const vals = [comm, tech, overall].filter((v) => v !== undefined && v !== null) as number[];
