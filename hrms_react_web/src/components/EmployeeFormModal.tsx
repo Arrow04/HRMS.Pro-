@@ -1104,9 +1104,10 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    // No frontend guards — save always goes through, the server validates.
+    // Sync unsaved name before submit (in case user didn't blur the field)
+    const { firstName, lastName } = splitEmployeeName(fullNameText);
+    set({ firstName, lastName });
     onSubmit();
-
   };
 
   const updateField = (key: string, value: unknown) => {
