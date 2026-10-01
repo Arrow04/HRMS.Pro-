@@ -38,6 +38,28 @@ def _ensure_archive_table(db: Session, create_sql: str, table_name: str):
             raise
 
 
+def _recreate_if_stale(db: Session, archive_table: str, source_table: str) -> None:
+    """Drop archive table if its column count doesn't match the source table."""
+    try:
+        src_cols = db.execute(text(
+            f"SELECT count(*) FROM information_schema.columns WHERE table_name = '{source_table}'"
+        )).scalar() or 0
+        arc_exists = db.execute(text(
+            f"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '{archive_table}')"
+        )).scalar()
+        if arc_exists:
+            arc_cols = db.execute(text(
+                f"SELECT count(*) FROM information_schema.columns WHERE table_name = '{archive_table}'"
+            )).scalar() or 0
+            if arc_cols != src_cols:
+                db.execute(text(f"DROP TABLE IF EXISTS {archive_table}"))
+                db.commit()
+                logger.info("Dropped stale archive table %s (%d cols vs source %d cols)", archive_table, arc_cols, src_cols)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Could not check archive table %s for staleness: %s", archive_table, exc)
+
+
 def archive_old_attendance(db: Session, cutoff_days: int = 365) -> Dict[str, int]:
     cutoff = datetime.utcnow() - timedelta(days=cutoff_days)
     _ensure_archive_table(
@@ -75,6 +97,8 @@ def archive_old_attendance(db: Session, cutoff_days: int = 365) -> Dict[str, int
 
 def archive_old_payroll(db: Session, cutoff_years: int = 2) -> Dict[str, int]:
     cutoff = datetime.utcnow() - timedelta(days=cutoff_years * 365)
+    # Drop stale archive table if its columns don't match payrolls (schema drift).
+    _recreate_if_stale(db, "payroll_archive", "payrolls")
     _ensure_archive_table(
         db,
         """
