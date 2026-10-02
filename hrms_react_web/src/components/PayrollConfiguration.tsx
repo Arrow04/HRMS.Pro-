@@ -1066,7 +1066,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
         <div className="flex items-center gap-2">
           <button onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700">
-            <Plus className="w-4 h-4" /> Create Template
+            <Plus className="w-4 h-4" /> Create Configuration
           </button>
         </div>
       </div>
@@ -1138,7 +1138,7 @@ export default function PayrollConfiguration({ standalone = false }: { standalon
 
       {filtered.length === 0 && !isLoading && (
         <p className="text-sm text-[var(--text-tertiary)] bg-blue-50 border border-blue-100 rounded-lg p-3">
-          No company templates yet - click <b>Create Template</b> above to build one for a company.
+          No company templates yet - click <b>Create Configuration</b> above to build one for a company.
         </p>
       )}
 
@@ -1588,7 +1588,7 @@ function WizardModal(props: {
             <button onClick={onSave} disabled={saving || !w.name.trim()}
               className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              {editingId ? 'Save Changes' : 'Create Template'}
+              {editingId ? 'Save Changes' : 'Create Configuration'}
             </button>
           </div>
         </header>

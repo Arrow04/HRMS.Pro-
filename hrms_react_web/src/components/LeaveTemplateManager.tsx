@@ -257,7 +257,7 @@ export default function LeaveTemplateManager() {
         </div>
         <button onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700">
-          <Plus className="w-4 h-4" /> Create Template
+          <Plus className="w-4 h-4" /> Create Configuration
         </button>
       </div>
 
@@ -389,7 +389,7 @@ function LeaveWizardModal(props: {
             {!readOnly && (
               <button onClick={onSubmit} disabled={saving || !wizard.name.trim()}
                 className="px-5 py-2 rounded-lg text-sm font-medium bg-[var(--primary-blue)] text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Template'}
+                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Configuration'}
               </button>
             )}
           </div>
