@@ -31,12 +31,16 @@ from models import Employee, StatutoryRule
 class CustomDeductionEngine:
     """Evaluates admin-defined custom statutory deductions."""
 
-    def __init__(self, db: Session, org_id: Optional[int] = None):
+    def __init__(self, db: Session, org_id: Optional[int] = None, company_id: Optional[int] = None):
         self.db = db
         self.org_id = org_id
+        self.company_id = company_id
 
     def get_active_custom_rules(self, as_of: Optional[date] = None) -> List[Dict[str, Any]]:
-        """Fetch all active custom deduction rules for the org."""
+        """Fetch all active custom deduction rules for the org/company.
+
+        Resolution priority: company-specific rules override org-wide rules.
+        """
         as_of = as_of or date.today()
         query = self.db.query(StatutoryRule).filter(
             StatutoryRule.status == "active",
@@ -49,14 +53,20 @@ class CustomDeductionEngine:
                 (StatutoryRule.organization_id == self.org_id) |
                 (StatutoryRule.organization_id.is_(None))
             )
+        if self.company_id:
+            query = query.filter(
+                (StatutoryRule.company_id == self.company_id) |
+                (StatutoryRule.company_id.is_(None))
+            )
         rules = query.order_by(StatutoryRule.effective_from.desc()).all()
 
-        # Deduplicate: keep only the latest rule per custom code
+        # Deduplicate: company-specific rules override org-wide rules
         seen: Dict[str, Dict[str, Any]] = {}
         for rule in rules:
             definition = rule.definition or {}
             code = definition.get("code") or f"custom_{rule.id}"
-            if code not in seen:
+            is_company_specific = rule.company_id is not None
+            if code not in seen or is_company_specific:
                 seen[code] = {
                     "code": code,
                     "label": definition.get("label") or code.replace("_", " ").title(),
@@ -70,6 +80,7 @@ class CustomDeductionEngine:
                     "max_gross": definition.get("max_gross"),
                     "rule_id": rule.id,
                     "notification_number": rule.notification_number,
+                    "company_id": rule.company_id,
                 }
         return list(seen.values())
 

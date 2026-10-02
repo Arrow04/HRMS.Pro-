@@ -2818,7 +2818,7 @@ def calculate_payroll(
     custom_deduction_total = 0.0
     try:
         from services.custom_deduction_engine import CustomDeductionEngine
-        _custom_engine = CustomDeductionEngine(db, organization_id)
+        _custom_engine = CustomDeductionEngine(db, organization_id, getattr(employee, 'company_id', None))
         custom_deductions = _custom_engine.calculate_all(
             gross=total_earnings,
             basic=basic_salary,

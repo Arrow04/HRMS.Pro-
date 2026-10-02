@@ -355,16 +355,18 @@ class CustomDeductionCreate(BaseModel):
     effective_from: str
     effective_to: Optional[str] = None
     notification_number: Optional[str] = None
+    company_id: Optional[int] = None
 
 
 @router.get("/custom-deductions", tags=["Statutory Rules"])
 def list_custom_deductions(
+    companyId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all active custom deduction rules for the org."""
+    """List all active custom deduction rules for the org/company."""
     from services.custom_deduction_engine import CustomDeductionEngine
-    engine = CustomDeductionEngine(db, current_user.organization_id)
+    engine = CustomDeductionEngine(db, current_user.organization_id, companyId)
     rules = engine.get_active_custom_rules()
     return {"rules": rules, "count": len(rules)}
 
@@ -399,6 +401,7 @@ def create_custom_deduction(
         },
         notification_number=data.notification_number,
         organization_id=current_user.organization_id,
+        company_id=data.company_id,
         status="active",
         version=1,
     )

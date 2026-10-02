@@ -255,13 +255,14 @@ export default function PayrollConsole() {
   // Custom statutory deductions
   interface CustomDeduction {
     code: string; label: string; kind: string; rate: number; amount: number;
-    effective_from?: string; rule_id: number;
+    effective_from?: string; rule_id: number; company_id?: number | null;
   }
   const [customDeductions, setCustomDeductions] = useState<CustomDeduction[]>([]);
   const [showCustomDeductionModal, setShowCustomDeductionModal] = useState(false);
   const [customDeductionForm, setCustomDeductionForm] = useState({
     code: '', label: '', kind: 'percent_of_gross', rate: 0, amount: 0,
     effective_from: new Date().toISOString().slice(0, 10),
+    company_id: null as number | null,
   });
 
   const loadCustomDeductions = async () => {
@@ -273,7 +274,7 @@ export default function PayrollConsole() {
   useEffect(() => { if (tab === 'rules') loadCustomDeductions(); }, [tab]);
 
   const openCustomDeductionForm = () => {
-    setCustomDeductionForm({ code: '', label: '', kind: 'percent_of_gross', rate: 0, amount: 0, effective_from: new Date().toISOString().slice(0, 10) });
+    setCustomDeductionForm({ code: '', label: '', kind: 'percent_of_gross', rate: 0, amount: 0, effective_from: new Date().toISOString().slice(0, 10), company_id: null });
     setShowCustomDeductionModal(true);
   };
 
@@ -1018,6 +1019,7 @@ export default function PayrollConsole() {
                     <th className="px-3 py-2">Label</th>
                     <th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2">Rate/Amount</th>
+                    <th className="px-3 py-2">Company</th>
                     <th className="px-3 py-2">Effective From</th>
                     <th className="px-3 py-2">Status</th>
                     <th className="px-3 py-2">Action</th>
@@ -1030,6 +1032,7 @@ export default function PayrollConsole() {
                       <td className="px-3 py-2">{cd.label}</td>
                       <td className="px-3 py-2 text-xs">{cd.kind}</td>
                       <td className="px-3 py-2">{cd.rate > 0 ? `${cd.rate}%` : `₹${cd.amount}`}</td>
+                      <td className="px-3 py-2 text-xs">{cd.company_id ? explainCompanies.find(c => c.id === cd.company_id)?.name || `Company #${cd.company_id}` : 'All Companies'}</td>
                       <td className="px-3 py-2 text-xs">{cd.effective_from || '—'}</td>
                       <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-600">Active</span></td>
                       <td className="px-3 py-2">
@@ -1806,6 +1809,17 @@ export default function PayrollConsole() {
                 <input type="date" value={customDeductionForm.effective_from}
                   onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, effective_from: e.target.value })}
                   className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Company</label>
+                <select value={customDeductionForm.company_id ?? ''}
+                  onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, company_id: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white">
+                  <option value="">All Companies (org-wide)</option>
+                  {explainCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-color)]">
