@@ -40,6 +40,8 @@ import { formatAppDateTime } from '../services/appSettingsService';
 
 const monthName = (m?: number) => (m ? new Date(2000, (m - 1) % 12, 1).toLocaleString('en-US', { month: 'long' }) : '');
 const monthLabel = (m?: number, y?: number) => (m && y ? `${monthName(m)} ${y}` : `${m ?? ''} ${y ?? ''}`);
+const currentYear = new Date().getFullYear();
+const yearOptions = Array.from({ length: 7 }, (_, i) => currentYear - 2 + i);
 
 const getErrMsg = (e: unknown): string => {
   const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -296,9 +298,13 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [editingPayrollId, setEditingPayrollId] = useState<number | null>(null);
   const [editingEmployeeName, setEditingEmployeeName] = useState('');
 
+  // Payroll run state
+  const [runMonth, setRunMonth] = useState(new Date().getMonth() + 1);
+  const [runYear, setRunYear] = useState(new Date().getFullYear());
+
   // Bonuses state
   const [showBonusForm, setShowBonusForm] = useState(false);
-  const [bonusForm, setBonusForm] = useState<BonusForm>({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '', type: 'bonus' });
+  const [bonusForm, setBonusForm] = useState<BonusForm>({ employeeId: '', month: runMonth, year: runYear, amount: 0, reason: '', type: 'bonus' });
   // When set, the modal edits an existing ad-hoc earning (replace, never add).
   const [editingBonus, setEditingBonus] = useState<{ id: number; type?: string } | null>(null);
   const [bonusYearFilter, setBonusYearFilter] = useState(new Date().getFullYear());
@@ -316,9 +322,11 @@ const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
   const [showPayslipModal, setShowPayslipModal] = useState(false);
   const [loadingPayslip, setLoadingPayslip] = useState(false);
 
-  // Payroll run state
-  const [runMonth, setRunMonth] = useState(new Date().getMonth() + 1);
-  const [runYear, setRunYear] = useState(new Date().getFullYear());
+  // Form 16 FY modal
+  const [form16FY, setForm16FY] = useState('');
+  const [showForm16Modal, setShowForm16Modal] = useState(false);
+  const [form16Action, setForm16Action] = useState<'download' | 'email' | 'bulk' | null>(null);
+  const [form16Target, setForm16Target] = useState<Partial<Payroll> | null>(null);
   const [runCompanyId, setRunCompanyId] = useState<string>('all');
   const [runBranchId, setRunBranchId] = useState<string>('all');
   const [runDepartmentId, setRunDepartmentId] = useState<string>('all');
@@ -512,9 +520,14 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     return `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
   };
 
-  const downloadForm16 = async (p: Partial<Payroll>) => {
-    const fy = prompt('Financial year (e.g. 2025-26):', currentFinancialYear());
-    if (!fy) return;
+  const openForm16Modal = (action: 'download' | 'email' | 'bulk', p?: Partial<Payroll>) => {
+    setForm16Action(action);
+    setForm16Target(p || null);
+    setForm16FY(currentFinancialYear());
+    setShowForm16Modal(true);
+  };
+
+  const downloadForm16 = async (p: Partial<Payroll>, fy: string) => {
     try {
       const response = await api.get(`/payroll/form16/${p.employeeId}`, {
         params: { financial_year: fy.trim() },
@@ -540,9 +553,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     }
   };
 
-  const emailForm16 = async (p: Partial<Payroll>) => {
-    const fy = prompt('Financial year (e.g. 2025-26):', currentFinancialYear());
-    if (!fy) return;
+  const emailForm16 = async (p: Partial<Payroll>, fy: string) => {
     try {
       const r = await api.get(`/payroll/form16/${p.employeeId}`, { params: { financial_year: fy.trim(), email: '1' } });
       const msg = r.data?.message || '';
@@ -552,9 +563,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     }
   };
 
-  const bulkDownloadForm16 = async () => {
-    const fy = prompt('Financial year for bulk Form 16 (Part B) export (e.g. 2025-26):', currentFinancialYear());
-    if (!fy) return;
+  const bulkDownloadForm16 = async (fy: string) => {
     try {
       const response = await api.get(`/payroll/form16/bulk`, {
         params: { financial_year: fy.trim() },
@@ -572,6 +581,15 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     } catch (e: unknown) {
       toast.error(getErrMsg(e));
     }
+  };
+
+  const confirmForm16 = async () => {
+    const fy = form16FY.trim();
+    if (!fy) return;
+    setShowForm16Modal(false);
+    if (form16Action === 'download' && form16Target) await downloadForm16(form16Target, fy);
+    else if (form16Action === 'email' && form16Target) await emailForm16(form16Target, fy);
+    else if (form16Action === 'bulk') await bulkDownloadForm16(fy);
   };
 
   const bulkEmailPayslips = async () => {
@@ -1946,7 +1964,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[11px] font-medium text-[var(--text-tertiary)]">Year</span>
-                <input type="number" value={runYear} onChange={e => { const v = e.target.value; if (v.length <= 4) setRunYear(+v); }} aria-label="Year" min="1000" max="9999"
+                <input type="number" value={runYear} onChange={e => { const v = e.target.value; if (v) setRunYear(+v); }} aria-label="Year" min="1000" max="9999"
                   className={formInputClass} />
                 <span className="text-[11px] text-[var(--text-tertiary)]">The year you are paying salaries for.</span>
               </div>
@@ -2300,7 +2318,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                   Set the organization's <b>TAN</b> &amp; <b>PAN</b> under Settings → Organization for the system to pre-fill them.
                 </div>
                 <button
-                  onClick={bulkDownloadForm16}
+                  onClick={() => openForm16Modal('bulk')}
                   className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 transition-colors"
                   title="Download a ZIP of Form 16 (Part B) PDFs for every eligible employee of the year"
                 >
@@ -2435,8 +2453,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                       <button onClick={() => openPayslipPreview(p)} className="p-2 text-[#059669] hover:bg-[#059669]/10 rounded-lg transition-colors" title="View Payslip"><FileText className="w-4 h-4" /></button>
                       <button onClick={() => downloadPayslipPdf(p)} className="p-2 text-[#1C64F2] hover:bg-[#1C64F2]/10 rounded-lg transition-colors" title="Download Payslip PDF"><Download className="w-4 h-4" /></button>
                       <button onClick={() => emailPayslipPdf(p)} className="p-2 text-[#7C3AED] hover:bg-[#7C3AED]/10 rounded-lg transition-colors" title="Email Payslip to Employee"><Mail className="w-4 h-4" /></button>
-                      <button onClick={() => downloadForm16(p)} className="p-2 text-[#B45309] hover:bg-[#B45309]/10 rounded-lg transition-colors" title="Download Form 16 (India annual TDS certificate)"><Landmark className="w-4 h-4" /></button>
-                      <button onClick={() => emailForm16(p)} className="p-2 text-[#B45309] hover:bg-[#B45309]/10 rounded-lg transition-colors" title="Email Form 16 to Employee"><Send className="w-4 h-4" /></button>
+                      <button onClick={() => openForm16Modal('download', p)} className="p-2 text-[#B45309] hover:bg-[#B45309]/10 rounded-lg transition-colors" title="Download Form 16 (India annual TDS certificate)"><Landmark className="w-4 h-4" /></button>
+                      <button onClick={() => openForm16Modal('email', p)} className="p-2 text-[#B45309] hover:bg-[#B45309]/10 rounded-lg transition-colors" title="Email Form 16 to Employee"><Send className="w-4 h-4" /></button>
                       {p.status === 'draft' && (
                         <button onClick={() => confirmPayrollAction(p, 'pending_approval')}
                           className="p-2 text-[#F59E0B] hover:bg-[#F59E0B]/10 rounded-lg transition-colors" title="Submit for Approval">
@@ -2528,7 +2546,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 <p className="text-xs text-[#94A3B8] mt-0.5">One-off bonuses, incentives &amp; commissions — merged into that month's payslip</p>
                 </div>
               </div>
-              <button onClick={() => { setShowBonusForm(true); setEditingBonus(null); setBonusForm({ employeeId: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: 0, reason: '', type: 'bonus' }); }}
+              <button onClick={() => { setShowBonusForm(true); setEditingBonus(null); setBonusForm({ employeeId: '', month: runMonth, year: runYear, amount: 0, reason: '', type: 'bonus' }); }}
                 className="flex items-center gap-2 px-4 py-2 bg-[var(--primary-blue)] text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
                 <Plus className="w-4 h-4" /> Add Payment
               </button>
@@ -2565,7 +2583,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
                 placeholder="All Months" allOption="All Months" className="w-36" />
               <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
-                options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+                options={yearOptions.map(y => ({ id: y, name: String(y) }))}
                 placeholder="Select Year" allOption="Select Year" className="w-36" />
             </div>
             <div className="overflow-x-auto">
@@ -2663,7 +2681,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                 options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
                 placeholder="All Months" allOption="All Months" className="w-36" />
               <SearchableSelect value={bonusYearFilter} onChange={(val) => setBonusYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
-                options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+                options={yearOptions.map(y => ({ id: y, name: String(y) }))}
                 placeholder="Select Year" allOption="Select Year" className="w-36" />
             </div>
             <div className="overflow-x-auto">
@@ -3007,6 +3025,38 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         </div>
       )}
 
+      {/* FORM 16 FY MODAL */}
+      {showForm16Modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="p-6 border-b border-[var(--border-color)] flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Financial Year</h2>
+              <button onClick={() => setShowForm16Modal(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-[11px] font-medium text-[var(--text-tertiary)] mb-1">Financial Year (format: 2024-25)</label>
+                <input
+                  type="text"
+                  value={form16FY}
+                  onChange={(e) => setForm16FY(e.target.value)}
+                  placeholder="e.g. 2024-25"
+                  className={formInputClass}
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={confirmForm16} disabled={!form16FY.trim()}
+                  className="flex-1 h-[42px] bg-[var(--primary-blue)] text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {form16Action === 'email' ? 'Send' : 'Download'}
+                </button>
+                <button onClick={() => setShowForm16Modal(false)} className="flex-1 h-[42px] border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BULK UPLOAD MODAL */}
       {showBulkUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -3230,10 +3280,14 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
   const [loanYearFilter, setLoanYearFilter] = useState(new Date().getFullYear());
 
   const { data: loans = [], isLoading } = useQuery({
-    queryKey: ['salary-loans', empId],
+    queryKey: ['payroll-loans', empId, loanCompanyFilter, loanBranchFilter, loanDeptFilter, loanStatusFilter, loanMonthFilter, loanYearFilter],
     queryFn: async () => {
       const params: Record<string, unknown> = {};
       if (empId) params.employeeId = empId;
+      if (loanCompanyFilter !== 'all') params.companyId = loanCompanyFilter;
+      if (loanBranchFilter !== 'all') params.branchId = loanBranchFilter;
+      if (loanDeptFilter !== 'all') params.departmentId = loanDeptFilter;
+      if (loanStatusFilter !== 'all') params.status = loanStatusFilter;
       const r = await api.get('/payroll/loans', { params });
       return r.data || [];
     },
@@ -3241,19 +3295,19 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
 
   const createMut = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api.post('/payroll/loans', payload),
-    onSuccess: () => { toast.success('Loan/advance created'); queryClient.invalidateQueries({ queryKey: ['salary-loans'] }); setShowForm(false); },
+    onSuccess: () => { toast.success('Loan/advance created'); queryClient.invalidateQueries({ queryKey: ['payroll-loans'] }); setShowForm(false); },
     onError: (e: unknown) => { toast.error(getErrMsg(e)); },
   });
 
   const closeMut = useMutation({
     mutationFn: (id: number) => api.post(`/payroll/loans/${id}/close`),
-    onSuccess: () => { toast.success('Loan closed'); queryClient.invalidateQueries({ queryKey: ['salary-loans'] }); },
+    onSuccess: () => { toast.success('Loan closed'); queryClient.invalidateQueries({ queryKey: ['payroll-loans'] }); },
     onError: () => toast.error('Failed to close loan'),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.delete(`/payroll/loans/${id}`),
-    onSuccess: () => { toast.success('Loan deleted'); queryClient.invalidateQueries({ queryKey: ['salary-loans'] }); },
+    onSuccess: () => { toast.success('Loan deleted'); queryClient.invalidateQueries({ queryKey: ['payroll-loans'] }); },
     onError: () => toast.error('Failed to delete loan'),
   });
 
@@ -3366,7 +3420,7 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
           options={Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: new Date(2026, i).toLocaleString('en', { month: 'short' }) }))}
           placeholder="All Months" allOption="All Months" className="w-36" />
         <SearchableSelect value={loanYearFilter} onChange={(val) => setLoanYearFilter(val === 'all' ? new Date().getFullYear() : Number(val))}
-          options={[2024, 2025, 2026, 2027].map(y => ({ id: y, name: String(y) }))}
+          options={yearOptions.map(y => ({ id: y, name: String(y) }))}
           placeholder="Select Year" allOption="Select Year" className="w-36" />
       </div>
 

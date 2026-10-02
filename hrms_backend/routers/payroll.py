@@ -1970,6 +1970,8 @@ def void_payroll_period(
     if current_user.role != "superadmin":
         query = query.filter(Payroll.organization_id == current_user.organization_id)
     if company_id:
+        if current_user.role != "superadmin":
+            validate_company_in_org(db, Company, company_id, current_user.organization_id)
         query = query.filter(Payroll.company_id == company_id)
     if department_id:
         query = query.filter(Payroll.department_id == department_id)
@@ -2339,6 +2341,7 @@ def update_payroll_record(
     if not updates:
         raise HTTPException(status_code=400, detail="No editable fields provided")
 
+    old_values = {k: getattr(pr, k) for k in allowed}
     for k, v in updates.items():
         setattr(pr, k, v)
     # Server-side recalculation keeps the record internally consistent:
@@ -2346,6 +2349,18 @@ def update_payroll_record(
     # Always recompute so take-home pay can never drift from its components.
     recompute_payroll_totals(pr)
     pr.updated_at = ist_now_naive()
+    # Audit log (same trail pattern as status changes; ActivityLog for module activity feed)
+    from models import ActivityLog
+    audit = ActivityLog(
+        user_id=current_user.id,
+        module="Payroll",
+        action="update",
+        entity_type="payroll",
+        entity_id=str(pr.id),
+        old_value=str(old_values),
+        new_value=str(updates),
+    )
+    db.add(audit)
     db.commit()
     db.refresh(pr)
     return pr
@@ -2981,39 +2996,58 @@ def bulk_upload_payroll(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Bulk upload payroll records from a CSV file."""
+    """Bulk upload payroll records from a CSV file.
+
+    Skipped/invalid rows are reported in `errors` (not silently dropped).
+    Rows targeting paid/approved/locked payroll records are never overwritten.
+    Totals are recomputed server-side after each applied change.
+    """
     import csv
     content = file.file.read().decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
 
+    errors: List[str] = []
     created = 0
     updated = 0
-    for row in reader:
+    # CSV line numbers: header is line 1, first data row is line 2.
+    for row_num, row in enumerate(reader, start=2):
         emp_id = row.get("employeeId") or row.get("employee_id")
         if not emp_id:
+            errors.append(f"Row {row_num}: Missing employeeId")
             continue
         try:
             emp_id = int(emp_id)
         except (TypeError, ValueError):
+            errors.append(f"Row {row_num}: Invalid employeeId {emp_id}")
             continue
         emp = db.query(Employee).filter(Employee.id == emp_id, Employee.deleted_at.is_(None)).first()
         if not emp:
+            errors.append(f"Row {row_num}: Employee {emp_id} not found")
             continue
         if current_user.role != "superadmin":
             try:
                 emp = get_employee_in_org(db, Employee, emp_id, current_user.organization_id)
             except HTTPException:
+                errors.append(f"Row {row_num}: Employee {emp_id} not in your organization")
                 continue
-        month = row.get("month") or row.get("pay_month")
-        year = row.get("year") or row.get("pay_year")
+        month_raw = row.get("month") or row.get("pay_month")
+        year_raw = row.get("year") or row.get("pay_year")
+        if month_raw in (None, "") or year_raw in (None, ""):
+            errors.append(f"Row {row_num}: Missing month/year")
+            continue
         try:
-            month = int(month)
+            month = int(str(month_raw).strip())
         except (TypeError, ValueError):
-            month = ist_now_naive().month
+            errors.append(f"Row {row_num}: Invalid month {month_raw}")
+            continue
         try:
-            year = int(year)
+            year = int(str(year_raw).strip())
         except (TypeError, ValueError):
-            year = ist_now_naive().year
+            errors.append(f"Row {row_num}: Invalid year {year_raw}")
+            continue
+        if not (1 <= month <= 12):
+            errors.append(f"Row {row_num}: Invalid month {month}")
+            continue
 
         existing = db.query(Payroll).filter(
             Payroll.deleted_at.is_(None),
@@ -3022,11 +3056,25 @@ def bulk_upload_payroll(
             Payroll.year == year,
             Payroll.organization_id == emp.organization_id,
         ).first()
+        if existing and existing.status in ("paid", "approved", "locked"):
+            errors.append(
+                f"Row {row_num}: Payroll for employee {emp_id} {month}/{year} "
+                f"is {existing.status} and cannot be overwritten"
+            )
+            continue
 
-        def _f(key):
+        row_errors: List[str] = []
+
+        def _f(key, snake_key=None):
+            raw = row.get(key)
+            if raw in (None, "") and snake_key:
+                raw = row.get(snake_key)
+            if raw in (None, ""):
+                return None
             try:
-                return float(row.get(key)) if row.get(key) not in (None, "") else None
+                return float(raw)
             except (TypeError, ValueError):
+                row_errors.append(f"Row {row_num}: Invalid number for {key}: {raw}")
                 return None
 
         payload = {
@@ -3036,30 +3084,41 @@ def bulk_upload_payroll(
             "department_id": emp.department_id,
             "month": month,
             "year": year,
-            "basic_salary": _f("basicSalary") or _f("basic_salary"),
+            "basic_salary": _f("basicSalary", "basic_salary"),
             "hra": _f("hra"),
             "da": _f("da"),
             "conveyance": _f("conveyance"),
             "medical": _f("medical"),
-            "special_allowance": _f("specialAllowance") or _f("special_allowance"),
-            "overtime_pay": _f("overtimePay") or _f("overtime_pay"),
+            "special_allowance": _f("specialAllowance", "special_allowance"),
+            "overtime_pay": _f("overtimePay", "overtime_pay"),
             "bonus": _f("bonus"),
-            "pf_deduction": _f("pfDeduction") or _f("pf_deduction"),
-            "esi_deduction": _f("esiDeduction") or _f("esi_deduction"),
-            "professional_tax": _f("professionalTax") or _f("professional_tax"),
-            "tds_deduction": _f("tdsDeduction") or _f("tds_deduction"),
+            "pf_deduction": _f("pfDeduction", "pf_deduction"),
+            "esi_deduction": _f("esiDeduction", "esi_deduction"),
+            "professional_tax": _f("professionalTax", "professional_tax"),
+            "tds_deduction": _f("tdsDeduction", "tds_deduction"),
             "status": "draft",  # bulk-created records always enter as draft (no workflow bypass)
         }
+        if row_errors:
+            errors.extend(row_errors)
+            continue
         if existing:
             for k, v in payload.items():
                 if v is not None:
                     setattr(existing, k, v)
+            recompute_payroll_totals(existing)
             updated += 1
         else:
-            db.add(Payroll(**payload))
+            new_pr = Payroll(**payload)
+            recompute_payroll_totals(new_pr)
+            db.add(new_pr)
             created += 1
     db.commit()
-    return {"message": f"{created} created, {updated} updated", "created": created, "updated": updated}
+    return {
+        "message": f"{created} created, {updated} updated",
+        "created": created,
+        "updated": updated,
+        "errors": errors,
+    }
 
 
 # ════════════════════════════════════════════════════════════════
