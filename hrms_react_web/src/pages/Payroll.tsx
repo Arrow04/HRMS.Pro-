@@ -41,6 +41,13 @@ import { formatAppDateTime } from '../services/appSettingsService';
 const monthName = (m?: number) => (m ? new Date(2000, (m - 1) % 12, 1).toLocaleString('en-US', { month: 'long' }) : '');
 const monthLabel = (m?: number, y?: number) => (m && y ? `${monthName(m)} ${y}` : `${m ?? ''} ${y ?? ''}`);
 
+const getErrMsg = (e: unknown): string => {
+  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ');
+  return 'Failed to save payroll';
+};
+
 const GROSS_COMPONENTS: [string, string][] = [
   ['basicSalary', 'Basic'],
   ['hra', 'HRA'],
@@ -86,6 +93,8 @@ const SNAKE_FIELDS: Record<string, string> = {
   pfDeduction: 'pf_deduction',
   esiDeduction: 'esi_deduction',
   professionalTax: 'professional_tax',
+  lwfDeduction: 'lwf_deduction',
+  lwfEmployerContribution: 'lwf_employer_contribution',
   gratuity: 'gratuity',
   tdsDeduction: 'tds_deduction',
   incomeTax: 'income_tax',
@@ -112,7 +121,7 @@ const computePayrollTotals = <T extends Record<string, unknown>>(rec: T): T => {
   const r = (x: number) => Math.round(x * 100) / 100;
   const paidDays = Math.max(0, n(rec.workingDays) - n(rec.absentDays) - n(rec.leaveDays));
   const totalEarnings = r(n(rec.basicSalary) + n(rec.hra) + n(rec.da) + n(rec.conveyance) + n(rec.medical) + n(rec.specialAllowance) + n(rec.overtimePay) + n(rec.bonus) + n(rec.commission) + n(rec.incentive) + n(rec.otherEarnings));
-  const totalDeductions = r(n(rec.pfDeduction) + n(rec.esiDeduction) + n(rec.professionalTax) + n(rec.tdsDeduction) + n(rec.loanDeduction) + n(rec.advanceDeduction) + n(rec.otherDeductions));
+  const totalDeductions = r(n(rec.pfDeduction) + n(rec.esiDeduction) + n(rec.professionalTax) + n(rec.tdsDeduction) + n(rec.loanDeduction) + n(rec.advanceDeduction) + n(rec.otherDeductions) + n(rec.lwfDeduction) + n(rec.gratuity) + n(rec.npsDeduction) + n(rec.customDeductionTotal));
   const netSalary = r(totalEarnings - totalDeductions);
   return { ...rec, paidDays, totalEarnings, totalDeductions, netSalary };
 };
@@ -386,6 +395,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     esiDeduction: 0,
     esiEmployerContribution: 0,
     professionalTax: 0,
+    lwfDeduction: 0,
+    lwfEmployerContribution: 0,
     gratuity: 0,
     tdsDeduction: 0,
     incomeTax: 0,
@@ -451,8 +462,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       }));
       toast.success('Calculated from attendance & policy');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Calculation failed');
+      toast.error(getErrMsg(e));
     } finally { setCalculatingServer(false); }
   }, [newPayroll.employeeId, newPayroll.month, newPayroll.year]);
 
@@ -526,8 +536,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         toast.success('Form 16 (Part B) downloaded. Part A must be issued from TRACES.');
       }
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to generate Form 16');
+      toast.error(getErrMsg(e));
     }
   };
 
@@ -539,8 +548,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       const msg = r.data?.message || '';
       toast.success(msg.includes('Salary') ? msg + ' (Form 16 is not applicable when no TDS was deducted)' : msg);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to email Form 16');
+      toast.error(getErrMsg(e));
     }
   };
 
@@ -562,8 +570,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       window.URL.revokeObjectURL(url);
       toast.success('Form 16 (Part B) bulk export downloaded. Check the manifest for skipped employees.');
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to export Form 16 in bulk');
+      toast.error(getErrMsg(e));
     }
   };
 
@@ -582,8 +589,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       }
       queryClient.invalidateQueries({ queryKey: ['payslips'] });
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to bulk-email payslips');
+      toast.error(getErrMsg(e));
     } finally { setIsRunning(false); }
   };
 
@@ -661,8 +667,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         queryClient.invalidateQueries({ queryKey: ['payroll-stats'] });
       }
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to run payroll');
+      toast.error(getErrMsg(e));
       setIsRunning(false);
     }
   };
@@ -679,8 +684,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       const response = await api.get(`/payroll/${p.id}/payslip`);
       setPayslipPreview(response.data);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } }; message?: string };
-      toast.error(err?.response?.data?.detail || err?.message || 'Failed to load payslip data');
+      toast.error(getErrMsg(e));
       setShowPayslipModal(false);
     } finally {
       setLoadingPayslip(false);
@@ -824,8 +828,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       runPayrollAll();
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to re-run payroll');
+      toast.error(getErrMsg(e));
     },
   });
 
@@ -846,8 +849,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       queryClient.invalidateQueries({ queryKey: ['payroll-summary'] });
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      toast.error(err?.response?.data?.detail || 'Failed to void payroll');
+      toast.error(getErrMsg(e));
     },
   });
 
@@ -892,7 +894,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const deleteBonusMutation = useMutation({
     mutationFn: async ({ id, type }: { id: number; type?: string }) => { const r = await api.delete(`/bonuses/${id}`, { params: { type: type || 'bonus' } }); return r.data; },
     onSuccess: () => { toast.success('Bonus deleted'); refetchBonuses(); },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to delete bonus'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const filteredBonuses = bonuses.filter((b: BonusRecord) => {
@@ -905,7 +907,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   const createBonusMutation = useMutation({
     mutationFn: async (data: BonusForm) => { const r = await api.post('/bonuses', data); return r.data; },
     onSuccess: () => { toast.success('Bonus recorded'); refetchBonuses(); setShowBonusForm(false); setEditingBonus(null); },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to record bonus'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const { data: preDeductionData, refetch: refetchPreDeductions } = useQuery({
@@ -929,13 +931,13 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       return r.data;
     },
     onSuccess: () => { toast.success('Pre-run deduction queued — it will be applied at preview/generate'); refetchPreDeductions(); setShowBonusForm(false); setEditingBonus(null); },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to save deduction'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const deletePreDeductionMutation = useMutation({
     mutationFn: async (id: number) => { const r = await api.delete(`/payroll/pre-deductions/${id}`); return r.data; },
     onSuccess: () => { toast.success('Deduction removed'); refetchPreDeductions(); },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to remove deduction'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   // Editing an existing entry REPLACES it (remove old, record new) — never
@@ -946,7 +948,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
     if (bonusForm.type === 'deduction') {
       if (editingBonus) {
         try { await api.delete(`/payroll/pre-deductions/${editingBonus.id}`); }
-        catch (err) { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to update deduction'); return; }
+        catch (err) { toast.error(getErrMsg(err)); return; }
       }
       savePreDeductionMutation.mutate(bonusForm);
       return;
@@ -955,8 +957,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       try {
         await api.delete(`/bonuses/${editingBonus.id}`, { params: { type: editingBonus.type || bonusForm.type || 'bonus' } });
       } catch (err) {
-        const e = err as { response?: { data?: { detail?: string } } };
-        toast.error(e.response?.data?.detail || 'Failed to update bonus');
+        toast.error(getErrMsg(err));
         return;
       }
     }
@@ -981,7 +982,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
       handleCloseDrawer();
     },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to create payroll'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const updatePayrollMutation = useMutation({
@@ -998,7 +999,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       queryClient.invalidateQueries({ queryKey: ['payroll-summary'] });
       handleCloseDrawer();
     },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to update payroll'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const recalcTaxMutation = useMutation({
@@ -1016,7 +1017,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       }));
       toast.success('TDS recalculated');
     },
-    onError: (err: unknown) => { const e = err as { response?: { data?: { detail?: string } } }; toast.error(e.response?.data?.detail || 'Failed to recalculate tax'); },
+    onError: (err: unknown) => { toast.error(getErrMsg(err)); },
   });
 
   const recalcTax = () => {
@@ -1061,6 +1062,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
       esiDeduction: p.esiDeduction || 0,
       esiEmployerContribution: p.esiEmployerContribution || 0,
       professionalTax: p.professionalTax || 0,
+      lwfDeduction: p.lwfDeduction || 0,
+      lwfEmployerContribution: p.lwfEmployerContribution || 0,
       gratuity: p.gratuity || 0,
       tdsDeduction: p.tdsDeduction || 0,
       incomeTax: p.incomeTax || 0,
@@ -1095,6 +1098,9 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
   };
 
   const handleSubmitPayroll = () => {
+    if (!newPayroll.employeeId) { toast.error('Employee ID is required'); return; }
+    if (!newPayroll.month || newPayroll.month < 1 || newPayroll.month > 12) { toast.error('Month must be between 1 and 12'); return; }
+    if (!newPayroll.year || newPayroll.year <= 2000) { toast.error('Year must be a valid year (greater than 2000)'); return; }
     if (editingPayrollId) {
       const payload: Record<string, unknown> = {};
       for (const [camel, snake] of Object.entries(SNAKE_FIELDS)) {
@@ -1178,6 +1184,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         esiDeduction: 0,
         esiEmployerContribution: 0,
         professionalTax: 0,
+        lwfDeduction: 0,
+        lwfEmployerContribution: 0,
         gratuity: 0,
         tdsDeduction: 0,
         incomeTax: 0,
@@ -1405,6 +1413,12 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
             <Field label="Professional Tax" help="Professional tax deduction in INR">
               <input type="number" step="0.01" className={inputCls} value={newPayroll.professionalTax} onChange={e => setNewPayroll(applyPayrollCalc({ ...newPayroll, professionalTax: parseFloat(e.target.value) }))} />
             </Field>
+            <Field label="LWF Deduction" help="Labour Welfare Fund deduction in INR">
+              <input type="number" step="0.01" className={inputCls} value={newPayroll.lwfDeduction} onChange={e => setNewPayroll(applyPayrollCalc({ ...newPayroll, lwfDeduction: parseFloat(e.target.value) }))} />
+            </Field>
+            <Field label="LWF Employer Contribution" help="Employer LWF contribution in INR">
+              <input type="number" step="0.01" className={inputCls} value={newPayroll.lwfEmployerContribution} onChange={e => setNewPayroll({ ...newPayroll, lwfEmployerContribution: parseFloat(e.target.value) })} />
+            </Field>
             <Field label="Gratuity" help="Gratuity deduction in INR">
               <input type="number" step="0.01" className={inputCls} value={newPayroll.gratuity} onChange={e => setNewPayroll({ ...newPayroll, gratuity: parseFloat(e.target.value) })} />
             </Field>
@@ -1564,6 +1578,8 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
                     esiDeduction: 0,
                     esiEmployerContribution: 0,
                     professionalTax: 0,
+                    lwfDeduction: 0,
+                    lwfEmployerContribution: 0,
                     gratuity: 0,
                     tdsDeduction: 0,
                     incomeTax: 0,
@@ -3226,7 +3242,7 @@ function LoansAndAdvancesPanel({ employees, currency, companies, branches, depar
   const createMut = useMutation({
     mutationFn: (payload: Record<string, unknown>) => api.post('/payroll/loans', payload),
     onSuccess: () => { toast.success('Loan/advance created'); queryClient.invalidateQueries({ queryKey: ['salary-loans'] }); setShowForm(false); },
-    onError: (e: unknown) => { const err = e as { response?: { data?: { detail?: string } } }; toast.error(err.response?.data?.detail || 'Failed'); },
+    onError: (e: unknown) => { toast.error(getErrMsg(e)); },
   });
 
   const closeMut = useMutation({
