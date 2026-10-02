@@ -61,13 +61,14 @@ class StatutoryRuleEngine:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
+        from sqlalchemy import func
         q = (
             self.db.query(StatutoryRule)
             .filter(
                 StatutoryRule.rule_type == rule_type,
                 StatutoryRule.deleted_at.is_(None),
                 StatutoryRule.status.in_(['active', 'superseded']),
-                StatutoryRule.country == country,
+                func.lower(StatutoryRule.country) == func.lower(country),
                 StatutoryRule.effective_from <= as_of,
                 (
                     (StatutoryRule.effective_to.is_(None))

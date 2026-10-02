@@ -2523,14 +2523,15 @@ def calculate_payroll(
     pf_applicable = stat_settings.pf_applicable
     pf_edli = 0.0
     pf_admin = 0.0
-    if pf_applicable:
-        _pf_as_of = month_start
-        _pf_rule_engine = _get_rule_engine(db, employee, _pf_as_of)
-        _pf_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
-        _pf_result = _resolve_pf_from_rule_engine(
-            _pf_rule_engine, basic, _pf_as_of,
-            jurisdiction_country, _pf_state_code, employee.organization_id,
-        )
+    _pf_as_of = month_start
+    _pf_rule_engine = _get_rule_engine(db, employee, _pf_as_of)
+    _pf_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+    _pf_result = _resolve_pf_from_rule_engine(
+        _pf_rule_engine, basic, _pf_as_of,
+        jurisdiction_country, _pf_state_code, employee.organization_id,
+    )
+    # Use rule engine result if available, even when legacy pf_applicable is off
+    if _pf_result or pf_applicable:
         if _pf_result:
             # Rule engine found an active rule — use it
             pf_wages = _pf_result['pf_wages']
