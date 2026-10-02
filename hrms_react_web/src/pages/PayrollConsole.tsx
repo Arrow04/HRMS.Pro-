@@ -252,6 +252,57 @@ export default function PayrollConsole() {
     }
   };
 
+  // Custom statutory deductions
+  interface CustomDeduction {
+    code: string; label: string; kind: string; rate: number; amount: number;
+    effective_from?: string; rule_id: number;
+  }
+  const [customDeductions, setCustomDeductions] = useState<CustomDeduction[]>([]);
+  const [showCustomDeductionModal, setShowCustomDeductionModal] = useState(false);
+  const [customDeductionForm, setCustomDeductionForm] = useState({
+    code: '', label: '', kind: 'percent_of_gross', rate: 0, amount: 0,
+    effective_from: new Date().toISOString().slice(0, 10),
+  });
+
+  const loadCustomDeductions = async () => {
+    try {
+      const res = await api.get('/statutory-rules/custom-deductions');
+      setCustomDeductions(res.data?.rules || []);
+    } catch { /* silent */ }
+  };
+  useEffect(() => { if (tab === 'rules') loadCustomDeductions(); }, [tab]);
+
+  const openCustomDeductionForm = () => {
+    setCustomDeductionForm({ code: '', label: '', kind: 'percent_of_gross', rate: 0, amount: 0, effective_from: new Date().toISOString().slice(0, 10) });
+    setShowCustomDeductionModal(true);
+  };
+
+  const saveCustomDeduction = async () => {
+    if (!customDeductionForm.code.trim() || !customDeductionForm.label.trim()) {
+      toast.error('Code and label are required');
+      return;
+    }
+    try {
+      await api.post('/statutory-rules/custom-deductions', customDeductionForm);
+      toast.success('Custom deduction created');
+      setShowCustomDeductionModal(false);
+      await loadCustomDeductions();
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: string } } };
+      toast.error(e.response?.data?.detail || 'Failed to create custom deduction');
+    }
+  };
+
+  const deleteCustomDeduction = async (ruleId: number) => {
+    try {
+      await api.delete(`/statutory-rules/custom-deductions/${ruleId}`);
+      toast.success('Custom deduction deactivated');
+      await loadCustomDeductions();
+    } catch {
+      toast.error('Failed to deactivate');
+    }
+  };
+
   // Take-home / tax optimizer: old vs new regime with savings tips.
   const [plannerEmpId, setPlannerEmpId] = useState('');
   const [plannerEmployees, setPlannerEmployees] = useState<EmployeeSummary[]>([]);
@@ -943,6 +994,55 @@ export default function PayrollConsole() {
                 {JSON.stringify(trace, null, 2)}
               </pre>
             </div>
+          )}
+        </div>
+
+        {/* Custom Statutory Deductions */}
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">Custom Deductions</h3>
+              <p className="text-xs text-[var(--text-tertiary)]">When the government introduces a new deduction (e.g., Employee Tax 1%), add it here — no code changes needed. The payroll engine applies it automatically.</p>
+            </div>
+            <button onClick={openCustomDeductionForm}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--primary-blue)] border border-[var(--primary-blue)] hover:bg-[var(--primary-blue)] hover:text-white transition-colors">
+              <Plus className="w-3.5 h-3.5 inline mr-1" /> Add Custom Deduction
+            </button>
+          </div>
+          {customDeductions.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[var(--text-secondary)] border-b border-[var(--border-color)]">
+                    <th className="px-3 py-2">Code</th>
+                    <th className="px-3 py-2">Label</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Rate/Amount</th>
+                    <th className="px-3 py-2">Effective From</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customDeductions.map((cd) => (
+                    <tr key={cd.code} className="border-b border-[var(--border-color)] last:border-0">
+                      <td className="px-3 py-2 font-mono text-xs">{cd.code}</td>
+                      <td className="px-3 py-2">{cd.label}</td>
+                      <td className="px-3 py-2 text-xs">{cd.kind}</td>
+                      <td className="px-3 py-2">{cd.rate > 0 ? `${cd.rate}%` : `₹${cd.amount}`}</td>
+                      <td className="px-3 py-2 text-xs">{cd.effective_from || '—'}</td>
+                      <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-600">Active</span></td>
+                      <td className="px-3 py-2">
+                        <button onClick={() => deleteCustomDeduction(cd.rule_id)}
+                          className="text-red-600 text-xs font-medium hover:underline">Deactivate</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-[var(--text-tertiary)] py-4 text-center">No custom deductions configured.</p>
           )}
         </div>
         </div>
@@ -1651,6 +1751,73 @@ export default function PayrollConsole() {
               className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5]">
               Save
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Custom Deduction modal */}
+      {showCustomDeductionModal && (
+        <Modal isOpen onClose={() => setShowCustomDeductionModal(false)} title="Add Custom Deduction" size="md">
+          <div className="space-y-4">
+            <p className="text-xs text-[var(--text-secondary)]">
+              When the government introduces a new deduction, define it here. The payroll engine will apply it automatically to all employees.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Code *</label>
+                <input type="text" value={customDeductionForm.code}
+                  onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, code: e.target.value })}
+                  placeholder="e.g., employee_tax"
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Label *</label>
+                <input type="text" value={customDeductionForm.label}
+                  onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, label: e.target.value })}
+                  placeholder="e.g., Employee Tax"
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Type</label>
+                <select value={customDeductionForm.kind}
+                  onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, kind: e.target.value })}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white">
+                  <option value="percent_of_gross">% of Gross</option>
+                  <option value="percent_of_basic">% of Basic</option>
+                  <option value="fixed_amount">Fixed Amount</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">
+                  {customDeductionForm.kind === 'fixed_amount' ? 'Amount (₹)' : 'Rate (%)'}
+                </label>
+                <input type="number" min={0} step="any"
+                  value={customDeductionForm.kind === 'fixed_amount' ? customDeductionForm.amount : customDeductionForm.rate}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setCustomDeductionForm(customDeductionForm.kind === 'fixed_amount'
+                      ? { ...customDeductionForm, amount: v }
+                      : { ...customDeductionForm, rate: v });
+                  }}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">Effective From *</label>
+                <input type="date" value={customDeductionForm.effective_from}
+                  onChange={(e) => setCustomDeductionForm({ ...customDeductionForm, effective_from: e.target.value })}
+                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm outline-none focus:ring-2 focus:ring-[#1C64F2] bg-white" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-color)]">
+              <button onClick={() => setShowCustomDeductionModal(false)}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--hover-bg)]">
+                Cancel
+              </button>
+              <button onClick={saveCustomDeduction}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5]">
+                Create Deduction
+              </button>
+            </div>
           </div>
         </Modal>
       )}

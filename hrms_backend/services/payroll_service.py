@@ -2813,10 +2813,35 @@ def calculate_payroll(
             component_deduction_total - _statutory_duplicate, rounding, places,
         ))
 
+    # ── Custom statutory deductions (admin-defined, no code changes needed) ──
+    custom_deductions = []
+    custom_deduction_total = 0.0
+    try:
+        from services.custom_deduction_engine import CustomDeductionEngine
+        _custom_engine = CustomDeductionEngine(db, organization_id)
+        custom_deductions = _custom_engine.calculate_all(
+            gross=total_earnings,
+            basic=basic_salary,
+            employee_id=employee.id,
+        )
+        custom_deduction_total = sum(d["amount"] for d in custom_deductions)
+        # Add to component breakdown for payslip display
+        for cd in custom_deductions:
+            component_detail.append({
+                "component_id": None,
+                "name": cd["label"],
+                "display_name": cd["label"],
+                "type": "statutory_deduction",
+                "value": cd["amount"],
+            })
+    except Exception:
+        pass  # Custom deductions are optional — don't break payroll if engine fails
+
     total_deductions = _round_val(
         pf_employee + esi + professional_tax + lwf_employee + tds
         + nps_employee
         + component_deduction_total
+        + custom_deduction_total
         + loan_deduction + advance_deduction + other_deductions,
         rounding, places,
     )
@@ -2930,6 +2955,8 @@ def calculate_payroll(
         "advance_deduction": advance_deduction,
         "other_deductions": other_deductions,
         "pre_deductions": pre_deductions,
+        "custom_deductions": custom_deductions,
+        "custom_deduction_total": custom_deduction_total,
         "total_deductions": total_deductions,
         # Net
         "net_salary": net_salary,

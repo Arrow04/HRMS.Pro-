@@ -337,3 +337,94 @@ def rule_version_history(
         }
         for r in rules
     ]
+
+
+# ── Custom statutory deductions (admin-defined, no code changes needed) ──────
+
+class CustomDeductionCreate(BaseModel):
+    code: str
+    label: str
+    kind: str = "percent_of_gross"  # percent_of_gross, percent_of_basic, fixed_amount, slab
+    rate: float = 0.0
+    amount: float = 0.0
+    slabs: Optional[list] = None
+    min_amount: Optional[float] = None
+    max_amount: Optional[float] = None
+    min_gross: Optional[float] = None
+    max_gross: Optional[float] = None
+    effective_from: str
+    effective_to: Optional[str] = None
+    notification_number: Optional[str] = None
+
+
+@router.get("/custom-deductions", tags=["Statutory Rules"])
+def list_custom_deductions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all active custom deduction rules for the org."""
+    from services.custom_deduction_engine import CustomDeductionEngine
+    engine = CustomDeductionEngine(db, current_user.organization_id)
+    rules = engine.get_active_custom_rules()
+    return {"rules": rules, "count": len(rules)}
+
+
+@router.post("/custom-deductions", tags=["Statutory Rules"])
+def create_custom_deduction(
+    data: CustomDeductionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new custom statutory deduction rule."""
+    _require_role(current_user, ["admin", "hr_admin"])
+    from models import StatutoryRule
+
+    rule = StatutoryRule(
+        rule_type="custom_deduction",
+        rule_subtype=data.code,
+        country=current_user.organization.country if current_user.organization else "IN",
+        effective_from=datetime.strptime(data.effective_from, "%Y-%m-%d").date(),
+        effective_to=datetime.strptime(data.effective_to, "%Y-%m-%d").date() if data.effective_to else None,
+        definition={
+            "code": data.code,
+            "label": data.label,
+            "kind": data.kind,
+            "rate": data.rate,
+            "amount": data.amount,
+            "slabs": data.slabs or [],
+            "min_amount": data.min_amount,
+            "max_amount": data.max_amount,
+            "min_gross": data.min_gross,
+            "max_gross": data.max_gross,
+        },
+        notification_number=data.notification_number,
+        organization_id=current_user.organization_id,
+        status="active",
+        version=1,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return {"message": f"Custom deduction '{data.label}' created", "id": rule.id}
+
+
+@router.delete("/custom-deductions/{rule_id}", tags=["Statutory Rules"])
+def delete_custom_deduction(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deactivate a custom deduction rule."""
+    _require_role(current_user, ["admin", "hr_admin"])
+    from models import StatutoryRule
+
+    rule = db.query(StatutoryRule).filter(
+        StatutoryRule.id == rule_id,
+        StatutoryRule.rule_type == "custom_deduction",
+        StatutoryRule.organization_id == current_user.organization_id,
+    ).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Custom deduction rule not found")
+    rule.status = "superseded"
+    db.commit()
+    return {"message": "Custom deduction deactivated"}
