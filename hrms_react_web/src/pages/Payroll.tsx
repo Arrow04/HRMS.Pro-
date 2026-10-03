@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmployeePicker } from '../hooks/useEmployeePicker';
 import { normalizePickerEmployee, formatEmployeeLabel } from '../utils/employeePickerUtils';
@@ -27,7 +28,6 @@ import DataTable, { type DataTableColumn } from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
-import PayrollConsole from './PayrollConsole';
 import PayrollJourney from '../components/PayrollJourney';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
@@ -147,12 +147,12 @@ const FormSectionTitle = ({ title }: { title: string }) => (
   </h3>
 );
 
-const TABS = [
+const TABS: { id: string; label: string; icon: typeof Play; href?: string }[] = [
   { id: 'run', label: 'Run Payroll', icon: Play },
   { id: 'pay_items', label: 'Payroll Adjustments', icon: HandCoins },
   { id: 'review', label: 'Review & Approve', icon: ClipboardCheck },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
-  { id: 'compliance', label: 'Compliance & Rules', icon: Scale },
+  { id: 'compliance', label: 'Compliance & Rules', icon: Scale, href: '/payroll/console' },
   { id: 'config', label: 'Configuration', icon: Settings },
   { id: 'guide', label: 'Learning Hub', icon: GraduationCap },
 ];
@@ -283,6 +283,7 @@ interface PayslipPreview {
 }
 
 const Payroll = ({ initialTab = 'run' }: { initialTab?: string }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('all');
@@ -1652,7 +1653,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
             {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => { if (tab.href) { navigate(tab.href); } else { setActiveTab(tab.id); } }}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-[#1C64F2]/20'
@@ -2726,7 +2727,6 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
 
         {activeTab === 'pay_items' && payItemsSub === 'loans' && <div className="animate-in fade-in duration-300"><LoansAndAdvancesPanel employees={employees} currency={currency} companies={companies} branches={branches} departments={departments} /></div>}
 
-        {activeTab === 'compliance' && <div className="animate-in fade-in duration-300"><PayrollConsole /></div>}
         {activeTab === 'guide' && <div className="animate-in fade-in duration-300"><PayrollJourney activeTab={activeTab} onNavigate={(t) => setActiveTab(t)} /></div>}
 
       {/* Full Page Drawer Modal */}

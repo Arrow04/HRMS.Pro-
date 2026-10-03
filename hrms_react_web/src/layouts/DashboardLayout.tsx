@@ -6,7 +6,7 @@ import {
   FileBarChart, CreditCard, TrendingUp,
   ShieldAlert, Wallet, LogOut, Monitor,
   ChevronLeft, ChevronRight, Megaphone, AlertTriangle,
-  Bell, Headset
+  Bell, Headset, Scale
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
@@ -25,6 +25,7 @@ const ALL_LINKS = [
   { path: '/assets', label: 'Assets', icon: Monitor },
   { path: '/performance', label: 'Performance', icon: TrendingUp },
   { path: '/payroll', label: 'Payroll', icon: Wallet },
+  { path: '/payroll/console', label: 'Compliance', icon: Scale },
   { path: '/exit-management', label: 'Exits', icon: LogOut },
   { path: '/anomalies', label: 'Anomalies', icon: ShieldAlert },
   { path: '/reports', label: 'Reports', icon: FileBarChart },
@@ -57,7 +58,7 @@ const DashboardLayout = () => {
     '/leaves': 'leaves', '/payroll': 'payroll', '/expenses': 'expenses',
     '/performance': 'performance', '/reports': 'reports',
     '/settings': 'settings', '/exit-management': 'exit', '/assets': 'assets',
-    '/anomalies': 'anomalies', '/payroll/config': 'payroll_config',
+    '/anomalies': 'anomalies', '/payroll/config': 'payroll_config', '/payroll/console': 'payroll_console',
     '/announcements': 'announcements', '/grievances': 'grievances', '/notifications': 'notifications',
     '/helpdesk': 'helpdesk',
   };
