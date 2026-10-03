@@ -468,7 +468,7 @@ const Helpdesk = () => {
         subtitle="IT, HR and facility support tickets in one queue"
         icon={Headset}
         accent="cyan"
-        breadcrumbs={['Home', 'Helpdesk']}
+        breadcrumbs={['HRMS.Pro!', 'Helpdesk']}
         actions={
           <div className="flex items-center gap-2">
             <ExportButton rows={filteredData} filename="helpdesk_tickets.csv" label="Export" />

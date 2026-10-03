@@ -340,6 +340,7 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   const currencySymbol = getCurrencySymbol(currency);
   const [tab, setTab] = useState('personal');
   const [fullNameText, setFullNameText] = useState(() => joinEmployeeName(formData.firstName, formData.lastName));
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   // Sync fullNameText when formData changes externally (e.g., editing existing employee)
   useEffect(() => {
     setFullNameText(joinEmployeeName(formData.firstName, formData.lastName));
@@ -597,7 +598,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
   if (!open) return null;
 
-  const set = (patch: Partial<EmployeeFormData>) => setFormData((prev) => ({ ...prev, ...patch }));
+  const set = (patch: Partial<EmployeeFormData>) => {
+    setFormData((prev) => ({ ...prev, ...patch }));
+    setFormErrors((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(patch)) delete next[key];
+      return next;
+    });
+  };
   const setComp = (key: string, val: unknown) =>
     setFormData((prev) => ({ ...prev, salaryComponents: { ...(prev.salaryComponents || {}), [key]: val } }));
 
@@ -1104,10 +1112,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    // Sync unsaved name before submit (in case user didn't blur the field)
+    const errors: Record<string, string> = {};
     const { firstName, lastName } = splitEmployeeName(fullNameText);
-    if (!fullNameText.trim()) {
-      toast.error('Full name is required');
+    if (!fullNameText.trim()) errors.firstName = 'Full name is required';
+    if (!input(formData.email).trim()) errors.email = 'Email is required';
+    if (!formData.employeeId && !formData.employeeCode) { /* optional */ }
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error(Object.values(errors)[0]);
       return;
     }
     set({ firstName, lastName });
@@ -1127,8 +1139,10 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     return digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
   };
 
-  const FieldError: React.FC<{ name: string }> = () => {
-    return null;
+  const FieldError: React.FC<{ name: string }> = ({ name }) => {
+    const err = formErrors[name];
+    if (!err) return null;
+    return <p className="mt-1 text-xs text-red-500">{err}</p>;
   };
 
   return (
@@ -1558,7 +1572,14 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   <div>
                     <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">Full Name <span className="text-red-500">*</span></label>
                     <input type="text" value={fullNameText}
-                      onChange={(e) => setFullNameText(e.target.value)}
+                      onChange={(e) => {
+                        setFullNameText(e.target.value);
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.firstName;
+                          return next;
+                        });
+                      }}
                       onBlur={() => {
                         const { firstName, lastName } = splitEmployeeName(fullNameText);
                         set({ firstName, lastName });

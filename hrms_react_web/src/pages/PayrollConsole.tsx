@@ -9,6 +9,8 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import DataTable, { type DataTableColumn } from '../components/DataTable';
 import DatePicker from '../components/DatePicker';
 import Modal from '../components/Modal';
+import PageHero from '../components/PageHero';
+import QueryErrorState from '../components/QueryErrorState';
 import SearchableSelect from '../components/SearchableSelect';
 import ToggleSwitch from '../components/ToggleSwitch';
 import api from '../services/api';
@@ -155,6 +157,7 @@ export default function PayrollConsole() {
   const [explain, setExplain] = useState<ExplainPayload | null>(null);
   const [explainLoading, setExplainLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Rule-builder catalog: rule types + fields, values from statutory_rule_configs.
   const [ruleCatalog, setRuleCatalog] = useState<RuleCatalogType[] | null>(null);
@@ -447,6 +450,7 @@ export default function PayrollConsole() {
 
   const load = useCallback(async () => {
     setBusy(true);
+    setLoadError(false);
     try {
       if (tab === 'rules') setRules(await listPayrollRules({ country: getAppCountry() }));
       if (tab === 'calendar') {
@@ -457,6 +461,7 @@ export default function PayrollConsole() {
       if (tab === 'payments') setBatches(await listPaymentBatches());
       if (tab === 'filings') setReports(await listReports());
     } catch {
+      setLoadError(true);
       toast.error('Failed to load payroll data');
     } finally {
       setBusy(false);
@@ -774,34 +779,36 @@ export default function PayrollConsole() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Compliance &amp; Rules</h2>
-          <p className="text-sm text-[var(--text-secondary)]">
-            Statutory rules, arrears, payments, government filings and explainability.
-            The law changes; the rules change; the engine does not.
-          </p>
-        </div>
-        {tab === 'rules' && (
-          <button onClick={openRuleForm}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
-            <Plus className="w-4 h-4 inline mr-1.5" /> New dated rule
-          </button>
-        )}
-      {tab === 'arrears' && (
-          <button onClick={openRetro}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
-            <Upload className="w-4 h-4 inline mr-1.5" /> Retro rule change
-          </button>
-        )}
-        {tab === 'payments' && (
-          <button
-            onClick={() => openPeriodDlg({ kind: 'batch' })}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
-            <Wallet className="w-4 h-4 inline mr-1.5" /> New batch
-          </button>
-        )}
-      </div>
+      <PageHero
+        title="Compliance & Rules"
+        subtitle="Statutory rules, arrears, payments, government filings and explainability."
+        icon={Scale}
+        accent="blue"
+        breadcrumbs={['HRMS.Pro!', 'Compliance & Rules']}
+        actions={
+          <>
+            {tab === 'rules' && (
+              <button onClick={openRuleForm}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
+                <Plus className="w-4 h-4 inline mr-1.5" /> New dated rule
+              </button>
+            )}
+            {tab === 'arrears' && (
+              <button onClick={openRetro}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
+                <Upload className="w-4 h-4 inline mr-1.5" /> Retro rule change
+              </button>
+            )}
+            {tab === 'payments' && (
+              <button
+                onClick={() => openPeriodDlg({ kind: 'batch' })}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md">
+                <Wallet className="w-4 h-4 inline mr-1.5" /> New batch
+              </button>
+            )}
+          </>
+        }
+      />
 
       <div className="border-b border-[var(--border-color)]">
         <div className="flex items-center gap-1 -mb-px overflow-x-auto">
@@ -960,6 +967,9 @@ export default function PayrollConsole() {
           <p><b className="text-[var(--text-primary)]">Effective-dated rules.</b> Each rule applies from its effective date until it is superseded — publishing never rewrites history. Prefills in the rule builder come from your organization's statutory configuration (Configuration → Statutory defaults), so when the law changes you update the config, not the code.</p>
           <p><b className="text-[var(--text-primary)]">Actions.</b> <b>Trace</b> shows which rule wins for a date and why. <b>Supersede</b> sets an end date (the engine stops choosing it after that day). <b>Delete</b> is a soft delete for mistakes — past payroll runs keep their history. Government references on each field come from the latest gazette notifications recorded in the config.</p>
         </div>
+        {loadError ? (
+          <QueryErrorState message="Failed to load statutory rules" onRetry={load} />
+        ) : (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
           <DataTable
             data={rules}
@@ -997,6 +1007,7 @@ export default function PayrollConsole() {
             </div>
           )}
         </div>
+        )}
 
         {/* Custom Statutory Deductions */}
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] p-4">
@@ -1199,6 +1210,9 @@ export default function PayrollConsole() {
       )}
 
       {tab === 'arrears' && (
+        loadError ? (
+          <QueryErrorState message="Failed to load arrears" onRetry={load} />
+        ) : (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
           <DataTable
             data={arrears}
@@ -1219,9 +1233,13 @@ export default function PayrollConsole() {
             )}
           />
         </div>
+        )
       )}
 
       {tab === 'payments' && (
+        loadError ? (
+          <QueryErrorState message="Failed to load payment batches" onRetry={load} />
+        ) : (
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--card-bg)] overflow-hidden">
           <DataTable
             data={batches}
@@ -1245,6 +1263,7 @@ export default function PayrollConsole() {
             )}
           />
         </div>
+        )
       )}
 
       {tab === 'filings' && (

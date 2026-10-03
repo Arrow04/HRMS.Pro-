@@ -556,7 +556,7 @@ const Grievances = () => {
         subtitle="Track and manage employee grievances"
         icon={MessageSquare}
         accent="amber"
-        breadcrumbs={['Home', 'Grievances']}
+        breadcrumbs={['HRMS.Pro!', 'Grievances']}
         actions={
           <div className="flex items-center gap-2">
             <ExportButton rows={filteredData} filename="grievances_export.csv" label="Export" />

@@ -537,7 +537,7 @@ const Announcements = () => {
         subtitle="Manage company announcements and notices"
         icon={Megaphone}
         accent="violet"
-        breadcrumbs={['Home', 'Announcements']}
+        breadcrumbs={['HRMS.Pro!', 'Announcements']}
         actions={
           <div className="flex items-center gap-2">
             <ExportButton rows={exportRows} filename="announcements_export.csv" label="Export" />

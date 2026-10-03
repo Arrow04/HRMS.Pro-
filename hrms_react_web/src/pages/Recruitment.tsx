@@ -31,6 +31,7 @@ import ExportButton from '../components/ExportButton';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import QueryErrorState from '../components/QueryErrorState';
 import type { JobOpening, Candidate, Interview, Company, Department, Branch, Employee } from '../types';
 
 // =============================================================================
@@ -242,7 +243,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
   // DATA QUERIES
   // =============================================================================
 
-  const { data: jobs, isLoading: loadingJobs, isFetching } = useQuery<RecruitmentJob[]>({
+  const { data: jobs, isLoading: loadingJobs, isFetching, isError: jobsError, refetch: refetchJobs } = useQuery<RecruitmentJob[]>({
     queryKey: ['recruitment-jobs'],
     queryFn: async () => {
       const response = await api.get(`/recruitment/jobs`);
@@ -251,7 +252,7 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     staleTime: 2 * 60 * 1000,
   });
 
-  const { data: candidates, isLoading: loadingCandidates } = useQuery<RecruitmentCandidate[]>({
+  const { data: candidates, isLoading: loadingCandidates, isError: candidatesError, refetch: refetchCandidates } = useQuery<RecruitmentCandidate[]>({
     queryKey: ['recruitment-candidates'],
     queryFn: async () => {
       const response = await api.get(`/recruitment/candidates`);
@@ -949,6 +950,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       {loadingJobs ? (
         <div className="animate-page-enter"><PageSkeleton /></div>
+      ) : jobsError ? (
+        <QueryErrorState message="Failed to load job openings" onRetry={refetchJobs} />
       ) : (
         <div className="overflow-x-auto">
           <DataTable
@@ -1051,6 +1054,8 @@ const onboardingRef = useRef<{ startOnboarding: () => void }>(null);
     <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
       {loadingCandidates ? (
         <div className="flex justify-center p-8">null</div>
+      ) : candidatesError ? (
+        <QueryErrorState message="Failed to load candidates" onRetry={refetchCandidates} />
       ) : (
         <div className="overflow-x-auto">
           <DataTable

@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, Download, FileDown, Columns3, Rows3, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Inbox, History, ChevronLeft, ChevronRight, Filter, CheckSquare, Square, Download, FileDown, Columns3, Rows3, Pencil, Trash2 } from 'lucide-react';
 import HistoryModal from './HistoryModal';
 
 export interface DataTableColumn<T> {
@@ -79,6 +79,10 @@ interface DataTableProps<T> {
   serverPagination?: ServerPaginationConfig;
   /** when true, show a loading spinner in the table body instead of rows */
   isLoading?: boolean;
+  /** called on every search query change (parent can refetch in server mode) */
+  onSearchChange?: (query: string) => void;
+  /** optional CTA rendered in the empty state */
+  emptyAction?: React.ReactNode;
 }
 
 const DataTable = <T,>({
@@ -105,6 +109,8 @@ const DataTable = <T,>({
   defaultDensity,
   serverPagination,
   isLoading = false,
+  onSearchChange,
+  emptyAction,
 }: DataTableProps<T>) => {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -175,7 +181,7 @@ const DataTable = <T,>({
 
   const filtered = useMemo(() => {
     let rows = data;
-    if (!isServerMode && searchable && query && searchKeys) {
+    if (searchable && query && searchKeys) {
       const q = query.toLowerCase();
       rows = rows.filter((r) => searchKeys(r).toLowerCase().includes(q));
     }
@@ -194,7 +200,7 @@ const DataTable = <T,>({
       }
     }
     return rows;
-  }, [data, columns, sortKey, sortDir, query, searchable, searchKeys, isServerMode]);
+  }, [data, columns, sortKey, sortDir, query, searchable, searchKeys]);
 
   const effectivePageSize = isServerMode ? serverPagination!.pageSize : pageSize;
   const totalRecords = isServerMode ? serverPagination!.total : filtered.length;
@@ -224,6 +230,7 @@ const DataTable = <T,>({
   const tdClass = isCompact ? 'py-1.5 px-3' : 'py-3 px-5';
   const thClass = isCompact ? 'py-1.5 px-3' : 'py-2.5 px-5';
   const rowPad = isCompact ? '!py-2' : '';
+  const stickyLeft = selectableEnabled ? 40 : 0;
 
   const toggleSelect = (key: string | number) => {
     setSelected((prev) => {
@@ -316,7 +323,10 @@ const DataTable = <T,>({
               <Search className="w-4 h-4 text-[#94A3B8] shrink-0" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  onSearchChange?.(e.target.value);
+                }}
                 placeholder={searchPlaceholder}
                 className="flex-1 bg-transparent border-none outline-none text-sm text-[#0F172A] placeholder-[#94A3B8] py-1"
               />
@@ -491,7 +501,7 @@ const DataTable = <T,>({
               {visibleColumns.map((col, i) => (
                 <th
                   key={col.key}
-                  style={{ width: col.width, textAlign: col.align || 'left', position: i === 0 ? 'sticky' : 'static', left: i === 0 ? '40px' : 'auto', backgroundColor: i === 0 ? '#EFF6FF' : 'transparent', borderRight: '1px solid var(--border-color)' }}
+                  style={{ width: col.width, textAlign: col.align || 'left', position: i === 0 ? 'sticky' : 'static', left: i === 0 ? stickyLeft : 'auto', backgroundColor: i === 0 ? '#EFF6FF' : 'transparent', borderRight: '1px solid var(--border-color)' }}
                   className={`${col.sortable ? 'cursor-pointer select-none hover:text-[#1C64F2] transition-colors' : ''} ${thClass}`}
                   onClick={() => {
                     if (!col.sortable) return;
@@ -517,74 +527,85 @@ const DataTable = <T,>({
               {actions && <th className={thClass} style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }}>Actions</th>}
             </tr>
           </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={visibleColumns.length + extraCols} className="px-4 py-12 text-center">
-                  <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="w-6 h-6 animate-spin text-[var(--primary-blue)]" />
-                    <p className="text-sm text-[var(--text-tertiary)]">Loading...</p>
-                  </div>
-                </td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={visibleColumns.length + extraCols} className="py-16">
-                  <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
-                    <div className="mb-4">
-                      <Inbox className="w-10 h-10 text-[#CBD5E1]" />
+          {isLoading ? (
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-[var(--border-color)]">
+                  {selectableEnabled && (
+                    <td className="px-4 py-3" style={{ backgroundColor: '#EFF6FF', borderRight: '1px solid var(--border-color)' }}>
+                      <div className="h-4 bg-[#F1F5F9] rounded animate-pulse" style={{ width: `${60 + ((i * 17) % 30)}%` }} />
+                    </td>
+                  )}
+                  {columns.slice(0, 4).map((_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 bg-[#F1F5F9] rounded animate-pulse" style={{ width: `${60 + ((i * 17 + j * 13) % 30)}%` }} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          ) : (
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={visibleColumns.length + extraCols} className="py-16">
+                    <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+                      <div className="mb-4">
+                        <Inbox className="w-10 h-10 text-[#CBD5E1]" />
+                      </div>
+                      <p className="text-sm font-semibold text-[#0F172A]">{emptyMessage}</p>
+                      {query && <p className="text-xs text-[#94A3B8] mt-1">Try adjusting your search or filters</p>}
+                      {emptyAction && <div className="mt-3">{emptyAction}</div>}
                     </div>
-                    <p className="text-sm font-semibold text-[#0F172A]">{emptyMessage}</p>
-                    {query && <p className="text-xs text-[#94A3B8] mt-1">Try adjusting your search or filters</p>}
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              pageRows.map((row, idx) => {
-                const rk = String(rowKey(row, idx) ?? idx);
-                const isSel = selected.has(rk);
-                return (
-                  <tr
-                    key={rk}
-                    className={`${onRowClick ? 'cursor-pointer' : ''} ${rowPad} border-b border-[var(--border-color)] ${hoverRow === rk ? 'bg-[#F3F4F6]' : ''}`}
-                    onMouseOver={() => { if (!isSel) setHoverRow(rk) }}
-                    onMouseOut={() => { if (!isSel) setHoverRow(null) }}
-                    onClick={() => onRowClick?.(row)}
-                  >
-                    {selectableEnabled && (
-                      <td className={tdClass} style={{ textAlign: 'center', position: 'sticky', left: 0, backgroundColor: hoverRow === rk ? '#DBEAFE' : '#EFF6FF', borderRight: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => toggleSelect(rk)} className="text-[#64748B] hover:text-[#1C64F2] transition-colors">
-                          {isSel ? <CheckSquare className="w-4 h-4 text-[#1C64F2]" /> : <Square className="w-4 h-4" />}
-                        </button>
-                      </td>
-                    )}
-                    {visibleColumns.map((col, i) => (
-                      <td key={col.key} className={tdClass} style={{ textAlign: col.align || 'left', position: i === 0 ? 'sticky' : 'static', left: i === 0 ? '40px' : 'auto', backgroundColor: i === 0 ? (hoverRow === rk ? '#DBEAFE' : '#EFF6FF') : 'transparent', borderRight: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
-                        {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
-                      </td>
-                    ))}
-                    {hasLog && (
-                      <td className={tdClass} style={{ textAlign: 'center', borderRight: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>
-                        {(() => {
-                          const target = logFor(row);
-                          return (
-                            <button
-                              onClick={() => target && setHistoryTarget({ entityType: logEntityType, id: target.id, label: target.label })}
-                              className="p-2 text-[#7C3AED] hover:bg-[#7C3AED]/10 rounded-lg transition-colors"
-                              title="View change history"
-                            >
-                              <History className="w-4 h-4" />
-                            </button>
-                          );
-                        })()}
-                      </td>
-                    )}
-                    {actions && <td className={tdClass} style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>{actions(row)}</td>}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row, idx) => {
+                  const rk = String(rowKey(row, idx) ?? idx);
+                  const isSel = selected.has(rk);
+                  return (
+                    <tr
+                      key={rk}
+                      className={`${onRowClick ? 'cursor-pointer' : ''} ${rowPad} border-b border-[var(--border-color)] ${hoverRow === rk ? 'bg-[#F3F4F6]' : ''}`}
+                      onMouseOver={() => { if (!isSel) setHoverRow(rk) }}
+                      onMouseOut={() => { if (!isSel) setHoverRow(null) }}
+                      onClick={() => onRowClick?.(row)}
+                    >
+                      {selectableEnabled && (
+                        <td className={tdClass} style={{ textAlign: 'center', position: 'sticky', left: 0, backgroundColor: hoverRow === rk ? '#DBEAFE' : '#EFF6FF', borderRight: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => toggleSelect(rk)} className="text-[#64748B] hover:text-[#1C64F2] transition-colors">
+                            {isSel ? <CheckSquare className="w-4 h-4 text-[#1C64F2]" /> : <Square className="w-4 h-4" />}
+                          </button>
+                        </td>
+                      )}
+                      {visibleColumns.map((col, i) => (
+                        <td key={col.key} className={tdClass} style={{ textAlign: col.align || 'left', position: i === 0 ? 'sticky' : 'static', left: i === 0 ? stickyLeft : 'auto', backgroundColor: i === 0 ? (hoverRow === rk ? '#DBEAFE' : '#EFF6FF') : 'transparent', borderRight: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+                          {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
+                        </td>
+                      ))}
+                      {hasLog && (
+                        <td className={tdClass} style={{ textAlign: 'center', borderRight: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>
+                          {(() => {
+                            const target = logFor(row);
+                            return (
+                              <button
+                                onClick={() => target && setHistoryTarget({ entityType: logEntityType, id: target.id, label: target.label })}
+                                className="p-2 text-[#7C3AED] hover:bg-[#7C3AED]/10 rounded-lg transition-colors"
+                                title="View change history"
+                              >
+                                <History className="w-4 h-4" />
+                              </button>
+                            );
+                          })()}
+                        </td>
+                      )}
+                      {actions && <td className={tdClass} style={{ textAlign: 'right', borderRight: '1px solid var(--border-color)' }} onClick={(e) => e.stopPropagation()}>{actions(row)}</td>}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          )}
         </table>
       </div>
 

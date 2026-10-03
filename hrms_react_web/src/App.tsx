@@ -153,7 +153,12 @@ function App() {
           </Routes>
           </ErrorBoundary>
         </Suspense>
-       <Toaster position="top-right" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff' } }} />
+       <Toaster position="top-right" toastOptions={{
+         duration: 3000,
+         success: { duration: 3000 },
+         error: { duration: 8000 },
+         style: { background: '#333', color: '#fff' },
+       }} />
        <CommandPalette />
       </BrowserRouter>
     );

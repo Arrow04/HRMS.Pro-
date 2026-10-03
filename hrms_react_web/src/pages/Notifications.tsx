@@ -622,7 +622,7 @@ const Notifications = () => {
         subtitle="Stay updated with your latest alerts and messages"
         icon={Bell}
         accent="indigo"
-        breadcrumbs={['Home', 'Notifications']}
+        breadcrumbs={['HRMS.Pro!', 'Notifications']}
         actions={
           <div className="flex items-center gap-2">
             <button

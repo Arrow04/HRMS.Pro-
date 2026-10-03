@@ -1279,7 +1279,7 @@ const Letters = () => {
           subtitle="Generate professional HR letters — offer, appointment, appraisal, relieving and more — in one click"
           icon={FileText}
           accent="indigo"
-          breadcrumbs={['Home', 'Employees', 'Letters']}
+          breadcrumbs={['HRMS.Pro!', 'Employees', 'Letters']}
           actions={
             <div className="flex items-center gap-2">
               <button

@@ -26,6 +26,7 @@ import PageHero from '../components/PageHero';
 import ExportButton from '../components/ExportButton';
 import DataTable from '../components/DataTable';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
+import QueryErrorState from '../components/QueryErrorState';
 import type { DataTableColumn } from '../components/DataTable';
 import type { LucideIcon } from 'lucide-react';
 import type { Company as CompanyType, Department, Branch } from '../types';
@@ -182,7 +183,7 @@ const Company = () => {
   // Use React Query to fetch the list data based on active tab
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  const { data: items = [], isFetching } = useQuery({
+  const { data: items = [], isFetching, isError: itemsError, refetch: refetchItems } = useQuery({
     queryKey: [activeTab],
     queryFn: async (): Promise<EntityItem[]> => {
       const response = await api.get(`/${activeTab}`);
@@ -739,7 +740,9 @@ const Company = () => {
               </div>
             </div>
           </div>
-                    {filteredItems.length === 0 ? (
+                    {itemsError ? (
+            <QueryErrorState message="Failed to load records" onRetry={refetchItems} />
+          ) : filteredItems.length === 0 ? (
             <EmptyState
               icon={Search}
               title="No records found"

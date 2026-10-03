@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Home } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface PageHeroProps {
   title: string;
@@ -33,11 +33,14 @@ const PageHero: React.FC<PageHeroProps> = ({ title, subtitle, icon: Icon, accent
       {/* Breadcrumbs */}
       {breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 text-xs mb-3 text-blue-200/80">
-          <Home className="w-3.5 h-3.5" />
-          {breadcrumbs.map((c, i) => (
+          {breadcrumbs.map((crumb, i) => (
             <React.Fragment key={i}>
-              <ChevronRight className="w-3 h-3 text-blue-300/50" />
-              <span className={i === breadcrumbs.length - 1 ? 'text-white font-semibold' : 'text-blue-200/70'}>{c}</span>
+              {i > 0 && <span className="mx-1 text-blue-300/50">/</span>}
+              {i === 0 ? (
+                <Link to="/dashboard" className="text-blue-200/70 hover:text-white transition-colors">{crumb}</Link>
+              ) : (
+                <span className={i === breadcrumbs.length - 1 ? 'text-white font-semibold' : 'text-blue-200/70'}>{crumb}</span>
+              )}
             </React.Fragment>
           ))}
         </nav>
