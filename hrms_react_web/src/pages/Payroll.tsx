@@ -152,7 +152,6 @@ const TABS: { id: string; label: string; icon: typeof Play; href?: string }[] = 
   { id: 'pay_items', label: 'Payroll Adjustments', icon: HandCoins },
   { id: 'review', label: 'Review & Approve', icon: ClipboardCheck },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
-  { id: 'compliance', label: 'Compliance & Rules', icon: Scale, href: '/payroll/console' },
   { id: 'config', label: 'Configuration', icon: Settings },
   { id: 'guide', label: 'Learning Hub', icon: GraduationCap },
 ];
