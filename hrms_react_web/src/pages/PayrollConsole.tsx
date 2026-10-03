@@ -79,13 +79,13 @@ interface PlannerResult {
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
-  { id: 'rules', label: 'Statutory Rules', icon: Scale },
-  { id: 'calendar', label: 'Compliance Calendar', icon: CalendarDays },
+  { id: 'rules', label: 'Rules', icon: Scale },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'planner', label: 'Tax Planner', icon: Calculator },
-  { id: 'arrears', label: 'Arrears & Retro', icon: Receipt },
-  { id: 'payments', label: 'Bank Payments', icon: Wallet },
-  { id: 'filings', label: 'Statutory Filings', icon: FileDown },
-  { id: 'explain', label: 'Payslip Explainer', icon: HelpCircle },
+  { id: 'arrears', label: 'Arrears', icon: Receipt },
+  { id: 'payments', label: 'Payments', icon: Wallet },
+  { id: 'filings', label: 'Filings', icon: FileDown },
+  { id: 'explain', label: 'Explainer', icon: HelpCircle },
 ];
 
 const fmt = (n: number | null | undefined) =>
@@ -840,19 +840,19 @@ export default function PayrollConsole() {
       </div>
 
       {/* TABS — Pill style matching Payroll.tsx */}
-      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-6">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-3 mb-6">
+        <div className="flex flex-wrap items-center gap-1.5">
           {TABS.map(({ id, label, icon: TabIcon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium text-[13px] transition-all duration-200 whitespace-nowrap ${
                 tab === id
                   ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-[#1C64F2]/20'
                   : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--background)]'
               }`}
             >
-              <TabIcon className="w-4 h-4" />
+              <TabIcon className="w-3.5 h-3.5" />
               {label}
             </button>
           ))}
