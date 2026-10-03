@@ -134,7 +134,6 @@ RULE_TYPE_CATALOG: List[dict] = [
         {"key": "multiplier", "label": "OT multiplier", "kind": "number"},
         {"key": "threshold_hours", "label": "Daily threshold hours", "kind": "number"},
     ]},
-    {"value": "custom", "label": "Custom (JSON)", "isJson": True, "fields": []},
 ]
 
 

@@ -101,11 +101,10 @@ class TestRuleTypeCatalog:
                        headers={'Authorization': f'Bearer {admin_token}'})
         assert r.status_code == 200
         types = {t['value']: t for t in r.json()['ruleTypes']}
-        # Engine-backed rule types + JSON fallback are all present
+        # Engine-backed rule types are all present
         for expected in ('pf_contribution', 'esi_contribution', 'pf_exclusion',
-                         'bonus', 'gratuity', 'custom'):
+                         'bonus', 'gratuity'):
             assert expected in types, f'missing rule type {expected}'
-        assert types['custom']['isJson'] is True
         assert types['pf_contribution']['isJson'] is False
 
         fields = {f['key']: f for f in types['pf_contribution']['fields']}
