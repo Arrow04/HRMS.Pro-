@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Scale, FileDown, Wallet, Receipt, HelpCircle, Upload, CheckCircle2, AlertTriangle, BookOpen,
-  Plus, X, Loader2, CalendarDays, Calculator,
+  Plus, X, Loader2, CalendarDays, Calculator, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AccountingPanel from '../components/AccountingPanel';
@@ -12,6 +12,7 @@ import Modal from '../components/Modal';
 import PageHero from '../components/PageHero';
 import QueryErrorState from '../components/QueryErrorState';
 import SearchableSelect from '../components/SearchableSelect';
+import StatsCard from '../components/StatsCard';
 import ToggleSwitch from '../components/ToggleSwitch';
 import api from '../services/api';
 import { getCurrencySymbol, getAppCurrency } from '../services/currencyService';
@@ -810,15 +811,50 @@ export default function PayrollConsole() {
         }
       />
 
-      <div className="border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-1 -mb-px overflow-x-auto">
-          {TABS.map(({ id, label }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+      {/* Stats Grid — same pattern as Payroll.tsx */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatsCard
+          label="Active Rules"
+          value={rules.filter(r => r.status === 'active').length}
+          icon={Scale}
+          color="blue"
+        />
+        <StatsCard
+          label="Custom Deductions"
+          value={customDeductions.length}
+          icon={FileDown}
+          iconBg="bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-emerald-300/5"
+          iconColor="text-emerald-600"
+        />
+        <StatsCard
+          label="Filed This Year"
+          value={calendar?.counts?.filed ?? 0}
+          icon={CheckCircle2}
+          color="green"
+        />
+        <StatsCard
+          label="Upcoming Filings"
+          value={calendar?.counts?.upcoming ?? 0}
+          icon={Clock}
+          iconBg="bg-gradient-to-br from-amber-500/20 via-amber-400/10 to-amber-300/5"
+          iconColor="text-amber-600"
+        />
+      </div>
+
+      {/* TABS — Pill style matching Payroll.tsx */}
+      <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {TABS.map(({ id, label, icon: TabIcon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${
                 tab === id
-                  ? 'border-[var(--primary-blue)] text-[var(--primary-blue)]'
-                  : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
-              }`}>
+                  ? 'bg-[var(--primary-blue)] text-white shadow-md shadow-[#1C64F2]/20'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--background)]'
+              }`}
+            >
+              <TabIcon className="w-4 h-4" />
               {label}
             </button>
           ))}
