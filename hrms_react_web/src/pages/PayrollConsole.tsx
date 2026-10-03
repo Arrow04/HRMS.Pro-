@@ -4,7 +4,6 @@ import {
   Plus, X, Loader2, CalendarDays, Calculator, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import AccountingPanel from '../components/AccountingPanel';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import DataTable, { type DataTableColumn } from '../components/DataTable';
 import DatePicker from '../components/DatePicker';
@@ -28,7 +27,7 @@ import {
   getPayrollExplain,
 } from '../services/payrollEngineService';
 
-type Tab = 'rules' | 'calendar' | 'planner' | 'arrears' | 'payments' | 'filings' | 'accounting' | 'explain';
+type Tab = 'rules' | 'calendar' | 'planner' | 'arrears' | 'payments' | 'filings' | 'explain';
 
 // Employee summary as returned by /employees?view=summary (snake + camel).
 interface EmployeeSummary {
@@ -86,7 +85,6 @@ const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
   { id: 'arrears', label: 'Arrears & Retro', icon: Receipt },
   { id: 'payments', label: 'Bank Payments', icon: Wallet },
   { id: 'filings', label: 'Statutory Filings', icon: FileDown },
-  { id: 'accounting', label: 'Accounting', icon: BookOpen },
   { id: 'explain', label: 'Payslip Explainer', icon: HelpCircle },
 ];
 
@@ -1319,10 +1317,6 @@ export default function PayrollConsole() {
             </div>
           ))}
         </div>
-      )}
-
-      {tab === 'accounting' && (
-        <div className="animate-in fade-in duration-300"><AccountingPanel /></div>
       )}
 
       {tab === 'explain' && (

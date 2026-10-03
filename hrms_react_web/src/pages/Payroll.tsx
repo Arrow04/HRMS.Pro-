@@ -28,6 +28,7 @@ import DataTable, { type DataTableColumn } from '../components/DataTable';
 import EmptyState from '../components/EmptyState';
 import { getStatusBadgeClass, capitalizeStatus } from '../utils/statusUtils';
 import PayrollConfiguration from '../components/PayrollConfiguration';
+import AccountingPanel from '../components/AccountingPanel';
 import PayrollJourney from '../components/PayrollJourney';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
@@ -152,6 +153,7 @@ const TABS: { id: string; label: string; icon: typeof Play; href?: string }[] = 
   { id: 'pay_items', label: 'Payroll Adjustments', icon: HandCoins },
   { id: 'review', label: 'Review & Approve', icon: ClipboardCheck },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
+  { id: 'accounting', label: 'Accounting', icon: BookOpen },
   { id: 'config', label: 'Configuration', icon: Settings },
   { id: 'guide', label: 'Learning Hub', icon: GraduationCap },
 ];
@@ -2507,6 +2509,7 @@ const { data: payrollStatusOptions = [] } = useMasterData('PAYROLL_STATUS');
         )}
 
         {/* CONFIG TAB */}
+        {activeTab === 'accounting' && <div className="animate-in fade-in duration-300"><AccountingPanel /></div>}
         {activeTab === 'config' && (
           <div className="animate-in fade-in duration-300 space-y-6">
             <PayrollConfiguration />
