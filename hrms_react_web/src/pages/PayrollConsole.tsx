@@ -82,7 +82,7 @@ const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
   { id: 'rules', label: 'Statutory Rules', icon: Scale },
   { id: 'calendar', label: 'Compliance Calendar', icon: CalendarDays },
   { id: 'planner', label: 'Tax Planner', icon: Calculator },
-  { id: 'arrears', label: 'Arrears & Retro', icon: Receipt },
+  { id: 'arrears', label: 'Arrears', icon: Receipt },
   { id: 'payments', label: 'Bank Payments', icon: Wallet },
   { id: 'filings', label: 'Statutory Filings', icon: FileDown },
   { id: 'explain', label: 'Payslip Explainer', icon: HelpCircle },
