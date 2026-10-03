@@ -143,6 +143,7 @@ const DashboardLayout = () => {
             <NavLink
               key={link.path}
               to={link.path}
+              end={link.path === '/payroll'}
               className={({ isActive }) => `
                 relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium group
                 transition-all duration-200 ease-smooth
