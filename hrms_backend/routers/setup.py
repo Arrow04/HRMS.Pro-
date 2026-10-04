@@ -148,35 +148,63 @@ class ConciergeAnswers(BaseModel):
     pay_type: str = "monthly"
     leaves: List[str] = ["casual", "sick", "earned"]
     statutory: str = "yes"
+    # Architecture: an Organization holds multiple Companies (legal entities).
+    # companyId scopes ALL configuration to one company; None = org-wide
+    # defaults for single-company orgs.
+    companyId: Optional[int] = None
 
 
-def compute_setup_status(db: Session, org_id: int) -> dict:
-    """Readiness of one organization — derived from data, never from guesses."""
-    has_statutory = db.query(StatutorySetting).filter(
-        StatutorySetting.organization_id == org_id,
-        StatutorySetting.status == "active",
+def _company_scope_q(q, model, company_id: Optional[int]):
+    """Filter a config query to one company, or to org-wide defaults."""
+    if company_id is not None:
+        return q.filter(model.company_id == company_id)
+    return q.filter(model.company_id.is_(None))
+
+
+def compute_setup_status(db: Session, org_id: int, company_id: Optional[int] = None) -> dict:
+    """Readiness of one organization — derived from data, never from guesses.
+
+    company_id scopes the checks to a single Company (legal entity); None
+    checks org-wide defaults (single-company orgs).
+    """
+    has_statutory = _company_scope_q(
+        db.query(StatutorySetting).filter(
+            StatutorySetting.organization_id == org_id,
+            StatutorySetting.status == "active",
+        ), StatutorySetting, company_id,
     ).first() is not None
-    has_regime = db.query(TaxRegime).filter(
-        TaxRegime.organization_id == org_id,
-        TaxRegime.is_active.is_(True),
+    has_regime = _company_scope_q(
+        db.query(TaxRegime).filter(
+            TaxRegime.organization_id == org_id,
+            TaxRegime.is_active.is_(True),
+        ), TaxRegime, company_id,
     ).first() is not None
-    has_policy = db.query(PayrollPolicy).filter(
-        PayrollPolicy.organization_id == org_id,
-        PayrollPolicy.status == "active",
+    has_policy = _company_scope_q(
+        db.query(PayrollPolicy).filter(
+            PayrollPolicy.organization_id == org_id,
+            PayrollPolicy.status == "active",
+        ), PayrollPolicy, company_id,
     ).first() is not None
+    # Leave types are org-level master data (engine resolves by org)
     leave_count = db.query(LeaveType).filter(
         LeaveType.organization_id == org_id,
         LeaveType.status == "active",
     ).count()
-    employee_count = db.query(Employee).filter(
+    emp_q = db.query(Employee).filter(
         Employee.organization_id == org_id,
         Employee.deleted_at.is_(None),
         Employee.status == "active",
-    ).count()
-    payroll_count = db.query(Payroll).filter(
+    )
+    if company_id is not None:
+        emp_q = emp_q.filter(Employee.company_id == company_id)
+    employee_count = emp_q.count()
+    pay_q = db.query(Payroll).filter(
         Payroll.organization_id == org_id,
         Payroll.deleted_at.is_(None),
-    ).count()
+    )
+    if company_id is not None:
+        pay_q = pay_q.filter(Payroll.company_id == company_id)
+    payroll_count = pay_q.count()
 
     steps = [
         {
@@ -254,6 +282,20 @@ def compute_setup_status(db: Session, org_id: int) -> dict:
     completed = sum(1 for s in steps if s["done"])
     next_step = next((s for s in steps if not s["done"]), None)
     org = db.query(Organization).filter(Organization.id == org_id).first()
+    from models import Company
+    companies = [
+        {"id": c.id, "name": c.name}
+        for c in db.query(Company).filter(
+            Company.organization_id == org_id,
+            Company.deleted_at.is_(None),
+        ).order_by(Company.name).all()
+    ]
+    company_scope = None
+    if company_id is not None:
+        for c in companies:
+            if c["id"] == company_id:
+                company_scope = c
+                break
     return {
         "steps": steps,
         "completed": completed,
@@ -271,19 +313,25 @@ def compute_setup_status(db: Session, org_id: int) -> dict:
             "country": getattr(org, "country", None),
             "currency": getattr(org, "default_currency", None),
         } if org else None,
+        "companies": companies,
+        "companyScope": company_scope,
+        "companyId": company_id,
     }
 
 
 @router.get("/api/setup/status")
 def setup_status(
+    companyId: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Readiness for one company (legal entity), or org-wide defaults when
+    companyId is omitted — the multi-company architecture's setup view."""
     _require(current_user)
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(status_code=400, detail="User has no organization")
-    return compute_setup_status(db, org_id)
+    return compute_setup_status(db, org_id, company_id=companyId)
 
 
 @router.get("/api/setup/questions")
@@ -297,23 +345,33 @@ def setup_questions(
 
 
 def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dict[str, Any]:
-    """Apply interview answers org-wide. Idempotent: never overwrites
-    existing configuration, only fills what's missing."""
+    """Apply interview answers for ONE company (or org-wide when companyId is
+    None). Architecture: Organization -> Companies (legal entities); every
+    statutory/attendance/payroll/leave row created here is scoped to the
+    chosen company so each entity keeps its own configuration. Idempotent:
+    never overwrites existing configuration, only fills what's missing."""
     applied: List[str] = []
     skipped: List[str] = []
     org_id = org.id
+    cid = a.companyId
+
+    def _scope(q, model):
+        return _company_scope_q(q, model, cid)
 
     # 1) Statutory settings (country preset)
-    has_stat = db.query(StatutorySetting).filter(
-        StatutorySetting.organization_id == org_id,
-        StatutorySetting.status == "active",
+    has_stat = _scope(
+        db.query(StatutorySetting).filter(
+            StatutorySetting.organization_id == org_id,
+            StatutorySetting.status == "active",
+        ), StatutorySetting,
     ).first()
     if a.country == "india" and a.statutory == "yes":
         if has_stat is None:
             from routers.payroll_config import COUNTRY_STATUTORY_PRESETS
             preset = COUNTRY_STATUTORY_PRESETS.get("india", {})
             fields = {k: v for k, v in preset.items() if k != "label"}
-            db.add(StatutorySetting(organization_id=org_id, status="active", **fields))
+            db.add(StatutorySetting(
+                organization_id=org_id, company_id=cid, status="active", **fields))
             applied.append("Statutory deductions (PF 12%, ESI, PT)")
         else:
             skipped.append("Statutory settings already existed")
@@ -321,15 +379,17 @@ def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dic
         skipped.append("Statutory deductions skipped (per your answer)")
 
     # 2) Attendance policy (workweek + hours)
-    has_att = db.query(AttendancePolicy).filter(
-        AttendancePolicy.organization_id == org_id,
-        AttendancePolicy.company_id.is_(None),
+    has_att = _scope(
+        db.query(AttendancePolicy).filter(
+            AttendancePolicy.organization_id == org_id,
+        ), AttendancePolicy,
     ).first()
     if has_att is None:
         wk = _WORKWEEK_MAP.get(a.workweek, _WORKWEEK_MAP["mon_fri"])
         hrs = _WORK_HOURS_MAP.get(a.work_hours, _WORK_HOURS_MAP["9-6"])
         db.add(AttendancePolicy(
             organization_id=org_id,
+            company_id=cid,
             name="Default Attendance Policy",
             working_days=wk["working_days"],
             working_days_per_week=wk["working_days_per_week"],
@@ -345,14 +405,17 @@ def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dic
         skipped.append("Attendance policy already existed")
 
     # 3) Payroll policy (26 vs 30-day divisor + FY start)
-    has_policy = db.query(PayrollPolicy).filter(
-        PayrollPolicy.organization_id == org_id,
-        PayrollPolicy.status == "active",
+    has_policy = _scope(
+        db.query(PayrollPolicy).filter(
+            PayrollPolicy.organization_id == org_id,
+            PayrollPolicy.status == "active",
+        ), PayrollPolicy,
     ).first()
     if has_policy is None:
         divisor = 26.0 if a.pay_type in ("daily", "mixed") else 30.0
         db.add(PayrollPolicy(
             organization_id=org_id,
+            company_id=cid,
             name="Default Payroll Policy",
             status="active",
             pro_ration_method="paid_days",
@@ -371,14 +434,17 @@ def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dic
         skipped.append("Payroll policy already existed")
 
     # 4) Tax regime (TDS slabs)
-    has_regime = db.query(TaxRegime).filter(
-        TaxRegime.organization_id == org_id,
-        TaxRegime.is_active.is_(True),
+    has_regime = _scope(
+        db.query(TaxRegime).filter(
+            TaxRegime.organization_id == org_id,
+            TaxRegime.is_active.is_(True),
+        ), TaxRegime,
     ).first()
     if has_regime is None:
         year = datetime.utcnow().year
         regime = TaxRegime(
             organization_id=org_id,
+            company_id=cid,
             name="New Regime (Standard)",
             regime_type="new",
             is_active=True,
@@ -403,7 +469,9 @@ def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dic
     else:
         skipped.append("Tax regime already existed")
 
-    # 5) Leave types + pinned template
+    # 5) Leave types (ORG-level master data: leave_types.code is globally
+    # unique and the leave engine resolves types by org, not company) +
+    # pinned template (per-company — templates may differ per legal entity)
     created_types = []
     existing_codes = {
         (lt.code or "").strip().lower()
@@ -414,51 +482,63 @@ def _apply_concierge(db: Session, org: Organization, a: ConciergeAnswers) -> Dic
         if not spec or spec["code"] in existing_codes:
             continue
         db.add(LeaveType(
-            organization_id=org_id, name=spec["name"], code=spec["code"],
+            organization_id=org_id, company_id=None,
+            name=spec["name"], code=spec["code"],
             days_allowed=spec["days_allowed"], is_paid=spec["is_paid"],
             is_encashable=spec.get("is_encashable", False), status="active",
         ))
+        existing_codes.add(spec["code"])
         created_types.append(spec["name"])
     if created_types:
         applied.append(f"Leave types: {', '.join(created_types)}")
     else:
         skipped.append("No new leave types needed")
 
-    has_template = db.query(LeaveTemplate).filter(
-        LeaveTemplate.organization_id == org_id,
-        LeaveTemplate.deleted_at.is_(None),
-        LeaveTemplate.status == "active",
+    has_template = _scope(
+        db.query(LeaveTemplate).filter(
+            LeaveTemplate.organization_id == org_id,
+            LeaveTemplate.deleted_at.is_(None),
+            LeaveTemplate.status == "active",
+        ), LeaveTemplate,
     ).first()
-    if has_template is None and created_types:
-        body_rows = []
-        for key in (a.leaves or []):
-            spec = _LEAVE_SPECS.get(key)
-            if spec:
-                body_rows.append({
-                    "code": spec["code"], "name": spec["name"],
-                    "days": spec["days_allowed"], "paid": spec["is_paid"],
-                    "encashable": spec.get("is_encashable", False), "active": True,
-                })
+    # Template is per-company; build it whenever this company lacks one and
+    # the selected leave types exist org-level (created earlier or pre-existing).
+    body_rows = []
+    for key in (a.leaves or []):
+        spec = _LEAVE_SPECS.get(key)
+        if spec and spec["code"] in existing_codes:
+            body_rows.append({
+                "code": spec["code"], "name": spec["name"],
+                "days": spec["days_allowed"], "paid": spec["is_paid"],
+                "encashable": spec.get("is_encashable", False), "active": True,
+            })
+    if has_template is None and body_rows:
         db.add(LeaveTemplate(
-            organization_id=org_id, name="Standard Leave Policy",
+            organization_id=org_id, company_id=cid,
+            name="Standard Leave Policy",
             status="active", accrual_method="frontloaded",
             effective_from=datetime.utcnow().date(),
             body={"leaveTypes": body_rows},
         ))
         applied.append("Leave policy template")
+    elif has_template is not None:
+        skipped.append("Leave policy template already existed")
 
-    # 6) Record the guided setup on the org (audit + future reference)
+    # 6) Record the guided setup (audit + future reference), per company
     settings = dict(getattr(org, "settings", None) or {})
-    settings["setup"] = {
-        **(settings.get("setup") or {}),
+    setup_key = f"company_{cid}" if cid is not None else "org"
+    guided = dict(settings.get("setup") or {})
+    guided[setup_key] = {
         "guidedConfigured": True,
         "guidedAt": datetime.utcnow().isoformat(),
+        "companyId": cid,
         "answers": a.model_dump(),
     }
+    settings["setup"] = guided
     org.settings = settings
 
     db.commit()
-    return {"applied": applied, "skipped": skipped}
+    return {"applied": applied, "skipped": skipped, "companyId": cid}
 
 
 @router.post("/api/setup/concierge")
@@ -467,7 +547,11 @@ def setup_concierge(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Configure the HRMS from interview answers — company-wide, idempotent."""
+    """Configure the HRMS from interview answers for one company.
+
+    companyId scopes every created row to that Company (legal entity);
+    omit it for single-company orgs (org-wide defaults).
+    """
     _require(current_user)
     org_id = current_user.organization_id
     if not org_id:
@@ -475,6 +559,15 @@ def setup_concierge(
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
+    if answers.companyId is not None:
+        from models import Company
+        company = db.query(Company).filter(
+            Company.id == answers.companyId,
+            Company.organization_id == org_id,
+            Company.deleted_at.is_(None),
+        ).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found in this organization")
     result = _apply_concierge(db, org, answers)
-    result["status"] = compute_setup_status(db, org_id)
+    result["status"] = compute_setup_status(db, org_id, company_id=answers.companyId)
     return result

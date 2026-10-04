@@ -19,6 +19,9 @@ interface SetupStatus {
   nextStep: SetupStep | null;
   counts: { employees: number; leaveTypes: number; payrolls: number };
   organization: { id: number; name: string; country: string | null; currency: string | null } | null;
+  companies?: { id: number; name: string }[];
+  companyScope?: { id: number; name: string } | null;
+  companyId?: number | null;
 }
 
 // ── Concierge interview types ──────────────────────────────────────────────
@@ -47,17 +50,28 @@ export default function SetupWizard() {
   const [applyResult, setApplyResult] = useState<{ applied: string[]; skipped: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  // Multi-company architecture: an Organization holds Companies (legal
+  // entities). Setup is always scoped to one company at a time.
+  const [companies, setCompanies] = useState<{ id: number; name: string }[]>([]);
+  const [companyId, setCompanyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(false);
-      const [s, q] = await Promise.all([
-        api.get('/setup/status'),
+      const [s, q, cos] = await Promise.all([
+        api.get('/setup/status', { params: companyId != null ? { companyId } : {} }),
         api.get('/setup/questions'),
+        api.get('/companies').catch(() => ({ data: [] })),
       ]);
       setStatus(s.data as SetupStatus);
       const qs = (q.data as { questions: SetupQuestion[] }).questions || [];
       setQuestions(qs);
+      const cosData = (Array.isArray(cos.data) ? cos.data : []) as { id: number; name: string }[];
+      setCompanies(cosData);
+      setCompanyId((prev) => {
+        if (prev != null) return prev;
+        return cosData.length > 0 ? cosData[0].id : null;
+      });
       setAnswers((prev) => {
         if (Object.keys(prev).length > 0) return prev;
         const init: Answers = {};
@@ -67,7 +81,7 @@ export default function SetupWizard() {
     } catch {
       setError(true);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -136,22 +150,54 @@ export default function SetupWizard() {
     });
   };
 
-  const applyConcierge = async () => {
+  const buildPayload = (cid: number | null) => ({
+    country: String(answers.country ?? 'india'),
+    workweek: String(answers.workweek ?? 'mon_fri'),
+    work_hours: String(answers.work_hours ?? '9-6'),
+    pay_type: String(answers.pay_type ?? 'monthly'),
+    leaves: Array.isArray(answers.leaves) ? answers.leaves : [],
+    statutory: String(answers.statutory ?? 'yes'),
+    companyId: cid,
+  });
+
+  const applyConcierge = async (targetCompanyId?: number | null) => {
+    const cid = targetCompanyId !== undefined ? targetCompanyId : companyId;
     setPhase('applying');
     setBusy(true);
     try {
-      const res = await api.post('/setup/concierge', {
-        country: String(answers.country ?? 'india'),
-        workweek: String(answers.workweek ?? 'mon_fri'),
-        work_hours: String(answers.work_hours ?? '9-6'),
-        pay_type: String(answers.pay_type ?? 'monthly'),
-        leaves: Array.isArray(answers.leaves) ? answers.leaves : [],
-        statutory: String(answers.statutory ?? 'yes'),
-      });
+      const res = await api.post('/setup/concierge', buildPayload(cid));
       setApplyResult({ applied: res.data.applied || [], skipped: res.data.skipped || [] });
       setStatus(res.data.status as SetupStatus);
       setPhase('done');
       toast.success('Your HRMS is configured');
+    } catch (err) {
+      const e = err as { response?: { data?: { detail?: unknown } } };
+      const d = e.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Setup failed — try again');
+      setPhase('review');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyAllCompanies = async () => {
+    setPhase('applying');
+    setBusy(true);
+    let allApplied: string[] = [];
+    let allSkipped: string[] = [];
+    try {
+      for (const co of companies) {
+        const res = await api.post('/setup/concierge', buildPayload(co.id));
+        allApplied = [...allApplied, ...((res.data.applied || []) as string[]).map((x) => `${co.name}: ${x}`)];
+        allSkipped = [...allSkipped, ...((res.data.skipped || []) as string[])];
+      }
+      setApplyResult({ applied: allApplied, skipped: allSkipped });
+      if (companyId != null) {
+        const s = await api.get('/setup/status', { params: { companyId } });
+        setStatus(s.data as SetupStatus);
+      }
+      setPhase('done');
+      toast.success(`Configured ${companies.length} companies`);
     } catch (err) {
       const e = err as { response?: { data?: { detail?: unknown } } };
       const d = e.response?.data?.detail;
@@ -256,6 +302,26 @@ export default function SetupWizard() {
 
       {/* ═══════════ GUIDED INTERVIEW ═══════════ */}
       {mode === 'guided' && phase !== 'done' && (
+        <>
+        {/* Company scope — an org holds multiple companies (legal entities);
+            every answer configures the SELECTED company only. */}
+        {companies.length > 0 && (
+          <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-4 flex flex-wrap items-center gap-3">
+            <span className="text-sm text-[var(--text-tertiary)]">Setting up:</span>
+            <select
+              value={companyId ?? ''}
+              onChange={(e) => setCompanyId(e.target.value === '' ? null : Number(e.target.value))}
+              className="px-3 py-2 rounded-xl border border-[var(--border-color)] text-sm font-medium text-[var(--text-primary)] bg-white"
+            >
+              {companies.map((co) => (
+                <option key={co.id} value={co.id}>{co.name}</option>
+              ))}
+            </select>
+            <span className="text-xs text-[var(--text-tertiary)]">
+              Each company gets its own statutory, attendance &amp; payroll configuration.
+            </span>
+          </div>
+        )}
         <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
           {/* progress */}
           <div className="flex items-center justify-between mb-2">
@@ -324,9 +390,14 @@ export default function SetupWizard() {
           {phase === 'review' && (
             <div>
               <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-1">Here's what we'll set up</h2>
-              <p className="text-sm text-[var(--text-tertiary)] mb-5">
+              <p className="text-sm text-[var(--text-tertiary)] mb-2">
                 Based on your answers. Nothing is overwritten — we only fill what's missing.
               </p>
+              {companies.length > 0 && (
+                <p className="text-sm font-medium text-[#1C64F2] mb-4">
+                  Target company: {companies.find((c) => c.id === companyId)?.name ?? '—'}
+                </p>
+              )}
               <div className="divide-y divide-[var(--border-color)] rounded-xl border border-[var(--border-color)] mb-6">
                 {questions.map((qq) => {
                   const val = answers[qq.id];
@@ -341,21 +412,34 @@ export default function SetupWizard() {
                   );
                 })}
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <button
                   onClick={() => { setPhase('interview'); setQIndex(questions.length - 1); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-[var(--text-primary)] border border-[var(--border-color)] hover:bg-[var(--background)]"
                 >
                   <ArrowLeft className="w-4 h-4" /> Change answers
                 </button>
-                <button
-                  onClick={applyConcierge}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md disabled:opacity-60"
-                >
-                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  Set up my HRMS
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {companies.length > 1 && (
+                    <button
+                      onClick={applyAllCompanies}
+                      disabled={busy}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-[var(--text-primary)] border border-[#1C64F2]/40 hover:bg-blue-50 disabled:opacity-60"
+                    >
+                      Apply to all {companies.length} companies
+                    </button>
+                  )}
+                  <button
+                    onClick={() => applyConcierge()}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md disabled:opacity-60"
+                  >
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {companies.length > 0
+                      ? `Set up ${companies.find((c) => c.id === companyId)?.name ?? 'company'}`
+                      : 'Set up my HRMS'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -367,6 +451,7 @@ export default function SetupWizard() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {/* ═══════════ DONE ═══════════ */}
