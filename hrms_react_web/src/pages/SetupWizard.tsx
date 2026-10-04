@@ -122,11 +122,15 @@ export default function SetupWizard() {
   return (
     <div className="relative z-10 animate-page-enter max-w-5xl mx-auto">
       <PageHero
-        title={status?.complete ? 'You\'re all set 🎉' : 'Let\'s get you set up'}
+        title={error ? 'Backend not reachable' : status?.complete ? 'You\'re all set 🎉' : 'Let\'s get you set up'}
         subtitle={
-          status?.complete
-            ? 'Everything essential is configured. Head to the dashboard whenever you\'re ready.'
-            : `${status ? status.completed : 0} of ${status ? status.total : 6} steps done — about 5 minutes from a working payroll.`
+          error
+            ? 'Start the backend, then refresh — the wizard connects to it for your setup status.'
+            : status?.complete
+              ? 'Everything essential is configured. Head to the dashboard whenever you\'re ready.'
+              : status
+                ? `${status.completed} of ${status.total} steps done — about 5 minutes from a working payroll.`
+                : 'Loading your setup status…'
         }
         icon={Sparkles}
         accent="blue"
@@ -142,6 +146,7 @@ export default function SetupWizard() {
       />
 
       {/* Progress */}
+      {status && (
       <div className="bg-white rounded-2xl border border-[var(--border-color)] p-5 mb-6">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-[var(--text-primary)]">Setup progress</span>
@@ -153,7 +158,7 @@ export default function SetupWizard() {
             style={{ width: `${pct}%` }}
           />
         </div>
-        {status?.organization && (
+        {status.organization && (
           <p className="mt-2 text-xs text-[var(--text-tertiary)]">
             Setting up <span className="font-medium text-[var(--text-primary)]">{status.organization.name}</span>
             {status.organization.country ? ` · ${status.organization.country}` : ''}
@@ -161,10 +166,18 @@ export default function SetupWizard() {
           </p>
         )}
       </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 mb-6 text-sm">
-          Could not load setup status. Check your connection and refresh.
+          <p className="font-medium mb-1">Couldn&apos;t load setup status.</p>
+          <p>
+            The backend didn&apos;t answer — if you just pulled new code, restart it:{' '}
+            <code className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 text-xs">
+              cd hrms_backend &amp;&amp; python main.py
+            </code>
+            , then refresh this page.
+          </p>
         </div>
       )}
 
