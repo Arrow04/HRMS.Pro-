@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Scale, FileDown, Wallet, Receipt, HelpCircle, Upload, CheckCircle2, AlertTriangle, BookOpen,
-  Plus, X, Loader2, CalendarDays, Calculator, Clock,
+  Scale, FileDown, Wallet, Receipt, HelpCircle, Upload, CheckCircle2, AlertTriangle,
+  Plus, X, Loader2, CalendarDays, Calculator, Clock, LayoutDashboard, ShieldCheck, ShieldAlert,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -27,7 +27,7 @@ import {
   getPayrollExplain,
 } from '../services/payrollEngineService';
 
-type Tab = 'rules' | 'calendar' | 'planner' | 'arrears' | 'payments' | 'filings' | 'explain';
+type Tab = 'overview' | 'rules' | 'calendar' | 'planner' | 'arrears' | 'payments' | 'filings' | 'explain';
 
 // Employee summary as returned by /employees?view=summary (snake + camel).
 interface EmployeeSummary {
@@ -79,6 +79,7 @@ interface PlannerResult {
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Scale }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'rules', label: 'Statutory Rules', icon: Scale },
   { id: 'calendar', label: 'Compliance Calendar', icon: CalendarDays },
   { id: 'planner', label: 'Tax Planner', icon: Calculator },
@@ -193,6 +194,25 @@ export default function PayrollConsole() {
   const [calendar, setCalendar] = useState<{ items: CalendarItem[]; counts: Record<string, number> } | null>(null);
   const [calendarFilter, setCalendarFilter] = useState<'all' | 'overdue' | 'due_soon' | 'filed' | 'upcoming'>('all');
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+
+  // CXO overview: /compliance/dashboard + /audit/verify (compliance moat screen).
+  interface DashAtRisk {
+    code: string; name: string; authority: string; periodLabel: string;
+    dueDate: string; status: string; amount: number;
+  }
+  interface DashData {
+    period?: { month: number; year: number; today?: string };
+    filings?: { dueSoon?: number; overdue?: number; filed?: number; upcoming?: number; atRisk?: DashAtRisk[] };
+    payroll?: { byStatus?: Record<string, number>; total?: number };
+    statutory?: Record<string, number>;
+    fnfPending?: number;
+    registers?: string[];
+  }
+  interface AuditVerify {
+    valid?: boolean; checked?: number; firstInvalidId?: number | null; reason?: string;
+  }
+  const [dash, setDash] = useState<DashData | null>(null);
+  const [audit, setAudit] = useState<AuditVerify | null>(null);
   const fetchCalendar = async (year?: number) => {
     const res = await api.get('/payroll/compliance-calendar', { params: { year: year ?? calendarYear } });
     setCalendar(res.data);
@@ -452,6 +472,14 @@ export default function PayrollConsole() {
     setLoadError(false);
     try {
       if (tab === 'rules') setRules(await listPayrollRules({ country: getAppCountry() }));
+      if (tab === 'overview') {
+        const [d, a] = await Promise.all([
+          api.get('/compliance/dashboard'),
+          api.get('/audit/verify'),
+        ]);
+        setDash(d.data as DashData);
+        setAudit(a.data as AuditVerify);
+      }
       if (tab === 'calendar') {
         const res = await api.get('/payroll/compliance-calendar', { params: { year: calendarYear } });
         setCalendar(res.data);
@@ -858,6 +886,106 @@ export default function PayrollConsole() {
           ))}
         </div>
       </div>
+
+      {tab === 'overview' && (
+        <div className="space-y-6">
+          {/* Filings at risk + payroll health + statutory constants */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-[var(--border-color)] p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-[var(--text-primary)]">Filings at risk</h3>
+                <span className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
+                  {dash?.period?.today ?? '—'}
+                </span>
+              </div>
+              {(dash?.filings?.atRisk?.length ?? 0) === 0 ? (
+                <p className="text-sm text-[var(--text-tertiary)]">
+                  Nothing overdue and nothing due in the next 7 days. Clean.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {(dash?.filings?.atRisk ?? []).map((f) => (
+                    <div key={`${f.code}-${f.periodLabel}`}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm ${
+                        f.status === 'overdue'
+                          ? 'bg-red-50 border-red-200 text-red-800'
+                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}>
+                      <div>
+                        <span className="font-medium">{f.name}</span>
+                        <span className="ml-2 text-xs opacity-80">{f.periodLabel} · due {f.dueDate}</span>
+                      </div>
+                      <span className="font-semibold">{fmt(f.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bg-white rounded-2xl border border-[var(--border-color)] p-5">
+              <h3 className="font-semibold text-[var(--text-primary)] mb-4">Audit trail</h3>
+              {audit == null ? (
+                <p className="text-sm text-[var(--text-tertiary)]">Verifying…</p>
+              ) : audit.valid ? (
+                <div className="flex items-center gap-2 text-emerald-700 text-sm">
+                  <ShieldCheck className="w-5 h-5" />
+                  <span>Chain intact — {audit.checked ?? 0} entries verified</span>
+                </div>
+              ) : (
+                <div className="space-y-1 text-sm text-red-700">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5" />
+                    <span className="font-medium">Chain broken</span>
+                  </div>
+                  <p className="text-xs">First invalid row: #{audit.firstInvalidId ?? '—'}</p>
+                  <p className="text-xs opacity-80">{audit.reason}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-white rounded-2xl border border-[var(--border-color)] p-5">
+              <h3 className="font-semibold text-[var(--text-primary)] mb-3">
+                Payroll · {dash?.period?.month ?? '—'}/{dash?.period?.year ?? '—'}
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(dash?.payroll?.byStatus ?? {}).map(([status, count]) => (
+                  <span key={status} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-100 text-slate-700">
+                    {status}: {count}
+                  </span>
+                ))}
+                {(dash?.payroll?.total ?? 0) === 0 && (
+                  <span className="text-sm text-[var(--text-tertiary)]">No payslips for this period yet.</span>
+                )}
+              </div>
+              <p className="mt-3 text-sm text-[var(--text-tertiary)]">
+                Pending F&amp;F settlements: <span className="font-semibold text-[var(--text-primary)]">{dash?.fnfPending ?? 0}</span>
+              </p>
+            </div>
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-[var(--border-color)] p-5">
+              <h3 className="font-semibold text-[var(--text-primary)] mb-3">Statutory constants in force</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {Object.entries(dash?.statutory ?? {}).map(([key, val]) => (
+                  <div key={key} className="px-3 py-2 rounded-xl bg-[var(--background)] border border-[var(--border-color)]">
+                    <div className="text-xs text-[var(--text-tertiary)]">{key}</div>
+                    <div className="font-semibold text-sm text-[var(--text-primary)]">{val}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4">
+                <div className="text-xs text-[var(--text-tertiary)] mb-1.5">Registers available</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(dash?.registers ?? []).map((code) => (
+                    <span key={code} className="px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                      {code}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === 'calendar' && (
         <div className="space-y-4">
