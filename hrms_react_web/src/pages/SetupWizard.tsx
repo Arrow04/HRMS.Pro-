@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PageHero from '../components/PageHero';
+import ToggleSwitch from '../components/ToggleSwitch';
 import api from '../services/api';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -402,15 +403,11 @@ export default function SetupWizard() {
                               <label className="flex items-center justify-between gap-3">
                                 <span className="text-sm text-[var(--text-primary)]">{f.label}</span>
                                 {f.type === 'toggle' ? (
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={Boolean(val)}
-                                    onClick={() => setField(q.id, f.id, !val)}
-                                    className={`w-11 h-6 rounded-full transition-colors relative ${val ? 'bg-[#1C64F2]' : 'bg-slate-300'}`}
-                                  >
-                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${val ? 'left-5.5' : 'left-0.5'}`} />
-                                  </button>
+                                  <ToggleSwitch
+                                    checked={Boolean(val)}
+                                    onChange={(v) => setField(q.id, f.id, v)}
+                                    helpText={f.label}
+                                  />
                                 ) : f.type === 'choice' ? (
                                   <select
                                     value={String(val ?? '')}
