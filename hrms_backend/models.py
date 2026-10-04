@@ -527,6 +527,36 @@ class LeaveBalance(Base):
         return f'<LeaveBalance {self.employee_id}>'
 
 
+class LeaveAccrualLedger(Base):
+    """Immutable accrual credits (leave_accrual service) — one row per
+    employee + leave type + period. The UNIQUE constraint is the
+    idempotency key: the scheduler can re-run any number of times and can
+    never double-credit a period.
+    """
+    __tablename__ = 'leave_accrual_ledger'
+    __table_args__ = (
+        UniqueConstraint('employee_id', 'leave_type_id', 'year', 'month',
+                         name='uq_leave_accrual_period'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey('organizations.id'), index=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    leave_type_id = Column(Integer, ForeignKey('leave_types.id'), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    month = Column(Integer, nullable=False)
+    days_credited = Column(Float, nullable=False, default=0)
+    method = Column(String(20))  # monthly | quarterly | yearly
+    quota_at_credit = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship('Employee', backref='leave_accruals')
+    leave_type = relationship('LeaveType', backref='accruals')
+
+    def __repr__(self):
+        return f'<LeaveAccrualLedger emp={self.employee_id} {self.month}/{self.year} +{self.days_credited}>'
+
+
 class LeaveApplication(Base):
     """Leave application model"""
     __tablename__ = 'leave_applications'

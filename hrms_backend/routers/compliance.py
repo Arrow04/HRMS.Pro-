@@ -407,3 +407,19 @@ def compliance_dashboard(
         "fnfPending": fnf_pending,
         "registers": [d["code"] for d in BUILTIN_REPORT_DEFINITIONS],
     }
+
+
+@router.get("/api/audit/verify")
+def verify_audit_trail(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replay the org's hash-chained audit trail — tamper evidence on demand.
+
+    valid=False means an audit row was edited/deleted after the fact (or a
+    write skipped the chain) — the first invalid row id pinpoints where.
+    """
+    if (current_user.role or "").lower() not in _DASHBOARD_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to verify the audit trail")
+    from services.audit_chain import verify_audit_chain
+    return verify_audit_chain(db, org_id=current_user.organization_id)

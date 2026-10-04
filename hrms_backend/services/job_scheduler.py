@@ -51,6 +51,12 @@ JOBS = {
         "default_schedule": "weekly",
         "default_time": "04:00",
     },
+    "leave_accrual": {
+        "name": "Leave Accrual",
+        "description": "Credits monthly/quarterly/yearly leave per LeaveTemplate accrual_method (idempotent)",
+        "default_schedule": "monthly",
+        "default_time": "00:15",
+    },
 }
 
 
@@ -90,6 +96,12 @@ def run_job(db: Session, job_id: str, org_id: Optional[int] = None) -> dict:
 
     elif job_id == "retention_cleanup":
         return _run_retention_cleanup(db, start)
+
+    elif job_id == "leave_accrual":
+        now = datetime.utcnow()
+        from services.leave_accrual import accrue_leave_for_period
+        result = accrue_leave_for_period(db, now.year, now.month, org_id=org_id)
+        return {"job": job_id, "status": "success", **result, "duration_ms": _elapsed(start)}
 
     return {"job": job_id, "status": "unknown", "message": f"No handler for job: {job_id}"}
 

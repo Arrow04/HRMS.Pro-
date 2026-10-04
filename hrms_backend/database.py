@@ -123,6 +123,13 @@ try:
 except ImportError:
     pass  # Will be set up on first init_db call
 
+# Hash-chain EVERY AuditLog insert (tamper evidence) — see services/audit_chain.
+try:
+    from services.audit_chain import attach_audit_chain
+    attach_audit_chain()
+except Exception as _e:
+    print(f"Audit chain attach warning: {_e}")
+
 # Dependency to get database session
 def get_db():
     db = SessionLocal()
