@@ -57,6 +57,7 @@ import StatsCard from '../components/StatsCard';
 import SearchableSelect from '../components/SearchableSelect';
 import ChartCard from '../components/ChartCard';
 import PageHero from '../components/PageHero';
+import SetupChecklist from '../components/SetupChecklist';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ModuleSummaryCard from '../components/ModuleSummaryCard';
 import QuickActionButton from '../components/QuickActionButton';
@@ -412,6 +413,9 @@ export default function Dashboard() {
           </>
         }
       />
+
+      {/* First-run setup checklist — hidden automatically once setup is complete */}
+      <SetupChecklist />
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

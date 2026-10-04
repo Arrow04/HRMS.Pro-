@@ -116,6 +116,7 @@ from routers.custom_fields import router as custom_fields_router
 from routers.reports import router as reports_router
 from routers.automation import router as automation_router
 from routers.compliance import router as compliance_router
+from routers.setup import router as setup_router
 from routers.ai_automation_tasks import router as ai_automation_router
 from routers.companies import router as companies_router
 from routers.leaves import router as leaves_router
@@ -716,6 +717,7 @@ app.include_router(custom_fields_router)
 app.include_router(reports_router)
 app.include_router(automation_router)
 app.include_router(compliance_router)
+app.include_router(setup_router)
 app.include_router(ai_automation_router)
 
 app.include_router(companies_router)
