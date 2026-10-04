@@ -6,7 +6,7 @@ import {
   FileBarChart, CreditCard, TrendingUp,
   ShieldAlert, Wallet, LogOut, Monitor,
   ChevronLeft, ChevronRight, Megaphone, AlertTriangle,
-  Bell, Headset, Scale
+  Bell, Headset, Scale, Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import AppHeader from '../components/AppHeader';
@@ -14,6 +14,7 @@ import Chatbot from '../components/Chatbot';
 
 const ALL_LINKS = [
   { path: '/dashboard', label: 'Dashboard', icon: BarChart3 },
+  { path: '/setup', label: 'Setup', icon: Sparkles },
   { path: '/company', label: 'Company', icon: Building },
   { path: '/recruitment', label: 'Recruitment', icon: Briefcase },
   { path: '/employees', label: 'Employees', icon: Users },
@@ -53,7 +54,7 @@ const DashboardLayout = () => {
   }, [location.pathname]);
 
   const routeToModule: Record<string, string> = {
-    '/dashboard': 'dashboard', '/company': 'company', '/employees': 'employees', '/letters': 'letters',
+    '/dashboard': 'dashboard', '/setup': 'setup', '/company': 'company', '/employees': 'employees', '/letters': 'letters',
     '/recruitment': 'recruitment', '/holidays': 'holidays', '/attendance': 'attendance',
     '/leaves': 'leaves', '/payroll': 'payroll', '/expenses': 'expenses',
     '/performance': 'performance', '/reports': 'reports',
