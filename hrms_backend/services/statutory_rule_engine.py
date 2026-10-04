@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from services.compliance_engine import _get_statutory_constant
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +63,17 @@ class StatutoryRuleEngine:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        from sqlalchemy import func
+        from sqlalchemy import func, or_
+
+        def _state_scope(q):
+            """Org/company rules must not leak across states: only the
+            all-states (NULL) rows plus the exact state apply."""
+            if state_code:
+                return q.filter(
+                    or_(StatutoryRule.state_code.is_(None), StatutoryRule.state_code == state_code)
+                )
+            return q
+
         q = (
             self.db.query(StatutoryRule)
             .filter(
@@ -81,9 +93,9 @@ class StatutoryRuleEngine:
 
         # 1. Company-specific rules (highest priority)
         if company_id is not None:
-            company_rules = q.filter(
+            company_rules = _state_scope(q.filter(
                 StatutoryRule.company_id == company_id,
-            ).order_by(
+            )).order_by(
                 StatutoryRule.state_code.is_(None),
                 StatutoryRule.effective_from.desc(),
             ).all()
@@ -91,10 +103,10 @@ class StatutoryRuleEngine:
 
         # 2. Org-specific rules
         if organization_id:
-            org_rules = q.filter(
+            org_rules = _state_scope(q.filter(
                 StatutoryRule.organization_id == organization_id,
                 StatutoryRule.company_id.is_(None),
-            ).order_by(
+            )).order_by(
                 StatutoryRule.state_code.is_(None),
                 StatutoryRule.effective_from.desc(),
             ).all()
@@ -140,6 +152,7 @@ class StatutoryRuleEngine:
         country: str = '',
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
+        company_id: Optional[int] = None,
     ) -> Optional[Any]:
         """Return the full StatutoryRule ORM object (not just definition dict)."""
         from models import StatutoryRule
@@ -160,9 +173,15 @@ class StatutoryRuleEngine:
         )
 
         candidates = []
+        if company_id is not None:
+            company_rules = q.filter(
+                StatutoryRule.company_id == company_id,
+            ).order_by(StatutoryRule.state_code.is_(None), StatutoryRule.effective_from.desc()).all()
+            candidates.extend(company_rules)
         if organization_id:
             org_rules = q.filter(
-                StatutoryRule.organization_id == organization_id
+                StatutoryRule.organization_id == organization_id,
+                StatutoryRule.company_id.is_(None),
             ).order_by(StatutoryRule.state_code.is_(None), StatutoryRule.effective_from.desc()).all()
             candidates.extend(org_rules)
         if state_code:
@@ -248,6 +267,7 @@ class StatutoryRuleEngine:
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
         voluntary_pf: Optional[Dict] = None,
+        company_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """Calculate all PF components using the rule engine.
 
@@ -264,8 +284,8 @@ class StatutoryRuleEngine:
                 'voluntary_employer': float,
             }
         """
-        rule = self.resolve('pf_contribution', as_of, country, state_code, organization_id)
-        exclusion_rule = self.resolve('pf_exclusion', as_of, country, state_code, organization_id)
+        rule = self.resolve('pf_contribution', as_of, country, state_code, organization_id, company_id)
+        exclusion_rule = self.resolve('pf_exclusion', as_of, country, state_code, organization_id, company_id)
 
         # No rule found — return zeros. User must configure rules for their country.
         if not rule:
@@ -291,12 +311,17 @@ class StatutoryRuleEngine:
         edli_max = float(rule.get('edli_max', 0.0))
         admin_rate = float(rule.get('admin_rate', 0.0))
         admin_min = float(rule.get('admin_min', 0.0))
-        eps_ceiling = float(rule.get('eps_wage_ceiling', 15000.0))
+        # Key missing from the resolved rule: fall back to the seeded
+        # statutory_rule_configs value, never a code literal.
+        _eps_ceiling = rule.get('eps_wage_ceiling')
+        eps_ceiling = float(_eps_ceiling) if _eps_ceiling is not None else float(
+            _get_statutory_constant(self.db, 'eps_wage_ceiling', 15000.0))
 
         # Exclusion check
         pf_exempt = False
         if exclusion_rule.get('enabled', False):
-            threshold = float(exclusion_rule.get('wage_threshold', 15000))
+            threshold = float(exclusion_rule.get('wage_threshold') or _get_statutory_constant(
+                self.db, 'pf_min_basic_for_exclusion', 15000.0))
             if basic_full > threshold:
                 pf_exempt = True
 
@@ -357,9 +382,10 @@ class StatutoryRuleEngine:
         organization_id: Optional[int] = None,
         is_disabled: bool = False,
         keep_covered: bool = False,
+        company_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """Calculate ESI using the rule engine."""
-        rule = self.resolve('esi_contribution', as_of, country, state_code, organization_id)
+        rule = self.resolve('esi_contribution', as_of, country, state_code, organization_id, company_id)
 
         if not rule:
             rule = {
@@ -391,9 +417,10 @@ class StatutoryRuleEngine:
         country: str = '',
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
+        company_id: Optional[int] = None,
     ) -> float:
         """Calculate professional tax using the rule engine."""
-        rule = self.resolve('professional_tax', as_of, country, state_code, organization_id)
+        rule = self.resolve('professional_tax', as_of, country, state_code, organization_id, company_id)
 
         if not rule:
             return 0.0
@@ -417,9 +444,10 @@ class StatutoryRuleEngine:
         country: str = '',
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
+        company_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """Calculate statutory bonus using the rule engine."""
-        rule = self.resolve('bonus', as_of, country, state_code, organization_id)
+        rule = self.resolve('bonus', as_of, country, state_code, organization_id, company_id)
 
         if not rule:
             return {'bonus_applicable': False, 'bonus_amount': 0.0}
@@ -448,9 +476,10 @@ class StatutoryRuleEngine:
         state_code: Optional[str] = None,
         organization_id: Optional[int] = None,
         regime: str = 'new',
+        company_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """Calculate income tax using rule engine tax slabs."""
-        rule = self.resolve('tax_slab', as_of, country, state_code, organization_id)
+        rule = self.resolve('tax_slab', as_of, country, state_code, organization_id, company_id)
 
         if not rule or rule.get('regime') != regime:
             return {'base_tax': 0.0, 'surcharge': 0.0, 'cess': 0.0, 'total_tax': 0.0}
@@ -504,9 +533,10 @@ class StatutoryRuleEngine:
         as_of: date,
         country: str = '',
         organization_id: Optional[int] = None,
+        company_id: Optional[int] = None,
     ) -> float:
         """Calculate monthly gratuity provision using the rule engine."""
-        rule = self.resolve('gratuity', as_of, country, None, organization_id)
+        rule = self.resolve('gratuity', as_of, country, None, organization_id, company_id)
 
         if not rule:
             return 0.0
@@ -525,9 +555,10 @@ class StatutoryRuleEngine:
         as_of: date,
         country: str = '',
         organization_id: Optional[int] = None,
+        company_id: Optional[int] = None,
     ) -> Dict[str, float]:
         """Calculate overtime hourly rate using the rule engine."""
-        rule = self.resolve('overtime', as_of, country, None, organization_id)
+        rule = self.resolve('overtime', as_of, country, None, organization_id, company_id)
 
         if not rule:
             return {'hourly_rate': 0.0, 'multiplier': 0.0, 'threshold_hours': 0.0}

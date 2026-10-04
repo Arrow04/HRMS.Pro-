@@ -294,19 +294,47 @@ def get_payroll_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # PF/ESI display defaults come from the org's statutory configuration
+    # (StatutorySetting -> seeded statutory_rule_configs -> Act defaults),
+    # never from literals in this handler.
+    from services.compliance_engine import _get_statutory_constant
+
+    pf_pct = 12.0
+    esi_ee_pct = 0.75
+    esi_er_pct = 3.25
+    if current_user.organization_id:
+        try:
+            from models import StatutorySetting as _SS
+            _st = db.query(_SS).filter(
+                _SS.organization_id == current_user.organization_id,
+                _SS.status == "active",
+            ).first()
+            if _st is not None:
+                pf_pct = float(_st.pf_employee_rate or 0) or float(
+                    _get_statutory_constant(db, "pf_employee_rate", 12.0))
+                esi_ee_pct = float(_st.esi_employee_rate or 0) or float(
+                    _get_statutory_constant(db, "esi_employee_rate", 0.75))
+                esi_er_pct = float(_st.esi_employer_rate or 0) or float(
+                    _get_statutory_constant(db, "esi_employer_rate", 3.25))
+            else:
+                pf_pct = float(_get_statutory_constant(db, "pf_employee_rate", 12.0))
+                esi_ee_pct = float(_get_statutory_constant(db, "esi_employee_rate", 0.75))
+                esi_er_pct = float(_get_statutory_constant(db, "esi_employer_rate", 3.25))
+        except Exception:
+            pass
     defaults = {
         "cycle": "monthly",
         "payDay": "last-day",
-        "pfPercent": "12",
-        "esiPercent": "3.25",
+        "pfPercent": str(pf_pct),
+        "esiPercent": str(esi_er_pct),
         "autoPayslip": True,
         "emailPayslip": True,
         "payrollFrequency": "monthly",
         "currency": "INR",
         "enablePf": True,
-        "pfPercentage": 12,
+        "pfPercentage": pf_pct,
         "enableEsi": False,
-        "esiPercentage": 1.75,
+        "esiPercentage": esi_ee_pct,
         "enableTaxDeduction": True,
         "payrollDay": 1,
     }

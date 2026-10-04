@@ -224,9 +224,24 @@ def template_days_for_type(template_body: Optional[Dict[str, Any]], leave_type: 
 
     Matches by leave_type_id first, then tolerant code/name. An inactive row
     yields 0 (explicit zero, still creates a visible zero-quota row).
+
+    When the body carries a template-level `_max_balance_cap` (injected by
+    pinned_template_body from LeaveTemplate.max_balance_cap), the resolved
+    days are capped at it.
     """
     if not template_body:
         return None
+    cap = None
+    try:
+        cap = int(template_body.get("_max_balance_cap") or 0) or None
+    except (TypeError, ValueError):
+        cap = None
+
+    def _apply_cap(days):
+        if days is None or not cap:
+            return days
+        return min(days, cap)
+
     lt_id = getattr(leave_type, "id", None)
     want = {_norm_leave_code(getattr(leave_type, "code", None)), _norm_leave_code(getattr(leave_type, "name", None))} - {""}
     for row in template_body.get("leaveTypes") or []:
@@ -236,11 +251,11 @@ def template_days_for_type(template_body: Optional[Dict[str, Any]], leave_type: 
         if not hit:
             continue
         if row.get("active") is False:
-            return 0
+            return _apply_cap(0)
         try:
-            return max(0, int(row.get("days", 0)))
+            return _apply_cap(max(0, int(row.get("days", 0))))
         except (TypeError, ValueError):
-            return 0
+            return _apply_cap(0)
     return None
 
 
@@ -266,7 +281,16 @@ def pinned_template_body(db, employee, as_of=None) -> Optional[Dict[str, Any]]:
         ).first()
         if not t or not _in_force(getattr(t, "effective_from", None), as_of):
             return None
-        return (t.body or {}) if t else None
+        body = dict(t.body or {})
+        # Template-level cap (LeaveTemplate.max_balance_cap) rides along so
+        # quota resolution can honour it; truthy values only.
+        cap = getattr(t, "max_balance_cap", None)
+        if cap:
+            try:
+                body["_max_balance_cap"] = int(cap)
+            except (TypeError, ValueError):
+                pass
+        return body
     except Exception:
         return None
 
@@ -305,6 +329,9 @@ def quota_for_employee(db, employee, leave_type: Any, as_of=None) -> int:
                 if lt and _in_force(getattr(lt, "effective_from", None), as_of):
                     days = template_days_for_type(lt.body or {}, leave_type)
                     if days is not None:
+                        cap = getattr(lt, "max_balance_cap", None)
+                        if cap:
+                            days = min(days, int(cap))
                         return days
     except Exception:
         pass

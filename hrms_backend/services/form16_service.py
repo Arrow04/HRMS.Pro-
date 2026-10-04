@@ -18,10 +18,24 @@ from services.payslip_service import MONTH_NAMES
 
 logger = logging.getLogger(__name__)
 
+# Act defaults — consulted ONLY when the org's TaxRegime row predates these
+# columns (they carry the same defaults in the model/migration). The caps
+# actually applied below come from the TaxRegime configuration row.
 STD_80C_CAP = 150000.0
 STD_80D_CAP = 50000.0
 NPS_CAP = 50000.0
 HOME_LOAN_CAP = 200000.0
+
+
+def _regime_cap(regime, attr: str, fallback: float) -> float:
+    """Read a deduction cap from the org's TaxRegime; fallback only if unset."""
+    val = getattr(regime, attr, None) if regime is not None else None
+    try:
+        if val is not None:
+            return float(val)
+    except (TypeError, ValueError):
+        pass
+    return fallback
 
 
 def parse_financial_year(fy: Optional[str]) -> tuple:
@@ -101,13 +115,14 @@ def get_form16_data(db: Session, employee_id: int, financial_year: Optional[str]
 
     hra_exempt = float(exemptions.get("hra", 0) or 0)
     lta_exempt = float(exemptions.get("lta", 0) or 0)
-    ded_80c = _cap("80c", STD_80C_CAP, cap_by_contribution=pf_employee)
-    ded_80d = _cap("80d", STD_80D_CAP)
-    ded_nps = _cap("nps", NPS_CAP)
-    ded_home_loan = _cap("home_loan", HOME_LOAN_CAP)
+    cap_80c = _regime_cap(regime, "section_80c_old_cap", 0.0) or _regime_cap(regime, "section_80c_cap", STD_80C_CAP)
+    ded_80c = _cap("80c", cap_80c, cap_by_contribution=pf_employee)
+    ded_80d = _cap("80d", _regime_cap(regime, "section_80d_cap", STD_80D_CAP))
+    ded_nps = _cap("nps", _regime_cap(regime, "section_80ccd_1b_cap", NPS_CAP))
+    ded_home_loan = _cap("home_loan", _regime_cap(regime, "section_24_home_loan_cap", HOME_LOAN_CAP))
 
     regime_is_new = regime is not None and str(getattr(regime, "regime_type", "new") or "new").lower() == "new"
-    std_deduction = float(regime.standard_deduction) if regime and getattr(regime, "standard_deduction", None) is not None else 50000.0
+    std_deduction = _regime_cap(regime, "standard_deduction", 50000.0)
 
     gross_salary_income = gross  # payroll gross = employee's taxable salary (employer PF/ESI/gratuity are separate)
     exempt_allowances = (hra_exempt + lta_exempt) if not regime_is_new else 0.0

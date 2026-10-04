@@ -1630,11 +1630,34 @@ def calculate_fnf(
     except Exception:
         expense_reimbursement = 0.0
 
-    gratuity_days_per_year = payload.gratuityDays if payload.gratuityDays is not None else 15
-    gratuity_eligible_years = payload.gratuityEligibleYears if payload.gratuityEligibleYears is not None else 5
+    # Gratuity — Payment of Gratuity Act 1972, driven by StatutorySetting.
+    # Defaults come from gratuity_engine.gratuity_act_default (the single
+    # source for 15 days/year, 5 years, 26-day divisor, ₹20L ceiling, 15-year
+    # service cap) — never from inline literals.
+    from services.gratuity_engine import gratuity_act_default
+    try:
+        from services.payroll_service import _get_statutory_settings
+        _g_stat = _get_statutory_settings(db, emp)
+    except Exception:
+        _g_stat = None
+    _g_days_default = float(getattr(_g_stat, 'gratuity_days_per_year', None) or 0) \
+        or float(gratuity_act_default('days_per_year') or 0.0)
+    _g_years_default = float(getattr(_g_stat, 'gratuity_eligible_years', None) or 0) \
+        or float(gratuity_act_default('min_years') or 0.0)
+    _g_ceiling = float(getattr(_g_stat, 'gratuity_tax_exempt_ceiling', None) or 0) \
+        or float(gratuity_act_default('tax_exempt_ceiling') or 0.0)
+    _g_divisor = float(gratuity_act_default('divisor') or 0.0) or 26.0
+    _g_max_years = float(gratuity_act_default('max_years') or 0.0)
+    gratuity_days_per_year = payload.gratuityDays if payload.gratuityDays is not None else _g_days_default
+    gratuity_eligible_years = payload.gratuityEligibleYears if payload.gratuityEligibleYears is not None else _g_years_default
 
-    # Gratuity: 15 days wage per year of service (max 15 years)
-    gratuity = round((monthly_salary / 26) * gratuity_days_per_year * min(years_of_service, 15), 2) if years_of_service >= gratuity_eligible_years else 0
+    # 15 days wage per year of service, max 15 years, capped at the ceiling.
+    if years_of_service >= gratuity_eligible_years:
+        _g_pay_years = years_of_service if _g_max_years <= 0 else min(years_of_service, _g_max_years)
+        _g_raw = (monthly_salary / _g_divisor) * gratuity_days_per_year * _g_pay_years
+        gratuity = round(min(_g_raw, _g_ceiling) if _g_ceiling > 0 else _g_raw, 2)
+    else:
+        gratuity = 0
 
     # Leave encashment (editable balance; defaults to the employee's actual leave balance)
     if payload.leaveBalance is not None:
@@ -1649,11 +1672,17 @@ def calculate_fnf(
             leave_balance = sum((b.remaining_days or 0) for b in lb) if lb else 0
         except Exception:
             leave_balance = 0
-    leave_encashment = round((monthly_salary / 30) * leave_balance, 2) if leave_balance else 0
+    # Daily rate divisor comes from PayrollPolicy (30/26/working days).
+    try:
+        from services.payroll_service import _get_payroll_policy
+        _daily_divisor = float(getattr(_get_payroll_policy(db, emp), 'daily_rate_divisor', None) or 30.0)
+    except Exception:
+        _daily_divisor = 30.0
+    leave_encashment = round((monthly_salary / _daily_divisor) * leave_balance, 2) if leave_balance else 0
 
     # Notice period deduction (editable days)
     notice_days = payload.noticeDays if payload.noticeDays is not None else 0
-    rate_per_day = payload.noticeRatePerDay if payload.noticeRatePerDay is not None else (monthly_salary / 30)
+    rate_per_day = payload.noticeRatePerDay if payload.noticeRatePerDay is not None else (monthly_salary / _daily_divisor)
     notice_deduction = round(rate_per_day * notice_days, 2) if notice_days else 0
 
     other_earnings = payload.otherEarnings if payload.otherEarnings is not None else 0

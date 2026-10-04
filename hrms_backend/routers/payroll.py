@@ -1231,7 +1231,8 @@ def generate_payroll_endpoint(
             "emailSkipped": "",
         }
     try:
-        payroll = generate_payroll_record(db, emp, month, year)
+        payroll = generate_payroll_record(db, emp, month, year,
+                                          submitted_by=current_user.id)
     except ComponentFormulaError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if existing:
@@ -1372,12 +1373,14 @@ def _run_payroll_job(run_id: int):
                     if _is_pending_adhoc_row(existing):
                         # Bonuses/incentives were recorded before the run —
                         # generate the real payslip and merge them in.
-                        pr = generate_payroll_record(s, emp, month, year)
+                        pr = generate_payroll_record(s, emp, month, year,
+                                                     submitted_by=current_user.id)
                         _absorb_pending_adhoc(existing, pr)
                         s.commit()
                         return {"employeeId": emp_id, "name": name, "netSalary": pr.net_salary, "payrollId": pr.id, "email": emp_email}
                     return {"employeeId": emp_id, "name": name, "reason": "Already exists"}
-                pr = generate_payroll_record(s, emp, month, year)
+                pr = generate_payroll_record(s, emp, month, year,
+                                             submitted_by=current_user.id)
                 return {"employeeId": emp_id, "name": name, "netSalary": pr.net_salary, "payrollId": pr.id, "email": emp_email}
             except Exception as e:
                 logger.exception(f"Failed to generate payroll for employee {emp_id}")
@@ -1760,10 +1763,16 @@ def process_payroll(
 
     updated = []
     skipped = []
+    maker_blocked = []
     for pr in records:
         if pr.status == "cancelled" or pr.status not in allowed_from.get(action, set()):
             skipped.append(pr.id)
             continue
+        if action == "approve" and _maker_cannot_approve(pr, current_user.id):
+            maker_blocked.append(pr.id)
+            continue
+        if action == "approve" and pr.status == "draft":
+            _stamp_submission(pr, current_user, now)
         pr.status = target
         pr.processed_by = current_user.id
         pr.processed_at = now
@@ -1793,11 +1802,14 @@ def process_payroll(
     msg = f"{len(updated)} payroll record(s) {target}"
     if skipped:
         msg += f"; {len(skipped)} skipped (must follow draft -> pending_approval -> approved -> processed -> paid)"
+    if maker_blocked:
+        msg += f"; {len(maker_blocked)} blocked by maker-checker (submitter cannot approve)"
     return {
         "message": msg,
         "status": target,
         "updated": updated,
         "skipped": skipped,
+        "makerCheckerBlocked": maker_blocked,
         "action": action,
     }
 
@@ -1808,7 +1820,12 @@ def process_company_payroll(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Process all payroll records for a company in a period (approve + process)."""
+    """Submit all draft payroll records for a company in a period.
+
+    Maker-checker: a company-wide run never one-click APPROVES — it
+    submits to pending_approval (stamping the maker); a DIFFERENT user
+    approves via process/bulk/status endpoints.
+    """
     month = data.get("month")
     year = data.get("year")
     company_id = data.get("companyId")
@@ -1837,19 +1854,22 @@ def process_company_payroll(
 
     records = query.all()
     now = ist_now_naive()
+    submitted = []
     for pr in records:
-        # Strict workflow: draft -> pending_approval -> approved (never straight to processed/paid)
-        pr.status = "approved"
-        pr.approved_by = current_user.id
-        pr.approved_at = now
-        pr.processed_by = None
-        pr.processed_at = None
+        pr.status = "pending_approval"
+        _stamp_submission(pr, current_user, now)
+        pr.approved_by = None
+        pr.approved_at = None
+        submitted.append(pr.id)
     db.commit()
 
     return {
-        "message": f"Company payroll processed — {len(records)} record(s) approved",
-        "status": "approved",
-        "count": len(records),
+        "message": (
+            f"Company payroll submitted for approval — {len(submitted)} record(s) "
+            f"pending_approval (a different user must approve)"
+        ),
+        "status": "pending_approval",
+        "count": len(submitted),
     }
 
 
@@ -1886,6 +1906,23 @@ def _assert_no_finalized(records, action: str) -> None:
                 "through the payroll lifecycle (or fix via arrears adjustments) first."
             ),
         )
+
+
+def _maker_cannot_approve(pr, user_id) -> bool:
+    """Maker-checker: whoever submitted/generated a payslip cannot approve it.
+
+    Applies only when a submission was recorded (submitted_by set) — the
+    legacy single-user draft→approved path still works, but the mandated
+    draft→pending_approval→approved flow always requires a second person.
+    """
+    return bool(getattr(pr, "submitted_by", None)) and pr.submitted_by == user_id
+
+
+def _stamp_submission(pr, user, now) -> None:
+    """Record the maker on first submission to pending_approval."""
+    if not getattr(pr, "submitted_by", None):
+        pr.submitted_by = user.id
+        pr.submitted_at = now
 
 
 @router.post("/api/payroll/reset", tags=["Payroll"])
@@ -2143,6 +2180,7 @@ def bulk_update_payroll_status(
 
     updated = []
     skipped = []
+    maker_blocked = []
     target = None
     for pr in records:
         if action == "advance":
@@ -2157,15 +2195,21 @@ def bulk_update_payroll_status(
             target = {"approve": "approved", "process": "processed", "mark_paid": "paid",
                       "cancel": "cancelled", "pending_approval": "pending_approval",
                       "reverse_paid": "cancelled", "lock": "locked", "reopen": "paid"}[action]
+        # Guards run BEFORE any mutation — a skipped record must never change.
+        if action == "reopen" and pr.locked_by and pr.locked_by == current_user.id:
+            skipped.append(pr.id)
+            continue
+        if target == "pending_approval":
+            _stamp_submission(pr, current_user, now)
+        if target == "approved" and _maker_cannot_approve(pr, current_user.id):
+            maker_blocked.append(pr.id)
+            continue
         pr.status = target
         pr.processed_by = current_user.id
         pr.processed_at = now
         if target == "paid":
             pr.paid_at = now
             if action == "reopen":
-                if pr.locked_by and pr.locked_by == current_user.id:
-                    skipped.append(pr.id)
-                    continue
                 pr.reopened_by = current_user.id
                 pr.reopened_at = now
                 pr.remarks = f"{pr.remarks}\n[reopened {now.isoformat()} by user {current_user.id}]" if pr.remarks else f"[reopened {now.isoformat()} by user {current_user.id}]"
@@ -2222,7 +2266,10 @@ def bulk_update_payroll_status(
     msg = f"{len(updated)} record(s) {target or 'updated'}"
     if skipped:
         msg += f"; {len(skipped)} skipped (must follow draft -> pending_approval -> approved -> processed -> paid)"
-    return {"message": msg, "status": target, "count": len(updated), "skipped": skipped}
+    if maker_blocked:
+        msg += f"; {len(maker_blocked)} blocked by maker-checker (submitter cannot approve)"
+    return {"message": msg, "status": target, "count": len(updated),
+            "skipped": skipped, "makerCheckerBlocked": maker_blocked}
 
 
 def _restore_loan_for_reversal(db: Session, pr: Payroll, current_user: User) -> None:
@@ -2324,6 +2371,13 @@ def update_payroll_status(
     }
     if pr.status == "cancelled" or payload.status not in allowed_from or pr.status not in allowed_from[payload.status]:
         raise HTTPException(status_code=409, detail=f"Cannot move '{pr.status}' -> '{payload.status}'. Must follow draft -> pending_approval -> approved -> processed -> paid (then lock).")
+    if payload.status == "pending_approval":
+        _stamp_submission(pr, current_user, ist_now_naive())
+    if payload.status == "approved" and _maker_cannot_approve(pr, current_user.id):
+        raise HTTPException(status_code=403, detail=(
+            "Maker-checker: the user who submitted this payroll cannot approve it. "
+            "A different user must approve."
+        ))
     was_paid = pr.status == "paid"
     pr.status = payload.status
     if payload.status in ("paid", "processed"):

@@ -157,10 +157,12 @@ def calculate_gratuity_endpoint(
 def calculate_bonus_endpoint(
     gross_salary: float = Body(...),
     months_worked: int = Body(12),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from services.compliance_engine import calculate_bonus
-    return calculate_bonus(gross_salary, months_worked)
+    from services.compliance_engine import calculate_bonus, resolve_bonus_params
+    params = resolve_bonus_params(db, current_user.organization_id)
+    return calculate_bonus(gross_salary, months_worked, **params)
 
 
 @router.post("/api/onboarding/tasks/{employee_id}")

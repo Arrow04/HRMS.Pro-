@@ -128,6 +128,7 @@ class RuleEngineTestRequest(BaseModel):
     country: str = "India"
     state_code: Optional[str] = None
     organization_id: Optional[int] = None
+    company_id: Optional[int] = None
     # Test parameters
     basic: Optional[float] = None
     gross_salary: Optional[float] = None
@@ -395,37 +396,50 @@ def test_rule_engine(
     from services.statutory_rule_engine import StatutoryRuleEngine
 
     req.organization_id = _scoped_org_id(current_user, req.organization_id)
+    if req.company_id and req.organization_id:
+        from core.tenant import validate_company_in_org
+        from models import Company
+        validate_company_in_org(db, Company, req.company_id, req.organization_id)
     engine = StatutoryRuleEngine(db)
     result = {}
 
-    rule = engine.resolve(req.rule_type, req.as_of, req.country, req.state_code, req.organization_id)
+    rule = engine.resolve(
+        req.rule_type, req.as_of, req.country, req.state_code,
+        req.organization_id, req.company_id,
+    )
     result["rule_found"] = rule is not None
     if rule:
         result["rule_definition"] = rule
 
     if req.rule_type == "pf_contribution" and req.basic is not None:
         result["pf_calculation"] = engine.calculate_pf(
-            req.basic, req.as_of, req.country, req.state_code, req.organization_id
+            req.basic, req.as_of, req.country, req.state_code, req.organization_id,
+            company_id=req.company_id,
         )
     elif req.rule_type == "esi_contribution" and req.gross_salary is not None:
         result["esi_calculation"] = engine.calculate_esi(
-            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id
+            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id,
+            company_id=req.company_id,
         )
     elif req.rule_type == "professional_tax" and req.gross_salary is not None:
         result["pt_amount"] = engine.calculate_professional_tax(
-            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id
+            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id,
+            company_id=req.company_id,
         )
     elif req.rule_type == "bonus" and req.gross_salary is not None:
         result["bonus_calculation"] = engine.calculate_bonus(
-            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id
+            req.gross_salary, req.as_of, req.country, req.state_code, req.organization_id,
+            company_id=req.company_id,
         )
     elif req.rule_type == "tax_slab" and req.annual_taxable is not None:
         result["tax_calculation"] = engine.calculate_income_tax(
-            req.annual_taxable, req.as_of, req.country, req.state_code, req.organization_id, req.regime
+            req.annual_taxable, req.as_of, req.country, req.state_code, req.organization_id,
+            req.regime, company_id=req.company_id,
         )
     elif req.rule_type == "gratuity" and req.basic is not None:
         result["gratuity_calculation"] = engine.calculate_gratuity(
-            req.basic, req.as_of, req.country, req.organization_id
+            req.basic, req.as_of, req.country, req.organization_id,
+            company_id=req.company_id,
         )
 
     return result

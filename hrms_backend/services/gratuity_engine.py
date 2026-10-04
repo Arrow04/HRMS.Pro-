@@ -35,12 +35,52 @@ DEFAULT_GRATUITY_DEFINITION: Dict[str, Any] = {
     "kind": "composite",
     "outputs": {
         "min_years": {"kind": "param", "value": 5.0},
+        "max_years": {"kind": "param", "value": 15.0},
         "days_per_year": {"kind": "param", "value": 15.0},
         "divisor": {"kind": "param", "value": 26.0},
         "wage_basis": {"kind": "param", "value": "BASIC_DA"},
         "tax_exempt_ceiling": {"kind": "param", "value": 2000000.0},
     },
 }
+
+
+def gratuity_act_default(key: str) -> Any:
+    """Single source for Payment of Gratuity Act 1972 constants.
+
+    Every gratuity calculation (engine settlement, compliance engine, F&F
+    router) reads its fallbacks from here — never from inline literals.
+    Mirrors the seeded statutory_rules 'gratuity' row.
+    """
+    try:
+        return DEFAULT_GRATUITY_DEFINITION["outputs"][key]["value"]
+    except Exception:
+        return None
+
+
+def _gratuity_params(definition: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Act defaults overlaid with the resolved rule definition.
+
+    Accepts both shapes: the composite engine definition and the flat
+    parameter map used by seeded rules (which store the eligibility knob
+    as 'eligible_years' instead of 'min_years').
+    """
+    params: Dict[str, Any] = {}
+    defaults = evaluate_definition(DEFAULT_GRATUITY_DEFINITION, {}) or {}
+    if isinstance(defaults, dict):
+        params.update(defaults)
+    try:
+        resolved = evaluate_definition(definition, {}) if definition else None
+    except Exception:
+        resolved = None
+    if isinstance(resolved, dict):
+        if "min_years" not in resolved and resolved.get("eligible_years") is not None:
+            resolved = dict(resolved, min_years=resolved["eligible_years"])
+        for key, val in resolved.items():
+            if key == "notes":
+                continue
+            if val is not None and val != "":
+                params[key] = val
+    return params
 
 
 def service_years_act(join_date, as_of: date) -> float:
@@ -84,26 +124,30 @@ def calculate_gratuity_settlement(
     """Gratuity payable at settlement (or accrual), with rule provenance."""
     as_of = as_of or date.today()
     definition = _resolve_definition(db, employee, as_of)
-    params = evaluate_definition(definition, {}) or {}
+    params = _gratuity_params(definition)
 
-    years = service_years_act(getattr(employee, "join_date", None), as_of)
-    min_years = float(params.get("min_years") or 5.0)
-    days_per_year = float(params.get("days_per_year") or 15.0)
-    divisor = float(params.get("divisor") or 26.0) or 26.0
-    ceiling = float(params.get("tax_exempt_ceiling") or 2000000.0)
+    raw_years = service_years_act(getattr(employee, "join_date", None), as_of)
+    min_years = float(params.get("min_years") or 0.0)
+    max_years = float(params.get("max_years") or 0.0)
+    days_per_year = float(params.get("days_per_year") or 0.0)
+    divisor = float(params.get("divisor") or 0.0) or 1.0
+    ceiling = float(params.get("tax_exempt_ceiling") or 0.0)
+    # Act: gratuity is payable for at most the first 15 years of service.
+    years = raw_years if max_years <= 0 else min(raw_years, max_years)
 
     if wage_basic is None:
         wage_basic = float(getattr(employee, "base_salary", 0) or 0) / 12.0
     basis_code = str(params.get("wage_basis") or "BASIC_DA")
     basis_value = float(wage_basic) + (float(wage_da) if basis_code == "BASIC_DA" else 0.0)
 
-    eligible = years >= min_years
+    eligible = raw_years >= min_years
     raw = (days_per_year * basis_value * years) / divisor if eligible else 0.0
-    amount = round(min(raw, ceiling), 2)
+    amount = round(min(raw, ceiling), 2) if ceiling > 0 else round(raw, 2)
 
     return {
         "eligible": eligible,
-        "service_years": years,
+        "service_years": raw_years,
+        "paid_years": years,
         "min_years": min_years,
         "wage_basis": basis_code,
         "wage_basis_value": round(basis_value, 2),

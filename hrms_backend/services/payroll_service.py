@@ -30,6 +30,7 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from data.state_compliance import resolve_state_key, calculate_pt
+from services.compliance_engine import _get_statutory_constant
 from services.statutory_rule_engine import StatutoryRuleEngine
 from models import (
     Attendance,
@@ -47,6 +48,12 @@ from models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Attendance-policy default overtime multiplier used when neither an explicit
+# AttendancePolicy rate nor a published 'overtime' rule is configured.
+# Mirrors the AttendancePolicy.overtime_rate column default — single source
+# for this policy-level (non-statutory) fallback.
+DEFAULT_OVERTIME_MULTIPLIER = 1.5
 
 
 # ── Helpers ──
@@ -212,12 +219,15 @@ def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int,
     """
     try:
         from datetime import date as _date
-        from services.compliance_engine import calculate_bonus, _get_statutory_constant
+        from services.compliance_engine import calculate_bonus, resolve_bonus_params
         country = _effective_country(employee).lower()
         as_of = _date(year, month, 1)
         engine = _get_rule_engine(db, employee, as_of)
         state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
-        result = engine.calculate_bonus(gross, as_of, country, state_code, employee.organization_id)
+        result = engine.calculate_bonus(
+            gross, as_of, country, state_code, employee.organization_id,
+            company_id=getattr(employee, 'company_id', None),
+        )
         if result.get('bonus_applicable') and result.get('bonus_amount'):
             return float(result['bonus_amount'])
         try:
@@ -226,12 +236,17 @@ def _get_statutory_bonus(db: Session, employee: Employee, year: int, month: int,
             stat = None
         if not stat or not getattr(stat, "bonus_applicable", False):
             return 0.0
-        eligible_ceiling = float(getattr(stat, "bonus_eligible_ceiling", None) or _get_statutory_constant(db, 'bonus_eligible_ceiling', 21000.0))
+        params = resolve_bonus_params(db, employee.organization_id)
+        eligible_ceiling = params["eligible_ceiling"]
         if float(gross) > eligible_ceiling:
             return 0.0
-        calc_cap = float(getattr(stat, "bonus_wage_ceiling", None) or _get_statutory_constant(db, 'bonus_wage_ceiling', 7000.0))
-        min_rate = float(getattr(stat, "bonus_min_rate", None) or _get_statutory_constant(db, 'bonus_min_rate', 8.33))
-        b = calculate_bonus(min(float(gross), calc_cap), 12, min_rate=min_rate, calc_ceiling=calc_cap, eligible_ceiling=eligible_ceiling)
+        calc_cap = params["calc_ceiling"]
+        min_rate = params["min_rate"]
+        b = calculate_bonus(
+            min(float(gross), calc_cap), 12,
+            min_rate=min_rate, max_rate=params["max_rate"],
+            calc_ceiling=calc_cap, eligible_ceiling=eligible_ceiling,
+        )
         return round(float(b.get("minimum", 0)) / 12.0, 2)
     except Exception:
         return 0.0
@@ -499,8 +514,18 @@ def _compute_cumulative_tds(
                 metro_pct = float(getattr(regime, 'hra_metro_pct', None) or 0) / 100
                 non_metro_pct = float(getattr(regime, 'hra_non_metro_pct', None) or 0) / 100
                 pct_rate = metro_pct if is_metro else non_metro_pct
-                # (a) Actual HRA received (monthly, from salary components)
-                actual_hra_received = (projected_annual_gross / 12) * 0.25  # approximate
+                # (a) Actual HRA received (monthly, from salary components).
+                # No component breakdown is available here, so approximate the
+                # HRA share of gross; orgs tune it via
+                # org.settings.payroll.hraReceivedPct (default 25%).
+                try:
+                    _hra_pct = float(
+                        (((employee.organization.settings or {}).get("payroll") or {})
+                         .get("hraReceivedPct", 25) or 25)
+                    )
+                except (TypeError, ValueError):
+                    _hra_pct = 25.0
+                actual_hra_received = (projected_annual_gross / 12) * (_hra_pct / 100)
                 # (b) metro/non-metro % of basic
                 pct_of_basic = monthly_basic_for_hra * pct_rate
                 # (c) Rent paid minus rent_threshold_pct of basic (configurable, default 10%)
@@ -789,6 +814,63 @@ def _get_effective_monthly_base(db: Session, employee: Employee, year: int, mont
     )
 
 
+def _wage_engine_monthly_base(
+    db: Session, employee: Employee, year: int, month: int, fallback: float,
+) -> float:
+    """Consult the wage engine when the employment profile demands it.
+
+    The employee's pay_frequency maps to an employment profile (DAILY →
+    rate_days, WEEKLY/ANNUAL/MONTHLY → month_salary). Only when the resolved
+    profile's wage_method is NOT month_salary AND the org declared
+    per-period wage inputs (EmployeePayrollInput: daily_rate/days,
+    hourly inputs, units...) for the month does the wage engine
+    (services.wage_engine) compute the base; the engine's earnings are the
+    standard-period wage (declared days/hours), and attendance proration
+    remains the existing factor layer on top.
+
+    In every other case — monthly/weekly/annual profiles, missing inputs,
+    zero earnings, unknown profile after a bad rule override — `fallback`
+    (monthly_from_rate's conversion of base_salary) is returned unchanged,
+    so no existing payroll double-converts or shifts.
+    """
+    try:
+        from datetime import date as _date
+        from models import EmployeePayrollInput
+        from services.wage_engine import calculate_base_wages, resolve_employment_profile
+        freq = (getattr(employee, "pay_frequency", None) or "").strip().upper()
+        profile_code = {
+            "DAILY": "DAILY", "WEEKLY": "WEEKLY",
+            "ANNUAL": "MONTHLY", "MONTHLY": "MONTHLY",
+        }.get(freq, "MONTHLY")
+        profile = resolve_employment_profile(
+            profile_code, db=db,
+            organization_id=getattr(employee, "organization_id", None),
+            company_id=getattr(employee, "company_id", None),
+            as_of=_date(year, month, 1),
+        )
+        method = profile.get("wage_method")
+        if not method or method == "month_salary":
+            return fallback
+        row = db.query(EmployeePayrollInput).filter(
+            EmployeePayrollInput.employee_id == employee.id,
+            EmployeePayrollInput.year == year,
+            EmployeePayrollInput.month == month,
+        ).first()
+        if row is None or not row.inputs:
+            return fallback
+        inputs = {k: v for k, v in dict(row.inputs).items() if v is not None}
+        # Declared inputs are the period wage facts — factor stays 1.0;
+        # attendance proration is applied downstream as usual.
+        inputs.setdefault("factor", 1.0)
+        out = calculate_base_wages(profile, inputs)
+        earnings = float(out.get("earnings") or 0)
+        if earnings <= 0:
+            return fallback
+        return round(earnings, 2)
+    except Exception:
+        return fallback
+
+
 def _get_employee_template(db: Session, employee: Employee) -> Optional[PayrollTemplate]:
     """Resolve the employee's company-wise payroll template, if any.
 
@@ -833,6 +915,7 @@ def _get_payroll_policy(db: Session, employee: Employee) -> PayrollPolicy:
         round_net_salary=True,
         include_gratuity=False,
         gratuity_rate=0.0,
+        daily_rate_divisor=30.0,
         default_currency="",
         allow_negative_net=False,
         status="active",
@@ -892,7 +975,9 @@ def _get_attendance_policy(db: Session, employee: Employee, as_of=None) -> Atten
         paid_leave_as_present=True,
         holiday_as_present=True,
         overtime_threshold_hours=8.0,
-        overtime_rate=1.5,
+        # No attendance policy configured: the multiplier resolves at payroll
+        # time from a published 'overtime' rule, else DEFAULT_OVERTIME_MULTIPLIER.
+        overtime_rate=None,
         late_mark_threshold_minutes=15,
         half_day_threshold_hours=4.0,
         status="active",
@@ -1084,9 +1169,16 @@ def _get_statutory_settings(db: Session, employee: Employee,
                     setting.esi_employee_rate = float(esi_emp)
                     setting.esi_employer_rate = float(esi_er)
                 else:
-                    # Legacy: split total ESI % into employee/employer (default 50/50 if unknown)
-                    setting.esi_employee_rate = float(esi_pct) * 0.5
-                    setting.esi_employer_rate = float(esi_pct) * 0.5
+                    # Legacy: one combined ESI % — split it along the statutory
+                    # employee/employer ratio (0.75/3.25 by default), never 50/50.
+                    emp_share = _get_statutory_constant(db, "esi_employee_rate", 0.75)
+                    er_share = _get_statutory_constant(db, "esi_employer_rate", 3.25)
+                    total = emp_share + er_share
+                    if total > 0:
+                        setting.esi_employee_rate = float(esi_pct) * (emp_share / total)
+                        setting.esi_employer_rate = float(esi_pct) * (er_share / total)
+                    else:
+                        setting.esi_employer_rate = float(esi_pct)
             except (TypeError, ValueError):
                 pass
         g_rate = scoped.get("gratuityRate")
@@ -1114,12 +1206,54 @@ def _resolve_pf_from_rule_engine(
     country: str,
     state_code: Optional[str],
     organization_id: int,
+    company_id: Optional[int] = None,
+    voluntary_pf: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Try to resolve PF calculation from the rule engine. Returns None if no rule found."""
-    rule = engine.resolve('pf_contribution', as_of, country, state_code, organization_id)
+    rule = engine.resolve('pf_contribution', as_of, country, state_code, organization_id, company_id)
     if rule:
-        return engine.calculate_pf(basic_full, as_of, country, state_code, organization_id)
+        return engine.calculate_pf(
+            basic_full, as_of, country, state_code, organization_id,
+            voluntary_pf=voluntary_pf, company_id=company_id,
+        )
     return None
+
+
+def _active_voluntary_pf(db: Session, employee: Employee, as_of: _date) -> Optional[Dict[str, Any]]:
+    """Active voluntary-PF declaration for the period (EPF Scheme 2026 §12).
+
+    Returns the dict shape statutory_rule_engine.calculate_pf consumes, or
+    None when the employee has no live declaration.
+    """
+    try:
+        from models import EmployeeVoluntaryPF
+        row = (
+            db.query(EmployeeVoluntaryPF)
+            .filter(
+                EmployeeVoluntaryPF.employee_id == employee.id,
+                EmployeeVoluntaryPF.deleted_at.is_(None),
+                EmployeeVoluntaryPF.status == "active",
+                (EmployeeVoluntaryPF.effective_from.is_(None)
+                 | (EmployeeVoluntaryPF.effective_from <= as_of)),
+                (EmployeeVoluntaryPF.effective_to.is_(None)
+                 | (EmployeeVoluntaryPF.effective_to >= as_of)),
+            )
+            .order_by(EmployeeVoluntaryPF.effective_from.desc().nullslast(),
+                      EmployeeVoluntaryPF.id.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        if getattr(row, "stopped_by_employee", False) or getattr(row, "stopped_by_employer", False):
+            return None
+        return {
+            "voluntary_rate": float(row.voluntary_rate or 0),
+            "voluntary_amount": float(row.voluntary_amount or 0),
+            "employer_matching": bool(row.employer_matching),
+            "employer_voluntary_rate": float(row.employer_voluntary_rate or 0),
+        }
+    except Exception:
+        return None
 
 
 def _resolve_esi_from_rule_engine(
@@ -1131,11 +1265,15 @@ def _resolve_esi_from_rule_engine(
     organization_id: int,
     is_disabled: bool = False,
     keep_covered: bool = False,
+    company_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Try to resolve ESI calculation from the rule engine. Returns None if no rule found."""
-    rule = engine.resolve('esi_contribution', as_of, country, state_code, organization_id)
+    rule = engine.resolve('esi_contribution', as_of, country, state_code, organization_id, company_id)
     if rule:
-        return engine.calculate_esi(gross_salary, as_of, country, state_code, organization_id, is_disabled=is_disabled, keep_covered=keep_covered)
+        return engine.calculate_esi(
+            gross_salary, as_of, country, state_code, organization_id,
+            is_disabled=is_disabled, keep_covered=keep_covered, company_id=company_id,
+        )
     return None
 
 
@@ -1146,12 +1284,30 @@ def _resolve_pt_from_rule_engine(
     country: str,
     state_code: Optional[str],
     organization_id: int,
+    company_id: Optional[int] = None,
 ) -> Optional[float]:
     """Try to resolve Professional Tax from the rule engine. Returns None if no rule found."""
-    rule = engine.resolve('professional_tax', as_of, country, state_code, organization_id)
+    rule = engine.resolve('professional_tax', as_of, country, state_code, organization_id, company_id)
     if rule:
-        return engine.calculate_professional_tax(gross_salary, as_of, country, state_code, organization_id)
+        return engine.calculate_professional_tax(gross_salary, as_of, country, state_code, organization_id, company_id=company_id)
     return None
+
+
+def _overtime_multiplier_from_rules(
+    engine: StatutoryRuleEngine,
+    as_of: _date,
+    country: str,
+    organization_id: Optional[int],
+    company_id: Optional[int] = None,
+) -> float:
+    """Published 'overtime' rule multiplier, or 0.0 when the org publishes none."""
+    try:
+        rule = engine.resolve('overtime', as_of, country, None, organization_id, company_id)
+        if rule:
+            return float(rule.get('multiplier') or 0.0)
+    except Exception:
+        return 0.0
+    return 0.0
 
 
 def _employee_branch_ids(db: Session, employee_id: int) -> List[int]:
@@ -2140,7 +2296,14 @@ def calculate_payroll(
     # Monthly base in effect for this month: revision (annual-denominated) or
     # the employee's base_salary interpreted by their pay_frequency
     # (daily / weekly / monthly / annual). See _get_effective_monthly_base.
-    monthly_basic = _fx_to_policy(_get_effective_monthly_base(db, employee, year, month))
+    # Non-month_salary employment profiles with declared wage inputs route
+    # through the wage engine (see _wage_engine_monthly_base).
+    monthly_basic = _fx_to_policy(
+        _wage_engine_monthly_base(
+            db, employee, year, month,
+            _get_effective_monthly_base(db, employee, year, month),
+        )
+    )
 
     # ── Custom salary components from the Salary tab (if provided) ──
     # The employee form's Salary tab stores per-field monthly amounts in
@@ -2152,6 +2315,10 @@ def calculate_payroll(
     component_deduction_total = 0.0
     component_employee_deduction_keys: List[str] = []
     computed: Dict[str, float] = {}
+    # Exempt portion of earnings per component flags (PayrollComponent
+    # is_tax_exempt / taxability / tax_exempt_limit) — reduces the gross
+    # handed to the TDS engine. Zero unless a component is marked exempt.
+    tax_exempt_earnings = 0.0
     # Formula failures collected during the component loop (present in every
     # branch so the return dict can always expose them).
     formula_errors: List[Dict[str, Any]] = []
@@ -2367,11 +2534,23 @@ def calculate_payroll(
             computed[comp_key] = val
             if comp.component_type in ("deduction", "employer_contribution"):
                 component_deduction_keys.append(comp_key)
-            if comp.component_type == "deduction":
-                # Only true employee deductions reduce net pay.
-                # employer_contribution rows are employer cost (CTC) — they are
-                # excluded from gross but must NEVER be deducted from net.
-                component_employee_deduction_keys.append(comp_key)
+                if comp.component_type == "deduction":
+                    # Only true employee deductions reduce net pay.
+                    # employer_contribution rows are employer cost (CTC) — they are
+                    # excluded from gross but must NEVER be deducted from net.
+                    component_employee_deduction_keys.append(comp_key)
+            elif comp.component_type == "earning":
+                # Earning flagged exempt (or taxability=non_taxable): its exempt
+                # share stays out of the TDS base. tax_exempt_limit caps a
+                # partially-exempt component; unset limit exempts the full value.
+                _taxability = str(getattr(comp, "taxability", "") or "").strip().lower()
+                if getattr(comp, "is_tax_exempt", False) or _taxability == "non_taxable":
+                    _limit = getattr(comp, "tax_exempt_limit", None)
+                    try:
+                        _limit = float(_limit) if _limit is not None else None
+                    except (TypeError, ValueError):
+                        _limit = None
+                    tax_exempt_earnings += val if _limit is None else min(val, max(_limit, 0.0))
 
             component_detail.append({
                 "component_id": comp.id,
@@ -2471,7 +2650,16 @@ def calculate_payroll(
                     taxable = min(ot_hours, tier_to) - tier_from
                     overtime_pay += taxable * hourly_rate * tier_rate
         else:
-            overtime_pay = ot_hours * hourly_rate * float(att_policy.overtime_rate or 1.5)
+            # Multiplier: attendance policy -> published 'overtime' rule ->
+            # DEFAULT_OVERTIME_MULTIPLIER (policy-level fallback, not statutory).
+            ot_multiplier = float(att_policy.overtime_rate or 0)
+            if not ot_multiplier:
+                ot_multiplier = _overtime_multiplier_from_rules(
+                    _get_rule_engine(db, employee, month_start), month_start,
+                    jurisdiction_country, employee.organization_id,
+                    getattr(employee, "company_id", None),
+                ) or DEFAULT_OVERTIME_MULTIPLIER
+            overtime_pay = ot_hours * hourly_rate * ot_multiplier
         overtime_pay = _round_val(overtime_pay, rounding, places)
 
     # Expense reimbursements flow into payroll automatically: any approved or
@@ -2554,12 +2742,17 @@ def calculate_payroll(
     pf_applicable = stat_settings.pf_applicable
     pf_edli = 0.0
     pf_admin = 0.0
+    _vpf_ee = 0.0   # voluntary PF employee share (EPF Scheme 2026 §12)
+    _vpf_er = 0.0   # voluntary PF employer share / matching
     _pf_as_of = month_start
     _pf_rule_engine = _get_rule_engine(db, employee, _pf_as_of)
     _pf_state_code = getattr(employee, 'state_code', None) or getattr(employee, 'work_state', None)
+    _vpf = _active_voluntary_pf(db, employee, _pf_as_of)
     _pf_result = _resolve_pf_from_rule_engine(
         _pf_rule_engine, basic, _pf_as_of,
         jurisdiction_country, _pf_state_code, employee.organization_id,
+        company_id=getattr(employee, 'company_id', None),
+        voluntary_pf=_vpf,
     )
     # Use rule engine result if available, even when legacy pf_applicable is off
     if _pf_result or pf_applicable:
@@ -2567,8 +2760,10 @@ def calculate_payroll(
             # Rule engine found an active rule — use it
             pf_wages = _pf_result['pf_wages']
             pf_exempt = _pf_result['pf_exempt']
-            pf_employee = _round_val(_pf_result['pf_employee'], rounding, places)
-            pf_employer = _round_val(_pf_result['pf_employer'], rounding, places)
+            _vpf_ee = _round_val(float(_pf_result.get('voluntary_employee') or 0), rounding, places)
+            _vpf_er = _round_val(float(_pf_result.get('voluntary_employer') or 0), rounding, places)
+            pf_employee = _round_val(_pf_result['pf_employee'] + _vpf_ee, rounding, places)
+            pf_employer = _round_val(_pf_result['pf_employer'] + _vpf_er, rounding, places)
             pf_edli = _round_val(_pf_result['edli'], rounding, places)
             pf_admin = _round_val(_pf_result['admin'], rounding, places)
             # Employer split for compliance reporting
@@ -2582,7 +2777,8 @@ def calculate_payroll(
             # No rule engine rule — fall back to legacy StatutorySetting.
             # PF is charged on EARNED basic (pro-rated for partial months).
             pf_exempt = bool(stat_settings.pf_min_basic_for_exclusion and basic > stat_settings.pf_min_basic_for_exclusion)
-            pf_ceiling = float(getattr(stat_settings, "pf_wage_ceiling", None) or stat_settings.pf_min_basic_for_exclusion or 15000.0)
+            pf_ceiling = float(getattr(stat_settings, "pf_wage_ceiling", None) or stat_settings.pf_min_basic_for_exclusion
+                               or _get_statutory_constant(db, "pf_wage_ceiling", 15000.0))
             pf_wages = min(basic, pf_ceiling)
             _rb = _rule_wage_bases(db, employee, basic, gross_salary, computed.get("da", 0.0) or 0.0, month_start)
             if _rb is not None and _rb.get("PF_WAGES") is not None:
@@ -2599,17 +2795,36 @@ def calculate_payroll(
             pf_employee = _round_val(pf_employee, rounding, places)
             pf_edli = 0.0
             pf_admin = 0.0
+            # Voluntary PF declaration — same top-up math as
+            # statutory_rule_engine.calculate_pf's voluntary block.
+            if _vpf and not pf_exempt:
+                _vol_target = float(_vpf.get("voluntary_amount") or 0)
+                if _vol_target <= 0 and float(_vpf.get("voluntary_rate") or 0) > 0:
+                    _vol_target = max(0.0, min(
+                        basic * float(_vpf["voluntary_rate"]) / 100,
+                        float(stat_settings.pf_max_monthly or 0),
+                    ) - pf_employee)
+                _vpf_ee = _round_val(_vol_target, rounding, places)
+                if _vpf.get("employer_matching"):
+                    _vpf_er = _vpf_ee
+                elif float(_vpf.get("employer_voluntary_rate") or 0) > 0:
+                    _vpf_er = _round_val(max(0.0, min(
+                        basic * float(_vpf["employer_voluntary_rate"]) / 100,
+                        float(stat_settings.pf_max_monthly or 0),
+                    ) - pf_employer), rounding, places)
+                pf_employee = _round_val(pf_employee + _vpf_ee, rounding, places)
+                pf_employer = _round_val(pf_employer + _vpf_er, rounding, places)
             if not pf_exempt:
-                pf_edli_rate = float(getattr(stat_settings, "pf_edli_rate", None) or 0.5)
-                pf_edli_max = float(getattr(stat_settings, "pf_edli_max_monthly", None) or 75.0)
-                pf_admin_rate = float(getattr(stat_settings, "pf_admin_rate", None) or 0.5)
-                pf_admin_min = float(getattr(stat_settings, "pf_admin_min_monthly", None) or 75.0)
+                pf_edli_rate = float(getattr(stat_settings, "pf_edli_rate", None) or _get_statutory_constant(db, "pf_edli_rate", 0.5))
+                pf_edli_max = float(getattr(stat_settings, "pf_edli_max_monthly", None) or _get_statutory_constant(db, "pf_edli_max_monthly", 75.0))
+                pf_admin_rate = float(getattr(stat_settings, "pf_admin_rate", None) or _get_statutory_constant(db, "pf_admin_rate", 0.5))
+                pf_admin_min = float(getattr(stat_settings, "pf_admin_min_monthly", None) or _get_statutory_constant(db, "pf_admin_min_monthly", 75.0))
                 pf_edli = _round_val(min(pf_wages * pf_edli_rate / 100, pf_edli_max), rounding, places)
                 pf_admin = _round_val(max(pf_wages * pf_admin_rate / 100, pf_admin_min), rounding, places)
                 if component_detail:
                     try:
-                        eps_ceiling = float(getattr(stat_settings, "eps_wage_ceiling", None) or 15000.0)
-                        eps_rate_val = float(getattr(stat_settings, "eps_employer_rate", None) or getattr(stat_settings, "eps_rate", None) or 8.33)
+                        eps_ceiling = float(getattr(stat_settings, "eps_wage_ceiling", None) or _get_statutory_constant(db, "eps_wage_ceiling", 15000.0))
+                        eps_rate_val = float(getattr(stat_settings, "eps_employer_rate", None) or getattr(stat_settings, "eps_rate", None) or _get_statutory_constant(db, "eps_employer_rate", 8.33))
                         eps_cap = min(pf_wages, eps_ceiling)
                         pf_eps = _round_val(eps_cap * eps_rate_val / 100, rounding, places)
                         component_detail.extend([
@@ -2622,6 +2837,20 @@ def calculate_payroll(
     else:
         pf_employee = 0.0
         pf_employer = 0.0
+    # Voluntary PF breakdown rows for the payslip (both engine & legacy paths)
+    if component_detail and (_vpf_ee or _vpf_er):
+        if _vpf_ee:
+            component_detail.append({
+                "component_id": None, "name": "Voluntary PF (Employee)",
+                "display_name": "Voluntary PF (Employee)", "type": "deduction",
+                "value": _vpf_ee,
+            })
+        if _vpf_er:
+            component_detail.append({
+                "component_id": None, "name": "Voluntary PF (Employer)",
+                "display_name": "Voluntary PF (Employer)", "type": "employer_contribution",
+                "value": _vpf_er,
+            })
     # A sanctioned hand-set employee PF share (manual entry mode) overrides ONLY
     # the employee deduction. The employer contribution always follows the
     # statutory split — a hand-set amount is an employee-side adjustment, never
@@ -2646,6 +2875,7 @@ def calculate_payroll(
         _esi_rule_engine, gross_salary, month_start,
         jurisdiction_country, _esi_state_code, employee.organization_id,
         is_disabled=_is_disabled,
+        company_id=getattr(employee, 'company_id', None),
     )
     _esi_continues = False
     _esi_blocked = gross_salary > 0 and (
@@ -2660,6 +2890,7 @@ def calculate_payroll(
                 _esi_rule_engine, gross_salary, month_start,
                 jurisdiction_country, _esi_state_code, employee.organization_id,
                 is_disabled=_is_disabled, keep_covered=True,
+                company_id=getattr(employee, 'company_id', None),
             )
     if _esi_result:
         # The rule verdict governs; the template ceiling only narrows coverage
@@ -2689,6 +2920,7 @@ def calculate_payroll(
     _pt_from_re = _resolve_pt_from_rule_engine(
         _pt_rule_engine, gross_salary, month_start,
         jurisdiction_country, _pt_state_code, employee.organization_id,
+        company_id=getattr(employee, 'company_id', None),
     )
     if custom_pt:
         professional_tax = _round_val(float(custom_pt), rounding, places)
@@ -2732,9 +2964,15 @@ def calculate_payroll(
     gratuity_applicable = bool(pay_policy.include_gratuity or stat_settings.gratuity_applicable)
     gratuity_rate = pay_policy.gratuity_rate if pay_policy.gratuity_rate is not None else (stat_settings.gratuity_rate or 4.81)
     _grat_engine = _get_rule_engine(db, employee, month_start)
-    _grat_rate_rule = _grat_engine.resolve('gratuity', month_start, jurisdiction_country, None, employee.organization_id)
+    _grat_rate_rule = _grat_engine.resolve(
+        'gratuity', month_start, jurisdiction_country, None, employee.organization_id,
+        getattr(employee, 'company_id', None),
+    )
     if _grat_rate_rule:
-        gratuity = _round_val(_grat_engine.calculate_gratuity(basic, month_start, jurisdiction_country, employee.organization_id), rounding, places)
+        gratuity = _round_val(_grat_engine.calculate_gratuity(
+            basic, month_start, jurisdiction_country, employee.organization_id,
+            company_id=getattr(employee, 'company_id', None),
+        ), rounding, places)
     else:
         gratuity = _round_val(basic * (gratuity_rate / 100), rounding, places) if gratuity_applicable else 0.0
 
@@ -2799,7 +3037,10 @@ def calculate_payroll(
     else:
         tds_meta = _compute_cumulative_tds(
             db, employee, year, month,
-            total_earnings, pf_employee, professional_tax,
+            # Component flags marked exempt stay out of the TDS base
+            # (identical to total_earnings when no component is exempt).
+            _round_val(max(0.0, total_earnings - tax_exempt_earnings), rounding, places),
+            pf_employee, professional_tax,
             tax_regime, rounding, places,
             taxable_benefits=taxable_perquisites,
         )
@@ -2824,7 +3065,8 @@ def calculate_payroll(
     # active only when the statutory amount actually applies, so a template
     # whose statutory block is off can still carry its own PF/ESI component.
     _statutory_component_aliases = (
-        (pf_employee, ("pf", "pf_deduction", "provident_fund", "employee_pf", "pf_contribution")),
+        (pf_employee, ("pf", "pf_deduction", "provident_fund", "employee_pf", "pf_contribution",
+                        "vpf", "voluntary_pf", "employee_vpf", "voluntary_provident_fund")),
         (esi, ("esi", "esi_deduction", "employee_esi")),
         (professional_tax, ("professional_tax", "pt", "prof_tax")),
         (lwf_employee, ("lwf", "lwf_deduction", "labour_welfare_fund")),
@@ -2935,7 +3177,9 @@ def calculate_payroll(
             db, employee.organization_id,
             {
                 "monthly": gross_salary,
-                "daily": _round_val(gross_salary / 30.0, 2) if gross_salary else None,
+                "daily": _round_val(
+                    gross_salary / float(getattr(pay_policy, "daily_rate_divisor", None) or 30.0), 2
+                ) if gross_salary else None,
             },
             as_of=month_start,
             state_code=_mw_state,
@@ -3154,12 +3398,17 @@ def generate_payroll_record(
     employee: Employee,
     month: int,
     year: int,
+    submitted_by: Optional[int] = None,
     **overrides,
 ) -> Payroll:
-    """Calculate and persist a Payroll record using policy-driven engine."""
+    """Calculate and persist a Payroll record using policy-driven engine.
+
+    submitted_by stamps the MAKER (who generated/submitted this payslip);
+    a different user must approve it (maker-checker).
+    """
     data = calculate_payroll(db, employee, month, year, **overrides)
     if data.get("has_formula_errors"):
-        # Refuse to persist a payslip computed with a broken formula — the
+        # Refuse to persist a payslip computed with a broken formula - the
         # run must fail loudly so HR fixes the component configuration.
         errs = "; ".join(
             f"'{e['component']}': {e['error']}" for e in data.get("formula_errors", [])
@@ -3174,6 +3423,43 @@ def generate_payroll_record(
     # Snapshot bank details for disbursement at generation time.
     data["bank_account"] = employee.bank_account_number or None
     data["ifsc_code"] = employee.ifsc_code or None
+    if submitted_by is not None:
+        data["submitted_by"] = submitted_by
+        data["submitted_at"] = datetime.utcnow()
+    # Immutable calculation snapshot: every payslip is reproducible from
+    # its recorded inputs (mandate section 43).
+    try:
+        data["calculation_snapshot"] = {
+            "engine": "policy_driven_v1",
+            "generated_at": datetime.utcnow().isoformat(),
+            "period": {"month": month, "year": year},
+            "attendance": {
+                "factor": data.get("factor"),
+                "present_days": data.get("present_days"),
+                "paid_days": data.get("paid_days"),
+                "working_days": data.get("working_days"),
+                "unpaid_days": data.get("unpaid_days"),
+            },
+            "jurisdiction": {
+                "country": data.get("country"),
+                "state": data.get("registered_state"),
+            },
+            "currency": {
+                "salary_currency": data.get("salary_currency"),
+                "exchange_rate": data.get("currency_exchange_rate"),
+            },
+            "figures": {
+                "gross_salary": data.get("gross_salary"),
+                "basic_salary": data.get("basic_salary"),
+                "pf_deduction": data.get("pf_deduction"),
+                "esi_deduction": data.get("esi_deduction"),
+                "professional_tax": data.get("professional_tax"),
+                "tds_deduction": data.get("tds_deduction"),
+                "net_salary": data.get("net_salary"),
+            },
+        }
+    except Exception:
+        data.pop("calculation_snapshot", None)
     # Only persist columns that exist on the Payroll model
     valid = {c.name for c in Payroll.__table__.columns}
     payload = {k: v for k, v in data.items() if k in valid}

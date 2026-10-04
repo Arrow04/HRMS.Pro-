@@ -1227,6 +1227,16 @@ class Payroll(Base):
     reopened_by = Column(Integer, ForeignKey('users.id'), index=True)
     reopened_at = Column(DateTime)
 
+    # Maker-checker: who submitted the payslip for approval (the maker).
+    # A DIFFERENT user must approve it — see routers/payroll.py.
+    submitted_by = Column(Integer, ForeignKey('users.id'), index=True)
+    submitted_at = Column(DateTime)
+
+    # Immutable calculation snapshot at generation time — every payslip is
+    # reproducible from its recorded inputs (attendance factor, jurisdiction,
+    # currency, statutory figures in force) per mandate section 43.
+    calculation_snapshot = Column(JSON, nullable=True)
+
     # Resolved jurisdiction snapshot (country/state in force for this pay period).
     # Populated by the engine so payslips/audit always reflect the statutory
     # jurisdiction that applied — even if the org/company later changes.

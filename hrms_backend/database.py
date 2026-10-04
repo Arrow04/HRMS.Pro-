@@ -417,6 +417,23 @@ def init_db():
             except Exception as e:
                 print(f"PayrollRun action-user column sync warning: {e}")
 
+            # Payroll maker-checker (submitted_by) + calculation snapshot.
+            try:
+                pay_cols = [col['name'] for col in inspector.get_columns('payrolls')]
+                if pay_cols:
+                    for col_def in (
+                        "submitted_by INTEGER",
+                        "submitted_at TIMESTAMP",
+                        "calculation_snapshot JSON",
+                    ):
+                        col_name = col_def.split()[0]
+                        if col_name not in pay_cols:
+                            with engine.connect() as conn:
+                                conn.execute(text(f"ALTER TABLE payrolls ADD COLUMN {col_def}"))
+                                conn.commit()
+            except Exception as e:
+                print(f"Payroll maker-checker column sync warning: {e}")
+
             # Leave type payroll flags (paid / encashable / color) + company scoping.
             try:
                 lt_cols = [col['name'] for col in inspector.get_columns('leave_types')]

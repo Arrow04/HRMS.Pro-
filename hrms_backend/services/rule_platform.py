@@ -53,6 +53,11 @@ def evaluate_definition(definition: Optional[Dict], context: Optional[Mapping[st
     for key, val in (definition.get("params") or {}).items():
         ctx[str(key)] = val
 
+    if kind is None and isinstance(definition, dict):
+        # Plain parameter map (seeded / legacy rules, e.g. the Indian
+        # statutory seed rows): the values ARE the result — no evaluation.
+        return dict(definition)
+
     if kind == "param":
         return definition.get("value")
 

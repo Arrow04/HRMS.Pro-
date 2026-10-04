@@ -109,17 +109,12 @@ def _resolve_nps_definition(db: Optional[Session], employee, as_of: date) -> Dic
             if row is None:
                 row = q.filter(StatutorySetting.company_id.is_(None)).first() or q.first()
             if row is not None and (row.nps_employee_rate or row.nps_employer_rate):
-                return {
-                    "kind": "composite",
-                    "outputs": {
-                        "employee_rate": {"kind": "param", "value": float(row.nps_employee_rate or 0)},
-                        "employer_rate": {"kind": "param", "value": float(row.nps_employer_rate or 0)},
-                        "wage_basis": {"kind": "param", "value": "BASIC_DA"},
-                        "ccd1_pct_cap": {"kind": "param", "value": 10.0},
-                        "ccd1b_cap": {"kind": "param", "value": 50000.0},
-                        "ccd2_pct": {"kind": "param", "value": 14.0},
-                    },
-                }
+                # Rates come from the org's statutory NPS config; caps/other
+                # parameters stay on the shared scheme defaults below.
+                outputs = {k: dict(v) for k, v in DEFAULT_NPS_DEFINITION["outputs"].items()}
+                outputs["employee_rate"] = {"kind": "param", "value": float(row.nps_employee_rate or 0)}
+                outputs["employer_rate"] = {"kind": "param", "value": float(row.nps_employer_rate or 0)}
+                return {"kind": "composite", "outputs": outputs}
         except Exception:
             pass
     return DEFAULT_NPS_DEFINITION

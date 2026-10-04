@@ -10,6 +10,25 @@ from services.email_service import EmailService
 from services.compliance_engine import calculate_gratuity
 
 
+def _basic_fallback_ratio(db: Session) -> float:
+    """Basic = fallback % of gross when no payroll row exists (config-driven)."""
+    try:
+        from services.compliance_engine import _get_statutory_constant
+        return _get_statutory_constant(db, 'basic_salary_fallback_pct', 50.0) / 100.0
+    except Exception:
+        return 0.5
+
+
+def _daily_divisor(db: Session, employee: Employee) -> float:
+    """Monthly → daily rate divisor from PayrollPolicy (30/26/working days)."""
+    try:
+        from services.payroll_service import _get_payroll_policy
+        policy = _get_payroll_policy(db, employee)
+        return float(getattr(policy, 'daily_rate_divisor', None) or 30.0)
+    except Exception:
+        return 30.0
+
+
 def _monthly_salary(db: Session, employee: Employee, leaving_date) -> tuple:
     """Resolve (monthly_gross, monthly_basic) correctly.
 
@@ -17,21 +36,223 @@ def _monthly_salary(db: Session, employee: Employee, leaving_date) -> tuple:
     payroll exists yet — otherwise F&F would overstate monthly pay 12x.
     """
     from services.payroll_service import _get_effective_annual_ctc
+    basic_ratio = _basic_fallback_ratio(db)
     latest = db.query(Payroll).filter(
         Payroll.employee_id == employee.id,
         Payroll.status == "paid",
     ).order_by(Payroll.year.desc(), Payroll.month.desc()).first()
     if latest and latest.gross_salary:
-        return float(latest.gross_salary), float(latest.basic_salary or latest.gross_salary * 0.5)
+        return float(latest.gross_salary), float(latest.basic_salary or latest.gross_salary * basic_ratio)
     annual = _get_effective_annual_ctc(db, employee, leaving_date.year, leaving_date.month)
     monthly_gross = round(annual / 12, 2) if annual else 0.0
-    return monthly_gross, round(monthly_gross * 0.5, 2)
+    return monthly_gross, round(monthly_gross * basic_ratio, 2)
+
+
+def _asset_recovery(
+    db: Session,
+    employee: Employee,
+    recovered_asset_ids: Optional[list] = None,
+) -> dict:
+    """Unreturned company assets assigned to the employee → F&F recovery.
+
+    Recovery amount = current book value (fallback purchase_value) of every
+    issued asset still open at settlement. Pass recovered_asset_ids to mark
+    assets as returned (clearance) — those drop out of the recovery.
+    """
+    try:
+        from models import Asset
+        _returned = {"available", "returned", "retired", "disposed", "written_off"}
+        q = db.query(Asset).filter(
+            Asset.employee_id == employee.id,
+            Asset.deleted_at.is_(None),
+        )
+        rows = q.all()
+        items = []
+        total = 0.0
+        for a in rows:
+            if str(a.status or "").lower() in _returned:
+                continue
+            if recovered_asset_ids and a.id in set(recovered_asset_ids):
+                continue
+            amt = float(getattr(a, "value", None) or getattr(a, "purchase_value", 0) or 0)
+            total += amt
+            items.append({
+                "asset_id": a.id,
+                "asset_type": a.asset_type,
+                "asset_name": a.asset_name,
+                "serial_number": a.serial_number,
+                "status": a.status,
+                "recovery_amount": round(amt, 2),
+            })
+        if recovered_asset_ids:
+            try:
+                db.query(Asset).filter(
+                    Asset.id.in_(list(recovered_asset_ids)),
+                    Asset.employee_id == employee.id,
+                ).update({"status": "returned"}, synchronize_session=False)
+            except Exception:
+                pass
+        return {"items": items, "total": round(total, 2)}
+    except Exception:
+        return {"items": [], "total": 0.0}
+
+
+def _fnf_tds(db: Session, employee: Employee, org: Organization, payables: dict) -> dict:
+    """TDS on Full & Final settlement (section 192, exit payments).
+
+    Projects the employee's FY income — YTD salary from approved payrolls
+    plus the taxable F&F components — through the org's configured TaxRegime,
+    then withholds the shortfall over TDS already deducted YTD. Same
+    principle as monthly TDS: slabs/regime are configuration; when no
+    TaxRegime exists there is NO global default and TDS is 0.0.
+
+    Taxable components:
+      salary_until_last_working_day, notice_pay_in_lieu, statutory_bonus
+      + leave_encashment (fully taxable when the template flags
+        encashment_taxable; else exempt up to the configured limit)
+      + gratuity above the statutory exemption ceiling
+    Exempt: expense_reimbursement, gratuity up to ceiling.
+    """
+    try:
+        from models import Payroll, StatutorySetting
+        from services.compliance_engine import _get_statutory_constant
+        from services.payroll_service import _get_annual_tax, _get_tax_regime
+
+        leaving = employee.date_of_leaving or datetime.utcnow()
+        leaving_day = leaving.date() if isinstance(leaving, datetime) else leaving
+        regime = _get_tax_regime(db, employee)
+        if regime is None:
+            return {"amount": 0.0, "reason": "no_tax_regime_configured",
+                    "taxable_income": 0.0, "annual_tax": 0.0,
+                    "ytd_tds": 0.0, "shortfall": 0.0}
+
+        # ── Exemption ceilings (org config -> statutory constant -> Act) ──
+        org_settings = (getattr(org, "settings", None) or {})
+        payroll_cfg = (org_settings.get("payroll") or {}) if isinstance(org_settings, dict) else {}
+
+        def _cfg_float(key: str, stat_key: str, default: float) -> float:
+            try:
+                val = payroll_cfg.get(key)
+                if val is not None and float(val) >= 0:
+                    return float(val)
+            except (TypeError, ValueError):
+                pass
+            return float(_get_statutory_constant(db, stat_key, default))
+
+        gratuity_exempt = _cfg_float(
+            "gratuityExemptionLimit", "gratuity_exemption_limit", 200000.0)
+        leave_exempt = _cfg_float(
+            "leaveEncashmentExemptLimit", "leave_encashment_exempt_limit", 300000.0)
+
+        # ── Template encashment taxability (opt-in knob) ──
+        encashment_taxable = False
+        try:
+            tid = getattr(employee, "leave_template_id", None)
+            if tid:
+                from models import LeaveTemplate
+                tpl = db.query(LeaveTemplate).filter(
+                    LeaveTemplate.id == tid,
+                    LeaveTemplate.deleted_at.is_(None),
+                    LeaveTemplate.status == "active",
+                ).first()
+                if tpl is not None and getattr(tpl, "encashment_taxable", False):
+                    encashment_taxable = True
+        except Exception:
+            encashment_taxable = False
+
+        def _amt(key: str) -> float:
+            try:
+                return float(payables.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        salary = _amt("salary_until_last_working_day")
+        notice = _amt("notice_pay_in_lieu")
+        bonus = _amt("statutory_bonus")
+        encashment = _amt("leave_encashment")
+        gratuity = _amt("gratuity")
+
+        encashment_taxable_amt = (
+            encashment if encashment_taxable
+            else max(0.0, encashment - leave_exempt)
+        )
+        gratuity_taxable_amt = max(0.0, gratuity - gratuity_exempt)
+        taxable = salary + notice + bonus + encashment_taxable_amt + gratuity_taxable_amt
+        breakdown = {
+            "salary": round(salary, 2),
+            "notice_pay_in_lieu": round(notice, 2),
+            "statutory_bonus": round(bonus, 2),
+            "leave_encashment_taxable": round(encashment_taxable_amt, 2),
+            "gratuity_taxable": round(gratuity_taxable_amt, 2),
+            "gratuity_exempt": round(min(gratuity, gratuity_exempt), 2),
+            "leave_encashment_exempt": round(
+                0.0 if encashment_taxable else min(encashment, leave_exempt), 2),
+        }
+        if taxable <= 0:
+            return {"amount": 0.0, "reason": "nothing_taxable",
+                    "taxable_income": 0.0, "breakdown": breakdown,
+                    "annual_tax": 0.0, "ytd_tds": 0.0, "shortfall": 0.0}
+
+        # ── FY YTD from approved payrolls (same statuses Form 16 trusts) ──
+        month, year = leaving_day.month, leaving_day.year
+        try:
+            from services.payroll_service import _get_fy_start_month
+            fy_start = _get_fy_start_month(db, employee)
+        except Exception:
+            fy_start = 4
+        fy_year = year if month >= fy_start else year - 1
+        ytd_rows = (
+            db.query(Payroll)
+            .filter(
+                Payroll.employee_id == employee.id,
+                Payroll.deleted_at.is_(None),
+                Payroll.status.in_(("approved", "processed", "paid")),
+            )
+            .all()
+        )
+        # FY window: Apr fy_year .. Mar fy_year+1
+        period_rows = [
+            p for p in ytd_rows
+            if ((p.month >= fy_start and p.year == fy_year)
+                or (p.month < fy_start and p.year == fy_year + 1))
+        ]
+        ytd_gross = sum(float(p.gross_salary or 0) for p in period_rows)
+        ytd_pf = sum(float(p.pf_deduction or 0) for p in period_rows)
+        ytd_pt = sum(float(p.professional_tax or 0) for p in period_rows)
+        ytd_tds = sum(float(p.tds_deduction or 0) for p in period_rows)
+
+        regime_is_new = str(getattr(regime, "regime_type", "new") or "new").lower() == "new"
+        std_deduction = float(getattr(regime, "standard_deduction", None) or 0.0)
+
+        annual_gross = ytd_gross + taxable
+        annual_taxable = max(
+            0.0,
+            annual_gross - std_deduction - ytd_pt - (0.0 if regime_is_new else ytd_pf),
+        )
+        annual_tax = _get_annual_tax(annual_taxable, regime)
+        shortfall = max(0.0, annual_tax - ytd_tds)
+
+        return {
+            "amount": round(shortfall, 2),
+            "reason": None,
+            "taxable_income": round(taxable, 2),
+            "breakdown": breakdown,
+            "fy": {"start_year": fy_year, "start_month": fy_start},
+            "annual_gross": round(annual_gross, 2),
+            "annual_taxable": round(annual_taxable, 2),
+            "annual_tax": round(annual_tax, 2),
+            "ytd_tds": round(ytd_tds, 2),
+            "shortfall": round(shortfall, 2),
+        }
+    except Exception as exc:
+        return {"amount": 0.0, "reason": f"error: {exc}", "taxable_income": 0.0,
+                "annual_tax": 0.0, "ytd_tds": 0.0, "shortfall": 0.0}
 
 
 def _leave_encashment(db: Session, employee: Employee, monthly_gross: float) -> float:
     """Encash the employee's actual unused paid-leave balance at exit."""
     try:
-        from models import LeaveBalance, LeaveType
+        from models import LeaveBalance, LeaveTemplate, LeaveType
         org_settings = (employee.organization.settings or {})
         payroll_cfg = org_settings.get("payroll", {}) or {}
         codes = payroll_cfg.get("encashableLeaveCodes") or ["annual", "privilege", "comp_off", "paid"]
@@ -55,7 +276,31 @@ def _leave_encashment(db: Session, employee: Employee, monthly_gross: float) -> 
         )
         if max_days > 0:
             days = min(days, max_days)
-        return round((monthly_gross / 30.0) * days, 2)
+        # Template-driven encashment knobs (LeaveTemplate) — OPT-IN. A template
+        # with encashment_enabled=True takes over the per-day rate / minimum
+        # balance; flag False/absent keeps the legacy org-settings behaviour
+        # (False is also the column server default, so gating on it would
+        # silently zero encashment for every template-pinned employee).
+        tpl = None
+        tid = getattr(employee, "leave_template_id", None)
+        if tid:
+            tpl = db.query(LeaveTemplate).filter(
+                LeaveTemplate.id == tid,
+                LeaveTemplate.deleted_at.is_(None),
+                LeaveTemplate.status == "active",
+            ).first()
+        if tpl is not None and getattr(tpl, "encashment_enabled", False):
+            min_bal = getattr(tpl, "encashment_min_balance", None)
+            if min_bal is not None and days < float(min_bal):
+                return 0.0
+            amount = round((monthly_gross / _daily_divisor(db, employee)) * days, 2)
+            # encashment_rate is a multiplier on the legacy amount
+            # (model comment: 0.83 = 83% of the daily-wage encashment).
+            rate = getattr(tpl, "encashment_rate", None)
+            if rate is not None and float(rate) > 0:
+                amount = round(amount * float(rate), 2)
+            return amount
+        return round((monthly_gross / _daily_divisor(db, employee)) * days, 2)
     except Exception:
         return 0.0
 
@@ -97,13 +342,19 @@ def _approved_expenses(db: Session, employee_id: int, until_date) -> float:
         return 0.0
 
 
-def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lieu: bool = False) -> dict:
+def calculate_full_final_settlement(
+    db: Session,
+    employee_id: int,
+    notice_in_lieu: bool = False,
+    recovered_asset_ids: Optional[list] = None,
+) -> dict:
     """Calculate Full & Final settlement for an exiting employee.
 
     Covers the mandate section 35 list: salary until last working day,
     unpaid leave, notice recovery OR notice payout (employer-initiated),
-    leave encashment, statutory bonus, gratuity settlement, loans/advances
-    and reimbursements.
+    leave encashment, statutory bonus, gratuity settlement, loans/advances,
+    reimbursements — plus section-192 TDS on the taxable F&F components and
+    recovery of unreturned company assets.
     """
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
@@ -168,7 +419,7 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
             notice_in_lieu = True
     except Exception:
         pass
-    daily_rate = (monthly_gross / 30.0) if monthly_gross else 0.0
+    daily_rate = (monthly_gross / _daily_divisor(db, employee)) if monthly_gross else 0.0
     if notice_in_lieu and employee.notice_period_served in (None, "no"):
         notice_payout = round(daily_rate * notice_period_days, 2)
         notice_recovery = 0.0
@@ -191,9 +442,10 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
             StatutorySetting.status == "active",
         ).first()
         if _bonus_setting is not None and _bonus_setting.bonus_applicable:
-            from services.compliance_engine import calculate_bonus
+            from services.compliance_engine import calculate_bonus, resolve_bonus_params
             months_worked = min(12, max(1, (leaving_day.timetuple().tm_yday // 30) or 1))
-            b = calculate_bonus(monthly_gross, months_worked)
+            b = calculate_bonus(monthly_gross, months_worked,
+                                **resolve_bonus_params(db, org.id))
             if b.get("eligible"):
                 bonus_payable = round(float(b.get("minimum", 0) or 0) / 12.0, 2)
     except Exception:
@@ -201,14 +453,7 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
 
     outstanding_loans = _outstanding_loans(db, employee_id)
     approved_expenses = _approved_expenses(db, employee_id, leaving_date)
-
-    deductions = {
-        "notice_period_shortfall": notice_recovery,
-        "pending_advances": outstanding_loans,
-        "training_bond_penalty": 0,
-        "other_deductions": 0,
-    }
-    total_deductions = sum(deductions.values())
+    asset_recovery = _asset_recovery(db, employee, recovered_asset_ids)
 
     payables = {
         "salary_until_last_working_day": salary_until_lwd,
@@ -220,6 +465,23 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
         "expense_reimbursement": approved_expenses,
     }
     total_payables = sum(payables.values())
+
+    # TDS u/s 192 on the taxable F&F components — shortfall over YTD TDS
+    # already withheld. Capped at the cash payable (you cannot withhold more
+    # than you are paying out; any residual liability stays with the employee
+    # via advance tax / self-assessment).
+    tds_meta = _fnf_tds(db, employee, org, payables)
+    fnf_tds = round(min(float(tds_meta.get("amount") or 0), max(0.0, total_payables)), 2)
+
+    deductions = {
+        "notice_period_shortfall": notice_recovery,
+        "pending_advances": outstanding_loans,
+        "training_bond_penalty": 0,
+        "other_deductions": 0,
+        "leave_encashment_tds": fnf_tds,
+        "asset_recovery": asset_recovery["total"],
+    }
+    total_deductions = sum(deductions.values())
 
     net_settlement = total_payables - total_deductions
 
@@ -235,6 +497,17 @@ def calculate_full_final_settlement(db: Session, employee_id: int, notice_in_lie
         "deductions": deductions,
         "total_deductions": round(total_deductions, 2),
         "net_settlement": round(max(0, net_settlement), 2),
+        "tds": {
+            "amount": fnf_tds,
+            "taxable_income": tds_meta.get("taxable_income"),
+            "breakdown": tds_meta.get("breakdown"),
+            "annual_tax": tds_meta.get("annual_tax"),
+            "ytd_tds": tds_meta.get("ytd_tds"),
+            "shortfall": tds_meta.get("shortfall"),
+            "fy": tds_meta.get("fy"),
+            "reason": tds_meta.get("reason"),
+        },
+        "asset_recovery": asset_recovery,
         "gratuity_eligible": gratuity_result["eligible"],
         "gratuity_detail": gratuity_result,
         "notice": {"days": notice_period_days, "served": employee.notice_period_served,

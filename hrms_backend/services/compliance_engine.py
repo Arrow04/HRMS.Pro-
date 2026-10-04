@@ -378,33 +378,54 @@ def calculate_lwf(
 
 # ── Gratuity ──────────────────────────────────────────────────────────────
 
-def calculate_gratuity(basic_da: float, years_of_service: int, setting: Optional[StatutorySetting] = None) -> dict:
+def _gratuity_act_default(key: str) -> float:
+    """Payment of Gratuity Act 1972 constants — single shared source.
+
+    Delegates to gratuity_engine's DEFAULT_GRATUITY_DEFINITION (the same
+    definition the statutory_rules 'gratuity' seed mirrors) so the Act
+    numbers exist in exactly one Python module.
+    """
+    try:
+        from services.gratuity_engine import gratuity_act_default
+        val = gratuity_act_default(key)
+        return float(val) if val is not None else 0.0
+    except Exception:
+        return 0.0
+
+
+def calculate_gratuity(
+    basic_da: float,
+    years_of_service: int,
+    setting: Optional[StatutorySetting] = None,
+    divisor: Optional[float] = None,
+) -> dict:
     """Calculate gratuity as per Payment of Gratuity Act 1972.
     
-    Formula: (days_per_year * last_drawn_basic_da * years_of_service) / 26
+    Formula: (days_per_year * last_drawn_basic_da * years_of_service) / divisor
     Cap: configurable (default ₹20,00,000 tax-free limit)
     Eligibility: configurable (default 5 years)
 
     Parameters read from StatutorySetting — fully configurable per company.
     When no setting (or a blank field) is supplied, the Payment of Gratuity
-    Act 1972 statutory defaults apply: 15 days/year, 5 years eligibility,
-    ₹20,00,000 tax-exempt ceiling.
+    Act 1972 defaults from gratuity_engine.gratuity_act_default apply:
+    15 days/year, 5 years eligibility, 26-day divisor, ₹20,00,000 ceiling.
     """
     eligible_years = float(getattr(setting, 'gratuity_eligible_years', None) or 0.0) if setting else 0.0
     days_per_year = float(getattr(setting, 'gratuity_days_per_year', None) or 0.0) if setting else 0.0
     tax_exempt_ceiling = float(getattr(setting, 'gratuity_tax_exempt_ceiling', None) or 0.0) if setting else 0.0
 
     if eligible_years <= 0:
-        eligible_years = 5.0
+        eligible_years = _gratuity_act_default("min_years") or 5.0
     if days_per_year <= 0:
-        days_per_year = 15.0
+        days_per_year = _gratuity_act_default("days_per_year") or 15.0
     if tax_exempt_ceiling <= 0:
-        tax_exempt_ceiling = 2000000.0
+        tax_exempt_ceiling = _gratuity_act_default("tax_exempt_ceiling") or 2000000.0
+    divisor = float(divisor or 0.0) or _gratuity_act_default("divisor") or 26.0
 
     if years_of_service < eligible_years:
         return {"amount": 0, "eligible": False, "years_of_service": years_of_service}
     
-    amount = (days_per_year * basic_da * years_of_service) / 26
+    amount = (days_per_year * basic_da * years_of_service) / divisor
     return {
         "amount": round(min(amount, tax_exempt_ceiling), 2),
         "eligible": True,
@@ -415,6 +436,42 @@ def calculate_gratuity(basic_da: float, years_of_service: int, setting: Optional
 
 # ── Bonus Calculation ─────────────────────────────────────────────────────
 
+def resolve_bonus_params(db, organization_id: Optional[int] = None) -> dict:
+    """Payment of Bonus Act 1965 parameters — the single resolution point.
+
+    Priority per knob: StatutorySetting (org config) → statutory_rule_configs
+    (seeded global rows) → Act defaults. Callers pass the result into
+    calculate_bonus instead of restating statutory numbers inline.
+    """
+    setting = None
+    if db is not None and organization_id:
+        try:
+            setting = db.query(StatutorySetting).filter(
+                StatutorySetting.organization_id == organization_id,
+                StatutorySetting.status == "active",
+            ).first()
+        except Exception:
+            setting = None
+
+    def _knob(field: str, rule_key: str, act_default: float) -> float:
+        val = getattr(setting, field, None) if setting is not None else None
+        try:
+            if val is not None and float(val) > 0:
+                return float(val)
+        except (TypeError, ValueError):
+            pass
+        if db is not None:
+            return float(_get_statutory_constant(db, rule_key, act_default))
+        return act_default
+
+    return {
+        "min_rate": _knob("bonus_min_rate", "bonus_min_rate", 8.33),
+        "max_rate": _knob("bonus_max_rate", "bonus_max_rate", 20.0),
+        "calc_ceiling": _knob("bonus_wage_ceiling", "bonus_wage_ceiling", 7000.0),
+        "eligible_ceiling": _knob("bonus_eligible_ceiling", "bonus_eligible_ceiling", 21000.0),
+    }
+
+
 def calculate_bonus(gross_salary: float, months_worked: int, min_rate: float = 8.33,
                     max_rate: float = 20.0, calc_ceiling: float = 7000.0,
                     eligible_ceiling: float = 21000.0) -> dict:
@@ -422,7 +479,9 @@ def calculate_bonus(gross_salary: float, months_worked: int, min_rate: float = 8
 
     Eligibility: monthly salary within the eligibility ceiling. The payout is
     then computed on salary capped at the calculation ceiling, between the
-    minimum and maximum rates. All three knobs come from StatutorySetting.
+    minimum and maximum rates. The signature defaults are the Act values;
+    callers should resolve org-specific knobs via resolve_bonus_params() and
+    pass them in.
     """
     if gross_salary > eligible_ceiling:
         return {"amount": 0, "minimum": 0, "maximum": 0, "eligible": False}

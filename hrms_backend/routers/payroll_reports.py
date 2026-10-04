@@ -36,6 +36,7 @@ def _require(user: User, action: str):
 def _definition_for(db, code: str, organization_id: int) -> dict:
     from models import StatutoryReportDefinition
 
+    builtin = next((d for d in BUILTIN_REPORT_DEFINITIONS if d["code"] == code), None)
     row = db.query(StatutoryReportDefinition).filter(
         StatutoryReportDefinition.code == code,
         (StatutoryReportDefinition.organization_id == organization_id)
@@ -43,11 +44,22 @@ def _definition_for(db, code: str, organization_id: int) -> dict:
         StatutoryReportDefinition.status == "active",
     ).order_by(StatutoryReportDefinition.organization_id.desc().nullslast()).first()
     if row is not None:
+        # DB row customizes fields/name; builtin supplies layout + source_model
+        # (the model does not persist those) so filing files never degrade.
+        if builtin is not None:
+            merged = dict(builtin)
+            merged.update({
+                "code": row.code,
+                "name": row.name,
+                "authority": row.authority,
+                "fields": row.fields if row.fields else builtin.get("fields"),
+                "period_type": row.period_type,
+            })
+            return merged
         return {
             "code": row.code, "name": row.name, "authority": row.authority,
             "fields": row.fields or [], "period_type": row.period_type,
         }
-    builtin = next((d for d in BUILTIN_REPORT_DEFINITIONS if d["code"] == code), None)
     if builtin is None:
         raise HTTPException(status_code=404, detail="Unknown report definition")
     return builtin
