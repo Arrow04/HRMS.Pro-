@@ -434,6 +434,24 @@ def init_db():
             except Exception as e:
                 print(f"Payroll maker-checker column sync warning: {e}")
 
+            # Cost centre on employees + journal lines (GL tagging).
+            try:
+                emp_cols = [col['name'] for col in inspector.get_columns('employees')]
+                if emp_cols and 'cost_center' not in emp_cols:
+                    with engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE employees ADD COLUMN cost_center VARCHAR(100)"))
+                        conn.commit()
+            except Exception as e:
+                print(f"Employee cost_center column sync warning: {e}")
+            try:
+                jl_cols = [col['name'] for col in inspector.get_columns('journal_lines')]
+                if jl_cols and 'cost_center' not in jl_cols:
+                    with engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE journal_lines ADD COLUMN cost_center VARCHAR(100)"))
+                        conn.commit()
+            except Exception as e:
+                print(f"JournalLine cost_center column sync warning: {e}")
+
             # Leave type payroll flags (paid / encashable / color) + company scoping.
             try:
                 lt_cols = [col['name'] for col in inspector.get_columns('leave_types')]

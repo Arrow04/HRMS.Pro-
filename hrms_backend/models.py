@@ -413,6 +413,10 @@ class Employee(Base):
     pay_frequency = Column(String(20), nullable=True)
     pay_rate = Column(Float, nullable=True)
 
+    # Cost centre for GL tagging — accounting_service posts every journal
+    # line for this employee under it (P&L / departmental reporting).
+    cost_center = Column(String(100), nullable=True, index=True)
+
     # Geofence: when enabled, check-in/out requires being within the branch geofence;
     # when disabled, the employee can check in/out from anywhere.
     geofence_enabled = Column(Boolean, default=False)
@@ -3722,6 +3726,7 @@ class JournalLine(Base):
     debit = Column(Float, default=0)
     credit = Column(Float, default=0)
     narration = Column(String(500))
+    cost_center = Column(String(100), nullable=True)
 
     entry = relationship('JournalEntry', back_populates='lines')
     account = relationship('GLAccount')

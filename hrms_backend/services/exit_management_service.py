@@ -20,11 +20,11 @@ def _basic_fallback_ratio(db: Session) -> float:
 
 
 def _daily_divisor(db: Session, employee: Employee) -> float:
-    """Monthly → daily rate divisor from PayrollPolicy (30/26/working days)."""
+    """Monthly → daily rate divisor: proration rule -> PayrollPolicy -> 30."""
     try:
-        from services.payroll_service import _get_payroll_policy
-        policy = _get_payroll_policy(db, employee)
-        return float(getattr(policy, 'daily_rate_divisor', None) or 30.0)
+        from services.payroll_service import _get_payroll_policy, resolve_proration_divisor
+        return resolve_proration_divisor(db, employee,
+                                         pay_policy=_get_payroll_policy(db, employee))
     except Exception:
         return 30.0
 

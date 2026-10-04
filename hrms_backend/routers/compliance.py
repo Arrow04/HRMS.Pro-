@@ -320,3 +320,90 @@ def get_notification_templates(current_user: User = Depends(get_current_user)):
             "tds_deduction_summary",
         ]
     }
+
+
+_DASHBOARD_ROLES = ("superadmin", "admin", "hr_admin", "finance", "accountant",
+                    "hr_manager", "hr_executive")
+
+
+@router.get("/api/compliance/dashboard")
+def compliance_dashboard(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """CXO compliance dashboard: what's due, what's at risk, payroll health.
+
+    One screen answers the only questions a founder/CA asks every morning:
+    which statutory filings are overdue or due within a week, how much is
+    payable on each, what state this month's payroll is in, which F&F
+    settlements are stuck, and which statutory constants are in force.
+    """
+    from collections import Counter
+    from datetime import date
+
+    from sqlalchemy import func
+
+    if (current_user.role or "").lower() not in _DASHBOARD_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized to view the compliance dashboard")
+
+    from models import ExitRecord, Payroll
+    from services.compliance_calendar import build_calendar
+    from services.compliance_engine import _get_statutory_constant
+    from services.statutory_reports import BUILTIN_REPORT_DEFINITIONS
+
+    today = date.today()
+    month = month or today.month
+    year = year or today.year
+    org_id = current_user.organization_id
+
+    items = build_calendar(db, org_id) if org_id else []
+    status_counts = Counter(i["status"] for i in items)
+
+    q = db.query(Payroll.status, func.count()).filter(
+        Payroll.deleted_at.is_(None),
+        Payroll.month == month,
+        Payroll.year == year,
+    )
+    if org_id and current_user.role != "superadmin":
+        q = q.filter(Payroll.organization_id == org_id)
+    payroll_counts = {str(s or "draft"): int(c) for s, c in q.group_by(Payroll.status).all()}
+
+    statutory = {}
+    if org_id:
+        for key, default in (
+            ("pf_wage_ceiling", 15000.0),
+            ("eps_wage_ceiling", 15000.0),
+            ("pf_employee_rate", 12.0),
+            ("esi_employee_rate", 0.75),
+            ("esi_employer_rate", 3.25),
+            ("gratuity_exemption_limit", 200000.0),
+        ):
+            statutory[key] = _get_statutory_constant(db, key, default)
+
+    fnf_pending = 0
+    if org_id:
+        fnf_pending = db.query(ExitRecord).filter(
+            ExitRecord.organization_id == org_id,
+            ExitRecord.deleted_at.is_(None),
+            ExitRecord.fnf_status.in_(("pending", "in_progress")),
+        ).count()
+
+    return {
+        "period": {"month": month, "year": year, "today": today.isoformat()},
+        "filings": {
+            "dueSoon": status_counts.get("due_soon", 0),
+            "overdue": status_counts.get("overdue", 0),
+            "filed": status_counts.get("filed", 0),
+            "upcoming": status_counts.get("upcoming", 0),
+            "atRisk": [i for i in items if i["status"] in ("due_soon", "overdue")],
+        },
+        "payroll": {
+            "byStatus": payroll_counts,
+            "total": sum(payroll_counts.values()),
+        },
+        "statutory": statutory,
+        "fnfPending": fnf_pending,
+        "registers": [d["code"] for d in BUILTIN_REPORT_DEFINITIONS],
+    }

@@ -110,6 +110,7 @@ def _post_journal(
             "debit": round(ln.get("debit", 0) or 0, 2),
             "credit": round(ln.get("credit", 0) or 0, 2),
             "narration": ln.get("narration", ""),
+            "cost_center": ln.get("cost_center"),
         })
     total_debit = round(sum(l["debit"] for l in resolved), 2)
     total_credit = round(sum(l["credit"] for l in resolved), 2)
@@ -235,6 +236,13 @@ def post_payroll_journal(db: Session, pr, current_user) -> Optional[JournalEntry
     other_ded = float(pr.other_deductions or 0)
     if other_ded:
         lines.append({"account_code": "2001", "debit": 0, "credit": other_ded, "narration": "Other deductions (payable)"})
+
+    # GL tagging: every line carries the employee's cost centre so P&L and
+    # departmental reporting never need a second mapping pass.
+    _cc = getattr(pr.employee, "cost_center", None) if pr.employee else None
+    if _cc:
+        for ln in lines:
+            ln["cost_center"] = _cc
 
     return _post_journal(
         db, org_id, pr.company_id, "payroll", "payroll", pr.id, f"PAY-{pr.id}",

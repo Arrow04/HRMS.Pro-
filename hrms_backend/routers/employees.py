@@ -1223,6 +1223,7 @@ def create_employee(employee_data: dict, db: Session = Depends(get_db), current_
         employee_code=employee_code,
         designation=snake_case_data.get("designation"),
         department_id=dept_id,
+        cost_center=snake_case_data.get("cost_center") or None,
         organization_id=org_id if isinstance(org_id, int) else None,
         reporting_manager_id=_int_or_none(snake_case_data.get("reporting_manager_id")),
         status=snake_case_data.get("status", "active"),
@@ -1487,6 +1488,8 @@ def update_employee(employee_id: int, employee_data: dict, db: Session = Depends
             ).first():
                 raise HTTPException(status_code=400, detail="Selected department does not exist")
         employee.department_id = _new_dept_id
+    if "cost_center" in snake_case_data:
+        employee.cost_center = snake_case_data.get("cost_center") or None
     if "organization_id" in snake_case_data:
         _requested_org = _int_or_none(snake_case_data["organization_id"])
         if current_user.role == "superadmin":

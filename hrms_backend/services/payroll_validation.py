@@ -99,9 +99,9 @@ def validate_finalization(db: Session, payrolls: List[Any]) -> Dict[str, Any]:
             if emp is not None:
                 state = (getattr(emp, "state_code", None) or getattr(emp, "work_state", None)
                          or (getattr(emp.organization, "registered_state", None) if emp.organization else None))
-                from services.payroll_service import _get_payroll_policy
+                from services.payroll_service import _get_payroll_policy, resolve_proration_divisor
                 _policy = _get_payroll_policy(db, emp)
-                _divisor = float(getattr(_policy, "daily_rate_divisor", None) or 30.0)
+                _divisor = resolve_proration_divisor(db, emp, pay_policy=_policy)
                 mw = check_minimum_wages(
                     db, emp.organization_id,
                     {"monthly": gross, "daily": round(gross / _divisor, 2) if gross else None},

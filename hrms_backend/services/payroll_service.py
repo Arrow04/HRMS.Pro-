@@ -760,14 +760,60 @@ def _get_effective_annual_ctc(db: Session, employee: Employee, year: int, month:
     return float(employee.base_salary or 0)
 
 
-def monthly_from_rate(amount: float, frequency: Optional[str], pay_policy: Optional[Any] = None) -> float:
+def resolve_proration_divisor(
+    db: Optional[Session],
+    employee: Optional[Employee],
+    as_of=None,
+    pay_policy: Optional[Any] = None,
+) -> float:
+    """Daily-rate divisor: published 'proration' rule -> PayrollPolicy -> 30.
+
+    Mandate: 26/30-day proration is configuration, not code. An org
+    publishes rule_type='proration' definition={"divisor": 26} for an
+    effective-dated switch (company > org hierarchy like every other rule);
+    otherwise the payroll policy's daily_rate_divisor applies; 30 is the
+    last-resort neutral default.
+    """
+    if db is not None:
+        try:
+            from datetime import date as _date
+            from services.rule_platform import resolve_with_trace
+            resolved = resolve_with_trace(
+                db, "proration", as_of or _date.today(), country="",
+                organization_id=getattr(employee, "organization_id", None),
+                company_id=getattr(employee, "company_id", None),
+            )
+            definition = ((resolved.get("chosen") or {}).get("definition") or {})
+            divisor = definition.get("divisor")
+            if divisor is not None and float(divisor) > 0:
+                return float(divisor)
+        except Exception:
+            pass
+    if pay_policy is not None:
+        try:
+            d = getattr(pay_policy, "daily_rate_divisor", None)
+            if d is not None and float(d) > 0:
+                return float(d)
+        except (TypeError, ValueError):
+            pass
+    return 30.0
+
+
+def monthly_from_rate(
+    amount: float,
+    frequency: Optional[str],
+    pay_policy: Optional[Any] = None,
+    db: Optional[Session] = None,
+    employee: Optional[Employee] = None,
+    as_of=None,
+) -> float:
     """Convert a pay rate in its own frequency to the monthly equivalent.
 
-    Conventions (configurable via PayrollPolicy):
+    Conventions:
       annual  -> /12            (legacy rows with no frequency: annual)
       monthly -> as-is
       weekly  -> x(monthly_divisor_for_weekly)  (default 4.33 = 52/12)
-      daily   -> x(daily_rate_divisor)          (default 30)
+      daily   -> x(proration divisor)           (rule -> policy -> 30)
     """
     amount = float(amount or 0)
     freq = (frequency or "annual").strip().lower()
@@ -777,7 +823,7 @@ def monthly_from_rate(amount: float, frequency: Optional[str], pay_policy: Optio
         weekly_to_monthly = float(getattr(pay_policy, 'monthly_divisor_for_weekly', None) or 4.33)
         return round(amount * weekly_to_monthly, 2)
     if freq == "daily":
-        daily_divisor = float(getattr(pay_policy, 'daily_rate_divisor', None) or 30.0)
+        daily_divisor = resolve_proration_divisor(db, employee, as_of=as_of, pay_policy=pay_policy)
         return round(amount * daily_divisor, 2)
     return round(amount / 12, 2) if amount else 0.0
 
@@ -811,6 +857,7 @@ def _get_effective_monthly_base(db: Session, employee: Employee, year: int, mont
         employee.base_salary,
         getattr(employee, "pay_frequency", None),
         _get_payroll_policy(db, employee) if db is not None else None,
+        db=db, employee=employee,
     )
 
 
@@ -3178,7 +3225,8 @@ def calculate_payroll(
             {
                 "monthly": gross_salary,
                 "daily": _round_val(
-                    gross_salary / float(getattr(pay_policy, "daily_rate_divisor", None) or 30.0), 2
+                    gross_salary / resolve_proration_divisor(
+                        db, employee, as_of=month_start, pay_policy=pay_policy), 2
                 ) if gross_salary else None,
             },
             as_of=month_start,
@@ -3444,6 +3492,7 @@ def generate_payroll_record(
                 "country": data.get("country"),
                 "state": data.get("registered_state"),
             },
+            "cost_center": getattr(employee, "cost_center", None),
             "currency": {
                 "salary_currency": data.get("salary_currency"),
                 "exchange_rate": data.get("currency_exchange_rate"),

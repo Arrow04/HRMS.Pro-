@@ -1672,10 +1672,11 @@ def calculate_fnf(
             leave_balance = sum((b.remaining_days or 0) for b in lb) if lb else 0
         except Exception:
             leave_balance = 0
-    # Daily rate divisor comes from PayrollPolicy (30/26/working days).
+    # Daily rate divisor: proration rule -> PayrollPolicy (30/26) -> 30.
     try:
-        from services.payroll_service import _get_payroll_policy
-        _daily_divisor = float(getattr(_get_payroll_policy(db, emp), 'daily_rate_divisor', None) or 30.0)
+        from services.payroll_service import _get_payroll_policy, resolve_proration_divisor
+        _daily_divisor = resolve_proration_divisor(
+            db, emp, pay_policy=_get_payroll_policy(db, emp))
     except Exception:
         _daily_divisor = 30.0
     leave_encashment = round((monthly_salary / _daily_divisor) * leave_balance, 2) if leave_balance else 0
