@@ -197,6 +197,50 @@ def get_attendance_summary_for_payroll(
 
 # ── Payroll period finalize (soft lock) ────────────────────────────────────
 
+def _period_is_finalized(
+    db: Session,
+    org_id: Optional[int],
+    month: int,
+    year: int,
+    company_id: Optional[int] = None,
+    employee_id: Optional[int] = None,
+) -> bool:
+    """True when a finalized PayrollPeriodLock covers this generation scope.
+
+    Scope rules: an org-wide lock (company NULL + employee NULL) covers
+    everyone; a company lock covers that company's employees; an employee
+    lock covers that employee. Reopened locks never block. Generation and
+    regeneration of payslips are BLOCKED while covered — the cutoff is a
+    hard gate on money movement, not just a warning.
+    """
+    if not org_id:
+        return False
+    try:
+        base = db.query(PayrollPeriodLock).filter(
+            PayrollPeriodLock.organization_id == org_id,
+            PayrollPeriodLock.month == month,
+            PayrollPeriodLock.year == year,
+            PayrollPeriodLock.status == "finalized",
+        )
+        if base.filter(
+            PayrollPeriodLock.company_id.is_(None),
+            PayrollPeriodLock.employee_id.is_(None),
+        ).first() is not None:
+            return True
+        if company_id and base.filter(
+            PayrollPeriodLock.company_id == company_id,
+            PayrollPeriodLock.employee_id.is_(None),
+        ).first() is not None:
+            return True
+        if employee_id and base.filter(
+            PayrollPeriodLock.employee_id == employee_id,
+        ).first() is not None:
+            return True
+    except Exception:
+        return False
+    return False
+
+
 @router.get("/api/payroll/attendance-status", tags=["Payroll"])
 def get_attendance_status(
     month: int,
@@ -1213,6 +1257,12 @@ def generate_payroll_endpoint(
     ).first()
     if locked:
         raise HTTPException(status_code=409, detail="Payroll period is locked; reopen before regenerating")
+    if _period_is_finalized(db, current_user.organization_id, month, year,
+                            company_id=emp.company_id, employee_id=emp.id):
+        raise HTTPException(status_code=409, detail=(
+            "Payroll period is finalized (cutoff). Reopen the attendance "
+            "period before generating or regenerating payslips."
+        ))
     assert_company_allowed(db, current_user, emp.company_id)
     existing = db.query(Payroll).filter(
         Payroll.deleted_at.is_(None),
@@ -1565,6 +1615,14 @@ def generate_all_payroll(
         raise HTTPException(status_code=400, detail="Multi-company payroll is enabled. Select a company to generate payroll for.")
     # Company isolation: generate only within your allowed company.
     companyId = resolve_company_scope(db, current_user, companyId)
+
+    # Cutoff gate: a finalized period cannot be (re)generated.
+    if _period_is_finalized(db, current_user.organization_id, month, year,
+                            company_id=companyId):
+        raise HTTPException(status_code=409, detail=(
+            "Payroll period is finalized (cutoff). Reopen the attendance "
+            "period before generating payroll."
+        ))
 
     # Pre-flight validation: block payroll if critical config is missing
     from services.payroll_preflight import run_preflight
