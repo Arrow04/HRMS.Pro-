@@ -1087,21 +1087,31 @@ def apply_module(
 
     answers = _merged_answers(module, payload.answers or {})
     applier = _MODULE_APPLIERS.get(module_id)
-    applied = applier(db, org, answers, payload.companyId) if applier else []
-    db.commit()
+    try:
+        applied = applier(db, org, answers, payload.companyId) if applier else []
+        db.commit()
 
-    settings = dict(getattr(org, "settings", None) or {})
-    guided = dict(settings.get("setup") or {})
-    scope_key = f"company_{payload.companyId}" if payload.companyId is not None else "org"
-    guided.setdefault(scope_key, {})
-    guided[scope_key][module_id] = {
-        "appliedAt": datetime.utcnow().isoformat(),
-        "answers": answers,
-    }
-    guided[scope_key]["guidedConfigured"] = True
-    settings["setup"] = guided
-    org.settings = settings
-    db.commit()
+        settings = dict(getattr(org, "settings", None) or {})
+        raw_guided = settings.get("setup")
+        guided = dict(raw_guided) if isinstance(raw_guided, dict) else {}
+        scope_key = f"company_{payload.companyId}" if payload.companyId is not None else "org"
+        scope_entry = guided.get(scope_key)
+        if not isinstance(scope_entry, dict):
+            scope_entry = {}
+        scope_entry[module_id] = {
+            "appliedAt": datetime.utcnow().isoformat(),
+            "answers": answers,
+        }
+        scope_entry["guidedConfigured"] = True
+        guided[scope_key] = scope_entry
+        settings["setup"] = guided
+        org.settings = settings
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Setup module '{module_id}' failed: {exc}")
 
     return {
         "module": module_id,
