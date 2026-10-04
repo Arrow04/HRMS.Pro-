@@ -384,13 +384,23 @@ def calculate_gratuity(basic_da: float, years_of_service: int, setting: Optional
     Formula: (days_per_year * last_drawn_basic_da * years_of_service) / 26
     Cap: configurable (default ₹20,00,000 tax-free limit)
     Eligibility: configurable (default 5 years)
-    
-    All parameters read from StatutorySetting — fully configurable per company.
+
+    Parameters read from StatutorySetting — fully configurable per company.
+    When no setting (or a blank field) is supplied, the Payment of Gratuity
+    Act 1972 statutory defaults apply: 15 days/year, 5 years eligibility,
+    ₹20,00,000 tax-exempt ceiling.
     """
     eligible_years = float(getattr(setting, 'gratuity_eligible_years', None) or 0.0) if setting else 0.0
     days_per_year = float(getattr(setting, 'gratuity_days_per_year', None) or 0.0) if setting else 0.0
     tax_exempt_ceiling = float(getattr(setting, 'gratuity_tax_exempt_ceiling', None) or 0.0) if setting else 0.0
-    
+
+    if eligible_years <= 0:
+        eligible_years = 5.0
+    if days_per_year <= 0:
+        days_per_year = 15.0
+    if tax_exempt_ceiling <= 0:
+        tax_exempt_ceiling = 2000000.0
+
     if years_of_service < eligible_years:
         return {"amount": 0, "eligible": False, "years_of_service": years_of_service}
     

@@ -741,39 +741,54 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   };
   // Null/missing statutory keys fall back to India statutory defaults so the
   // split never shows 0 deductions; an explicit 0 is respected.
-  const statNum = (key: string, fallback: number) => {
+  // Statutory rates come ONLY from the selected payroll template's
+  // configuration — the actual amounts are always computed by the backend
+  // engine (POST /payroll/preview). Never hard-code Indian statutory
+  // constants here: no fallback rates, ceilings or flat amounts.
+  const statNum = (key: string): number | null => {
     const raw = tplStatutory[key];
-    if (raw === null || raw === undefined || raw === '') return fallback;
+    if (raw === null || raw === undefined || raw === '') return null;
     const n = Number(raw);
-    return isNaN(n) ? fallback : n;
+    return isNaN(n) ? null : n;
   };
-  const pfEmployeeRate = statNum('pf_employee_rate', 12);
-  const pfEmployerRate = statNum('pf_employer_rate', 3.67);
-  const pfMaxMonthly = statNum('pf_max_monthly', 1800);
-  const esiEmployeeRate = statNum('esi_employee_rate', 0.75);
-  const esiEmployerRate = statNum('esi_employer_rate', 1.75);
-  const esiGrossCeiling = statNum('esi_gross_ceiling', 21000);
-  const ptMonthlyAmount = statNum('pt_monthly_amount', 200);
-  const gratuityRate = statNum('gratuity_rate', 4.81);
-  const pfAdminRate = statNum('pf_admin_rate', 0.5);
-  const pfEdliRate = statNum('pf_edli_rate', 0.5);
-  const pfEdliMaxMonthly = statNum('pf_edli_max_monthly', 75);
-  const pfAdminMinMonthly = statNum('pf_admin_min_monthly', 75);
+  const pfEmployeeRate = statNum('pf_employee_rate');
+  const pfEmployerRate = statNum('pf_employer_rate');
+  const pfMaxMonthly = statNum('pf_max_monthly');
+  const esiEmployeeRate = statNum('esi_employee_rate');
+  const esiEmployerRate = statNum('esi_employer_rate');
+  const esiGrossCeiling = statNum('esi_gross_ceiling');
+  const ptMonthlyAmount = statNum('pt_monthly_amount');
+  const gratuityRate = statNum('gratuity_rate');
+  const pfAdminRate = statNum('pf_admin_rate');
+  const pfEdliRate = statNum('pf_edli_rate');
+  const pfEdliMaxMonthly = statNum('pf_edli_max_monthly');
+  const pfAdminMinMonthly = statNum('pf_admin_min_monthly');
   const gratuityApplicable = !!tplStatutory.gratuity_applicable;
-  // PF wage ceiling implied by the 12% cap (1800 = 12% of 15000).
-  const pfWageCeiling = pfMaxMonthly > 0 && pfEmployerRate > 0 ? pfMaxMonthly / (pfEmployerRate / 100) : 0;
-  // Employer PF = 12% (8.33 EPS + 3.67 EPF) + 0.5% admin + 0.5% EDLI = 13%,
-  // mirroring services/payroll_service.py so preview matches the payroll run.
-  const employerPfCap = pfWageCeiling > 0
-    ? Math.round(Math.min(pfWageCeiling * pfEmployerRate / 100, pfMaxMonthly))
-      + Math.round(Math.max(pfWageCeiling * pfAdminRate / 100, pfAdminMinMonthly))
-      + Math.round(Math.min(pfWageCeiling * pfEdliRate / 100, pfEdliMaxMonthly))
-    : 0;
-  // Deduction help texts — driven by the active template's statutory rates.
+  // PF wage ceiling implied by the configured cap (e.g. 1800 = 12% of 15000).
+  const pfWageCeiling = pfMaxMonthly !== null && pfEmployerRate ? pfMaxMonthly / (pfEmployerRate / 100) : 0;
+  // Employer PF cap (core + admin + EDLI) — only when the template configures
+  // every rate; otherwise the engine preview is the sole authority.
+  const employerPfCap =
+    pfWageCeiling > 0 && pfEmployerRate !== null && pfAdminRate !== null &&
+    pfEdliRate !== null && pfEdliMaxMonthly !== null && pfAdminMinMonthly !== null
+      ? Math.round(Math.min(pfWageCeiling * pfEmployerRate / 100, pfMaxMonthly ?? 0))
+        + Math.round(Math.max(pfWageCeiling * pfAdminRate / 100, pfAdminMinMonthly))
+        + Math.round(Math.min(pfWageCeiling * pfEdliRate / 100, pfEdliMaxMonthly))
+      : null;
+  // Deduction help texts — driven by the active template's statutory config.
+  // When a rate is unconfigured the text stays generic instead of inventing
+  // statutory numbers the engine will actually apply.
+  const engineHelp = 'Computed by the payroll engine from statutory configuration';
   const deductionHelp: Record<string, string> = {
-    pf: `${pfEmployeeRate}% of Basic (capped ${currencySymbol}${pfMaxMonthly.toLocaleString('en-IN')}/month on ${currencySymbol}${(pfWageCeiling || 15000).toLocaleString('en-IN')} wage ceiling)`,
-    esi: `${esiEmployeeRate}% of gross (only if monthly \u2264 ${currencySymbol}${esiGrossCeiling.toLocaleString('en-IN')})`,
-    professionalTax: `State PT slab by gross salary (flat ${currencySymbol}${ptMonthlyAmount.toLocaleString('en-IN')}/mo only where the state has no slab)`,
+    pf: pfEmployeeRate !== null && pfMaxMonthly !== null
+      ? `${pfEmployeeRate}% of Basic (capped ${currencySymbol}${pfMaxMonthly.toLocaleString('en-IN')}/month${pfWageCeiling > 0 ? ` on ${currencySymbol}${pfWageCeiling.toLocaleString('en-IN')} wage ceiling` : ''})`
+      : engineHelp,
+    esi: esiEmployeeRate !== null && esiGrossCeiling !== null
+      ? `${esiEmployeeRate}% of gross (only if monthly \u2264 ${currencySymbol}${esiGrossCeiling.toLocaleString('en-IN')})`
+      : engineHelp,
+    professionalTax: ptMonthlyAmount !== null
+      ? `State PT slab by gross salary (flat ${currencySymbol}${ptMonthlyAmount.toLocaleString('en-IN')}/mo only where the state has no slab)`
+      : engineHelp,
     incomeTax: 'Manual (not auto-calculated)',
     gratuity: 'Manual (not auto-calculated)',
     loanRecovery: 'Manual (not auto-calculated)',
@@ -855,21 +870,9 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       }
     }
 
-    // Statutory deductions — rates from the selected payroll template.
-    const pf = Math.round(Math.min(basic * pfEmployeeRate / 100, pfMaxMonthly));
-    const esi = monthly <= esiGrossCeiling ? Math.round(monthly * esiEmployeeRate / 100) : 0;
-    const professionalTax = Math.round(ptMonthlyAmount);
-
-    // Employer contributions (cost-to-company) — from the template's statutory.
-    // Employer PF = 12% core + 0.5% admin + 0.5% EDLI (13% total), matching payroll_service.
-    const pfWages = pfWageCeiling > 0 ? Math.min(basic, pfWageCeiling) : basic;
-    const employerPf = pfWages > 0
-      ? Math.round(Math.min(pfWages * pfEmployerRate / 100, pfMaxMonthly))
-        + Math.round(Math.max(pfWages * pfAdminRate / 100, pfAdminMinMonthly))
-        + Math.round(Math.min(pfWages * pfEdliRate / 100, pfEdliMaxMonthly))
-      : 0;
-    const employerEsi = monthly <= esiGrossCeiling ? Math.round(monthly * esiEmployerRate / 100) : 0;
-    const employerGratuity = gratuityApplicable ? Math.round(basic * gratuityRate / 100) : 0;
+    // Statutory deductions and employer contributions are NEVER computed
+    // here: the payroll engine preview (POST /payroll/preview) owns that math
+    // and drives the read-only fields. Only earnings are split locally.
 
     set({
       salaryTemplateId: activeTemplate?.id ?? formData.salaryTemplateId,
@@ -882,12 +885,6 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         medical,
         specialAllowance,
         otherAllowance,
-        pf,
-        esi,
-        professionalTax,
-        employerPf,
-        employerEsi,
-        employerGratuity,
       },
     });
   };
@@ -2815,7 +2812,9 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             onChange={(e) => setComp('employerPf', e.target.value)}
                             placeholder="e.g. 1800"
                             className={`${formInputClass}${previewActive ? ' bg-slate-50 text-slate-600 cursor-default' : ''}`} style={{ ['--tw-ring-color' as string]: accent }} />
-                          <p className="mt-1 text-xs text-[#94A3B8]">{(pfEmployerRate + pfAdminRate + pfEdliRate)}% of Basic — EPS 8.33% + EPF {(pfEmployerRate - 8.33).toFixed(2)}% + Admin {pfAdminRate}% + EDLI {pfEdliRate}% (capped {getCurrencySymbol(getAppCurrency())}{employerPfCap.toLocaleString('en-IN')})</p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">{pfEmployerRate !== null && pfAdminRate !== null && pfEdliRate !== null
+                            ? `${(pfEmployerRate + pfAdminRate + pfEdliRate)}% of Basic — employer PF ${pfEmployerRate}% + Admin ${pfAdminRate}% + EDLI ${pfEdliRate}%${employerPfCap !== null ? ` (capped ${getCurrencySymbol(getAppCurrency())}${employerPfCap.toLocaleString('en-IN')})` : ''}`
+                            : engineHelp}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-[#64748B] mb-1">Employer ESI</label>
@@ -2824,7 +2823,9 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             onChange={(e) => setComp('employerEsi', e.target.value)}
                             placeholder="e.g. 400"
                             className={`${formInputClass}${previewActive ? ' bg-slate-50 text-slate-600 cursor-default' : ''}`} style={{ ['--tw-ring-color' as string]: accent }} />
-                          <p className="mt-1 text-xs text-[#94A3B8]">{esiEmployerRate}% of gross (only if monthly ≤ {getCurrencySymbol(getAppCurrency())}{esiGrossCeiling.toLocaleString('en-IN')})</p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">{esiEmployerRate !== null && esiGrossCeiling !== null
+                            ? `${esiEmployerRate}% of gross (only if monthly ≤ ${getCurrencySymbol(getAppCurrency())}${esiGrossCeiling.toLocaleString('en-IN')})`
+                            : engineHelp}</p>
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-[#64748B] mb-1">Gratuity (Employer)</label>
@@ -2833,7 +2834,9 @@ const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                             onChange={(e) => setComp('employerGratuity', e.target.value)}
                             placeholder="e.g. 2400"
                             className={`${formInputClass}${previewActive ? ' bg-slate-50 text-slate-600 cursor-default' : ''}`} style={{ ['--tw-ring-color' as string]: accent }} />
-                          <p className="mt-1 text-xs text-[#94A3B8]">{gratuityRate}% of Basic {gratuityApplicable ? '' : '(not applicable)'}</p>
+                          <p className="mt-1 text-xs text-[#94A3B8]">{gratuityRate !== null
+                            ? `${gratuityRate}% of Basic${gratuityApplicable ? '' : ' (not applicable)'}`
+                            : gratuityApplicable ? 'Per configured statutory gratuity rate' : 'Not applicable'}</p>
                         </div>
                         {previewActive && previewExtras.employer.map((x, i) => (
                           <div key={`x-emp-${i}`}>

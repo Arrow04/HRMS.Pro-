@@ -35,7 +35,7 @@ from core.company_scope import resolve_company_scope, assert_company_allowed, re
 from database import Base, SessionLocal, engine, get_db, get_read_db
 from core.scale import MAX_LIST_LIMIT, MAX_PERIOD_LIST_LIMIT, DEFAULT_LIST_LIMIT
 from models import (Attendance, AttendanceAuditLog, AttendancePolicy, AuditLog, Asset, Branch, Candidate, Company, Department, Designation, Employee, EmployeeBranchAssignment, EmployeeLifecycleEvent, Expense, Holiday, Interview, JobOpening, LeaveApplication, LeaveApprovalHistory, LeaveBalance, LeaveType, Notification, Organization, Payroll, PayrollComponent, PayrollPolicy, PayrollPeriodLock, PayrollRun, PerformanceReview, ReportExecutionLog, SalaryLoan, SalaryRevision, SalaryTemplate, Shift, StatutorySetting, TaxRegime, TaxSlab, User, ExitRecord, ArchivedEmployee)
-from services.payroll_service import calculate_payroll, generate_payroll_record, recompute_payroll_totals, is_pending_adhoc_row as _is_pending_adhoc_row, _compute_cumulative_tds, _get_tax_regime, _get_payroll_policy
+from services.payroll_service import calculate_payroll, generate_payroll_record, recompute_payroll_totals, is_pending_adhoc_row as _is_pending_adhoc_row, _compute_cumulative_tds, _get_tax_regime, _get_payroll_policy, ComponentFormulaError
 from services.accounting_service import post_payroll_journal
 from utils.helpers import convert_camel_to_snake
 
@@ -1230,7 +1230,10 @@ def generate_payroll_endpoint(
             "emailSent": False,
             "emailSkipped": "",
         }
-    payroll = generate_payroll_record(db, emp, month, year)
+    try:
+        payroll = generate_payroll_record(db, emp, month, year)
+    except ComponentFormulaError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if existing:
         # Merge the recorded bonuses/incentives into the fresh payslip.
         _absorb_pending_adhoc(existing, payroll)
@@ -1850,6 +1853,41 @@ def process_company_payroll(
     }
 
 
+# Destructive period-level operations are payroll-admin only (matches the
+# lifecycle write roles in routers/payroll_lifecycle.py).
+_PAYROLL_ADMIN_ROLES = ("superadmin", "admin", "hr_admin", "finance")
+
+
+def _require_payroll_admin(user: User, action: str) -> None:
+    if (user.role or "").lower() not in _PAYROLL_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail=f"Not authorized to {action}")
+
+
+def _assert_no_finalized(records, action: str) -> None:
+    """Immutability mandate: locked/processed/paid payroll can never be
+    silently destroyed by a period-level wipe. Corrections go through the
+    lifecycle (reopen/reverse) or arrears adjustments first."""
+    from services.payroll_lifecycle import FINALIZED_STATUSES
+    blocked = [
+        r for r in records
+        if (r.status or "draft").lower() in FINALIZED_STATUSES
+    ]
+    if blocked:
+        by_status: Dict[str, int] = {}
+        for r in blocked:
+            key = (r.status or "draft").lower()
+            by_status[key] = by_status.get(key, 0) + 1
+        summary = ", ".join(f"{v} {k}" for k, v in sorted(by_status.items()))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Cannot {action}: {len(blocked)} payroll record(s) are finalized ({summary}). "
+                "Locked/processed/paid payroll is immutable — reopen or reverse the period "
+                "through the payroll lifecycle (or fix via arrears adjustments) first."
+            ),
+        )
+
+
 @router.post("/api/payroll/reset", tags=["Payroll"])
 def reset_payroll_period(
     body: dict = None,
@@ -1858,17 +1896,22 @@ def reset_payroll_period(
 ):
     """Wipe out every payroll record for a month/year so it can be regenerated fresh.
 
-    Recovery from a mistaken run: soft-deletes all payroll records (any status)
-    for the period and clears the period finalization lock, leaving the period
-    clean so Generate All produces brand-new payslips.
-    Body: { month, year, companyId?, branchId? }
+    Recovery from a mistaken run: soft-deletes all payroll records for the
+    period and clears the period finalization lock, leaving the period clean
+    so Generate All produces brand-new payslips.
+
+    Immutability mandate: locked/processed/paid records are NEVER deleted by
+    this endpoint (409) — reopen or reverse them through the lifecycle first.
+    Body: { month, year, companyId?, branchId?, departmentId?, reason? }
     """
     body = body or {}
+    _require_payroll_admin(current_user, "reset payroll")
     month = body.get("month")
     year = body.get("year")
     company_id = body.get("companyId")
     branch_id = body.get("branchId")
     department_id = body.get("departmentId")
+    reason = str(body.get("reason") or "").strip()
     if not month or not year:
         raise HTTPException(status_code=400, detail="month and year are required")
 
@@ -1896,6 +1939,7 @@ def reset_payroll_period(
     records = query.all()
     if not records:
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
+    _assert_no_finalized(records, "reset")
 
     now = ist_now_naive()
     # Pending ad-hoc earnings (bonuses / incentives recorded before the run)
@@ -1926,7 +1970,8 @@ def reset_payroll_period(
     _create_audit_log(
         db, current_user, "reset_payroll", "payroll", None,
         f"Wiped {count} payroll record(s) for {month}/{year} to regenerate fresh payslips"
-        + (f" ({len(preserved)} pending bonus/incentive row(s) preserved)" if preserved else ""),
+        + (f" ({len(preserved)} pending bonus/incentive row(s) preserved)" if preserved else "")
+        + (f" | reason: {reason}" if reason else ""),
     )
 
     # Record who re-ran this period on the matching payroll run for Run History.
@@ -1951,14 +1996,19 @@ def void_payroll_period(
 
     Permanently deletes all payroll records for the period and clears the
     period finalization lock. Does NOT regenerate — use /reset for that.
-    Body: { month, year, companyId?, branchId?, departmentId? }
+
+    Immutability mandate: locked/processed/paid records are NEVER deleted by
+    this endpoint (409) — reopen or reverse them through the lifecycle first.
+    Body: { month, year, companyId?, branchId?, departmentId?, reason? }
     """
     body = body or {}
+    _require_payroll_admin(current_user, "void payroll")
     month = body.get("month")
     year = body.get("year")
     company_id = body.get("companyId")
     branch_id = body.get("branchId")
     department_id = body.get("departmentId")
+    reason = str(body.get("reason") or "").strip()
     if not month or not year:
         raise HTTPException(status_code=400, detail="month and year are required")
 
@@ -1986,6 +2036,7 @@ def void_payroll_period(
     records = query.all()
     if not records:
         raise HTTPException(status_code=404, detail="No payroll records found for this period")
+    _assert_no_finalized(records, "void")
 
     now = ist_now_naive()
     count = len(records)
@@ -2010,7 +2061,8 @@ def void_payroll_period(
 
     _create_audit_log(
         db, current_user, "void_payroll", "payroll", None,
-        f"Voided {count} payroll record(s) for {month}/{year}",
+        f"Voided {count} payroll record(s) for {month}/{year}"
+        + (f" | reason: {reason}" if reason else ""),
     )
 
     _record_run_action(db, current_user.organization_id, month, year, "void", current_user, count)

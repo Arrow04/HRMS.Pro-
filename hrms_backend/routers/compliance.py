@@ -138,15 +138,26 @@ def calculate_income_tax(
 
 @router.post("/api/payroll/calculate/gratuity")
 def calculate_gratuity_endpoint(
-    basic_da: float = Body(...), years_of_service: int = Body(...)
+    basic_da: float = Body(...),
+    years_of_service: int = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     from services.compliance_engine import calculate_gratuity
-    return calculate_gratuity(basic_da, years_of_service)
+    from models import StatutorySetting
+    setting = None
+    if current_user.organization_id:
+        setting = db.query(StatutorySetting).filter(
+            StatutorySetting.organization_id == current_user.organization_id
+        ).first()
+    return calculate_gratuity(basic_da, years_of_service, setting)
 
 
 @router.post("/api/payroll/calculate/bonus")
 def calculate_bonus_endpoint(
-    gross_salary: float = Body(...), months_worked: int = Body(12)
+    gross_salary: float = Body(...),
+    months_worked: int = Body(12),
+    current_user: User = Depends(get_current_user),
 ):
     from services.compliance_engine import calculate_bonus
     return calculate_bonus(gross_salary, months_worked)
@@ -230,7 +241,7 @@ def get_full_final_settlement(
 
 
 @router.get("/api/exit/clearance-checklist")
-def get_clearance_checklist():
+def get_clearance_checklist(current_user: User = Depends(get_current_user)):
     from services.exit_management_service import get_clearance_checklist
     return get_clearance_checklist()
 
@@ -291,7 +302,7 @@ def initiate_exit(
 
 
 @router.get("/api/notifications/templates")
-def get_notification_templates():
+def get_notification_templates(current_user: User = Depends(get_current_user)):
     """Return all available email notification templates."""
     return {
         "templates": [

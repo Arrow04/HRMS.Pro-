@@ -124,7 +124,9 @@ const computePayrollTotals = <T extends Record<string, unknown>>(rec: T): T => {
   const r = (x: number) => Math.round(x * 100) / 100;
   const paidDays = Math.max(0, n(rec.workingDays) - n(rec.absentDays) - n(rec.leaveDays));
   const totalEarnings = r(n(rec.basicSalary) + n(rec.hra) + n(rec.da) + n(rec.conveyance) + n(rec.medical) + n(rec.specialAllowance) + n(rec.overtimePay) + n(rec.bonus) + n(rec.commission) + n(rec.incentive) + n(rec.otherEarnings));
-  const totalDeductions = r(n(rec.pfDeduction) + n(rec.esiDeduction) + n(rec.professionalTax) + n(rec.tdsDeduction) + n(rec.loanDeduction) + n(rec.advanceDeduction) + n(rec.otherDeductions) + n(rec.lwfDeduction) + n(rec.gratuity) + n(rec.npsDeduction) + n(rec.customDeductionTotal));
+  // Mirrors services/payroll_service.py: total_deductions NEVER includes
+  // gratuity (it is an employer reserve, not an employee deduction).
+  const totalDeductions = r(n(rec.pfDeduction) + n(rec.esiDeduction) + n(rec.professionalTax) + n(rec.tdsDeduction) + n(rec.loanDeduction) + n(rec.advanceDeduction) + n(rec.otherDeductions) + n(rec.lwfDeduction) + n(rec.npsDeduction) + n(rec.customDeductionTotal));
   const netSalary = r(totalEarnings - totalDeductions);
   return { ...rec, paidDays, totalEarnings, totalDeductions, netSalary };
 };

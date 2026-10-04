@@ -1029,7 +1029,7 @@ def delete_attendance_policy(
 
 
 @router.get("/compliance/states")
-def list_compliance_states():
+def list_compliance_states(current_user: User = Depends(get_current_user)):
     """List all states with compliance data."""
     states = []
     for code in get_all_state_codes():

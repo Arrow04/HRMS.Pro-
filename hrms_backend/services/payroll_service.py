@@ -1759,6 +1759,24 @@ def _mark_expenses_reimbursed(db: Session, employee: Employee, year: int, month:
 
 # ── Component Calculation ──
 
+class ComponentFormulaError(ValueError):
+    """A salary component's configured formula failed to evaluate.
+
+    Raised (and/or collected on the calculate result) so a broken formula is
+    never silently paid as ₹0 — the run must surface the exact component,
+    formula and cause instead of underpaying the employee unnoticed.
+    """
+
+    def __init__(self, component_name: str, formula: str, cause: str):
+        self.component_name = component_name
+        self.formula = formula
+        self.cause = cause
+        super().__init__(
+            f"Component '{component_name}' formula failed: {cause} "
+            f"(formula: {formula!r})"
+        )
+
+
 def _calc_component_value(
     comp: PayrollComponent,
     computed: Dict[str, float],
@@ -1810,7 +1828,7 @@ def _calc_component_value(
             ctx = {
                 "basic": monthly_basic,
                 "base": base_val,
-                "rate": float(comp.calculation_value),
+                "rate": float(comp.calculation_value or 0),
                 **computed,
                 **input_vars,  # inject per-employee inputs (units_produced, hours_worked, etc.)
                 **attendance_data,  # inject overtime_hours, night_shift_hours, etc.
@@ -1819,7 +1837,7 @@ def _calc_component_value(
             val = float(val)
         except Exception as e:
             logger.warning("Formula evaluation failed for component %s: %s", comp.name, e)
-            val = 0.0
+            raise ComponentFormulaError(comp.name, comp.formula, str(e)) from e
 
     # ── Hourly: hourly_rate * hours_worked ──
     elif calc_type == "hourly":
@@ -2134,6 +2152,9 @@ def calculate_payroll(
     component_deduction_total = 0.0
     component_employee_deduction_keys: List[str] = []
     computed: Dict[str, float] = {}
+    # Formula failures collected during the component loop (present in every
+    # branch so the return dict can always expose them).
+    formula_errors: List[Dict[str, Any]] = []
     # Present in every branch so the return dict can always expose the full split.
     other_allowance = 0.0
     travel = 0.0
@@ -2327,7 +2348,17 @@ def calculate_payroll(
             pass
 
         for comp in components:
-            raw_val = _calc_component_value(comp, computed, monthly_basic, input_vars, attendance_data)
+            try:
+                raw_val = _calc_component_value(comp, computed, monthly_basic, input_vars, attendance_data)
+            except ComponentFormulaError as fe:
+                # Never hide a broken formula: record it on the result so the
+                # preview shows the error and generation refuses to persist.
+                formula_errors.append({
+                    "component": fe.component_name,
+                    "formula": fe.formula,
+                    "error": fe.cause,
+                })
+                raw_val = 0.0
             if comp.apply_pro_ration:
                 raw_val = raw_val * factor
             val = _round_val(raw_val, rounding, places)
@@ -2687,12 +2718,15 @@ def calculate_payroll(
         lwf_employee = state_compliance["lwf_employee"]
         lwf_employer = state_compliance["lwf_employer"]
     else:
+        # _apply_state_compliance already resolved LWF from the settings
+        # fallback as a FIXED monthly ₹ amount (LWF is never a % of basic —
+        # units must match the state engine's). Use its values as-is.
         lwf_employee = _round_val(
-            basic * stat_settings.lwf_employee_rate / 100, rounding, places
-        ) if stat_settings.lwf_applicable else 0.0
+            float(state_compliance.get("lwf_employee") or 0.0), rounding, places
+        ) if state_compliance.get("lwf_applicable") else 0.0
         lwf_employer = _round_val(
-            basic * stat_settings.lwf_employer_rate / 100, rounding, places
-        ) if stat_settings.lwf_applicable else 0.0
+            float(state_compliance.get("lwf_employer") or 0.0), rounding, places
+        ) if state_compliance.get("lwf_applicable") else 0.0
 
     # Gratuity — Rule Engine first, then fallback
     gratuity_applicable = bool(pay_policy.include_gratuity or stat_settings.gratuity_applicable)
@@ -2819,11 +2853,14 @@ def calculate_payroll(
     custom_deduction_total = 0.0
     try:
         from services.custom_deduction_engine import CustomDeductionEngine
-        _custom_engine = CustomDeductionEngine(db, organization_id, getattr(employee, 'company_id', None))
+        _custom_engine = CustomDeductionEngine(
+            db, employee.organization_id, getattr(employee, 'company_id', None)
+        )
         custom_deductions = _custom_engine.calculate_all(
             gross=total_earnings,
-            basic=basic_salary,
+            basic=float(computed.get("basic", 0.0) or 0.0),
             employee_id=employee.id,
+            as_of=month_start,
         )
         custom_deduction_total = sum(d["amount"] for d in custom_deductions)
         # Add to component breakdown for payslip display
@@ -2835,8 +2872,15 @@ def calculate_payroll(
                 "type": "statutory_deduction",
                 "value": cd["amount"],
             })
-    except Exception:
-        pass  # Custom deductions are optional — don't break payroll if engine fails
+    except Exception as exc:
+        # Custom deductions are optional, but a failure must never be silent:
+        # log loudly so ops can see the employee got an under-deduction.
+        logger.warning(
+            "custom_deduction_engine_failed employee=%s org=%s: %s",
+            getattr(employee, "id", None), getattr(employee, "organization_id", None), exc,
+        )
+        custom_deductions = []
+        custom_deduction_total = 0.0
 
     total_deductions = _round_val(
         pf_employee + esi + professional_tax + lwf_employee + tds
@@ -2975,6 +3019,9 @@ def calculate_payroll(
         # Policy detail
         "payroll_policy_id": pay_policy.id if pay_policy.id else None,
         "component_breakdown": component_detail if component_detail else None,
+        # Broken component formulas — surfaced, never silently paid as ₹0.
+        "formula_errors": formula_errors,
+        "has_formula_errors": bool(formula_errors),
         # Jurisdiction snapshot (country/state in force for this period)
         "country": jurisdiction_country,
         "registered_state": (
@@ -3111,6 +3158,17 @@ def generate_payroll_record(
 ) -> Payroll:
     """Calculate and persist a Payroll record using policy-driven engine."""
     data = calculate_payroll(db, employee, month, year, **overrides)
+    if data.get("has_formula_errors"):
+        # Refuse to persist a payslip computed with a broken formula — the
+        # run must fail loudly so HR fixes the component configuration.
+        errs = "; ".join(
+            f"'{e['component']}': {e['error']}" for e in data.get("formula_errors", [])
+        )
+        raise ComponentFormulaError(
+            ",".join(e["component"] for e in data.get("formula_errors", [])),
+            "; ".join(e["formula"] for e in data.get("formula_errors", [])),
+            errs,
+        )
     data["company_id"] = employee.company_id
     data["organization_id"] = employee.organization_id
     # Snapshot bank details for disbursement at generation time.

@@ -33,6 +33,53 @@ def _require_module_action(db: Session, user: User, module: str, action: str = "
         )
 
 
+# Roles allowed to see unmasked PII/financial fields on any employee record.
+_FULL_RECORD_ROLES = (
+    "admin", "superadmin", "hr_admin", "hr_manager",
+    "hr_executive", "finance", "accountant",
+)
+
+_SENSITIVE_KEYS = (
+    "panNumber", "aadharNumber", "voterId", "drivingLicense", "passportNumber",
+    "birthCertificateNumber", "bankName", "bankAccountNumber", "ifscCode",
+    "bankAccounts", "dateOfBirth", "emergencyPhone", "emergencyContact",
+    "baseSalary", "salaryComponents", "idDocuments", "idProofUrl",
+    "deviceIpAddress", "deviceMacAddress", "deviceSerialNumber",
+    "pfNumber", "pfUan", "spousePhone", "nomineeName",
+    "permanentAddress", "permanentLandmark", "currentAddress",
+    "esicNumber", "mediclaimNumber", "lifeInsuranceNumber",
+    "accountHolderName", "payRate",
+)
+
+
+def _can_view_full_records(current_user: User) -> bool:
+    return (current_user.role or "").lower() in _FULL_RECORD_ROLES
+
+
+def _own_employee_id(db: Session, current_user: User) -> Optional[int]:
+    emp = db.query(Employee).filter(
+        Employee.user_id == current_user.id, Employee.deleted_at.is_(None)
+    ).first()
+    return emp.id if emp else None
+
+
+def _blank_sensitive(payload: dict) -> dict:
+    """Null (or empty-list) every sensitive key in place; returns the payload."""
+    for k in _SENSITIVE_KEYS:
+        if k in payload:
+            payload[k] = [] if isinstance(payload[k], list) else None
+    return payload
+
+
+def _apply_sensitive_mask(db: Session, current_user: User, payload: dict, employee_id: int) -> dict:
+    """Mask PII/financial fields unless caller is an HR/finance role or views own record."""
+    if _can_view_full_records(current_user):
+        return payload
+    if _own_employee_id(db, current_user) == employee_id:
+        return payload
+    return _blank_sensitive(payload)
+
+
 def _plan_limit_info(db: Session, org_id: Optional[int]) -> Optional[dict]:
     """Return {plan_max, current_count} for an org's subscription plan, or None."""
     if not org_id:
@@ -605,30 +652,12 @@ def get_employees(
         ]
 
     # Privacy guard applies to full records only.
-    if view == "full":
-        role = (current_user.role or "").lower()
-        if role not in ("admin", "superadmin", "hr_admin", "hr_manager", "hr_executive", "finance", "accountant"):
-            my_emp_id = None
-            my_emp = db.query(Employee).filter(
-                Employee.user_id == current_user.id, Employee.deleted_at.is_(None)
-            ).first()
-            if my_emp:
-                my_emp_id = my_emp.id
-            _SENSITIVE_KEYS = (
-                "panNumber", "aadharNumber", "voterId", "drivingLicense", "passportNumber",
-                "birthCertificateNumber", "bankName", "bankAccountNumber", "ifscCode",
-                "bankAccounts", "dateOfBirth", "emergencyPhone", "emergencyContact",
-                "baseSalary", "salaryComponents", "idDocuments", "idProofUrl",
-                "deviceIpAddress", "deviceMacAddress", "deviceSerialNumber",
-                "pfNumber", "pfUan", "spousePhone", "nomineeName",
-                "permanentAddress", "permanentLandmark", "currentAddress",
-            )
-            for rec in employee_list:
-                if rec.get("id") == my_emp_id:
-                    continue
-                for k in _SENSITIVE_KEYS:
-                    if k in rec:
-                        rec[k] = None if not isinstance(rec[k], list) else []
+    if view == "full" and not _can_view_full_records(current_user):
+        my_emp_id = _own_employee_id(db, current_user)
+        for rec in employee_list:
+            if rec.get("id") == my_emp_id:
+                continue
+            _blank_sensitive(rec)
     
     # Return paginated response with metadata
     pagination = {
@@ -898,7 +927,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         raise HTTPException(status_code=404, detail="Employee not found")
     assert_company_allowed(db, current_user, employee.company_id)
 
-    return {
+    payload = {
         "id": employee.id,
         "userId": employee.user_id,
         **employee_name_api_fields(employee),
@@ -1022,6 +1051,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), current_user: 
         "itNotes": employee.it_notes,
         **{camel: bool(getattr(employee, col)) for camel, col in IT_CHECKLIST_COLUMNS},
     }
+    return _apply_sensitive_mask(db, current_user, payload, employee.id)
 
 
 @router.post("", response_model=dict)
@@ -2057,6 +2087,14 @@ def export_employees(
 ):
     import csv
     import io
+
+    # Full CSV contains PAN/Aadhaar/bank/salary for every employee — restrict
+    # to the same roles allowed to see unmasked records in the list view.
+    if not _can_view_full_records(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Your role cannot export full employee PII",
+        )
 
     if company_id is None and request is not None:
         company_id = get_header_company_id(request)

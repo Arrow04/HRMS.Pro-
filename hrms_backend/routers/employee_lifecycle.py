@@ -507,6 +507,15 @@ def export_employee_history(
     import csv
     import io
 
+    # The CSV embeds Aadhaar/PAN/bank account — restrict to roles allowed to
+    # view unmasked employee records (same allowlist as the employee list).
+    from routers.employees import _can_view_full_records
+    if not _can_view_full_records(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Your role cannot export full employee PII",
+        )
+
     emp = _get_employee_in_org_checked(db, employee_id, current_user)
 
     name = f"{emp.first_name} {emp.last_name}".strip() or emp.email

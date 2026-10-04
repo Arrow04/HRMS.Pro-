@@ -28,6 +28,51 @@ def _require_role(current_user: User, allowed_roles: List[str]) -> None:
         )
 
 
+def _scoped_org_id(current_user: User, requested_org_id: Optional[int]) -> Optional[int]:
+    """Tenant isolation: a caller may only ever resolve rules for their own org.
+
+    Superadmin may target an explicit org id (tenant control hub). Everyone
+    else is pinned to their own organization — asking for another org's id is
+    a 403, and passing nothing never widens the scope to "all tenants".
+    """
+    if (current_user.role or "") == "superadmin":
+        return requested_org_id
+    if requested_org_id and requested_org_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot access statutory rules of another organization",
+        )
+    return current_user.organization_id
+
+
+def _org_filter(q, org_id: Optional[int]):
+    """Apply org + global scope: own-org rows plus shared global (NULL) rows.
+    With no org id, only global rows are visible — never another tenant's."""
+    from models import StatutoryRule
+    if org_id:
+        return q.filter(
+            (StatutoryRule.organization_id == org_id)
+            | (StatutoryRule.organization_id.is_(None))
+        )
+    return q.filter(StatutoryRule.organization_id.is_(None))
+
+
+def _assert_rule_in_scope(rule, current_user: User) -> None:
+    """Object-level tenant guard for update/delete/supersede by id."""
+    if (current_user.role or "") == "superadmin":
+        return
+    if rule.organization_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Global statutory rules can only be modified by superadmin",
+        )
+    if rule.organization_id != current_user.organization_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify statutory rules of another organization",
+        )
+
+
 # ── Schemas ──
 
 class StatutoryRuleCreate(BaseModel):
@@ -103,8 +148,14 @@ def list_statutory_rules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List statutory rules with optional filters. Supports company-scoped rules."""
+    """List statutory rules with optional filters. Supports company-scoped rules.
+
+    Always tenant-scoped: the caller's org (plus shared global rules) is the
+    maximum visibility — never another organization's rows.
+    """
     from models import StatutoryRule
+
+    org_id = _scoped_org_id(current_user, organization_id)
 
     q = db.query(StatutoryRule).filter(
         StatutoryRule.deleted_at.is_(None),
@@ -114,18 +165,12 @@ def list_statutory_rules(
         q = q.filter(StatutoryRule.rule_type == rule_type)
     if state_code:
         q = q.filter(StatutoryRule.state_code == state_code)
-    if organization_id:
-        if companyId is not None:
-            q = q.filter(
-                (StatutoryRule.company_id == companyId)
-                | (StatutoryRule.company_id.is_(None) & (StatutoryRule.organization_id == organization_id))
-                | (StatutoryRule.company_id.is_(None) & StatutoryRule.organization_id.is_(None))
-            )
-        else:
-            q = q.filter(
-                (StatutoryRule.organization_id == organization_id)
-                | (StatutoryRule.organization_id.is_(None))
-            )
+    q = _org_filter(q, org_id)
+    if companyId is not None and org_id:
+        q = q.filter(
+            (StatutoryRule.company_id == companyId)
+            | (StatutoryRule.company_id.is_(None))
+        )
     if status:
         q = q.filter(StatutoryRule.status == status)
 
@@ -145,8 +190,9 @@ def list_active_rules_for_date(
     """List all active statutory rules for a given date, with company override support."""
     from services.statutory_rule_engine import StatutoryRuleEngine
 
+    org_id = _scoped_org_id(current_user, organization_id)
     engine = StatutoryRuleEngine(db)
-    return engine.list_active_rules(as_of, country, organization_id, company_id=companyId)
+    return engine.list_active_rules(as_of, country, org_id, company_id=companyId)
 
 
 @router.post("/", response_model=StatutoryRuleResponse)
@@ -156,8 +202,13 @@ def create_statutory_rule(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new statutory rule. Admin only. company_id makes it company-specific."""
-    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
+    _require_role(current_user, ["admin", "superadmin", "hr_manager", "hr_admin"])
     from models import StatutoryRule
+
+    if rule.company_id and current_user.organization_id:
+        from core.tenant import validate_company_in_org
+        from models import Company
+        validate_company_in_org(db, Company, rule.company_id, current_user.organization_id)
 
     new_rule = StatutoryRule(
         organization_id=current_user.organization_id,
@@ -178,7 +229,24 @@ def create_statutory_rule(
     db.add(new_rule)
     db.commit()
     db.refresh(new_rule)
+    from core.audit import log_activity
+    log_activity(
+        db, current_user.id,
+        module="statutory_rules",
+        action="create_statutory_rule",
+        entity_type="statutory_rule",
+        entity_id=new_rule.id,
+        entity_name=f"{new_rule.rule_type} v{new_rule.version}",
+        new_value=f"effective_from={new_rule.effective_from} status={new_rule.status}",
+    )
     return new_rule
+
+
+# Fields that change what a rule MEANS — only editable while the rule is
+# still a draft. On a published (active) rule these must go through
+# supersede-and-create so history is never rewritten.
+_DEFINITION_FIELDS = {"definition", "effective_from", "effective_to",
+                      "notification_number", "notification_date", "gazette_url"}
 
 
 @router.put("/{rule_id}", response_model=StatutoryRuleResponse)
@@ -188,8 +256,13 @@ def update_statutory_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Update a statutory rule. Admin only."""
-    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
+    """Update a statutory rule. Admin only. Tenant-scoped.
+
+    Published rules are immutable in place: definition/date changes are
+    rejected with 409 (create a new version + supersede the old one).
+    Only `notes` and supersession (`status`) may touch a published rule.
+    """
+    _require_role(current_user, ["admin", "superadmin", "hr_manager", "hr_admin"])
     from models import StatutoryRule
 
     rule = db.query(StatutoryRule).filter(
@@ -198,11 +271,44 @@ def update_statutory_rule(
     ).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    _assert_rule_in_scope(rule, current_user)
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    changes = update.model_dump(exclude_unset=True)
+    published = (rule.status or "").lower() in ("active", "superseded")
+    illegal = _DEFINITION_FIELDS & set(changes)
+    if published and illegal:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Published statutory rules are immutable — create a new version "
+                "with the new effective_from and supersede this one instead of "
+                f"editing in place (attempted: {', '.join(sorted(illegal))})"
+            ),
+        )
+    if published and changes.get("status") not in (None, "superseded", "active"):
+        raise HTTPException(
+            status_code=409,
+            detail="Published rules can only be reactivated or superseded",
+        )
+
+    old_status = rule.status
+    for field, value in changes.items():
         setattr(rule, field, value)
     db.commit()
     db.refresh(rule)
+    from core.audit import log_activity
+    log_activity(
+        db, current_user.id,
+        module="statutory_rules",
+        action="update_statutory_rule",
+        entity_type="statutory_rule",
+        entity_id=rule.id,
+        entity_name=f"{rule.rule_type} v{rule.version}",
+        old_value=str(old_status),
+        new_value=(
+            f"status {old_status} -> {rule.status}; fields {sorted(changes)}"
+        ),
+    )
     return rule
 
 
@@ -212,8 +318,8 @@ def delete_statutory_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Soft-delete a statutory rule. Admin only."""
-    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
+    """Soft-delete a statutory rule. Admin only. Tenant-scoped + audited."""
+    _require_role(current_user, ["admin", "superadmin", "hr_manager", "hr_admin"])
     from datetime import datetime as _dt
     from models import StatutoryRule
 
@@ -223,10 +329,22 @@ def delete_statutory_rule(
     ).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    _assert_rule_in_scope(rule, current_user)
 
     rule.deleted_at = _dt.utcnow()
     rule.status = "superseded"
     db.commit()
+    from core.audit import log_activity
+    log_activity(
+        db, current_user.id,
+        module="statutory_rules",
+        action="delete_statutory_rule",
+        entity_type="statutory_rule",
+        entity_id=rule.id,
+        entity_name=f"{rule.rule_type} v{rule.version}",
+        old_value="active",
+        new_value="deleted",
+    )
     return {"message": "Rule deleted"}
 
 
@@ -237,8 +355,8 @@ def supersede_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Set the effective_to date on a rule to supersede it."""
-    _require_role(current_user, ["admin", "superadmin", "hr_manager"])
+    """Set the effective_to date on a rule to supersede it (tenant-scoped + audited)."""
+    _require_role(current_user, ["admin", "superadmin", "hr_manager", "hr_admin"])
     from models import StatutoryRule
 
     rule = db.query(StatutoryRule).filter(
@@ -247,10 +365,23 @@ def supersede_rule(
     ).first()
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    _assert_rule_in_scope(rule, current_user)
 
+    old_to = rule.effective_to
     rule.effective_to = new_effective_to
     rule.status = "superseded"
     db.commit()
+    from core.audit import log_activity
+    log_activity(
+        db, current_user.id,
+        module="statutory_rules",
+        action="supersede_statutory_rule",
+        entity_type="statutory_rule",
+        entity_id=rule.id,
+        entity_name=f"{rule.rule_type} v{rule.version}",
+        old_value=f"effective_to={old_to}",
+        new_value=f"effective_to={new_effective_to}",
+    )
     return {"message": f"Rule superseded effective {new_effective_to}"}
 
 
@@ -260,9 +391,10 @@ def test_rule_engine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Test the rule engine for a given rule type and date."""
+    """Test the rule engine for a given rule type and date (tenant-scoped)."""
     from services.statutory_rule_engine import StatutoryRuleEngine
 
+    req.organization_id = _scoped_org_id(current_user, req.organization_id)
     engine = StatutoryRuleEngine(db)
     result = {}
 
@@ -308,8 +440,13 @@ def rule_version_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get version history for a specific rule type (all versions, not just active)."""
+    """Get version history for a specific rule type (all versions, not just active).
+
+    Tenant-scoped: own org + shared global rules only.
+    """
     from models import StatutoryRule
+
+    org_id = _scoped_org_id(current_user, organization_id)
 
     q = db.query(StatutoryRule).filter(
         StatutoryRule.rule_type == rule_type,
@@ -318,11 +455,7 @@ def rule_version_history(
     )
     if state_code:
         q = q.filter(StatutoryRule.state_code == state_code)
-    if organization_id:
-        q = q.filter(
-            (StatutoryRule.organization_id == organization_id)
-            | (StatutoryRule.organization_id.is_(None))
-        )
+    q = _org_filter(q, org_id)
 
     rules = q.order_by(StatutoryRule.effective_from.desc()).all()
     return [
@@ -380,6 +513,11 @@ def create_custom_deduction(
     """Create a new custom statutory deduction rule."""
     _require_role(current_user, ["admin", "hr_admin"])
     from models import StatutoryRule
+
+    if data.company_id and current_user.organization_id:
+        from core.tenant import validate_company_in_org
+        from models import Company
+        validate_company_in_org(db, Company, data.company_id, current_user.organization_id)
 
     rule = StatutoryRule(
         rule_type="custom_deduction",

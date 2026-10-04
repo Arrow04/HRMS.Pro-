@@ -148,6 +148,26 @@ class TestLwfFallbackUnits:
         assert out["lwf_employee"] == 25.0
         assert out["lwf_employer"] == 50.0
 
+    def test_payroll_deduction_uses_flat_amount_not_percent(self, db_session):
+        """Regression: no-state LWF must be the flat ₹ amount, never basic x rate%."""
+        org = Organization(name="LWF E2E Org", code="LWFE2E", country="India")
+        db_session.add(org)
+        db_session.flush()
+        s = _setting()
+        s.organization_id = org.id
+        s.status = "active"
+        db_session.add(s)
+        db_session.flush()
+        emp = _emp(db_session, org, "LWFE01", base_salary=600000)
+        _attendance(db_session, emp)
+        out = calculate_payroll(
+            db_session, emp, 6, 2026,
+            override_pf_deduction=0, override_professional_tax=0,
+            override_esi_deduction=0, override_tds=0,
+        )
+        # Flat configured employee amount (25), NOT 25% of a ₹50,000 basic.
+        assert out["lwf_deduction"] == 25.0
+
 
 class TestPfWageCeilingCap:
     def test_legacy_path_caps_by_wage_ceiling_not_exclusion(self):

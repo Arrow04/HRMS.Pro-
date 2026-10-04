@@ -11,7 +11,9 @@ import re
 from database_enterprise import get_db
 from ai_engine import chatbot, ai_engine
 from ai_service import AIAssistant, ChatContext
+from core.auth import get_current_user
 from core.format_utils import currency_symbol, org_currency_code
+from models import User
 
 router = APIRouter(tags=["chatbot"])
 
@@ -312,14 +314,22 @@ def _smart_fallback_response(message: str, user_id: str, db: Session) -> str:
 
 
 @router.post("/message", response_model=ChatResponse)
-def send_message(chat_msg: ChatMessage, db: Session = Depends(get_db)):
+def send_message(
+    chat_msg: ChatMessage,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Send message to HR chatbot and get response.
     Uses DB-backed intelligence first, falls back to AI for unknown queries.
+
+    Identity is server-side: the client-supplied user_id is ignored so one
+    user can never read or write another user's conversation.
     """
     try:
         from datetime import datetime
 
+        chat_msg.user_id = str(current_user.id)
         intent = _classify_intent(chat_msg.message)
 
         # DB-backed for known intents
@@ -373,8 +383,13 @@ def send_message(chat_msg: ChatMessage, db: Session = Depends(get_db)):
 
 
 @router.get("/history/{user_id}")
-def get_chat_history(user_id: str):
+def get_chat_history(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+):
     """Get chat history for a user"""
+    if user_id != str(current_user.id) and current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Cannot read another user's chat history")
     history = chatbot.conversation_history.get(user_id, [])
     return {
         "user_id": user_id,
@@ -384,15 +399,20 @@ def get_chat_history(user_id: str):
 
 
 @router.delete("/history/{user_id}")
-def clear_chat_history(user_id: str):
+def clear_chat_history(
+    user_id: str,
+    current_user: User = Depends(get_current_user),
+):
     """Clear chat history for a user"""
+    if user_id != str(current_user.id) and current_user.role not in ("superadmin", "admin", "hr_admin"):
+        raise HTTPException(status_code=403, detail="Cannot clear another user's chat history")
     if user_id in chatbot.conversation_history:
         chatbot.conversation_history[user_id] = []
     return {"message": "Chat history cleared"}
 
 
 @router.get("/suggestions")
-def get_quick_suggestions():
+def get_quick_suggestions(current_user: User = Depends(get_current_user)):
     """Get quick suggestion buttons for chatbot UI"""
     return {
         "suggestions": [
@@ -409,7 +429,8 @@ def get_quick_suggestions():
 def generate_ai_report(
     report_type: str,
     parameters: Optional[Dict[str, Any]] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Generate AI-powered insights report"""
     parameters = parameters or {}
