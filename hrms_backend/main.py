@@ -769,4 +769,8 @@ def test():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # File-watch reload is OPT-IN: a reloading server restarts mid-request
+    # (500s while you click through the UI). Run with RUN_RELOAD=true only
+    # while actively editing code; restart manually after pulling changes.
+    reload = os.getenv("RUN_RELOAD", "false").strip().lower() in ("1", "true", "yes")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload)
