@@ -498,13 +498,23 @@ def compute_setup_status(db: Session, org_id: int, company_id: Optional[int] = N
     steps = []
     for m in MODULES:
         done = module_done.get(m["id"], False)
+        # Setup lives INSIDE each module's own configuration wizard — the
+        # checklist deep-links there instead of a separate setup page.
+        module_link = {
+            "company": "/payroll/setup",
+            "attendance": "/attendance?tab=configuration",
+            "leave": "/leaves?tab=configuration",
+            "payroll": "/payroll/setup",
+            "expenses": "/expenses?tab=config",
+            "performance": "/performance?tab=configuration",
+        }.get(m["id"], "/dashboard")
         steps.append({
             "id": m["id"],
             "title": m["title"],
             "why": m.get("help", ""),
             "hint": "",
             "action": f"Configure {m['title']}",
-            "link": "/setup",
+            "link": module_link,
             "done": done,
         })
     completed = sum(1 for s in steps if s["done"])

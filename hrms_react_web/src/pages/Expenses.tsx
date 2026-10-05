@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus, CheckCircle2, XCircle, RotateCcw, Clock, X,
   Wallet, Download, Upload, Loader2, Info, CreditCard, Settings, User
@@ -68,7 +69,13 @@ const Expenses = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [activeTab, setActiveTab] = useState('records');
+  const [searchParams] = useSearchParams();
+  // ?tab= deep links (setup checklist → this module's own configuration wizard)
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get('tab');
+    return ['records', 'approved', 'rejected', 'config'].includes(t || '')
+      ? (t as string) : 'records';
+  });
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'approve' | 'reject'; items: ExpenseRow[] } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);

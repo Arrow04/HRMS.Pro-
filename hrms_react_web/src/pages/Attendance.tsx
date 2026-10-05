@@ -1,4 +1,5 @@
 ﻿import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Attendance as AttendanceType, Employee } from '../types';
 
 // Normalize snake_case API responses to camelCase for consistent frontend access
@@ -160,7 +161,13 @@ const TABS = [
 
 const Attendance = () => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabId>('records');
+  const [searchParams] = useSearchParams();
+  // ?tab= deep links (setup checklist → this module's own configuration wizard)
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const t = searchParams.get('tab');
+    return (['records', 'duty-shift', 'duty-roster', 'configuration'] as const).includes(t as TabId)
+      ? (t as TabId) : 'records';
+  });
   const [confirmTarget, setConfirmTarget] = useState<{ type: 'delete-record'; record: AttendanceRow } | { type: 'bulk-delete'; records: AttendanceRow[] } | { type: 'deactivate-shift'; id: number; name: string } | null>(null);
   const [bulkDeleteTarget, setBulkDeleteTarget] = useState<{ items: AttendanceRow[] } | null>(null);
   const [quickActionTarget, setQuickActionTarget] = useState<{ type: 'single'; record: AttendanceRow } | { type: 'bulk'; records: AttendanceRow[] } | null>(null);

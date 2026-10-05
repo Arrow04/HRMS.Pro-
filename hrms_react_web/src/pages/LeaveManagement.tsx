@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { LeaveApplication, LeaveBalance, Company, Department, Branch } from '../types';
 import {
   Plus, CheckCircle2, XCircle, RotateCcw, Clock, CalendarDays, CalendarCheck, Edit2, Trash2, X,
@@ -99,7 +100,13 @@ interface ApprovalHistoryEntry {
 
 const LeaveManagement = () => {
   const queryClient = useQueryClient();
-const [activeTab, setActiveTab] = useState('requests');
+  const [searchParams] = useSearchParams();
+  // ?tab= deep links (setup checklist → this module's own configuration wizard)
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get('tab');
+    return ['requests', 'types', 'balance', 'configuration'].includes(t || '')
+      ? (t as string) : 'requests';
+  });
 const [searchTerm, setSearchTerm] = useState('');
 const [leaveTypeStatusFilter, setLeaveTypeStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 const [leaveTypeCompanyFilter, setLeaveTypeCompanyFilter] = useState<string>('all');

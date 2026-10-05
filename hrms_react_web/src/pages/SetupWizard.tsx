@@ -259,6 +259,24 @@ export default function SetupWizard() {
         </div>
       )}
 
+      {/* This interview is the OPTIONAL guided path — the primary setup
+          experience is each module's own configuration wizard, reached from
+          the dashboard checklist. */}
+      {mode === 'guided' && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl p-3 mb-4 text-sm flex flex-wrap items-center gap-2">
+          <span>
+            Prefer to configure where you'll actually work? Open any module from the
+            sidebar — Attendance, Leaves, Payroll — and use its <strong>Configuration</strong> tab.
+          </span>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="underline font-medium shrink-0"
+          >
+            Back to dashboard
+          </button>
+        </div>
+      )}
+
       {/* Company scope */}
       {companies.length > 0 && mode === 'guided' && (
         <div className="bg-white rounded-2xl border border-[var(--border-color)] p-4 mb-4 flex flex-wrap items-center gap-3">

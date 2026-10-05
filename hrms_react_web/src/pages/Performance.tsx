@@ -1,4 +1,5 @@
 ﻿import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Plus, TrendingUp, Target, Star, X, Pencil,
   CheckCircle2, Users, BarChart3, Info, RotateCcw, Loader2, Download, Upload, Settings, Trash2
@@ -727,7 +728,13 @@ const GoalFeedbackForm = ({ type, data: _formData, setData, companies }: {
 };
 
 const Performance = () => {
-const [activeTab, setActiveTab] = useState('reviews');
+  const [searchParams] = useSearchParams();
+  // ?tab= deep links (setup checklist → this module's own configuration wizard)
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get('tab');
+    return ['reviews', 'goals', 'feedback', 'analytics', 'configuration'].includes(t || '')
+      ? (t as string) : 'reviews';
+  });
 
 const [includeInactive, setIncludeInactive] = useState(false);
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, ListChecks } from 'lucide-react';
 import api from '../services/api';
 
-interface Step { id: string; title: string; done: boolean }
+interface Step { id: string; title: string; done: boolean; link?: string; action?: string }
 interface Status {
   steps: Step[];
   completed: number;
@@ -13,9 +13,10 @@ interface Status {
 }
 
 /**
- * Home-screen setup checklist. Renders ONLY while setup is incomplete, so a
- * configured org never sees onboarding noise — and a new org always knows
- * exactly what to do next.
+ * Home-screen setup checklist. Each step deep-links INTO that module's own
+ * configuration wizard (Attendance → Configuration, Leave → Configuration,
+ * Payroll → Payroll Setup, ...) — setup is how the platform works, not a
+ * separate page. Hidden entirely once every module is configured.
  */
 export default function SetupChecklist() {
   const navigate = useNavigate();
@@ -48,19 +49,23 @@ export default function SetupChecklist() {
                 {status.completed}/{status.total} done
               </span>
             </div>
+            <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+              Each step opens that module&apos;s own configuration wizard — the same screens you&apos;ll use every day.
+            </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {status.steps.map((s) => (
-                <span
+                <button
                   key={s.id}
-                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border ${
+                  onClick={() => { if (!s.done && s.link) navigate(s.link); }}
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border transition-colors ${
                     s.done
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-white/60 text-slate-500 border-slate-200'
+                      : 'bg-white/60 text-slate-600 border-slate-300 hover:border-[#1C64F2] hover:text-[#1C64F2]'
                   }`}
                 >
                   {s.done && <CheckCircle2 className="w-3 h-3" />}
                   {s.title}
-                </span>
+                </button>
               ))}
             </div>
             {next && (
@@ -71,10 +76,10 @@ export default function SetupChecklist() {
           </div>
         </div>
         <button
-          onClick={() => navigate('/setup')}
+          onClick={() => navigate(next?.link || '/dashboard')}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-gradient-to-r from-[#1C64F2] to-[#4F46E5] shadow-md shrink-0"
         >
-          {next ? next.action : 'Open setup'} <ArrowRight className="w-4 h-4" />
+          {next ? next.action : 'Open dashboard'} <ArrowRight className="w-4 h-4" />
         </button>
       </div>
     </div>
