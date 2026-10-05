@@ -136,6 +136,20 @@ class HRMSAIEngine:
         
         # Generate response if no action was executed or action failed
         if not response_text:
+            # Data-grounded analyst first: live payroll, leave, compliance,
+            # statutory and how-to answers computed from the org's own data.
+            try:
+                from hrms_ai.analyst import get_analyst
+                analyst_out = get_analyst().answer(request.message, context, db_session)
+                if analyst_out and float(analyst_out.get("confidence") or 0) >= 0.75:
+                    response_text = analyst_out["text"]
+                    intent = analyst_out.get("intent") or intent
+                    confidence = max(confidence, float(analyst_out.get("confidence") or 0))
+            except Exception:
+                analyst_out = None
+
+        # Generate response if the analyst had nothing grounded to say
+        if not response_text:
             # Get relevant knowledge
             tenant_id = str(context.organization_id) if context.organization_id else "default"
             relevant_docs = self.retrieval_engine.retrieve(tenant_id, request.message, max_results=3)
