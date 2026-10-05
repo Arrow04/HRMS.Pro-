@@ -113,9 +113,25 @@ class HRMSAIEngine:
         
         actions_taken = []
         response_text = None
-        
-        # Execute extracted action
-        if action_tuple:
+
+        # ── 1) Data-grounded analyst FIRST ─────────────────────────────
+        # Knowledge / how-to / live-figure questions must never be swallowed
+        # by the action pipeline ("how do I run payroll?" is a guide, not a
+        # payroll lookup). Analyst answers win at >= 0.75 confidence.
+        analyst_out = None
+        try:
+            from hrms_ai.analyst import get_analyst
+            analyst_out = get_analyst().answer(request.message, context, db_session)
+        except Exception:
+            analyst_out = None
+        if analyst_out and float(analyst_out.get("confidence") or 0) >= 0.75:
+            response_text = analyst_out["text"]
+            intent = analyst_out.get("intent") or intent
+            confidence = max(confidence, float(analyst_out.get("confidence") or 0))
+
+        # ── 2) Mutating actions (leave apply etc.) — only when the analyst
+        # had nothing grounded to say ────────────────────────────────────
+        if not response_text and action_tuple:
             action_name, action_params = action_tuple
             action_result = self.action_executor.execute(
                 action=action_name,
@@ -128,27 +144,13 @@ class HRMSAIEngine:
                 "parameters": action_params,
                 "result": action_result,
             })
-            
+
             if action_result.get("success"):
                 response_text = action_result.get("message")
             else:
                 response_text = action_result.get("message")
-        
-        # Generate response if no action was executed or action failed
-        if not response_text:
-            # Data-grounded analyst first: live payroll, leave, compliance,
-            # statutory and how-to answers computed from the org's own data.
-            try:
-                from hrms_ai.analyst import get_analyst
-                analyst_out = get_analyst().answer(request.message, context, db_session)
-                if analyst_out and float(analyst_out.get("confidence") or 0) >= 0.75:
-                    response_text = analyst_out["text"]
-                    intent = analyst_out.get("intent") or intent
-                    confidence = max(confidence, float(analyst_out.get("confidence") or 0))
-            except Exception:
-                analyst_out = None
 
-        # Generate response if the analyst had nothing grounded to say
+        # ── 3) Conversational fallback ──────────────────────────────────
         if not response_text:
             # Get relevant knowledge
             tenant_id = str(context.organization_id) if context.organization_id else "default"

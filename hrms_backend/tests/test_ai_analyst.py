@@ -173,3 +173,24 @@ class TestAnalystKnowledge:
         out = get_analyst().answer(
             "quantum flux capacitor recalibration", _ctx(org), db_session)
         assert out is None
+
+
+class TestEnginePriority:
+    def test_how_to_beats_action_pipeline(self, db_session):
+        """'how do I run payroll' must return the how-to guide, not a
+        'no payroll records' action message (engine priority: analyst first)."""
+        import asyncio
+        from hrms_ai.engine import HRMSAIEngine
+        from hrms_ai.schemas import AIChatRequest
+
+        org = _admin_org(db_session)
+        engine = HRMSAIEngine()
+        req = AIChatRequest(
+            user_id="1",
+            message="how do i run payroll",
+            context={"organization_id": org.id, "employee_id": None, "role": "admin"},
+        )
+        result = asyncio.run(engine.chat(req, db_session=db_session))
+        assert "Run payroll" in result.response, result.response
+        assert "maker-checker" in result.response.lower() or "different user" in result.response.lower()
+        assert result.confidence >= 0.75
