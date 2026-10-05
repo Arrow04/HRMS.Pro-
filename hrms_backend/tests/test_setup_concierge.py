@@ -320,3 +320,22 @@ class TestCompanyScopedModules:
     def test_unknown_company_404(self, db_session, client, admin_token):
         resp = _apply_module(client, admin_token, "attendance", {}, 999999)
         assert resp.status_code == 404
+
+    def test_org_checklist_sees_per_company_config(self, db_session, client, admin_token):
+        """Dashboard checklist (no companyId) must count config created for
+        ANY company — the bug where per-company attendance/leave policies
+        still showed as 'not configured' on the dashboard."""
+        org = _admin_org(db_session)
+        co_a = self._company(db_session, org.id, "Checklist Wing", "CHKW")
+        assert _apply_module(client, admin_token, "attendance",
+                             {"workweek": "mon_fri"}, co_a.id).status_code == 200
+        assert _apply_module(client, admin_token, "leave",
+                             {"casual_enabled": True, "casual_days": 7}, co_a.id).status_code == 200
+
+        st = client.get("/api/setup/status", headers=_headers(admin_token)).json()
+        assert st["modules"]["attendance"] is True, (
+            "per-company attendance policy must clear the org checklist"
+        )
+        assert st["modules"]["leave"] is True, (
+            "per-company leave template must clear the org checklist"
+        )

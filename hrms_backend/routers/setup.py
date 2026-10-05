@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from core.auth import get_current_user
@@ -42,9 +43,20 @@ def _require(user: User):
 
 
 def _scope_q(q, model, company_id: Optional[int]):
+    """Config-existence scope.
+
+    companyId set    -> this company's row OR the org-wide default row
+                        (org defaults apply to every company).
+    companyId None   -> ANY row for the org counts (the dashboard checklist
+                        must see per-company configuration too — an org with
+                        two configured companies is configured).
+    """
     if company_id is not None:
-        return q.filter(model.company_id == company_id)
-    return q.filter(model.company_id.is_(None))
+        return q.filter(or_(
+            model.company_id == company_id,
+            model.company_id.is_(None),
+        ))
+    return q
 
 
 def _get_org_company(db: Session, org_id: int, company_id: Optional[int]):
