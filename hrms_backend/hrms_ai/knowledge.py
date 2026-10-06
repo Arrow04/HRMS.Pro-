@@ -69,6 +69,33 @@ class HRMSKnowledgeBase:
         
         # Collection names per tenant
         self._collections: Dict[str, Any] = {}
+
+    def _ensure_backends(self) -> None:
+        """Lazy-init embeddings + vector store on first use.
+
+        AI_EMBEDDINGS=false disables (tests/hermetic runs). The model loads
+        once per process (all-MiniLM-L6-v2, ~80MB, CPU-friendly); Chroma is
+        ephemeral in-memory unless AI_CHROMA_PATH points at a folder.
+        """
+        if os.getenv("AI_EMBEDDINGS", "true").strip().lower() in ("0", "false", "no"):
+            return
+        if self.embedding_model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                self.embedding_model = SentenceTransformer(
+                    os.getenv("AI_EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
+            except Exception:
+                self.embedding_model = None
+        if self.chroma_client is None:
+            try:
+                import chromadb
+                path = (os.getenv("AI_CHROMA_PATH") or "").strip()
+                if path:
+                    self.chroma_client = chromadb.PersistentClient(path=path)
+                else:
+                    self.chroma_client = chromadb.Client()
+            except Exception:
+                self.chroma_client = None
     
     def _get_tenant_collection(self, tenant_id: str):
         """Get or create ChromaDB collection for tenant"""
@@ -98,6 +125,7 @@ class HRMSKnowledgeBase:
         expires_at: Optional[str] = None,
     ) -> str:
         """Add a document to the tenant's knowledge base"""
+        self._ensure_backends()
         if doc_id is None:
             doc_id = hashlib.sha256(
                 f"{tenant_id}:{doc_type.value}:{title}:{content[:100]}".encode()
@@ -181,6 +209,7 @@ class HRMSKnowledgeBase:
         Search the tenant's knowledge base
         Returns documents ranked by relevance
         """
+        self._ensure_backends()
         results = []
         
         # Try ChromaDB first

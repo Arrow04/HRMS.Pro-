@@ -16,6 +16,8 @@ os.environ["RUN_SCHEMA_SYNC"] = "false"
 os.environ["SEED_DEFAULT_USERS"] = "true"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+# Keep AI tests hermetic/fast — no embedding model download in CI/test runs
+os.environ["AI_EMBEDDINGS"] = "false"
 
 import pytest
 from fastapi.testclient import TestClient
