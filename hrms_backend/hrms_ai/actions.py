@@ -281,8 +281,25 @@ class AIActionExecutor:
                     "employee_code": emp.employee_code,
                     "status": emp.status,
                 })
-            
-            return {"success": True, "data": results, "count": len(results), "message": f"Found {len(results)} employee(s) matching '{query}'."}
+            if not results:
+                message = f"No employees found matching '{query}'."
+            elif len(results) == 1:
+                e = results[0]
+                message = (
+                    f"{e['name']} — {e['designation'] or 'Employee'} "
+                    f"(code: {e['employee_code'] or '—'})\n"
+                    f"• Department: {e['department']}\n"
+                    f"• Email: {e['email'] or '—'}\n"
+                    f"• Status: {e['status']}"
+                )
+            else:
+                listing = "\n".join(
+                    f"• {e['name']} ({e['employee_code'] or '—'}) — "
+                    f"{e['designation'] or 'Employee'}, {e['department']}"
+                    for e in results
+                )
+                message = f"{len(results)} employees found:\n{listing}"
+            return {"success": True, "data": results, "count": len(results), "message": message}
         except Exception as e:
             return {"success": False, "error": str(e), "message": f"Search failed: {str(e)}"}
     

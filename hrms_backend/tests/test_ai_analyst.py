@@ -174,6 +174,68 @@ class TestAnalystKnowledge:
             "quantum flux capacitor recalibration", _ctx(org), db_session)
         assert out is None
 
+    def test_find_name_returns_rich_profile(self, db_session):
+        """'find sayak' must return the full profile, not a count."""
+        org = _admin_org(db_session)
+        emp = _employee(db_session, org, code="SAYAK1", first_name="Sayak",
+                        last_name="Das", designation="Product Lead",
+                        email="sayak.das@x.com")
+        _payroll(db_session, org, emp, gross_salary=90000, net_salary=82000,
+                 pf_deduction=1800, tds_deduction=5000)
+        out = get_analyst().answer("find sayak", _ctx(org), db_session)
+        assert out is not None
+        assert "Sayak" in out["text"]
+        assert "SAYAK1" in out["text"]
+        assert "Product Lead" in out["text"]
+        assert "sayak.das@x.com" in out["text"]
+        assert "Latest payroll" in out["text"]
+
+
+class TestAppKnowledge:
+    def test_what_is_hrms(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer("what is an HRMS?", _ctx(org), db_session)
+        assert out is not None
+        assert "Human Resource Management" in out["text"]
+        assert "HRMS.Pro!" in out["text"]
+
+    def test_what_is_payroll(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer("what is payroll?", _ctx(org), db_session)
+        assert out is not None
+        assert "salary" in out["text"].lower() or "salaries" in out["text"].lower()
+        assert "Payroll" in out["text"]
+        assert "maker-checker" in out["text"].lower() or "approve" in out["text"].lower()
+
+    def test_what_is_pf(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer("what is PF?", _ctx(org), db_session)
+        assert out is not None
+        assert "Provident Fund" in out["text"]
+        assert "HRMS.Pro!" in out["text"]
+
+    def test_where_is_leave_approval(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer("where do I find leave approval?", _ctx(org), db_session)
+        assert out is not None
+        assert "Leaves" in out["text"]
+        assert "/leaves" in out["text"]
+
+    def test_what_can_i_do_with_payroll(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer(
+            "what can I do with the payroll module?", _ctx(org), db_session)
+        assert out is not None
+        assert "Generate payroll" in out["text"]
+        assert "/payroll" in out["text"]
+
+    def test_explain_maker_checker(self, db_session):
+        org = _admin_org(db_session)
+        out = get_analyst().answer("explain maker checker", _ctx(org), db_session)
+        assert out is not None
+        assert "approve" in out["text"].lower()
+        assert "HRMS.Pro!" in out["text"]
+
 
 class TestEnginePriority:
     def test_how_to_beats_action_pipeline(self, db_session):

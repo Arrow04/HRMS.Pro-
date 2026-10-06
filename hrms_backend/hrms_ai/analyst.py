@@ -12,6 +12,10 @@ import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from hrms_ai.app_knowledge import (
+    describe_concept, describe_module, lookup_glossary, lookup_module,
+)
+
 _MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
     "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
@@ -247,6 +251,43 @@ class HRMSAnalyst:
 
         ql = q.lower()
 
+        # ── App concepts: "what is payroll / HRMS / PF / F&F" ─────────
+        # The AI must teach the product — definition, product context, where.
+        is_definition_q = bool(re.search(
+            r"^(what is|what's|what are|whats|explain|meaning of|define|tell me about)\b", ql))
+        if is_definition_q:
+            entry = lookup_glossary(q)
+            if entry:
+                return {"text": describe_concept(entry), "confidence": 0.93,
+                        "tool": "glossary", "intent": "concept_query"}
+            # Module fallback only for short concept-like topics — never for
+            # "what is <person>'s salary for <month>" (figure query) or
+            # "what's my leave balance" (personal data query).
+            topic = re.sub(
+                r"^(what is|what's|what are|whats|explain|meaning of|define|tell me about)\b",
+                "", ql).strip()
+            if len(topic.split()) <= 4 and " my " not in f" {topic} ":
+                mod = lookup_module(q)
+                if mod:
+                    return {"text": describe_module(mod), "confidence": 0.9,
+                            "tool": "module", "intent": "module_query"}
+
+        # ── Navigation: "where is X" / "how do I get to X" ─────────────
+        if re.search(r"\b(where is|where do i find|where can i find|how do i get to|"
+                     r"how do i open|take me to|how do i reach)\b", ql):
+            mod = lookup_module(q)
+            if mod:
+                return {"text": describe_module(mod), "confidence": 0.92,
+                        "tool": "navigation", "intent": "navigation_query"}
+
+        # ── Module capabilities: "what can I do with X" / "features" ───
+        if re.search(r"\b(what can i do with|features of|capabilities of|"
+                     r"tell me about|about the|explain the)\b", ql):
+            mod = lookup_module(q)
+            if mod:
+                return {"text": describe_module(mod), "confidence": 0.9,
+                        "tool": "module", "intent": "module_query"}
+
         # ── Statutory facts (definition questions win over figure lookups)
         stat_triggers = any(k in ql for k in (
             "pf ceiling", "esi ceiling", "gratuity", "bonus act", "pt rate",
@@ -304,8 +345,19 @@ class HRMSAnalyst:
                 return {"text": text, "confidence": 0.85, "tool": "org_overview", "intent": "org_query"}
 
         # ── Employee directory ─────────────────────────────────────────
-        if any(w in ql for w in ("who is", "find employee", "search employee", "employee details",
-                                  "show me", "details of")):
+        dir_triggers = any(w in ql for w in (
+            "who is", "find employee", "search employee", "employee details",
+            "profile of", "contact details", "details of", "show me",
+        ))
+        name_probe = _clean_name_query(q)
+        find_verb = bool(re.search(r"\b(find|search|lookup|locate|show)\b", ql))
+        if dir_triggers or (find_verb and name_probe and len(name_probe.split()) <= 5):
+            text = self._employee_answer(db, org_id, q)
+            if text:
+                return {"text": text, "confidence": 0.9, "tool": "employee", "intent": "employee_search"}
+
+        # ── Last resort: any resolvable name → full profile ────────────
+        if name_probe and len(name_probe.split()) <= 5:
             text = self._employee_answer(db, org_id, q)
             if text:
                 return {"text": text, "confidence": 0.85, "tool": "employee", "intent": "employee_search"}
@@ -496,14 +548,68 @@ class HRMSAnalyst:
         emp = _find_employee(db, org_id, q, None)
         if emp is None:
             return None
-        return (
-            f"{emp.first_name} {emp.last_name or ''} "
-            f"(code: {emp.employee_code or '—'}):\n"
-            f"• Designation: {emp.designation or '—'}\n"
-            f"• Email: {emp.email or '—'}\n"
-            f"• Joining date: {emp.join_date.date() if hasattr(emp.join_date, 'date') else emp.join_date}\n"
-            f"• Status: {emp.status}"
-        )
+        # Comprehensive profile — the answer a knowledgeable HR consultant gives
+        dept_name = company_name = "—"
+        try:
+            from models import Company, Department
+            if getattr(emp, "department_id", None):
+                d = db.query(Department).filter(Department.id == emp.department_id).first()
+                dept_name = d.name if d else "—"
+            if getattr(emp, "company_id", None):
+                c = db.query(Company).filter(Company.id == emp.company_id).first()
+                company_name = c.name if c else "—"
+        except Exception:
+            pass
+        joined = emp.join_date
+        joined_str = joined.date().isoformat() if hasattr(joined, "date") else (str(joined) if joined else "—")
+
+        # Latest payroll (if any)
+        payroll_line = None
+        try:
+            from models import Payroll
+            row = (db.query(Payroll).filter(
+                Payroll.employee_id == emp.id, Payroll.deleted_at.is_(None),
+            ).order_by(Payroll.year.desc(), Payroll.month.desc()).first())
+            if row is not None:
+                payroll_line = (
+                    f"• Latest payroll ({_MONTH_NAME.get(row.month, row.month)} {row.year}): "
+                    f"gross {_money(row.gross_salary)} · net {_money(row.net_salary)} "
+                    f"(PF {_money(row.pf_deduction)}, TDS {_money(row.tds_deduction)})"
+                )
+        except Exception:
+            pass
+
+        # Leave balance summary (current year)
+        leave_line = None
+        try:
+            from models import LeaveBalance
+            year = date.today().year
+            lbs = db.query(LeaveBalance).filter(
+                LeaveBalance.employee_id == emp.id,
+                LeaveBalance.deleted_at.is_(None),
+                LeaveBalance.year == year,
+            ).all()
+            if lbs:
+                remaining = sum(float(b.remaining_days or 0) for b in lbs)
+                total = sum(float(b.total_days or 0) for b in lbs)
+                leave_line = f"• Leave balance ({year}): {int(remaining)} of {int(total)} days remaining"
+        except Exception:
+            pass
+
+        lines = [
+            f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+            + (f" ({emp.designation})" if getattr(emp, "designation", None) else ""),
+            f"• Employee code: {getattr(emp, 'employee_code', None) or '—'}",
+            f"• Department: {dept_name} · Company: {company_name}",
+            f"• Email: {getattr(emp, 'email', None) or '—'}"
+            + (f" · Phone: {emp.phone}" if getattr(emp, "phone", None) else ""),
+            f"• Joined: {joined_str} · Status: {getattr(emp, 'status', '—')}",
+        ]
+        if payroll_line:
+            lines.append(payroll_line)
+        if leave_line:
+            lines.append(leave_line)
+        return "\n".join(lines)
 
 
 _MONTH_NAME = {
