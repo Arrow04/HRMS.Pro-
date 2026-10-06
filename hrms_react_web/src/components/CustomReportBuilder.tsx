@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import DatePicker from './DatePicker';
+import SearchableSelect from './SearchableSelect';
 import api from '../services/api';
 
 type FieldType = 'string' | 'number' | 'date' | 'bool';
@@ -192,17 +193,18 @@ export default function CustomReportBuilder() {
             <Save className="w-4 h-4" /> Save template
           </button>
           {saved.length > 0 && (
-            <select
-              className="px-3 py-2 border border-[var(--border-color)] rounded-xl text-sm bg-white"
+            <SearchableSelect
               value=""
-              onChange={(e) => {
-                const t = saved.find((s) => s.name === e.target.value);
+              onChange={(v) => {
+                const name = v === 'all' ? '' : String(v);
+                const t = saved.find((s) => s.name === name);
                 if (t) { setConfig(t.config); setResult(null); toast.success(`Loaded "${t.name}"`); }
               }}
-            >
-              <option value="">Load template…</option>
-              {saved.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
+              options={saved.map((s) => ({ id: s.name, name: s.name }))}
+              placeholder="Load template…"
+              allOption="Load template…"
+              className="w-48"
+            />
           )}
         </div>
       </div>
@@ -295,28 +297,37 @@ export default function CustomReportBuilder() {
                 {source.filters.includes('status') && STATUS_OPTIONS[source.id]?.length > 0 && (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">Status</label>
-                    <select value={config.status} onChange={(e) => set('status', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                      <option value="">All</option>
-                      {STATUS_OPTIONS[source.id].map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={config.status || 'all'}
+                      onChange={(v) => set('status', v === 'all' ? '' : String(v))}
+                      options={STATUS_OPTIONS[source.id].map((s) => ({ id: s, name: s }))}
+                      placeholder="All statuses"
+                      allOption="All statuses"
+                    />
                   </div>
                 )}
                 {source.filters.includes('companyId') && (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">Company</label>
-                    <select value={config.companyId} onChange={(e) => set('companyId', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                      <option value="">All</option>
-                      {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={config.companyId || 'all'}
+                      onChange={(v) => set('companyId', v === 'all' ? '' : String(v))}
+                      options={companies.map((c) => ({ id: String(c.id), name: c.name }))}
+                      placeholder="All companies"
+                      allOption="All companies"
+                    />
                   </div>
                 )}
                 {source.filters.includes('departmentId') && (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">Department</label>
-                    <select value={config.departmentId} onChange={(e) => set('departmentId', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                      <option value="">All</option>
-                      {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={config.departmentId || 'all'}
+                      onChange={(v) => set('departmentId', v === 'all' ? '' : String(v))}
+                      options={departments.map((d) => ({ id: String(d.id), name: d.name }))}
+                      placeholder="All departments"
+                      allOption="All departments"
+                    />
                   </div>
                 )}
                 {source.filters.includes('dateFrom') && (
@@ -357,44 +368,59 @@ export default function CustomReportBuilder() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs text-[var(--text-tertiary)] mb-1">Group by</label>
-                <select value={config.groupBy} onChange={(e) => set('groupBy', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                  <option value="">No grouping</option>
-                  {source.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
+                <SearchableSelect
+                  value={config.groupBy || 'all'}
+                  onChange={(v) => set('groupBy', v === 'all' ? '' : String(v))}
+                  options={source.fields.map((f) => ({ id: f.key, name: f.label }))}
+                  placeholder="No grouping"
+                  allOption="No grouping"
+                />
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-tertiary)] mb-1">Aggregation</label>
-                <select value={config.aggregation} onChange={(e) => set('aggregation', e.target.value)} disabled={!config.groupBy}
-                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white disabled:opacity-50">
-                  <option value="">—</option>
-                  {schema.aggregations.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
+                <SearchableSelect
+                  value={config.aggregation || 'all'}
+                  onChange={(v) => set('aggregation', v === 'all' ? '' : String(v))}
+                  options={schema.aggregations.map((a) => ({ id: a, name: a }))}
+                  placeholder="—"
+                  allOption="—"
+                  disabled={!config.groupBy}
+                />
               </div>
               <div>
                 <label className="block text-xs text-[var(--text-tertiary)] mb-1">Of column</label>
-                <select value={config.aggField} onChange={(e) => set('aggField', e.target.value)} disabled={!config.aggregation}
-                  className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white disabled:opacity-50">
-                  <option value="">—</option>
-                  {source.numeric.map((k) => {
+                <SearchableSelect
+                  value={config.aggField || 'all'}
+                  onChange={(v) => set('aggField', v === 'all' ? '' : String(v))}
+                  options={source.numeric.map((k) => {
                     const f = source.fields.find((x) => x.key === k);
-                    return <option key={k} value={k}>{f?.label || k}</option>;
+                    return { id: k, name: f?.label || k };
                   })}
-                </select>
+                  placeholder="—"
+                  allOption="—"
+                  disabled={!config.aggregation}
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-[var(--text-tertiary)] mb-1">Sort by</label>
-                  <select value={config.sort} onChange={(e) => set('sort', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                    <option value="">—</option>
-                    {source.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={config.sort || 'all'}
+                    onChange={(v) => set('sort', v === 'all' ? '' : String(v))}
+                    options={source.fields.map((f) => ({ id: f.key, name: f.label }))}
+                    placeholder="—"
+                    allOption="—"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs text-[var(--text-tertiary)] mb-1">Order</label>
-                  <select value={config.order} onChange={(e) => set('order', e.target.value as 'asc' | 'desc')} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm bg-white">
-                    <option value="asc">Asc</option>
-                    <option value="desc">Desc</option>
-                  </select>
+                  <SearchableSelect
+                    value={config.order}
+                    onChange={(v) => set('order', (v === 'desc' ? 'desc' : 'asc'))}
+                    options={[{ id: 'asc', name: 'Asc' }, { id: 'desc', name: 'Desc' }]}
+                    placeholder="Asc"
+                    showAllOption={false}
+                  />
                 </div>
               </div>
             </div>
