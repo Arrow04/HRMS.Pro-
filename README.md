@@ -1,5 +1,10 @@
 # HRMS.Pro!
 
+[![License: Elastic License 2.0](https://img.shields.io/badge/license-Elastic%20License%202.0-blue)](./LICENSE)
+[![Backend tests](https://img.shields.io/badge/backend-660%2B%20tests-brightgreen)](./hrms_backend)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](./hrms_backend)
+[![React](https://img.shields.io/badge/react-18%2B-61dafb)](./hrms_react_web)
+
 **Source-available HRMS for India** — attendance, leave, statutory-aware payroll (PF / ESI / PT / TDS / gratuity), compliance registers, F&F settlement, performance and exits — one system, configured per company.
 
 > **License: Elastic License 2.0 (source-available, NOT open source).**
