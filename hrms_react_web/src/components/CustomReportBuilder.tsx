@@ -188,7 +188,7 @@ export default function CustomReportBuilder() {
           <p className="text-sm text-[var(--text-tertiary)]">Pick a source, choose columns, filter, group and aggregate — then export.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowSave((v) => !v)} className="px-3 py-2 border border-[var(--border-color)] rounded-xl text-sm font-medium hover:bg-[var(--hover-bg)] flex items-center gap-1.5">
+          <button onClick={() => setShowSave((v) => !v)} className="px-4 py-2 bg-[#1C64F2] text-white rounded-xl text-sm font-medium hover:bg-blue-700 flex items-center gap-1.5 shadow-sm">
             <Save className="w-4 h-4" /> Save template
           </button>
           {saved.length > 0 && (
