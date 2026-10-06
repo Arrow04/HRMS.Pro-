@@ -74,10 +74,12 @@ class AIProvider(Enum):
     OPENAI = "openai"          # OpenAI - Optional
     ANTHROPIC = "anthropic"    # Claude - Optional
 
-# API Keys from environment (NEVER hardcode in production)
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '***REMOVED_GEMINI_KEY***')
-NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY', '***REMOVED_NVIDIA_KEY***')
-HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY', '***REMOVED_HF_KEY***')
+# API Keys from environment ONLY — never hardcoded. (A previously hardcoded
+# Gemini key was reported-leaked and blocked by Google; rotated keys must
+# live in .env / environment, never in source.)
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+NVIDIA_API_KEY = os.getenv('NVIDIA_API_KEY', '')
+HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 
