@@ -353,9 +353,10 @@ class HRMSAIEngine:
                 policies.append({
                     "title": f"Leave Policy - {lt.name}",
                     "type": "leave",
-                    "content": f"Leave Type: {lt.name}. Description: {lt.description or 'Standard leave policy'}. "
-                               f"Max days: {lt.max_days or 'As per policy'}. "
-                               f"Carry forward: {'Yes' if getattr(lt, 'is_carry_forward', False) else 'No'}.",
+                    "content": f"Leave Type: {lt.name}. "
+                               f"Days per year: {getattr(lt, 'days_allowed', 'As per policy')}. "
+                               f"Paid: {getattr(lt, 'is_paid', True)}. "
+                               f"Encashable: {getattr(lt, 'is_encashable', False)}.",
                     "effective_date": datetime.now().isoformat(),
                     "version": "1.0",
                 })

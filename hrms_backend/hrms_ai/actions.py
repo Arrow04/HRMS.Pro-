@@ -71,6 +71,14 @@ ACTION_PERMISSIONS: Dict[str, Dict[str, ActionPermission]] = {
     "generate_expense_claim_email": {"employee": ActionPermission.READ_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
     "generate_leave_request_email": {"employee": ActionPermission.READ_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
     "generate_document": {"employee": ActionPermission.READ_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
+
+    # Operations the AI performs FOR the org (admin-only money/period moves)
+    "run_payroll": {"admin": ActionPermission.ADMIN, "superadmin": ActionPermission.ADMIN,
+                    "hr_admin": ActionPermission.ADMIN, "finance": ActionPermission.ADMIN},
+    "finalize_attendance": {"admin": ActionPermission.ADMIN, "superadmin": ActionPermission.ADMIN,
+                            "hr_admin": ActionPermission.ADMIN, "finance": ActionPermission.ADMIN},
+    "init_leave_balances": {"admin": ActionPermission.ADMIN, "superadmin": ActionPermission.ADMIN,
+                            "hr_admin": ActionPermission.ADMIN, "finance": ActionPermission.ADMIN},
     
     "get_workflow": {"employee": ActionPermission.READ_OWN, "manager": ActionPermission.READ_TEAM, "hr_admin": ActionPermission.READ_ALL, "admin": ActionPermission.READ_ALL},
     "start_workflow": {"employee": ActionPermission.WRITE_OWN, "manager": ActionPermission.WRITE_TEAM, "hr_admin": ActionPermission.WRITE_ALL, "admin": ActionPermission.WRITE_ALL},
@@ -120,6 +128,9 @@ class AIActionExecutor:
             "get_workflow": self._action_get_workflow,
             "start_workflow": self._action_start_workflow,
             "advance_workflow": self._action_advance_workflow,
+            "run_payroll": self._action_run_payroll,
+            "finalize_attendance": self._action_finalize_attendance,
+            "init_leave_balances": self._action_init_leave_balances,
         }
     
     def _get_db(self, db_session=None) -> Session:
@@ -178,7 +189,14 @@ class AIActionExecutor:
             required_perm = ActionPermission.WRITE_OWN
         elif action.startswith("view_") or action.startswith("check_") or action.startswith("search_") or action.startswith("download_"):
             required_perm = ActionPermission.READ_OWN
-        
+
+        # Operations whose permission map grants ONLY admin roles must
+        # actually require ADMIN — otherwise the READ_OWN default would let
+        # any employee run payroll through the AI.
+        perm_map = ACTION_PERMISSIONS.get(action)
+        if perm_map and perm_map and all(p == ActionPermission.ADMIN for p in perm_map.values()):
+            required_perm = ActionPermission.ADMIN
+
         if not self._check_permission(role, action, required_perm):
             audit.log_permission_denied(
                 user_id=context.user_id,
@@ -1048,3 +1066,110 @@ class AIActionExecutor:
         workflow_engine = get_workflow_engine()
         result = workflow_engine.advance_workflow(context.user_id, workflow_id, collected_data)
         return result
+
+    # ========== Operations (admin) ==========
+    # Money and period operations the AI can perform on the org's behalf.
+    # Same engine the UI uses — never a parallel code path.
+
+    def _action_run_payroll(self, params: Dict, context: AIContext, db: Session) -> Dict[str, Any]:
+        from models import Employee, Payroll
+        from services.payroll_service import generate_payroll_record
+
+        month = int(params.get("month") or datetime.now().month)
+        year = int(params.get("year") or datetime.now().year)
+        emp_id = params.get("employee_id")
+        q = db.query(Employee).filter(
+            Employee.deleted_at.is_(None), Employee.status == "active")
+        if context.organization_id:
+            q = q.filter(Employee.organization_id == context.organization_id)
+        if emp_id:
+            q = q.filter(Employee.id == emp_id)
+        employees = q.all()
+        if not employees:
+            return {"success": False, "error": "no_employees",
+                    "message": f"No active employees found for {month}/{year}."}
+
+        submitted_by = int(context.user_id) if str(context.user_id or "").isdigit() else None
+        generated, skipped, failed = [], [], []
+        for emp in employees:
+            existing = db.query(Payroll).filter(
+                Payroll.employee_id == emp.id, Payroll.month == month,
+                Payroll.year == year, Payroll.deleted_at.is_(None),
+            ).first()
+            name = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+            if existing is not None:
+                skipped.append(name)
+                continue
+            try:
+                pr = generate_payroll_record(db, emp, month, year, submitted_by=submitted_by)
+                generated.append({"name": name, "net": float(pr.net_salary or 0)})
+            except Exception as e:
+                failed.append({"name": name, "error": str(e)})
+
+        total_net = round(sum(g["net"] for g in generated), 2)
+        msg = (
+            f"Payroll for {month}/{year}: {len(generated)} payslip(s) generated "
+            f"(total net ₹{total_net:,.0f}), {len(skipped)} skipped (already exist)"
+            + (f", {len(failed)} failed" if failed else "") + ". "
+            "Review them in Payroll — a DIFFERENT user must approve before payment."
+        )
+        return {"success": len(failed) == 0,
+                "data": {"generated": generated, "skipped": skipped, "failed": failed,
+                         "month": month, "year": year},
+                "message": msg}
+
+    def _action_finalize_attendance(self, params: Dict, context: AIContext, db: Session) -> Dict[str, Any]:
+        from models import PayrollPeriodLock
+        month = int(params.get("month") or datetime.now().month)
+        year = int(params.get("year") or datetime.now().year)
+        org_id = context.organization_id
+        lock = db.query(PayrollPeriodLock).filter(
+            PayrollPeriodLock.organization_id == org_id,
+            PayrollPeriodLock.month == month, PayrollPeriodLock.year == year,
+            PayrollPeriodLock.company_id.is_(None),
+            PayrollPeriodLock.employee_id.is_(None),
+        ).first()
+        now = datetime.now()
+        user_id = int(context.user_id) if str(context.user_id or "").isdigit() else None
+        if lock is None:
+            lock = PayrollPeriodLock(
+                organization_id=org_id, month=month, year=year,
+                status="finalized", finalized_by=user_id, finalized_at=now,
+            )
+            db.add(lock)
+        else:
+            lock.status = "finalized"
+            lock.finalized_by = user_id
+            lock.finalized_at = now
+            lock.reopened_by = None
+            lock.reopened_at = None
+        db.commit()
+        return {"success": True,
+                "data": {"month": month, "year": year},
+                "message": (f"Attendance period {month}/{year} finalized. "
+                            "Payroll generation for this period is now blocked until it is reopened.")}
+
+    def _action_init_leave_balances(self, params: Dict, context: AIContext, db: Session) -> Dict[str, Any]:
+        from models import Employee
+        year = int(params.get("year") or datetime.now().year)
+        emp_id = params.get("employee_id")
+        q = db.query(Employee).filter(
+            Employee.deleted_at.is_(None), Employee.status == "active")
+        if context.organization_id:
+            q = q.filter(Employee.organization_id == context.organization_id)
+        if emp_id:
+            q = q.filter(Employee.id == emp_id)
+        employees = q.all()[:500]
+        created_total = 0
+        try:
+            from routers.leaves import _auto_init_leave_balances
+            for emp in employees:
+                created_total += int(_auto_init_leave_balances(db, emp.id, year) or 0)
+        except Exception as e:
+            return {"success": False, "error": str(e),
+                    "message": f"Leave balance init failed: {e}"}
+        return {"success": True,
+                "data": {"year": year, "employees": len(employees), "balances_created": created_total},
+                "message": (f"Leave balances initialised for {year}: "
+                            f"{created_total} balance row(s) created across "
+                            f"{len(employees)} employee(s).")}

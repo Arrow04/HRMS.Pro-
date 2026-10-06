@@ -251,6 +251,14 @@ class HRMSAnalyst:
 
         ql = q.lower()
 
+        # ── Commands are for the action pipeline, not the analyst ──────
+        # "run payroll for june" / "finalize attendance" / "initialise
+        # leave balances" must EXECUTE, not get a description.
+        if re.search(r"^(run|generate|process|finalize|initialise|initialize|mark)\b", ql) and \
+           re.search(r"\b(payroll|attendance|leave balance|period)\b", ql) and \
+           not re.search(r"\b(how|what|why|when|where|explain|steps|guide)\b", ql):
+            return None
+
         # ── App concepts: "what is payroll / HRMS / PF / F&F" ─────────
         # The AI must teach the product — definition, product context, where.
         is_definition_q = bool(re.search(

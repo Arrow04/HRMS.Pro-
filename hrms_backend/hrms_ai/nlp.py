@@ -382,6 +382,36 @@ class LocalNLPEngine:
         # Help
         if intent == 'help':
             return None
+
+        # ── Org operations (commands, not questions) ────────────────────
+        # "run payroll for june", "finalize attendance for june 2026",
+        # "initialise leave balances" — the AI EXECUTES these (admin only).
+        # How-to phrasing stays with the analyst guide path.
+        _month_map = {
+            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5,
+            "june": 6, "july": 7, "august": 8, "september": 9, "october": 10,
+            "november": 11, "december": 12, "jan": 1, "feb": 2, "mar": 3,
+            "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10,
+            "nov": 11, "dec": 12,
+        }
+        _now = datetime.now()
+        _month, _year = _now.month, _now.year
+        for _name, _num in _month_map.items():
+            if re.search(rf"\b{_name}\b", msg_lower):
+                _month = _num
+                break
+        _ym = re.search(r"\b(20\d{2})\b", message)
+        if _ym:
+            _year = int(_ym.group(1))
+        _how = bool(re.search(r"\b(how do i|how to|steps to|what are the steps)\b", msg_lower))
+        _employee_id = context.employee_id if re.search(r"\b(my|mine)\b", msg_lower) else None
+        if not _how:
+            if re.search(r"\b(run|generate|process)\b[^.]*\bpayroll\b|\bpayroll\b[^.]*\b(run|generate|process)\b", msg_lower):
+                return 'run_payroll', {'month': _month, 'year': _year, 'employee_id': _employee_id}
+            if re.search(r"\bfinalize\b[^.]*\b(attendance|period)\b", msg_lower):
+                return 'finalize_attendance', {'month': _month, 'year': _year}
+            if re.search(r"\b(initiali[sz]e|create|set up|reset)\b[^.]*\bleave balance", msg_lower):
+                return 'init_leave_balances', {'year': _year, 'employee_id': _employee_id}
         
         # Leave balance
         if intent == 'leave_balance_query':

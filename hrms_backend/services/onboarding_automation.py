@@ -296,5 +296,15 @@ def run_onboarding_automation(
     else:
         summary["steps"].append("welcome_email_skipped")
 
+    # 7. Live AI index — the assistant learns the new employee instantly
+    # (deterministic doc ids: re-indexing updates, never duplicates).
+    try:
+        from hrms_ai.knowledge import refresh_org_ai_index
+        summary["aiIndex"] = refresh_org_ai_index(db, emp.organization_id)
+        summary["steps"].append("ai_index")
+    except Exception as e:
+        logger.warning(f"AI index refresh failed for emp {emp.id}: {e}")
+        summary["steps"].append("ai_index_skipped")
+
     db.commit()
     return summary

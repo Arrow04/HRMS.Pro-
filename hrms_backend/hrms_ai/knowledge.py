@@ -442,6 +442,67 @@ class HRMSKnowledgeBase:
 _knowledge_base: Optional[HRMSKnowledgeBase] = None
 
 
+def refresh_org_ai_index(db, org_id) -> Dict[str, Any]:
+    """Live index refresh — the AI learns org changes instantly.
+
+    Called on employee onboarding (and safe to re-run any time): indexes
+    the employee directory and leave types into the tenant knowledge base
+    with deterministic doc ids, so re-indexing UPDATES rather than
+    duplicates. The analyst still queries the live DB per question; this
+    index feeds the retrieval-enhanced conversational path.
+    """
+    result = {"employees_indexed": 0, "leave_types_indexed": 0}
+    if not org_id:
+        return result
+    kb = get_knowledge_base()
+    tenant = str(org_id)
+    try:
+        from models import Employee, LeaveType
+        employees = db.query(Employee).filter(
+            Employee.organization_id == org_id,
+            Employee.deleted_at.is_(None),
+            Employee.status == "active",
+        ).limit(1000).all()
+        for emp in employees:
+            name = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+            kb.add_document(
+                tenant_id=tenant,
+                doc_type=KnowledgeType.DOCUMENT,
+                source=KnowledgeSource.INTERNAL_DOC,
+                title=f"Employee: {name}",
+                content=(
+                    f"{name} | code: {emp.employee_code or '—'} | "
+                    f"designation: {emp.designation or '—'} | "
+                    f"email: {emp.email or '—'} | status: {emp.status}"
+                ),
+                metadata={"employee_id": emp.id, "kind": "employee"},
+                doc_id=f"emp_{emp.id}",
+            )
+            result["employees_indexed"] += 1
+        leave_types = db.query(LeaveType).filter(
+            LeaveType.organization_id == org_id,
+            LeaveType.status == "active",
+        ).all()
+        for lt in leave_types:
+            kb.add_document(
+                tenant_id=tenant,
+                doc_type=KnowledgeType.POLICY,
+                source=KnowledgeSource.HR_HANDBOOK,
+                title=f"Leave Policy — {lt.name}",
+                content=(
+                    f"Leave type: {lt.name} (code {lt.code}). "
+                    f"Days per year: {lt.days_allowed}. "
+                    f"Paid: {lt.is_paid}. Encashable: {lt.is_encashable}."
+                ),
+                metadata={"leave_type_id": lt.id, "kind": "leave_type"},
+                doc_id=f"leave_type_{lt.id}",
+            )
+            result["leave_types_indexed"] += 1
+    except Exception:
+        pass
+    return result
+
+
 def get_knowledge_base() -> HRMSKnowledgeBase:
     """Get the global knowledge base instance"""
     global _knowledge_base
@@ -457,7 +518,7 @@ def init_knowledge_base(
 ) -> HRMSKnowledgeBase:
     """Initialize the global knowledge base with dependencies"""
     global _knowledge_base
-    _knowledge = HRMSKnowledgeBase(
+    _knowledge_base = HRMSKnowledgeBase(
         redis_client=redis_client,
         embedding_model=embedding_model,
         chroma_client=chroma_client,
