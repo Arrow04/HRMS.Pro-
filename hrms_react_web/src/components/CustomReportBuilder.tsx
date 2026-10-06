@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
+import DatePicker from './DatePicker';
 import api from '../services/api';
 
 type FieldType = 'string' | 'number' | 'date' | 'bool';
@@ -321,13 +322,13 @@ export default function CustomReportBuilder() {
                 {source.filters.includes('dateFrom') && (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">From date</label>
-                    <input type="date" value={config.dateFrom} onChange={(e) => set('dateFrom', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm" />
+                    <DatePicker value={config.dateFrom} onChange={(v) => set('dateFrom', v)} placeholder="Start date" />
                   </div>
                 )}
                 {source.filters.includes('dateTo') && (
                   <div>
                     <label className="block text-xs text-[var(--text-tertiary)] mb-1">To date</label>
-                    <input type="date" value={config.dateTo} onChange={(e) => set('dateTo', e.target.value)} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm" />
+                    <DatePicker value={config.dateTo} onChange={(v) => set('dateTo', v)} placeholder="End date" />
                   </div>
                 )}
                 {source.filters.includes('month') && (
