@@ -113,8 +113,45 @@ class HRMSAIEngine:
         
         actions_taken = []
         response_text = None
+        provider_label = "local_hrms_ai"
 
-        # ── 1) Data-grounded analyst FIRST ─────────────────────────────
+        # ── Product-grade LLM brain (tool-calling) when configured ─────
+        # AI_LLM_API_KEY flips this on (OpenAI / Groq / Gemini-compat /
+        # Ollama / vLLM). Without a key the analyst + keyword layer below
+        # remains the brain — the app never hard-depends on an external call.
+        try:
+            from hrms_ai.tools_schema import TOOLS, build_tool_executor
+            from hrms_ai.analyst import get_analyst
+            llm = getattr(self, "llm_provider", None)
+            if llm is None or not hasattr(llm, "enabled") or not hasattr(llm, "run_with_tools"):
+                from hrms_ai.llm_provider import get_llm_provider
+                llm = get_llm_provider()
+        except Exception:
+            llm = None
+        if llm is not None and getattr(llm, "enabled", False):
+            try:
+                execute_tool = build_tool_executor(get_analyst(), context, db_session)
+                history_msgs = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in conversation[:-1] if m.get("content")
+                ]
+                llm_result = await llm.run_with_tools(
+                    messages=history_msgs + [{"role": "user", "content": request.message}],
+                    tools=TOOLS,
+                    execute_tool=execute_tool,
+                    system_prompt=self._product_system_prompt(context),
+                )
+                if llm_result.text and llm_result.text.strip():
+                    response_text = llm_result.text
+                    provider_label = f"llm:{llm_result.model}"
+                    intent = "llm_assistant"
+                    confidence = max(confidence, 0.8)
+            except Exception:
+                # Graceful degradation: never fail the chat because the LLM
+                # endpoint is down — fall back to the local brain.
+                response_text = None
+
+        # ── Local brain: analyst first (below) ─────────────────────────
         # Knowledge / how-to / live-figure questions must never be swallowed
         # by the action pipeline ("how do I run payroll?" is a guide, not a
         # payroll lookup). Analyst answers win at >= 0.75 confidence.
@@ -124,7 +161,7 @@ class HRMSAIEngine:
             analyst_out = get_analyst().answer(request.message, context, db_session)
         except Exception:
             analyst_out = None
-        if analyst_out and float(analyst_out.get("confidence") or 0) >= 0.75:
+        if not response_text and analyst_out and float(analyst_out.get("confidence") or 0) >= 0.75:
             response_text = analyst_out["text"]
             intent = analyst_out.get("intent") or intent
             confidence = max(confidence, float(analyst_out.get("confidence") or 0))
@@ -246,7 +283,7 @@ class HRMSAIEngine:
             confidence=confidence,
             organization_id=context.organization_id,
             conversation_id=conversation_id,
-            provider="local_hrms_ai",
+            provider=provider_label,
             latency_ms=latency_ms,
         )
         
@@ -259,7 +296,7 @@ class HRMSAIEngine:
             suggestions=suggestions,
             escalation=escalation_info,
             timestamp=datetime.now().isoformat(),
-            provider="local_hrms_ai",
+            provider=provider_label,
             context={
                 "user_id": context.user_id,
                 "employee_id": context.employee_id,
@@ -382,6 +419,42 @@ class HRMSAIEngine:
             ],
         }
     
+    def _product_system_prompt(self, context) -> str:
+        """System prompt for the LLM brain — product expert + hard rules."""
+        from hrms_ai.prompts import build_system_prompt
+        base = build_system_prompt(
+            industry=getattr(context, "industry", None),
+            role=getattr(context, "role", None),
+            country=getattr(context, "country", None),
+        )
+        org_line = ""
+        try:
+            if getattr(context, "organization_id", None) and getattr(self, "db_session_factory", None):
+                org_line = ""
+        except Exception:
+            pass
+        return (
+            f"{base}\n\n"
+            "You are the HRMS.Pro! copilot — a senior HR-operations consultant "
+            "embedded in this product.\n"
+            "RULES:\n"
+            "1. Use tools for ANY number, name, balance, compliance or payroll "
+            "figure. NEVER invent data. If a tool returns nothing, say so.\n"
+            "2. Money is INR (₹) with Indian digit grouping (₹1,23,456 style "
+            "via toLocaleString defaults is fine — just use ₹ and commas).\n"
+            "3. Operations (run payroll, finalize attendance) require admin "
+            "rights; report tool results honestly, including permission errors.\n"
+            "4. After running an operation, remind the user that a DIFFERENT "
+            "user must approve payroll (maker-checker) before payment.\n"
+            "5. Be concise and structured: short paragraphs or bullet lists. "
+            "Explain HRMS concepts in plain language when asked.\n"
+            "6. You can see the conversation history — follow up on prior "
+            "questions without making the user repeat themselves.\n"
+            "7. Stay inside the user's organisation scope; never discuss "
+            "other tenants' data.\n"
+            f"{org_line}"
+        )
+
     def get_statistics(self) -> Dict[str, Any]:
         """Get AI engine statistics"""
         audit_stats = self.audit.get_statistics()

@@ -21,6 +21,7 @@ type Message = {
   suggestions?: string[];
   intent?: string;
   confidence?: number;
+  provider?: string;
   actions?: Array<Record<string, unknown>>;
   escalation?: {
     escalation_id?: string;
@@ -169,6 +170,7 @@ const Chatbot = () => {
         suggestions: getSuggestions(data.suggestions),
         intent: data.intent,
         confidence: data.confidence,
+        provider: data.provider,
         actions: data.actions_taken || data.actionsTaken,
         escalation: data.escalation || (data.escalated ? { reason: data.escalation_reason || data.escalationReason } : undefined),
       };
@@ -266,6 +268,11 @@ const Chatbot = () => {
                     {message.intent && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">Intent: {message.intent}</span>
+                        {message.provider && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            {message.provider.startsWith('llm') ? `AI model · ${message.provider.slice(4)}` : 'Local HRMS AI'}
+                          </span>
+                        )}
                         {message.confidence !== undefined && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Confidence: {Math.round(message.confidence * 100)}%</span>
                         )}
