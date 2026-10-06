@@ -21,6 +21,7 @@ import TimePicker from '../components/TimePicker';
 import AiInsightsPanel from '../components/AiInsightsPanel';
 import PageHero from '../components/PageHero';
 import DataTable from '../components/DataTable';
+import CustomReportBuilder from '../components/CustomReportBuilder';
 import StatsCard from '../components/StatsCard';
 import PageSkeleton from '../components/skeleton/PageSkeleton';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
@@ -72,11 +73,6 @@ interface MasterDataOption {
   name?: string;
 }
 
-interface SelectableItem {
-  id: number | string;
-  name: string;
-}
-
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -119,10 +115,6 @@ const Reports = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [exportDateRange, setExportDateRange] = useState({ start: '', end: '' });
   const [exportFormat, setExportFormat] = useState('all');
-  const [customReport, setCustomReport] = useState({ dataSource: '', startDate: '', endDate: '', companyId: '', departmentId: '', status: '' });
-  const [customReportData, setCustomReportData] = useState<Record<string, unknown>[]>([]);
-  const [customReportColumns, setCustomReportColumns] = useState<string[]>([]);
-  const [customReportLoading, setCustomReportLoading] = useState(false);
   const [showCreateSchedule, setShowCreateSchedule] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -132,12 +124,6 @@ const Reports = () => {
   const [companySearchQuery, setCompanySearchQuery] = useState('');
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [deleteScheduleTarget, setDeleteScheduleTarget] = useState<string | null>(null);
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments'],
-    queryFn: async () => { const r = await api.get('/departments'); return r.data || []; },
-    staleTime: 5 * 60 * 1000,
-  });
 
   useMasterData('MODULES');
   const { data: auditModuleOptions = [] } = useMasterData('AUDIT_MODULE');
@@ -163,49 +149,6 @@ const Reports = () => {
     includeBody: false,
     status: 'Active'
   });
-  const generateCustomReport = async () => {
-    if (!customReport.dataSource) return;
-    setCustomReportLoading(true);
-    try {
-      const params: Record<string, string> = {};
-      if (customReport.startDate) params.startDate = customReport.startDate;
-      if (customReport.endDate) params.endDate = customReport.endDate;
-      if (customReport.companyId) params.companyId = customReport.companyId;
-      if (customReport.departmentId) params.departmentId = customReport.departmentId;
-      if (customReport.status) params.status = customReport.status;
-
-      let endpoint = '';
-      switch (customReport.dataSource) {
-        case 'employees': endpoint = '/employees'; break;
-        case 'attendance': endpoint = '/attendance'; break;
-        case 'payroll': endpoint = '/payroll'; break;
-        case 'leaves': endpoint = '/leaves'; break;
-        case 'expenses': endpoint = '/expenses'; break;
-        case 'holidays': endpoint = '/holidays'; break;
-        default: return;
-      }
-      const res = await api.get(endpoint, { params: { ...params, limit: 500 } });
-      const data = res.data?.data || res.data || [];
-      setCustomReportData(Array.isArray(data) ? data : []);
-      if (data.length > 0) {
-        setCustomReportColumns(Object.keys(data[0]).filter(k => typeof data[0][k] !== 'object'));
-      }
-      toast.success(`${data.length} records loaded`);
-    } catch {
-      toast.error('Failed to generate report');
-    } finally {
-      setCustomReportLoading(false);
-    }
-  };
-
-  const exportCustomReport = () => {
-    if (customReportData.length === 0) return;
-    const ws = XLSX.utils.json_to_sheet(customReportData, { header: customReportColumns });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Custom Report');
-    XLSX.writeFile(wb, `custom_report_${customReport.dataSource}_${new Date().toISOString().split('T')[0]}.xlsx`);
-    toast.success('Report exported');
-  };
 
   useEffect(() => {
     setMounted(true);
@@ -620,133 +563,7 @@ const exportData = filteredLogs.map((log: ActivityLogEntry) => ({
 
         {/* CUSTOM REPORT SECTION */}
           {activeSection === 'custom-report' && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-2xl border border-[var(--border-color)] p-6">
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">Custom Report Builder</h3>
-                <p className="text-sm text-[var(--text-tertiary)] mb-6">Select a data source, choose columns, apply filters, and generate your report.</p>
-
-                {/* Step 1: Data Source */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">1. Data Source</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {[
-                      { id: 'employees', label: 'Employees', icon: Users, color: 'blue' },
-                      { id: 'attendance', label: 'Attendance', icon: Clock, color: 'emerald' },
-                      { id: 'payroll', label: 'Payroll', icon: Coins, color: 'orange' },
-                      { id: 'leaves', label: 'Leaves', icon: Calendar, color: 'violet' },
-                      { id: 'expenses', label: 'Expenses', icon: FileText, color: 'pink' },
-                      { id: 'holidays', label: 'Holidays', icon: Calendar, color: 'amber' },
-                    ].map((src) => (
-                      <button
-                        key={src.id}
-                        onClick={() => setCustomReport({ ...customReport, dataSource: src.id })}
-                        className={`p-3 rounded-xl border text-left transition-all ${
-                          customReport.dataSource === src.id
-                            ? 'border-[#1C64F2] bg-[#1C64F2]/5 shadow-sm'
-                            : 'border-[var(--border-color)] hover:border-gray-300'
-                        }`}
-                      >
-                        <src.icon className="w-5 h-5 mb-1" style={{ color: `var(--primary-blue)` }} />
-                        <p className="text-xs font-medium text-[var(--text-primary)]">{src.label}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Step 2: Date Range */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">2. Date Range</label>
-                  <div className="flex items-center gap-3">
-                    <DatePicker value={customReport.startDate} onChange={(v) => setCustomReport({ ...customReport, startDate: v })} placeholder="Start Date" />
-                    <span className="text-[var(--text-tertiary)]">to</span>
-                    <DatePicker value={customReport.endDate} onChange={(v) => setCustomReport({ ...customReport, endDate: v })} placeholder="End Date" />
-                  </div>
-                </div>
-
-                {/* Step 3: Filters */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">3. Filters</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Company</label>
-                      <select value={customReport.companyId} onChange={(e) => setCustomReport({ ...customReport, companyId: e.target.value })} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm">
-                        <option value="">All Companies</option>
-                        {(companies || []).map((c: SelectableItem) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Department</label>
-                      <select value={customReport.departmentId} onChange={(e) => setCustomReport({ ...customReport, departmentId: e.target.value })} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm">
-                        <option value="">All Departments</option>
-                        {(departments || []).map((d: SelectableItem) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-[var(--text-tertiary)] mb-1">Status</label>
-                      <select value={customReport.status} onChange={(e) => setCustomReport({ ...customReport, status: e.target.value })} className="w-full px-3 py-2 border border-[var(--border-color)] rounded-lg text-sm">
-                        <option value="">All Statuses</option>
-                        <option value="active">Active</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Generate Button */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={generateCustomReport}
-                    disabled={!customReport.dataSource || customReportLoading}
-                    className="px-6 py-2.5 bg-[#1C64F2] text-white rounded-xl font-medium text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {customReportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
-                    Generate Report
-                  </button>
-                  {customReportData.length > 0 && (
-                    <button onClick={exportCustomReport} className="px-4 py-2.5 border border-[var(--border-color)] rounded-xl text-sm font-medium hover:bg-[var(--hover-bg)] flex items-center gap-2">
-                      <Download className="w-4 h-4" /> Export CSV
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Results */}
-              {customReportData.length > 0 && (
-                <div className="bg-white rounded-2xl border border-[var(--border-color)] overflow-hidden">
-                  <div className="px-6 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-[var(--text-primary)]">Results</h3>
-                      <p className="text-xs text-[var(--text-tertiary)]">{customReportData.length} records found</p>
-                    </div>
-                    <button onClick={exportCustomReport} className="px-3 py-1.5 text-xs font-medium border border-[var(--border-color)] rounded-lg hover:bg-[var(--hover-bg)] flex items-center gap-1">
-                      <Download className="w-3 h-3" /> Export
-                    </button>
-                  </div>
-                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-[var(--background)] sticky top-0">
-                        <tr>
-                          {customReportColumns.map((col) => (
-                            <th key={col} className="px-4 py-2 text-left text-xs font-medium text-[var(--text-tertiary)] border-b border-[var(--border-color)]">{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {customReportData.slice(0, 100).map((row, idx) => (
-                          <tr key={idx} className="border-b border-[var(--border-color)] hover:bg-[var(--background)]">
-                            {customReportColumns.map((col) => (
-                              <td key={col} className="px-4 py-2 text-[var(--text-primary)]">{String(row[col] ?? '-')}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
+            <CustomReportBuilder />
           )}
 
         {/* SCHEDULER SECTION */}
